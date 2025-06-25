@@ -1,245 +1,58 @@
 # Test Optimization Scripts
 
-This directory contains advanced scripts for analyzing, optimizing, and running tests with maximum performance.
+Essential scripts for analyzing, optimizing, and running tests with maximum performance.
 
-## 🚀 Quick Start
-
+## Quick Start
 ```bash
-# Run tests locally with optimal settings
+# Run tests locally 
 ./test_runner.sh receipt_dynamo
 
-# Analyze test structure and generate optimal groupings  
-python analyze_tests.py
-
-# Generate dynamic GitHub Actions matrix
-python generate_test_matrix.py
-```
-
-## 📊 Analysis Tools
-
-### `analyze_tests.py`
-**Comprehensive test structure analysis and optimal grouping**
-
-```bash
+# Analyze and optimize test structure
 python analyze_tests.py
 ```
 
-**Features:**
-- Scans all test files and counts tests per file
-- Estimates execution time based on test complexity
-- Creates optimal parallel groups (default: 4 groups)
-- Generates balanced load distribution
-- Outputs performance statistics and speedup estimates
+## Core Tools
 
-**Output:**
-- Test analysis summary with slowest files
-- Optimal test groups for parallel execution
-- GitHub Actions matrix configuration
-- Estimated speedup calculations
-
-### `optimize_slow_tests.py` 
-**Identifies performance bottlenecks and suggests optimizations**
-
+### `test_runner.sh` - Local test runner
 ```bash
-python optimize_slow_tests.py
+./test_runner.sh receipt_dynamo
+./test_runner.sh -t integration -c receipt_dynamo
 ```
 
-**Features:**
-- Profiles individual test files for execution time
-- Identifies performance anti-patterns (sleep, HTTP calls, large loops)
-- Suggests specific optimization strategies
-- Generates comprehensive optimization report
-
-**Output:**
-- Performance analysis for top 10 slowest test files
-- Bottleneck identification and optimization suggestions
-- Saved to `TEST_OPTIMIZATION_REPORT.md`
-
-### `generate_test_matrix.py`
-**Dynamic GitHub Actions matrix generation**
-
+### `run_tests_optimized.py` - Advanced test runner
 ```bash
-python generate_test_matrix.py [--verbose]
-```
-
-**Features:**
-- Automatically generates optimal test matrix
-- Adapts to current test structure
-- Provides performance estimates
-- Generates workflow YAML snippets
-
-**Output:**
-- Saved matrix in `.github/test_matrix.json`
-- Human-readable summary with speedup calculations
-- Ready-to-use workflow YAML configuration
-
-## 🏃‍♂️ Test Runners
-
-### `run_tests_optimized.py`
-**Advanced test runner with intelligent resource management** *(Recently enhanced)*
-
-```bash
-# Run unit tests
 python run_tests_optimized.py receipt_dynamo tests/unit --test-type unit
-
-# Run integration tests with coverage
-python run_tests_optimized.py receipt_dynamo tests/integration --test-type integration --coverage
-
-# Run specific test files
-python run_tests_optimized.py receipt_dynamo tests/integration/test__receipt.py --test-type integration --timeout 300
-
-# Run with space-separated test paths (GitHub Actions compatible)
-python run_tests_optimized.py receipt_dynamo "tests/integration/test_a.py tests/integration/test_b.py" --test-type integration
 ```
+Features: Adaptive parallelization, intelligent timeouts, coverage
 
-**Features:**
-- Adaptive worker allocation based on system resources
-- Test-type specific optimization (unit vs integration vs e2e)
-- Intelligent timeout and resource management
-- Built-in coverage reporting
-- Performance monitoring and reporting
-- **NEW**: GitHub Actions compatible argument parsing for space-separated test paths
-
-**Options:**
-- `--test-type`: unit, integration, end_to_end
-- `--verbose`: Enable detailed output
-- `--coverage`: Enable coverage reporting
-- `--fail-fast`: Stop on first failure
-- `--timeout`: Custom timeout in seconds
-
-### `test_runner.sh`
-**Developer-friendly local test runner**
-
+### `smart_test_runner.py` - Intelligent test selection
 ```bash
-# Basic usage
-./test_runner.sh receipt_dynamo
-
-# With options
-./test_runner.sh -t integration -c -v receipt_dynamo
-./test_runner.sh --type unit --coverage --fail-fast receipt_label
+python smart_test_runner.py receipt_dynamo --dry-run
 ```
+Features: File change detection, dependency analysis, test caching
 
-**Features:**
-- Simple command-line interface
-- Automatic test path detection
-- Optimized settings per test type
-- Coverage and verbose modes
-- Fail-fast option for quick feedback
+### `analyze_tests.py` - Test optimization analysis
+Generates optimal parallel test groups and performance estimates
 
-**Options:**
-- `-t, --type`: Test type (unit, integration, end_to_end, all)
-- `-v, --verbose`: Enable verbose output
-- `-c, --coverage`: Enable coverage reporting
-- `-s, --sequential`: Disable parallelization
-- `-x, --fail-fast`: Stop on first failure
+### `optimize_slow_tests.py` - Performance bottleneck identification
+Profiles tests and suggests optimization strategies
 
-## 📈 Legacy Tools
+## Performance Impact
+- **39 integration test files** optimally distributed across 4 parallel groups
+- **62.8min → 15.8min** execution time (4x speedup)
+- **Smart selection**: Additional 2-20x speedup for focused changes
 
-### `benchmark_tests.py`
-**Compare different pytest configurations**
+## AI Review Tools
 
+### `claude_review_analyzer.py` - PR analysis engine
+Core AI review logic with cost optimization
+
+### `cost_optimizer.py` - Budget management
 ```bash
-python benchmark_tests.py
+python cost_optimizer.py --check-budget
 ```
+Smart model selection and usage tracking
 
-**Features:**
-- Benchmarks multiple test configurations
-- Compares sequential vs parallel execution
-- Measures coverage overhead
-- Provides performance recommendations
-
-### `profile_tests.py`
-**Profile test execution and identify slow tests**
-
-```bash
-python profile_tests.py
-```
-
-**Features:**
-- Identifies slow individual tests
-- Suggests `@pytest.mark.slow` candidates
-- Provides test-level performance analysis
-
-### `test.sh`
-**Original quick test script**
-
-```bash
-./test.sh -p receipt_dynamo -c
-```
-
-**Features:**
-- Legacy test runner (still functional)
-- Simple package-based testing
-- Coverage and parallel options
-
-## 🔧 Configuration Files
-
-### `test_matrix.json`
-**Current optimal test groupings**
-
-Generated by `generate_test_matrix.py`, contains the current optimal distribution of tests across parallel groups.
-
-### Performance Data
-Scripts automatically cache performance data to improve analysis speed on subsequent runs.
-
-## 📊 Performance Impact
-
-### Integration Test Splitting Results
-- **39 test files** analyzed
-- **1,579 total tests** optimally distributed
-- **4 parallel groups** with balanced load:
-  - Group 1: 395 tests (~16 min)
-  - Group 2: 396 tests (~16 min)  
-  - Group 3: 396 tests (~16 min)
-  - Group 4: 392 tests (~15 min)
-
-### Expected Speedups
-- **Sequential execution**: 62.8 minutes
-- **Parallel execution**: 15.8 minutes
-- **Speedup**: 4x faster
-- **CI/CD improvement**: ~45 minutes saved per run
-
-## 🛠️ Development
-
-### Adding New Analysis Features
-1. Extend `analyze_tests.py` with new metrics
-2. Update `generate_test_matrix.py` for new grouping strategies  
-3. Add optimization patterns to `optimize_slow_tests.py`
-
-### Customizing Test Groups
-Modify the `target_groups` parameter in `analyze_tests.py` to change the number of parallel groups (default: 4).
-
-### Integration with CI/CD
-The generated matrix in `.github/test_matrix.json` is automatically used by the main workflow for optimal test distribution.
-
-## 📝 Best Practices
-
-1. **Run analysis regularly**: Test structure changes over time
-2. **Monitor performance**: Use the analysis tools to track test execution trends
-3. **Optimize slow tests**: Follow suggestions from `optimize_slow_tests.py`
-4. **Balance resources**: Consider system resources when setting parallelization
-5. **Profile new tests**: Use tools to ensure new tests don't become bottlenecks
-
-## 🔍 Troubleshooting
-
-### Analysis Takes Too Long
-- Run with smaller test subsets first
-- Check for hanging tests (use timeout options)
-- Ensure adequate system resources
-
-### Uneven Group Distribution
-- Check for extremely large test files
-- Consider splitting large test files
-- Adjust target group count
-
-### Performance Regression
-- Compare before/after analysis results
-- Check for new slow tests
-- Review recent test additions
-
-## 📚 Related Documentation
-
-- [`../PYTEST_OPTIMIZATIONS.md`](../PYTEST_OPTIMIZATIONS.md): Overall optimization summary
-- [`../ADVANCED_OPTIMIZATIONS.md`](../ADVANCED_OPTIMIZATIONS.md): Detailed technical implementation
-- [`../docs/pytest-optimization-guide.md`](../docs/pytest-optimization-guide.md): Comprehensive usage guide
-- [`../WORKFLOW_CLEANUP.md`](../WORKFLOW_CLEANUP.md): GitHub Actions workflow improvements
+## Configuration
+- `test_matrix.json` - Optimal test groupings
+- `requirements.txt` - Script dependencies
