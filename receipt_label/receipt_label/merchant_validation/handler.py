@@ -14,17 +14,12 @@ from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 from .agent import MerchantValidationAgent
-from .merchant_validation import (
-    build_receipt_metadata_from_result,
-    build_receipt_metadata_from_result_no_match,
-    extract_candidate_merchant_fields,
-)
-from .result_processor import (
-    build_receipt_metadata_from_partial_result,
-    extract_best_partial_match,
-    sanitize_metadata_strings,
-    sanitize_string,
-)
+from .merchant_validation import (build_receipt_metadata_from_result,
+                                  build_receipt_metadata_from_result_no_match,
+                                  extract_candidate_merchant_fields)
+from .result_processor import (build_receipt_metadata_from_partial_result,
+                               extract_best_partial_match,
+                               sanitize_metadata_strings, sanitize_string)
 
 logger = logging.getLogger(__name__)
 
