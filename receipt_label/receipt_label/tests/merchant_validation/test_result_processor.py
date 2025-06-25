@@ -1,25 +1,23 @@
 """Tests for merchant validation result_processor module."""
 
 # Set up test environment before imports
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_helpers import setup_test_environment
+
 setup_test_environment()
 
 from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
-from receipt_dynamo.constants import ValidationMethod
 
+from receipt_dynamo.constants import ValidationMethod
 from receipt_label.merchant_validation.result_processor import (
-    _validate_match_quality,
-    extract_best_partial_match,
-    build_receipt_metadata_from_partial_result,
-    sanitize_string,
-    sanitize_metadata_strings,
-)
+    _validate_match_quality, build_receipt_metadata_from_partial_result,
+    extract_best_partial_match, sanitize_metadata_strings, sanitize_string)
 
 
 @pytest.mark.unit
@@ -257,7 +255,7 @@ def test_build_receipt_metadata_from_partial_result():
     mock_metadata = Mock()
     with patch(
         "receipt_label.merchant_validation.result_processor.ReceiptMetadata",
-        return_value=mock_metadata
+        return_value=mock_metadata,
     ) as meta:
         result = build_receipt_metadata_from_partial_result(
             "img",
@@ -287,56 +285,57 @@ def test_sanitize_string_various_cases():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("input_value,expected", [
-    # Basic quote removal
-    ('"Hello"', "Hello"),
-    ("'Hello'", "Hello"),
-    ('""Hello""', "Hello"),  # Double quotes
-    ("''Hello''", "'Hello'"),  # Inner single quotes have unmatched quotes
-    
-    # Mixed quotes
-    ('"\'Hello\'"', "Hello"),  # JSON parsing handles this
-    ('"\\"Hello\\""', "Hello"),  # JSON parsing handles escaped quotes
-    ('"Hello\'s"', "Hello's"),  # Apostrophe preserved
-    
-    # Complex nested quotes
-    ('"""Hello"""', "Hello"),  # Multiple iterations strip all quotes
-    ("'''Hello'''", "''Hello''"),  # Single quotes don't iterate as deeply
-    ('""\\"Nested\\"""', '"Nested"'),  # JSON parsing handles this
-    
-    # Unicode quotes
-    ('"Hello"', "Hello"),  # Left/right double quotes
-    ("'Hello'", "Hello"),  # Left/right single quotes
-    ('""Hello""', "Hello"),  # Mixed unicode quotes
-    
-    # Mismatched quotes
-    ('"Hello\'', "Hello"),
-    ('\'Hello"', "Hello"),
-    ('"Hello', '"Hello'),  # Keep if no closing quote
-    
-    # Edge cases
-    ("", ""),
-    ("   ", ""),
-    (None, ""),
-    ('"', '"'),  # Single quote char
-    ('""', '""'),  # Empty quotes - sanitize_string preserves original if result would be empty
-    ("'\"'", '"'),  # Quote inside quotes
-    
-    # Non-string inputs
-    (123, "123"),
-    (45.67, "45.67"),
-    (True, "True"),
-    (False, "False"),
-    
-    # Whitespace handling
-    ("  Hello  ", "Hello"),
-    ("\tHello\n", "Hello"),
-    ('"  Hello  "', "Hello"),
-    
-    # JSON-like strings
-    ('"\\"quoted\\""', 'quoted'),  # JSON parsing removes escaped quotes
-    ('"{\\"key\\": \\"value\\"}"', '{"key": "value"}'),  # JSON parsing handles escapes
-])
+@pytest.mark.parametrize(
+    "input_value,expected",
+    [
+        # Basic quote removal
+        ('"Hello"', "Hello"),
+        ("'Hello'", "Hello"),
+        ('""Hello""', "Hello"),  # Double quotes
+        ("''Hello''", "'Hello'"),  # Inner single quotes have unmatched quotes
+        # Mixed quotes
+        ("\"'Hello'\"", "Hello"),  # JSON parsing handles this
+        ('"\\"Hello\\""', "Hello"),  # JSON parsing handles escaped quotes
+        ('"Hello\'s"', "Hello's"),  # Apostrophe preserved
+        # Complex nested quotes
+        ('"""Hello"""', "Hello"),  # Multiple iterations strip all quotes
+        ("'''Hello'''", "''Hello''"),  # Single quotes don't iterate as deeply
+        ('""\\"Nested\\"""', '"Nested"'),  # JSON parsing handles this
+        # Unicode quotes
+        ('"Hello"', "Hello"),  # Left/right double quotes
+        ("'Hello'", "Hello"),  # Left/right single quotes
+        ('""Hello""', "Hello"),  # Mixed unicode quotes
+        # Mismatched quotes
+        ("\"Hello'", "Hello"),
+        ("'Hello\"", "Hello"),
+        ('"Hello', '"Hello'),  # Keep if no closing quote
+        # Edge cases
+        ("", ""),
+        ("   ", ""),
+        (None, ""),
+        ('"', '"'),  # Single quote char
+        (
+            '""',
+            '""',
+        ),  # Empty quotes - sanitize_string preserves original if result would be empty
+        ("'\"'", '"'),  # Quote inside quotes
+        # Non-string inputs
+        (123, "123"),
+        (45.67, "45.67"),
+        (True, "True"),
+        (False, "False"),
+        # Whitespace handling
+        ("  Hello  ", "Hello"),
+        ("\tHello\n", "Hello"),
+        ('"  Hello  "', "Hello"),
+        # JSON-like strings
+        ('"\\"quoted\\""', "quoted"),  # JSON parsing removes escaped quotes
+        (
+            '"{\\"key\\": \\"value\\"}"',
+            '{"key": "value"}',
+        ),  # JSON parsing handles escapes
+    ],
+)
 def test_sanitize_string_comprehensive(input_value, expected):
     """Comprehensive test cases for sanitize_string."""
     assert sanitize_string(input_value) == expected
@@ -345,11 +344,12 @@ def test_sanitize_string_comprehensive(input_value, expected):
 @pytest.mark.unit
 def test_sanitize_string_preserves_original_on_error():
     """Verify that sanitize_string converts non-strings using str()."""
+
     # For non-string inputs, the function returns str(value) without processing
     class CustomObject:
         def __str__(self):
             return "  custom object  "
-    
+
     custom_input = CustomObject()
     # The function converts to string but doesn't strip for non-string inputs
     assert sanitize_string(custom_input) == "  custom object  "
@@ -370,9 +370,9 @@ def test_sanitize_metadata_strings():
         "matched_fields": ["phone", "name"],  # Lists preserved
         "timestamp": datetime.now(),  # Other types preserved
     }
-    
+
     result = sanitize_metadata_strings(metadata)
-    
+
     # Check string fields are sanitized
     assert result["place_id"] == "pid123"
     assert result["merchant_name"] == "Store Name"
@@ -380,12 +380,12 @@ def test_sanitize_metadata_strings():
     assert result["phone_number"] == "(555) 123-4567"
     assert result["merchant_category"] == "restaurant"
     assert result["reasoning"] == "Selected based on phone match"
-    
+
     # Check non-string fields are preserved as-is
     assert result["other_field"] == '"should not be touched"'
     assert result["matched_fields"] == ["phone", "name"]
     assert isinstance(result["timestamp"], datetime)
-    
+
     # Check original dict is not modified
     assert metadata["place_id"] == '"pid123"'
 
@@ -399,9 +399,9 @@ def test_sanitize_metadata_strings_empty():
         "address": "",
         # phone_number is missing
     }
-    
+
     result = sanitize_metadata_strings(metadata)
-    
+
     assert result["place_id"] == '""'  # Empty quotes preserved as per sanitize_string
     assert result["merchant_name"] == ""  # None converted to empty string
     assert result["address"] == ""
@@ -413,10 +413,10 @@ def test_environment_isolation(clean_env_vars):
     """Demonstrate that environment variables are properly isolated in tests."""
     # Store original value
     original_table_name = os.environ.get("DYNAMO_TABLE_NAME")
-    
+
     # Test can modify environment
     os.environ["DYNAMO_TABLE_NAME"] = "modified-table"
     assert os.environ["DYNAMO_TABLE_NAME"] == "modified-table"
-    
+
     # After this test, clean_env_vars fixture will restore original environment
     # This prevents test pollution between tests

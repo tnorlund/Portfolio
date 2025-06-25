@@ -10,15 +10,9 @@ import botocore.exceptions
 
 # Import the necessary functions from merchant_validation
 from receipt_label.merchant_validation import (
-    choose_canonical_metadata,
-    cluster_by_metadata,
-    collapse_canonical_aliases,
-    list_all_receipt_metadatas,
-    merge_place_id_aliases_by_address,
-    normalize_address,
-    persist_alias_updates,
-    update_items_with_canonical,
-)
+    choose_canonical_metadata, cluster_by_metadata, collapse_canonical_aliases,
+    list_all_receipt_metadatas, merge_place_id_aliases_by_address,
+    normalize_address, persist_alias_updates, update_items_with_canonical)
 
 from .common import setup_logger
 
@@ -45,7 +39,7 @@ class ClusterStats:
 
 
 def extract_and_validate_parameters(
-    event: Dict[str, Any]
+    event: Dict[str, Any],
 ) -> Tuple[Optional[int], bool]:
     """
     Extract and log processing parameters from the event.
@@ -68,9 +62,7 @@ def extract_and_validate_parameters(
     return max_records, geographic_validation
 
 
-def load_metadata_with_error_handling() -> (
-    Tuple[List[Any], Optional[Dict[str, Any]]]
-):
+def load_metadata_with_error_handling() -> Tuple[List[Any], Optional[Dict[str, Any]]]:
     """
     Load all metadata from DynamoDB with comprehensive error handling.
 
@@ -113,9 +105,7 @@ def load_metadata_with_error_handling() -> (
         logger.error("Missing required environment variable: %s", e)
         return [], {
             "statusCode": 500,
-            "body": json.dumps(
-                "Configuration error: missing environment variable"
-            ),
+            "body": json.dumps("Configuration error: missing environment variable"),
         }
 
 
@@ -190,15 +180,11 @@ def build_canonical_details_from_metadata(
     """
     return {
         "canonical_place_id": getattr(canonical_record, "place_id", ""),
-        "canonical_merchant_name": getattr(
-            canonical_record, "merchant_name", ""
-        ),
+        "canonical_merchant_name": getattr(canonical_record, "merchant_name", ""),
         "canonical_address": normalize_address(
             getattr(canonical_record, "address", "")
         ),
-        "canonical_phone_number": getattr(
-            canonical_record, "phone_number", ""
-        ),
+        "canonical_phone_number": getattr(canonical_record, "phone_number", ""),
     }
 
 
@@ -247,9 +233,7 @@ def process_single_cluster(
             )
 
         # Build canonical details
-        canonical_details = build_canonical_details_from_metadata(
-            canonical_record
-        )
+        canonical_details = build_canonical_details_from_metadata(canonical_record)
 
         # Log the canonical values
         logger.info(
@@ -270,9 +254,7 @@ def process_single_cluster(
                 )
 
         # Update all members of the cluster in DynamoDB
-        updated_in_cluster = update_items_with_canonical(
-            members, canonical_details
-        )
+        updated_in_cluster = update_items_with_canonical(members, canonical_details)
         logger.info(
             "Updated %s/%s items for cluster %s with canonical data.",
             updated_in_cluster,
@@ -299,9 +281,7 @@ def process_single_cluster(
         )
 
     except (AttributeError, TypeError) as e:
-        logger.error(
-            "Invalid data structure in cluster %s: %s", cluster_num, e
-        )
+        logger.error("Invalid data structure in cluster %s: %s", cluster_num, e)
         return ClusterProcessingResult(
             updated_count=0, skipped=True, has_geographic_discrepancy=False
         )
@@ -369,15 +349,11 @@ def finalize_batch_processing(
     """
     # Collapse duplicate canonical names within the same place_id
     updated_aliases = collapse_canonical_aliases(all_metadata)
-    logger.info(
-        "Collapsed %s canonical alias inconsistencies.", len(updated_aliases)
-    )
+    logger.info("Collapsed %s canonical alias inconsistencies.", len(updated_aliases))
 
     # Persist alias updates to DynamoDB
     persist_alias_updates(updated_aliases)
-    logger.info(
-        "Persisted %s alias updates to DynamoDB.", len(updated_aliases)
-    )
+    logger.info("Persisted %s alias updates to DynamoDB.", len(updated_aliases))
 
     logger.info(
         "Batch cleanup complete in %.2f seconds. "
@@ -406,9 +382,7 @@ def finalize_batch_processing(
                 "items_updated": stats.total_updated,
                 "execution_time_seconds": execution_time,
                 "geographic_discrepancies": (
-                    stats.geographic_discrepancies
-                    if geographic_validation
-                    else 0
+                    stats.geographic_discrepancies if geographic_validation else 0
                 ),
             }
         ),
