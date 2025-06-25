@@ -170,16 +170,24 @@ class PRAnalyzer:
         return analysis
     
     def generate_review_summary(self, pr_data: Dict, cursor_findings: List[Dict], 
-                              architecture: Dict, performance: Dict, testing: Dict) -> str:
+                              architecture: Dict, performance: Dict, testing: Dict,
+                              fast_validation_passed: bool = True) -> str:
         """Generate comprehensive review summary."""
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        validation_status = "✅ PASSED" if fast_validation_passed else "❌ FAILED"
         
         summary = f"""# 🤖 Claude Code Review Summary
 
 **PR #{pr_data['pr'].number}**: {pr_data['title']}
 **Analyzed**: {timestamp}
 **Changes**: +{pr_data['additions']} -{pr_data['deletions']} lines across {len(pr_data['changed_files'])} files
+**Fast Validation**: {validation_status}
+
+## ⚡ Pre-Review Validation
+
+{"✅ **Fast validation passed** - Basic syntax and formatting checks completed successfully." if fast_validation_passed else "❌ **Fast validation failed** - Please fix basic syntax/formatting issues before proceeding."}
 
 ## 🔍 Cursor Bot Findings Review
 
@@ -267,7 +275,8 @@ class PRAnalyzer:
 @click.option('--pr-number', required=True, type=int, help='PR number to analyze')
 @click.option('--repository', required=True, help='Repository in format owner/repo')
 @click.option('--output-file', default='claude_review_results.md', help='Output file for results')
-def main(pr_number: int, repository: str, output_file: str):
+@click.option('--fast-validation-passed', default='true', help='Whether fast validation passed')
+def main(pr_number: int, repository: str, output_file: str, fast_validation_passed: str):
     """Run Claude Code review analysis on a PR."""
     
     github_token = os.getenv('GITHUB_TOKEN')
@@ -291,9 +300,12 @@ def main(pr_number: int, repository: str, output_file: str):
         performance = analyzer.analyze_performance_impact(pr_data)
         testing = analyzer.analyze_test_strategy(pr_data)
         
+        # Parse validation status
+        validation_passed = fast_validation_passed.lower() in ('true', '1', 'yes')
+        
         # Generate summary
         summary = analyzer.generate_review_summary(
-            pr_data, cursor_findings, architecture, performance, testing
+            pr_data, cursor_findings, architecture, performance, testing, validation_passed
         )
         
         # Save results

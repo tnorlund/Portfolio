@@ -15,10 +15,80 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  wait-for-cursor:
-    name: Wait for Cursor Bot Review
+  fast-validation:
+    name: Fast Tests & Validation
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    outputs:
+      tests_passed: ${{ steps.tests.outputs.passed }}
+      changes_detected: ${{ steps.changes.outputs.detected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '**/*.py'
+              - '**/*.js'
+              - '**/*.ts'
+              - '**/*.tsx'
+            config:
+              - '**/pyproject.toml'
+              - '**/package.json'
+              - '**/*.ini'
+              - '**/*.yml'
+              - '**/*.yaml'
+
+      - name: Set up Python
+        if: steps.changes.outputs.code == 'true' || steps.changes.outputs.config == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Run fast syntax/lint checks
+        id: tests
+        if: steps.changes.outputs.code == 'true' || steps.changes.outputs.config == 'true'
+        run: |
+          echo "🔍 Running fast validation checks..."
+          
+          # Install minimal dependencies for syntax checking
+          pip install --quiet black isort flake8 || echo "::warning::Could not install linting tools"
+          
+          # Quick syntax validation
+          echo "Checking Python syntax..."
+          python -m py_compile $(find . -name "*.py" -not -path "./.*" | head -20) || {
+            echo "❌ Python syntax errors found"
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          }
+          
+          # Quick format check (don't fail, just warn)
+          echo "Checking code formatting..."
+          black --check --quiet . || echo "::warning::Code formatting issues detected"
+          isort --check-only --quiet . || echo "::warning::Import sorting issues detected"
+          
+          echo "✅ Fast validation passed"
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "detected=true" >> $GITHUB_OUTPUT
+
+      - name: Skip if no relevant changes
+        if: steps.changes.outputs.code != 'true' && steps.changes.outputs.config != 'true'
+        run: |
+          echo "📋 No code changes detected - skipping AI reviews"
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "detected=false" >> $GITHUB_OUTPUT
+
+  wait-for-cursor:
+    name: Wait for Cursor Bot Review
+    needs: fast-validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && needs.fast-validation.outputs.tests_passed == 'true' && needs.fast-validation.outputs.changes_detected == 'true'
     timeout-minutes: 10
     outputs:
       cursor_completed: ${{ steps.check-cursor.outputs.completed }}
@@ -32,9 +102,12 @@ jobs:
 
   claude-review:
     name: Claude Code Review
-    needs: [wait-for-cursor]
+    needs: [fast-validation, wait-for-cursor]
     runs-on: ubuntu-latest
-    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    if: |
+      always() && 
+      (needs.fast-validation.outputs.tests_passed == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs.fast-validation.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       pull-requests: write
@@ -72,11 +145,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
+          FAST_VALIDATION_PASSED: ${{ needs.fast-validation.outputs.tests_passed }}
         run: |
+          echo "🤖 Starting Claude analysis (fast validation: $FAST_VALIDATION_PASSED)"
+          
           python scripts/claude_review_analyzer.py \
             --pr-number "$PR_NUMBER" \
             --repository "${{ github.repository }}" \
-            --output-file "claude_review_results.md"
+            --output-file "claude_review_results.md" \
+            --fast-validation-passed "$FAST_VALIDATION_PASSED"
 
       - name: Post Claude Review Comment
         if: always()

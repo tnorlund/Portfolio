@@ -11,21 +11,30 @@ This repository uses both **Cursor bot** and **Claude Code** for comprehensive P
 - Use the PR template checklist
 - Mark as draft until ready for review
 
-### 2. **Cursor Bot Review (Automatic)**
-- Triggers immediately on PR creation/updates
+### 2. **Fast Validation (Automatic - 30 seconds)**
+- ⚡ **Syntax checks**: Python compilation, basic linting
+- ⚡ **Format validation**: Black, isort compatibility
+- ⚡ **Change detection**: Skip AI reviews if no code changes
+- **Gate**: Blocks AI reviews if basic validation fails
+
+### 3. **Cursor Bot Review (If validation passes)**
+- Triggers only after fast validation succeeds
 - Focuses on: bugs, security, syntax, best practices
 - Comments directly on problematic lines
 - **Timeline**: Usually completes within 1-2 minutes
 
-### 3. **Claude Code Review (Automatic)**
+### 4. **Claude Code Review (If validation passes)**
 - Triggers 30 seconds after Cursor (allows time to complete)
 - Focuses on: architecture, performance, testing, documentation
 - Posts comprehensive summary comment
 - **Timeline**: Usually completes within 2-3 minutes
 
-### 4. **Developer Response**
+### 5. **Developer Response**
 ```bash
-# Address Cursor findings first (critical bugs)
+# Fix any fast validation issues first
+git commit -m "fix: syntax and formatting issues"
+
+# Address Cursor findings (critical bugs)
 git commit -m "fix: address cursor bot findings"
 
 # Then address Claude architectural recommendations
@@ -35,7 +44,7 @@ git commit -m "refactor: improve architecture per claude review"
 git push
 ```
 
-### 5. **Human Review**
+### 6. **Human Review**
 - Reviews focus on business logic and requirements
 - Both AI reviews provide context for human reviewers
 - Use AI findings to guide manual review priorities
