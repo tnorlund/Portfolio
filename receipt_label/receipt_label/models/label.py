@@ -4,9 +4,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_label_analysis import (
-    ReceiptLabelAnalysis as DynamoReceiptLabelAnalysis,
-)
+from receipt_dynamo.entities.receipt_label_analysis import \
+    ReceiptLabelAnalysis as DynamoReceiptLabelAnalysis
 
 from .metadata import MetadataMixin
 from .position import BoundingBox, Point

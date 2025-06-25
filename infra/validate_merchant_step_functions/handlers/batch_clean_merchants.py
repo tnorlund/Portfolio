@@ -10,15 +10,9 @@ import botocore.exceptions
 
 # Import the necessary functions from merchant_validation
 from receipt_label.merchant_validation import (
-    choose_canonical_metadata,
-    cluster_by_metadata,
-    collapse_canonical_aliases,
-    list_all_receipt_metadatas,
-    merge_place_id_aliases_by_address,
-    normalize_address,
-    persist_alias_updates,
-    update_items_with_canonical,
-)
+    choose_canonical_metadata, cluster_by_metadata, collapse_canonical_aliases,
+    list_all_receipt_metadatas, merge_place_id_aliases_by_address,
+    normalize_address, persist_alias_updates, update_items_with_canonical)
 
 from .common import setup_logger
 

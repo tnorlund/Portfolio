@@ -2,12 +2,9 @@ import json
 
 import pulumi
 import pulumi_aws as aws
-
 # Import the Lambda functions from their respective modules
-from lambda_functions.receipt_processor.infra import (
-    list_receipts_lambda,
-    process_receipt_lambda,
-)
+from lambda_functions.receipt_processor.infra import (list_receipts_lambda,
+                                                      process_receipt_lambda)
 
 # Create IAM role for Step Functions
 step_function_role = aws.iam.Role(

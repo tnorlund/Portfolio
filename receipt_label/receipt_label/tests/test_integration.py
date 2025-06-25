@@ -16,7 +16,8 @@ sys.path.insert(0, parent_dir)
 
 from receipt_label.core.labeler import LabelingResult, ReceiptLabeler
 from receipt_label.models.label import LabelAnalysis
-from receipt_label.models.line_item import LineItem, LineItemAnalysis, Price, Quantity
+from receipt_label.models.line_item import (LineItem, LineItemAnalysis, Price,
+                                            Quantity)
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 from receipt_label.models.validation import ValidationAnalysis
