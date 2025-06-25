@@ -4,6 +4,11 @@ on:
     branches:
       - main
 
+# Share concurrency group with main workflow to prevent conflicts
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel deploys in progress
+
 jobs:
   # Auto-format any code that slipped through
   format-fix:
