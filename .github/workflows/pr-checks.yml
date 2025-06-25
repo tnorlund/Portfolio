@@ -94,8 +94,8 @@ jobs:
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
-          npm run lint || true
-          npm run type-check || true
+          npm run lint
+          npm run type-check
 
   # Status check for branch protection
   pr-status:
@@ -103,6 +103,10 @@ jobs:
     needs: [format-check, quick-tests]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
     steps:
       - name: Comment status
         uses: actions/github-script@v7
@@ -127,6 +131,7 @@ jobs:
             );
             
             if (botComment) {
+              console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -134,6 +139,7 @@ jobs:
                 body: comment
               });
             } else {
+              console.log('Creating new PR status comment');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

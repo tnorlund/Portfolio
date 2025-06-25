@@ -353,7 +353,10 @@ class AIUsageTracker:
         return decorator
 
     def track_github_claude_review(
-        self, pr_number: int, model: str = "claude-3-opus", estimated_tokens: int = 5000
+        self,
+        pr_number: int,
+        model: str = "claude-3-opus",
+        estimated_tokens: int = 5000,
     ):
         """
         Track Claude usage in GitHub Actions for PR reviews.
@@ -364,7 +367,9 @@ class AIUsageTracker:
         output_estimate = estimated_tokens - input_estimate
 
         cost_usd = AICostCalculator.calculate_anthropic_cost(
-            model=model, input_tokens=input_estimate, output_tokens=output_estimate
+            model=model,
+            input_tokens=input_estimate,
+            output_tokens=output_estimate,
         )
 
         metric = AIUsageMetric(
@@ -380,7 +385,7 @@ class AIUsageTracker:
             user_id="github-actions",
             metadata={
                 "pr_number": pr_number,
-                "workflow": "claude-code-review",
+                "workflow": "claude-review",
             },
         )
         self._store_metric(metric)

@@ -109,7 +109,12 @@ class ReceiptAnalyzer:
                     )
 
             # Detailed type checking for receipt_words
-            required_word_attrs = {"text", "line_id", "word_id", "bounding_box"}
+            required_word_attrs = {
+                "text",
+                "line_id",
+                "word_id",
+                "bounding_box",
+            }
             for i, word in enumerate(receipt_words):
                 if not isinstance(word, ReceiptWord):
                     raise TypeError(

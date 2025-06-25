@@ -265,7 +265,8 @@ def update_pending_labels(
 
 
 def update_valid_labels(
-    valid_labels_results: list[LabelResult], client_manager: ClientManager = None
+    valid_labels_results: list[LabelResult],
+    client_manager: ClientManager = None,
 ) -> None:
     """
     Update the valid labels in the database and Pinecone index.
@@ -319,7 +320,8 @@ def update_valid_labels(
 
 
 def update_invalid_labels(
-    invalid_labels_results: list[LabelResult], client_manager: ClientManager = None
+    invalid_labels_results: list[LabelResult],
+    client_manager: ClientManager = None,
 ) -> None:
     """
     Update invalid labels in DynamoDB and Pinecone index based on batch

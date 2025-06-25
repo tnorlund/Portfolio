@@ -57,7 +57,8 @@ class TestListReceiptMetadatas:
         # Arrange
         mock_client_manager = Mock()
         mock_client_manager.dynamo.listReceiptMetadatas.side_effect = ClientError(
-            {"Error": {"Code": "ValidationException"}}, "listReceiptMetadatas"
+            {"Error": {"Code": "ValidationException"}},
+            "listReceiptMetadatas",
         )
         mock_get_client_manager.return_value = mock_client_manager
 
