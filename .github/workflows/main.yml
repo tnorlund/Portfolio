@@ -171,6 +171,7 @@ jobs:
       - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         run: |
           # Use optimized test runner for better performance
+          # Split test_path into individual arguments using shell word splitting
           python scripts/run_tests_optimized.py \
             ${{ matrix.package }} \
             ${{ matrix.test_path }} \

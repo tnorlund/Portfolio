@@ -166,7 +166,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="Optimized test runner")
     parser.add_argument("package", help="Package to test (e.g., receipt_dynamo)")
-    parser.add_argument("test_paths", nargs="+", help="Test paths or files to run")
+    parser.add_argument("test_paths", nargs="*", help="Test paths or files to run (space-separated)")
     parser.add_argument("--test-type", default="unit", choices=["unit", "integration", "end_to_end"], 
                        help="Type of tests to run")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
@@ -181,9 +181,19 @@ def main():
         print(f"Error: Package directory '{args.package}' not found")
         sys.exit(1)
     
+    # Handle test paths - if empty, use default test directory
+    if not args.test_paths:
+        test_paths = ["tests"]
+    else:
+        # If we have exactly one argument that contains spaces, split it
+        if len(args.test_paths) == 1 and " " in args.test_paths[0]:
+            test_paths = args.test_paths[0].split()
+        else:
+            test_paths = args.test_paths
+    
     # Validate test paths
     valid_paths = []
-    for path in args.test_paths:
+    for path in test_paths:
         full_path = os.path.join(args.package, path)
         if os.path.exists(full_path):
             valid_paths.append(path)
