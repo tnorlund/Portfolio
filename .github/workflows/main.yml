@@ -92,11 +92,19 @@ jobs:
       
       - name: Install package
         run: |
-          # Install receipt_dynamo first if testing receipt_label
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            pip install -e "receipt_dynamo"
+          # Install receipt_dynamo first as it's a dependency for other packages
+          if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
+            pip install -e "receipt_dynamo[dev]"
           fi
-          pip install -e "${{ matrix.package }}[test]"
+          
+          # Install the package with appropriate extras
+          if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
+            # These packages only have [dev] extras which include test dependencies
+            pip install -e "${{ matrix.package }}[dev]"
+          else
+            # Other packages have separate [test] extras
+            pip install -e "${{ matrix.package }}[test]"
+          fi
       
       - name: Run tests
         working-directory: ${{ matrix.package }}
