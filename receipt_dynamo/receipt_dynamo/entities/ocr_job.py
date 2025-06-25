@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Any, Generator, Tuple
 
-from receipt_dynamo.constants import OCRStatus, OCRJobType
+from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    normalize_enum,
 )
 
 
@@ -47,29 +48,9 @@ class OCRJob:
             raise ValueError("updated_at must be a datetime or None")
         self.updated_at = updated_at
 
-        if not isinstance(status, OCRStatus):
-            if not isinstance(status, str):
-                raise ValueError("status must be a OCRStatus or a string")
-            if status not in [s.value for s in OCRStatus]:
-                raise ValueError(
-                    f"status must be one of: {', '.join(s.value for s in OCRStatus)}\nGot: {status}"
-                )
-        if isinstance(status, OCRStatus):
-            self.status = status.value
-        else:
-            self.status = status
+        self.status = normalize_enum(status, OCRStatus)
 
-        if not isinstance(job_type, OCRJobType):
-            if not isinstance(job_type, str):
-                raise ValueError("job_type must be a OCRJobType or a string")
-            if job_type not in [t.value for t in OCRJobType]:
-                raise ValueError(
-                    f"job_type must be one of: {', '.join(t.value for t in OCRJobType)}\nGot: {job_type}"
-                )
-        if isinstance(job_type, OCRJobType):
-            self.job_type = job_type.value
-        else:
-            self.job_type = job_type
+        self.job_type = normalize_enum(job_type, OCRJobType)
 
         if receipt_id is not None and not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer or None")

@@ -1,10 +1,11 @@
-from typing import Dict, List, Optional, Union, Tuple
-import re
 import logging
+import re
 from datetime import datetime
-from .date import parse_datetime, is_valid_date, is_valid_time
-from .address import normalize_address, compare_addresses
+from typing import Dict, List, Optional, Tuple, Union
+
 from ..models.receipt import ReceiptLine
+from .address import compare_addresses, normalize_address
+from .date import is_valid_date, is_valid_time, parse_datetime
 
 logger = logging.getLogger(__name__)
 

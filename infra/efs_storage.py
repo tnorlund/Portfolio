@@ -1,9 +1,10 @@
 """Pulumi component for creating an EFS file system for shared data across instances."""
 
+from typing import List, Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
-from typing import List, Optional
 
 
 class EFSStorage:

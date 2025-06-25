@@ -49,7 +49,7 @@
   // ],
   // "python.analysis.extraPaths": ["${workspaceFolder}/receipt_label"],
   "editor.formatOnSave": true,
-  "cSpell.words": ["stepfunctions"],
+  "cSpell.words": ["levelname", "msecs", "stepfunctions"],
   "cursorpyright.analysis.autoImportCompletions": true,
   "cursorpyright.analysis.extraPaths": [
     "${workspaceFolder}/.venv/lib/python3.12/site-packages"

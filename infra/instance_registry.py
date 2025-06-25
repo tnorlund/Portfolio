@@ -1,10 +1,11 @@
 """Pulumi component for instance registry using DynamoDB."""
 
+import json
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
-from typing import Optional
-import json
 
 
 class InstanceRegistry:

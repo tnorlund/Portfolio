@@ -1,8 +1,10 @@
 # test__gpt.py
 
 import json
+
 import pytest
 import requests
+
 from receipt_dynamo.data._gpt import (
     _llm_prompt_initial_tagging,
     _llm_prompt_tagging_validation,

@@ -1,38 +1,36 @@
 import os
 import time
-from logging import getLogger, StreamHandler, Formatter, INFO
-from receipt_dynamo.entities import ReceiptWordLabel, BatchSummary
-from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_label.submit_completion_batch import (
-    list_labels_that_need_validation,
-    chunk_into_completion_batches,
-    serialize_labels,
-    upload_serialized_labels,
-    generate_completion_batch_id,
-    format_batch_completion_file,
-    upload_to_openai,
-    submit_openai_batch,
-    get_receipt_details,
-    download_serialized_labels,
-    deserialize_labels,
-    create_batch_summary,
-    add_batch_summary,
-    update_label_validation_status,
-    upload_completion_batch_file,
-    merge_ndjsons,
-    get_labels_from_ndjson,
-    split_first_and_second_pass,
-)
+from logging import INFO, Formatter, StreamHandler, getLogger
 
-from receipt_label.poll_completion_batch import (
-    list_pending_completion_batches,
-    get_openai_batch_status,
+from receipt_dynamo.constants import BatchStatus, BatchType
+from receipt_dynamo.entities import BatchSummary, ReceiptWordLabel
+from receipt_label.completion import (
+    add_batch_summary,
+    chunk_into_completion_batches,
+    create_batch_summary,
+    deserialize_labels,
     download_openai_batch_result,
-    update_valid_labels,
-    update_invalid_labels,
-    write_completion_batch_results,
+    download_serialized_labels,
+    format_batch_completion_file,
+    generate_completion_batch_id,
+    get_labels_from_ndjson,
+    get_openai_batch_status,
+    get_receipt_details,
+    list_labels_that_need_validation,
+    list_pending_completion_batches,
+    merge_ndjsons,
+    serialize_labels,
+    split_first_and_second_pass,
+    submit_openai_batch,
     update_batch_summary,
+    update_invalid_labels,
+    update_label_validation_status,
     update_pending_labels,
+    update_valid_labels,
+    upload_completion_batch_file,
+    upload_serialized_labels,
+    upload_to_openai,
+    write_completion_batch_results,
 )
 from receipt_label.utils import get_clients
 
@@ -66,7 +64,9 @@ def submit_list_handler(event, context):
         "statusCode": 200,
         "batches": upload_serialized_labels(
             serialize_labels(
-                chunk_into_completion_batches(list_labels_that_need_validation())
+                chunk_into_completion_batches(
+                    list_labels_that_need_validation()
+                )
             ),
             S3_BUCKET,
         ),
@@ -83,7 +83,9 @@ def submit_format_handler(event, context):
     s3_bucket = event["s3_bucket"]
     receipt_id = int(event["receipt_id"])
     logger.info(f"Processing image_id: {image_id}, receipt_id: {receipt_id}")
-    labels_need_validation = deserialize_labels(download_serialized_labels(event))
+    labels_need_validation = deserialize_labels(
+        download_serialized_labels(event)
+    )
     lines, words, metadata, labels = get_receipt_details(image_id, receipt_id)
     first_pass_labels, second_pass_labels = split_first_and_second_pass(
         labels_need_validation, labels
@@ -122,9 +124,9 @@ def submit_openai_handler(event, context):
             if status == "failed":
                 try:
                     details = openai_client.batches.retrieve(open_ai_batch_id)
-                    error_message = getattr(details, "status_details", None) or getattr(
-                        details, "error", str(details)
-                    )
+                    error_message = getattr(
+                        details, "status_details", None
+                    ) or getattr(details, "error", str(details))
                 except Exception as e:
                     error_message = str(e)
                 raise RuntimeError(
@@ -158,7 +160,9 @@ def poll_list_handler(event, context):
     logger.info("Starting poll_list_handler")
     return {
         "statusCode": 200,
-        "batches": [dict(batch) for batch in list_pending_completion_batches()],
+        "batches": [
+            dict(batch) for batch in list_pending_completion_batches()
+        ],
     }
 
 
@@ -172,7 +176,9 @@ def poll_download_handler(event, context):
         pending_labels_to_update, valid_labels, invalid_labels = (
             download_openai_batch_result(batch)
         )
-        logger.info(f"Pending labels to update: {len(pending_labels_to_update)}")
+        logger.info(
+            f"Pending labels to update: {len(pending_labels_to_update)}"
+        )
         update_pending_labels(pending_labels_to_update)
         logger.info(f"Valid labels: {len(valid_labels)}")
         update_valid_labels(valid_labels)
