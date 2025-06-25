@@ -6,8 +6,8 @@ from typing import Optional
 
 import pulumi
 from dynamo_db import dynamodb_table  # pylint: disable=import-error
-from lambda_layer import (dynamo_layer,  # pylint: disable=import-error
-                          label_layer)
+from lambda_layer import dynamo_layer  # pylint: disable=import-error
+from lambda_layer import label_layer
 from pulumi import (AssetArchive, ComponentResource, Config, FileAsset, Output,
                     ResourceOptions)
 from pulumi_aws.cloudwatch import EventRule, EventTarget

@@ -38,7 +38,11 @@ class IntegrationFakePineconeIndex:
                 vectors[id] = SimpleNamespace(
                     id=id,
                     values=[0.1] * 10,  # Mock vector values
-                    metadata={"text": "test text", "left": "left", "right": "right"},
+                    metadata={
+                        "text": "test text",
+                        "left": "left",
+                        "right": "right",
+                    },
                 )
         return SimpleNamespace(vectors=vectors)
 
@@ -281,11 +285,19 @@ class TestValidationFunctionIntegration:
         # Test data
         currency_word = SimpleNamespace(text="$19.99")
         currency_label = SimpleNamespace(
-            image_id="img_001", receipt_id=1, line_id=5, word_id=20, label="SUBTOTAL"
+            image_id="img_001",
+            receipt_id=1,
+            line_id=5,
+            word_id=20,
+            label="SUBTOTAL",
         )
         date_word = SimpleNamespace(text="2024-03-15")
         date_label = SimpleNamespace(
-            image_id="img_001", receipt_id=1, line_id=2, word_id=8, label="DATE"
+            image_id="img_001",
+            receipt_id=1,
+            line_id=2,
+            word_id=8,
+            label="DATE",
         )
 
         # Test order 1: Currency then Date
@@ -399,7 +411,11 @@ class TestValidationFunctionIntegration:
         results = []
         for word, label_type, validation_func, expected_valid in test_data:
             label = SimpleNamespace(
-                image_id="img_001", receipt_id=1, line_id=1, word_id=1, label=label_type
+                image_id="img_001",
+                receipt_id=1,
+                line_id=1,
+                word_id=1,
+                label=label_type,
             )
             result = validation_func(word, label)
             results.append(result)
@@ -471,7 +487,11 @@ class TestValidationFunctionIntegration:
         # First validation should succeed
         address_word = SimpleNamespace(text="123 Main St")
         address_label = SimpleNamespace(
-            image_id="img_001", receipt_id=1, line_id=1, word_id=1, label="ADDRESS"
+            image_id="img_001",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="ADDRESS",
         )
         address_meta = SimpleNamespace(canonical_address="123 main street")
 
@@ -570,10 +590,18 @@ class TestValidationFunctionIntegration:
                 "date": SimpleNamespace(text="2024-01-15"),
                 "time": SimpleNamespace(text="14:30:00"),
                 "date_label": SimpleNamespace(
-                    image_id="img_001", receipt_id=1, line_id=1, word_id=1, label="DATE"
+                    image_id="img_001",
+                    receipt_id=1,
+                    line_id=1,
+                    word_id=1,
+                    label="DATE",
                 ),
                 "time_label": SimpleNamespace(
-                    image_id="img_001", receipt_id=1, line_id=1, word_id=2, label="TIME"
+                    image_id="img_001",
+                    receipt_id=1,
+                    line_id=1,
+                    word_id=2,
+                    label="TIME",
                 ),
             },
             # Different format but same receipt
@@ -581,10 +609,18 @@ class TestValidationFunctionIntegration:
                 "date": SimpleNamespace(text="01/15/2024"),
                 "time": SimpleNamespace(text="2:30 PM"),
                 "date_label": SimpleNamespace(
-                    image_id="img_001", receipt_id=1, line_id=2, word_id=5, label="DATE"
+                    image_id="img_001",
+                    receipt_id=1,
+                    line_id=2,
+                    word_id=5,
+                    label="DATE",
                 ),
                 "time_label": SimpleNamespace(
-                    image_id="img_001", receipt_id=1, line_id=2, word_id=6, label="TIME"
+                    image_id="img_001",
+                    receipt_id=1,
+                    line_id=2,
+                    word_id=6,
+                    label="TIME",
                 ),
             },
         ]

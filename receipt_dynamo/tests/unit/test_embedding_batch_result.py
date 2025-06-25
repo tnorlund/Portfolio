@@ -91,7 +91,11 @@ def test_embedding_batch_result_iter(example_embedding_batch_result):
         ("line_id", "nope", "line_id must be int, got str"),
         ("word_id", "fail", "word_id must be int, got str"),
         ("pinecone_id", "invalid", "pinecone_id must be in the format"),
-        ("status", 123, "EmbeddingStatus must be a str or EmbeddingStatus instance"),
+        (
+            "status",
+            123,
+            "EmbeddingStatus must be a str or EmbeddingStatus instance",
+        ),
         ("text", 456, "text must be str, got int"),
         ("error_message", 999, "error_message must be str, got int"),
     ],

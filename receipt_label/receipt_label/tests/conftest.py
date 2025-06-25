@@ -181,7 +181,8 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
 
     # Also patch it in the main utils module
     mocker.patch(
-        "receipt_label.utils.get_client_manager", return_value=mock_client_manager
+        "receipt_label.utils.get_client_manager",
+        return_value=mock_client_manager,
     )
 
     # Legacy support - keep get_clients patched for any old code
