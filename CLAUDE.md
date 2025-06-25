@@ -38,6 +38,23 @@ The test and lint tools execute commands inside the package directory so
 configuration files are discovered correctly. All Pulumi tools execute in the
 infra directory.
 
+## Worktree Virtual Environments
+
+When working on multiple branches using Git worktrees, create a separate
+virtual environment in each worktree directory. This keeps package
+installations isolated and prevents interference between branches.
+
+Example:
+
+```bash
+git worktree add ../feature-branch feature-branch
+cd ../feature-branch
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Activate the worktree's environment before running `python mcp_server.py` or
+other development commands.
 # End-to-End Tests
 
 **IMPORTANT**: The `receipt_dynamo/tests/end_to_end` directory contains end-to-end tests that connect to REAL AWS services.
