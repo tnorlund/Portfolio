@@ -3,8 +3,7 @@ from typing import Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
-                                                    itemToJobCheckpoint)
+from receipt_dynamo.entities.job_checkpoint import JobCheckpoint, itemToJobCheckpoint
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
