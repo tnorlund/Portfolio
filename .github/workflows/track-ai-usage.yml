@@ -2,7 +2,7 @@ name: Track AI Usage
 
 on:
   workflow_run:
-    workflows: ["Claude Code Review (Optimized)", "Claude Code Review"]
+    workflows: ["Claude Review", "Claude Review Enhanced"]
     types: [completed]
   
   # Also allow manual trigger for testing

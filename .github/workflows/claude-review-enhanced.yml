@@ -1,4 +1,4 @@
-name: Claude Code Review (Enhanced)
+name: Claude Review Enhanced
 on:
   pull_request:
     types: [ready_for_review, labeled, synchronize]
