@@ -1,13 +1,14 @@
 import io
-import pytest
-import boto3
-from pathlib import Path
-from moto import mock_aws
 import os
+from pathlib import Path
+from types import SimpleNamespace
+
+import boto3
+import pytest
+from moto import mock_aws
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 import receipt_label.utils.clients as clients
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from types import SimpleNamespace
 
 
 @pytest.fixture
@@ -158,19 +159,6 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     fake_file = io.BytesIO(jsonl.encode("utf-8"))
     fake_openai.files.content.return_value = fake_file
 
-    def fake_get_clients():
-        return DynamoClient(table_name), fake_openai, None
-
-    mocker.patch.object(clients, "get_clients", fake_get_clients)
-
-    # 2) Patch the module‐level openai_client in both submit and poll modules
-    import receipt_label.submit_embedding_batch.submit_batch as sb
-
-    mocker.patch.object(sb, "openai_client", fake_openai)
-    import receipt_label.poll_embedding_batch.poll_batch as poll_batch
-
-    mocker.patch.object(poll_batch, "openai_client", fake_openai)
-
     # Create a fake index with dynamic upsert behavior
     fake_index = mocker.Mock()
 
@@ -180,8 +168,33 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
         return {"upserted_count": len(vectors or [])}
 
     fake_index.upsert.side_effect = fake_upsert
+    
+    # Create mock client_manager
+    from receipt_label.utils.client_manager import ClientManager
+    mock_client_manager = mocker.Mock(spec=ClientManager)
+    # Use a mock for dynamo since the real one requires AWS setup
+    mock_dynamo = mocker.Mock()
+    mock_client_manager.dynamo = mock_dynamo
+    mock_client_manager.openai = fake_openai
+    mock_client_manager.pinecone = fake_index
+    
+    # Patch get_client_manager to return our mock
+    mocker.patch(
+        "receipt_label.utils.clients.get_client_manager",
+        return_value=mock_client_manager
+    )
+    
+    # Also patch it in the main utils module
+    mocker.patch(
+        "receipt_label.utils.get_client_manager",
+        return_value=mock_client_manager
+    )
+    
+    # Legacy support - keep get_clients patched for any old code
+    def fake_get_clients():
+        # Use mock dynamo instead of real DynamoClient to avoid AWS dependencies
+        return mock_dynamo, fake_openai, fake_index
 
-    # Patch the global pinecone_index in poll_batch to use our fake
-    mocker.patch.object(poll_batch, "pinecone_index", fake_index)
+    mocker.patch.object(clients, "get_clients", fake_get_clients)
 
     return fake_openai, fake_index

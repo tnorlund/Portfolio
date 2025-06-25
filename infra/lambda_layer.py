@@ -701,7 +701,8 @@ class LambdaLayer(ComponentResource):
         # Create the Lambda function to update other functions
         update_lambda_function = aws.lambda_.Function(
             f"{self.name}-update-lambda-functions",
-            runtime="python3.13",
+            runtime="python3.12",
+    architectures=["arm64"],
             role=update_lambda_function_role.arn,
             handler="handler.lambda_handler",
             code=pulumi.AssetArchive(
@@ -783,7 +784,8 @@ class LambdaLayer(ComponentResource):
         # Create publish_layer_lambda function
         publish_layer_lambda = aws.lambda_.Function(
             f"{self.name}-publish-layer",
-            runtime="python3.13",
+            runtime="python3.12",
+    architectures=["arm64"],
             role=publish_layer_function_role.arn,
             handler="publish_handler.lambda_handler",
             code=pulumi.AssetArchive(
@@ -1023,7 +1025,8 @@ class LambdaLayer(ComponentResource):
 
         trigger_lambda = aws.lambda_.Function(
             f"{self.name}-sqs-trigger",
-            runtime="python3.13",
+            runtime="python3.12",
+    architectures=["arm64"],
             role=trigger_lambda_role.arn,
             handler="index.handler",
             code=pulumi.AssetArchive(

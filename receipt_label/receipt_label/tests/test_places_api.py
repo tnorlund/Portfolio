@@ -1,11 +1,13 @@
 """Tests for the Places API functionality."""
 
 import os
+
 import pytest
+
 from receipt_label.data.places_api import (
-    PlacesAPI,
     BatchPlacesProcessor,
     ConfidenceLevel,
+    PlacesAPI,
     ValidationResult,
 )
 

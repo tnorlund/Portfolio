@@ -1,12 +1,13 @@
-from uuid import uuid4
-from datetime import datetime, timezone
 import json
-import os
 import math
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
+
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-from pathlib import Path
 
 """
 submit_line_batch.py
@@ -25,8 +26,9 @@ This script supports agentic document processing by facilitating scalable
 embedding of receipt lines for section classification.
 """
 
-from receipt_dynamo.entities import ReceiptLine, BatchSummary
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities import BatchSummary, ReceiptLine
+
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
@@ -323,7 +325,6 @@ def create_batch_summary(
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status="PENDING",
-        word_count=line_count,  # Reusing the word_count field for line count
         result_file_id="N/A",
         receipt_refs=list(receipt_refs),
     )
