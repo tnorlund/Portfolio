@@ -64,19 +64,33 @@ jobs:
 
   # Stage 2: Tests (parallel)
   test-python:
-    name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }})
+    name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          # Split receipt_dynamo (largest package) into unit and integration tests
+          # receipt_dynamo unit tests
           - package: receipt_dynamo
             test_type: unit
             test_path: tests/unit
-          - package: receipt_dynamo  
+          # Split receipt_dynamo integration tests into 4 parallel groups
+          - package: receipt_dynamo
             test_type: integration
-            test_path: tests/integration
+            test_group: group-1  
+            test_path: tests/integration/test__receipt_word_label.py tests/integration/test__receipt.py tests/integration/test__receipt_validation_category.py tests/integration/test__geometry.py tests/integration/test__job_metric.py tests/integration/test__receipt_structure_analysis.py tests/integration/test__line.py tests/integration/test__receipt_line.py tests/integration/test__pulumi.py tests/integration/test__cluster.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-2
+            test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py tests/integration/test__receipt_validation_summary.py tests/integration/test__gpt.py tests/integration/test__job_checkpoint.py tests/integration/test__word.py tests/integration/test__word_tag.py tests/integration/test__letter.py tests/integration/test__label_count_cache.py tests/integration/test_dynamo_client.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-3
+            test_path: tests/integration/test__receipt_letter.py tests/integration/test__receipt_line_item_analysis.py tests/integration/test__queue.py tests/integration/test__instance.py tests/integration/test__receipt_word.py tests/integration/test__job_dependency.py tests/integration/test__ocr_job.py tests/integration/test__batch_summary.py tests/integration/test__receipt_section.py tests/integration/test__export_and_import.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-4
+            test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__receipt_word_tag.py tests/integration/test__ocr.py
           # receipt_label is smaller, run all tests together
           - package: receipt_label
             test_type: all
@@ -154,50 +168,20 @@ jobs:
           echo "=== Key packages installed ==="
           pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
       
-      - name: Run tests (${{ matrix.test_type }})
-        working-directory: ${{ matrix.package }}
+      - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         run: |
-          # Use the specific test path from matrix
-          TEST_DIR="${{ matrix.test_path }}"
-          
-          # For receipt_label, check for package-specific test location
-          if [[ "${{ matrix.package }}" == "receipt_label" ]] && [[ -d "receipt_label/tests" ]]; then
-            TEST_DIR="receipt_label/tests"
-          fi
-          
-          # Adjust parallelization based on test type
-          if [[ "${{ matrix.test_type }}" == "unit" ]]; then
-            # Unit tests can handle more parallelization
-            WORKERS="auto"
-            TIMEOUT="120"
-          elif [[ "${{ matrix.test_type }}" == "integration" ]]; then
-            # Integration tests need fewer workers to avoid resource conflicts
-            WORKERS="2"
-            TIMEOUT="300"
-          else
-            # Default for mixed test suites
-            WORKERS="auto"
-            TIMEOUT="300"
-          fi
-          
-          # Run tests with optimized settings per test type
-          python -m pytest $TEST_DIR \
-            -n $WORKERS \
-            -m "not end_to_end and not slow" \
-            --timeout=$TIMEOUT \
-            --timeout-method=thread \
-            --cov=${{ matrix.package }} \
-            --cov-report=xml \
-            --cov-report=term-missing:skip-covered \
-            --maxfail=5 \
-            -x \
-            --durations=20 \
-            --tb=short
+          # Use optimized test runner for better performance
+          python scripts/run_tests_optimized.py \
+            ${{ matrix.package }} \
+            ${{ matrix.test_path }} \
+            --test-type ${{ matrix.test_type }} \
+            --coverage \
+            --timeout 600
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.package }}-${{ matrix.test_type }}
+          name: coverage-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 

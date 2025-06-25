@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""
+Optimized test runner for parallel execution with intelligent resource management.
+"""
+
+import os
+import sys
+import subprocess
+import psutil
+import time
+from pathlib import Path
+from typing import List, Optional
+
+
+def get_optimal_worker_count() -> int:
+    """Determine optimal number of pytest-xdist workers based on system resources."""
+    cpu_count = psutil.cpu_count(logical=True)
+    memory_gb = psutil.virtual_memory().total / (1024 ** 3)
+    
+    # Conservative scaling: use fewer workers for memory-intensive tests
+    if memory_gb < 4:
+        workers = max(1, cpu_count // 2)
+    elif memory_gb < 8:
+        workers = max(2, cpu_count - 1)
+    else:
+        workers = cpu_count
+    
+    # Cap at 4 for integration tests to avoid overwhelming DynamoDB local
+    return min(workers, 4)
+
+
+def run_tests(
+    package: str,
+    test_paths: List[str],
+    test_type: str = "unit",
+    verbose: bool = False,
+    coverage: bool = False,
+    fail_fast: bool = False,
+    timeout: int = 600
+) -> bool:
+    """
+    Run tests with optimal configuration.
+    
+    Args:
+        package: Package name (e.g., 'receipt_dynamo')
+        test_paths: List of test paths or files
+        test_type: Type of tests ('unit', 'integration', 'end_to_end')
+        verbose: Enable verbose output
+        coverage: Enable coverage reporting
+        fail_fast: Stop on first failure
+        timeout: Per-test timeout in seconds
+    
+    Returns:
+        True if tests passed, False otherwise
+    """
+    
+    # Change to package directory
+    os.chdir(package)
+    
+    # Build pytest command
+    cmd = ["python", "-m", "pytest"]
+    
+    # Add test paths
+    cmd.extend(test_paths)
+    
+    # Optimize for test type
+    if test_type == "unit":
+        # Unit tests: maximum parallelization
+        workers = get_optimal_worker_count()
+        cmd.extend(["-n", str(workers)])
+        cmd.extend(["--timeout", "30"])  # Shorter timeout for unit tests
+    elif test_type == "integration":
+        # Integration tests: moderate parallelization 
+        workers = min(get_optimal_worker_count(), 3)  # Limit for DB operations
+        cmd.extend(["-n", str(workers)])
+        cmd.extend(["--timeout", str(timeout)])
+        cmd.extend(["--dist", "loadfile"])  # Distribute by file for better load balancing
+    else:
+        # End-to-end tests: sequential execution
+        cmd.extend(["--timeout", str(timeout * 2)])
+    
+    # Add common options
+    cmd.extend([
+        "-q",  # Quiet output
+        "--tb=short",  # Short traceback format
+        "--maxfail=3" if not fail_fast else "--maxfail=1",
+        "--durations=10",  # Show 10 slowest tests
+    ])
+    
+    # Exclude slow/end-to-end tests unless specifically requested
+    if test_type != "end_to_end":
+        cmd.extend(["-m", "not end_to_end and not slow"])
+    
+    # Coverage options
+    if coverage:
+        cmd.extend([
+            "--cov",
+            "--cov-report=term-missing",
+            "--cov-report=xml",
+            "--cov-fail-under=80"
+        ])
+    
+    # Verbose mode
+    if verbose:
+        cmd.extend(["-v", "--tb=long"])
+    
+    print(f"Running command: {' '.join(cmd)}")
+    print(f"Working directory: {os.getcwd()}")
+    print(f"Test type: {test_type}")
+    print(f"Workers: {workers if test_type != 'end_to_end' else 1}")
+    print("-" * 50)
+    
+    # Run tests
+    start_time = time.time()
+    try:
+        result = subprocess.run(cmd, timeout=timeout * len(test_paths))
+        execution_time = time.time() - start_time
+        
+        print("-" * 50)
+        print(f"Tests completed in {execution_time:.1f}s")
+        
+        return result.returncode == 0
+        
+    except subprocess.TimeoutExpired:
+        print(f"Tests timed out after {timeout * len(test_paths)}s")
+        return False
+    except KeyboardInterrupt:
+        print("Tests interrupted by user")
+        return False
+    except Exception as e:
+        print(f"Error running tests: {e}")
+        return False
+
+
+def main():
+    """Main entry point for test runner."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Optimized test runner")
+    parser.add_argument("package", help="Package to test (e.g., receipt_dynamo)")
+    parser.add_argument("test_paths", nargs="+", help="Test paths or files to run")
+    parser.add_argument("--test-type", default="unit", choices=["unit", "integration", "end_to_end"], 
+                       help="Type of tests to run")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
+    parser.add_argument("--coverage", "-c", action="store_true", help="Enable coverage reporting")
+    parser.add_argument("--fail-fast", "-x", action="store_true", help="Stop on first failure")
+    parser.add_argument("--timeout", type=int, default=600, help="Per-test timeout in seconds")
+    
+    args = parser.parse_args()
+    
+    # Validate package exists
+    if not os.path.exists(args.package):
+        print(f"Error: Package directory '{args.package}' not found")
+        sys.exit(1)
+    
+    # Validate test paths
+    valid_paths = []
+    for path in args.test_paths:
+        full_path = os.path.join(args.package, path)
+        if os.path.exists(full_path):
+            valid_paths.append(path)
+        else:
+            print(f"Warning: Test path '{path}' not found, skipping")
+    
+    if not valid_paths:
+        print("Error: No valid test paths found")
+        sys.exit(1)
+    
+    # Run tests
+    success = run_tests(
+        package=args.package,
+        test_paths=valid_paths,
+        test_type=args.test_type,
+        verbose=args.verbose,
+        coverage=args.coverage,
+        fail_fast=args.fail_fast,
+        timeout=args.timeout
+    )
+    
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()
