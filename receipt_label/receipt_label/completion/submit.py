@@ -9,11 +9,14 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
-from receipt_dynamo.entities import (BatchSummary, ReceiptLine,
-                                     ReceiptMetadata, ReceiptWord,
-                                     ReceiptWordLabel)
+from receipt_dynamo.entities import (
+    BatchSummary,
+    ReceiptLine,
+    ReceiptMetadata,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 from receipt_label.completion._format_prompt import _format_prompt, functions
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
@@ -81,14 +84,18 @@ def chunk_into_completion_batches(
         }
     """
     # First pass – nest dictionaries so we can easily dedupe
-    nested: dict[str, dict[int, dict[tuple[int, int, str], ReceiptWordLabel]]] = {}
+    nested: dict[
+        str, dict[int, dict[tuple[int, int, str], ReceiptWordLabel]]
+    ] = {}
 
     for label in labels:
         image_map = nested.setdefault(label.image_id, {})
         receipt_map = image_map.setdefault(label.receipt_id, {})
         # Use (line_id, word_id, label) as key to keep each label per word
         deduplicate_key = (label.line_id, label.word_id, label.label)
-        receipt_map[deduplicate_key] = label  # later entries overwrite duplicates
+        receipt_map[deduplicate_key] = (
+            label  # later entries overwrite duplicates
+        )
 
     grouped: dict[str, dict[int, list[ReceiptWordLabel]]] = {}
     for image_id, receipt_dict in nested.items():
@@ -199,7 +206,9 @@ def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
         if current_line.line_id == word.line_id:
             # Replace the word in the line text with <TARGET>text</TARGET>
             line_text = current_line.text
-            line_text = line_text.replace(word.text, f"<TARGET>{word.text}</TARGET>")
+            line_text = line_text.replace(
+                word.text, f"<TARGET>{word.text}</TARGET>"
+            )
         else:
             line_text = current_line.text
         current_line_centroid = current_line.calculate_centroid()
@@ -253,14 +262,17 @@ def format_batch_completion_file(
     metadata: ReceiptMetadata,  # pylint: disable=too-many-positional-arguments
 ) -> Path:
     """Format the batch completion file name."""
-    filepath = Path(f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson")
+    filepath = Path(
+        f"/tmp/{metadata.image_id}_{metadata.receipt_id}_{uuid4()}.ndjson"
+    )
     batch_lines: list[dict] = []
     if len(first_pass_labels) + len(second_pass_labels) > 0:
         batch_lines.append(
             {
                 "method": "POST",
                 "custom_id": (
-                    f"IMAGE#{metadata.image_id}#" f"RECEIPT#{metadata.receipt_id:05d}"
+                    f"IMAGE#{metadata.image_id}#"
+                    f"RECEIPT#{metadata.receipt_id:05d}"
                 ),
                 "url": "/v1/chat/completions",
                 "body": {
@@ -304,10 +316,14 @@ def upload_to_openai(
     """Upload the NDJSON file to OpenAI."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.openai.files.create(file=filepath.open("rb"), purpose="batch")
+    return client_manager.openai.files.create(
+        file=filepath.open("rb"), purpose="batch"
+    )
 
 
-def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
+def submit_openai_batch(
+    file_id: str, client_manager: ClientManager = None
+) -> Batch:
     """Submit a batch completion job to OpenAI using the uploaded file."""
     if client_manager is None:
         client_manager = get_client_manager()
@@ -454,7 +470,9 @@ def get_labels_from_ndjson(
                 for target in targets:
                     ids.append(target["id"])
             except json.JSONDecodeError as e:
-                raise ValueError(f"Failed to parse Targets JSON: {e.msg}") from e
+                raise ValueError(
+                    f"Failed to parse Targets JSON: {e.msg}"
+                ) from e
     for custom_id in ids:
         parts = custom_id.split("#")
         kv = {parts[i]: parts[i + 1] for i in range(0, len(parts) - 1, 2)}
@@ -466,10 +484,15 @@ def get_labels_from_ndjson(
         line_id = int(kv["LINE"])
         word_id = int(kv["WORD"])
         label_str = kv["LABEL"]
-        label_indices.append((image_id, receipt_id, line_id, word_id, label_str))
+        label_indices.append(
+            (image_id, receipt_id, line_id, word_id, label_str)
+        )
     # Collect unique (image_id, receipt_id) pairs
     receipt_refs = list(
-        {(image_id, receipt_id) for image_id, receipt_id, _, _, _ in label_indices}
+        {
+            (image_id, receipt_id)
+            for image_id, receipt_id, _, _, _ in label_indices
+        }
     )
     # Call Dynamo to fetch labels
     client_manager = get_client_manager()

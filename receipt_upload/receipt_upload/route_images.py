@@ -3,10 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image as PIL_Image
-
 from receipt_dynamo.constants import ImageType
-from receipt_dynamo.entities import Line, Word, Letter, ReceiptLine
-
+from receipt_dynamo.entities import Letter, Line, ReceiptLine, Word
 
 # Known reference formats
 SCANNER_FORMAT = (3508, 2480)  # Scanner dimensions

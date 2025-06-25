@@ -6,12 +6,13 @@ import re
 from typing import Optional
 
 from rapidfuzz.fuzz import ratio
-
 from receipt_dynamo.entities import ReceiptMetadata  # type: ignore
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (normalize_text,
-                                                  pinecone_id_from_label)
+from receipt_label.label_validation.utils import (
+    normalize_text,
+    pinecone_id_from_label,
+)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -86,7 +87,9 @@ def validate_merchant_name_pinecone(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches) if matches else 0.0
+        sum(match.score for match in matches) / len(matches)
+        if matches
+        else 0.0
     )
 
     looks_like_name = (
@@ -129,10 +132,16 @@ def validate_merchant_name_google(
     vector_data = fetch_response.vectors.get(pinecone_id)
     vector_metadata = vector_data.metadata if vector_data else {}
 
-    normalized_canonical = normalize_text(metadata.canonical_merchant_name or "")
+    normalized_canonical = normalize_text(
+        metadata.canonical_merchant_name or ""
+    )
 
-    variants = _merged_merchant_name_candidates_from_text(word, vector_metadata)
-    best_score = max(ratio(normalize_text(v), normalized_canonical) for v in variants)
+    variants = _merged_merchant_name_candidates_from_text(
+        word, vector_metadata
+    )
+    best_score = max(
+        ratio(normalize_text(v), normalized_canonical) for v in variants
+    )
     is_consistent = best_score > 85
 
     return LabelValidationResult(
