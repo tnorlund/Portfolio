@@ -136,7 +136,7 @@ jobs:
             echo "✓ Test dependencies already cached"
           else
             echo "Installing test dependencies..."
-            pip install pytest-xdist pytest-timeout
+            pip install pytest-xdist pytest-timeout psutil
           fi
           
           # Install receipt_dynamo first as it's a dependency for other packages

@@ -6,24 +6,41 @@ Optimized test runner for parallel execution with intelligent resource managemen
 import os
 import sys
 import subprocess
-import psutil
 import time
 from pathlib import Path
 from typing import List, Optional
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 
 def get_optimal_worker_count() -> int:
     """Determine optimal number of pytest-xdist workers based on system resources."""
-    cpu_count = psutil.cpu_count(logical=True)
-    memory_gb = psutil.virtual_memory().total / (1024 ** 3)
-    
-    # Conservative scaling: use fewer workers for memory-intensive tests
-    if memory_gb < 4:
-        workers = max(1, cpu_count // 2)
-    elif memory_gb < 8:
-        workers = max(2, cpu_count - 1)
+    if HAS_PSUTIL:
+        cpu_count = psutil.cpu_count(logical=True)
+        memory_gb = psutil.virtual_memory().total / (1024 ** 3)
+        
+        # Conservative scaling: use fewer workers for memory-intensive tests
+        if memory_gb < 4:
+            workers = max(1, cpu_count // 2)
+        elif memory_gb < 8:
+            workers = max(2, cpu_count - 1)
+        else:
+            workers = cpu_count
     else:
-        workers = cpu_count
+        # Fallback: use os.cpu_count() and conservative estimates
+        cpu_count = os.cpu_count() or 2
+        
+        # Conservative approach without memory info
+        if cpu_count <= 2:
+            workers = 1
+        elif cpu_count <= 4:
+            workers = 2
+        else:
+            workers = cpu_count - 1
     
     # Cap at 4 for integration tests to avoid overwhelming DynamoDB local
     return min(workers, 4)
