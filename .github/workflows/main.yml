@@ -245,8 +245,8 @@ jobs:
         id: pulumi-outputs
         run: |
           cd infra
-          echo "bucket_name=$(pulumi stack output site_bucket_name)" >> $GITHUB_OUTPUT
-          echo "distribution_id=$(pulumi stack output distribution_id)" >> $GITHUB_OUTPUT
+          echo "bucket_name=$(pulumi stack output cdn_bucket_name)" >> $GITHUB_OUTPUT
+          echo "distribution_id=$(pulumi stack output cdn_distribution_id)" >> $GITHUB_OUTPUT
       
       - name: Sync to S3
         run: |
