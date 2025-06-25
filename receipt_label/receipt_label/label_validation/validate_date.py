@@ -1,4 +1,5 @@
 """Date label validation logic."""
+
 # pylint: disable=duplicate-code
 
 import re
@@ -19,9 +20,7 @@ from receipt_label.utils.client_manager import ClientManager
 DATE_SLASH_FORMAT = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
 DATE_ISO_FORMAT = r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"
 DATE_ISO_WITH_Z = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b"
-DATE_ISO_WITH_TZ = (
-    r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b"
-)
+DATE_ISO_WITH_TZ = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b"
 DATE_WITH_TZ_ABBR = r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b"
 DATE_DD_MMM_YYYY = (
     r"\b\d{1,2}[/-]\s*"
@@ -56,8 +55,7 @@ def _is_date(text: str) -> bool:  # pylint: disable=too-many-return-statements
 
     # First check if it matches a pattern
     if not any(
-        re.search(pattern, text.strip(), re.IGNORECASE)
-        for pattern in patterns
+        re.search(pattern, text.strip(), re.IGNORECASE) for pattern in patterns
     ):
         return False
 

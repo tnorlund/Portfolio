@@ -1,4 +1,5 @@
 """Time label validation logic."""
+
 # pylint: disable=duplicate-code
 
 import re
@@ -15,9 +16,7 @@ from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
 # Time format patterns
-TIME_WITH_TZ_ABBR = (
-    r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$"
-)
+TIME_WITH_TZ_ABBR = r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$"
 TIME_WITH_TZ_OFFSET = r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$"
 TIME_WITH_Z = r"^(\d{1,2}:\d{2}:\d{2})Z$"
 TIME_BASIC = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"

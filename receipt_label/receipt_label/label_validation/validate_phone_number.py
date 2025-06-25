@@ -1,4 +1,5 @@
 """Phone number label validation logic."""
+
 # pylint: disable=duplicate-code
 
 import re
