@@ -36,13 +36,13 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_lines_with_no_embeddings(client_manager: ClientManager = None) -> list[ReceiptLine]:
+def list_receipt_lines_with_no_embeddings(
+    client_manager: ClientManager = None,
+) -> list[ReceiptLine]:
     """Fetch all ReceiptLine items with embedding_status == NONE."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(
-        EmbeddingStatus.NONE
-    )
+    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(EmbeddingStatus.NONE)
 
 
 def chunk_into_line_embedding_batches(
@@ -112,9 +112,7 @@ def serialize_receipt_lines(
             ndjson_lines = [json.dumps(dict(line)) for line in lines]
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
-            filepath = Path(
-                f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson"
-            )
+            filepath = Path(f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson")
             with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
@@ -165,13 +163,13 @@ def deserialize_receipt_lines(filepath: Path) -> list[ReceiptLine]:
     return lines
 
 
-def query_receipt_lines(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptLine]:
+def query_receipt_lines(
+    image_id: str, receipt_id: int, client_manager: ClientManager = None
+) -> list[ReceiptLine]:
     """Query the ReceiptLines from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(
-        image_id, receipt_id
-    )
+    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(image_id, receipt_id)
     return lines
 
 
@@ -184,13 +182,13 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     return filepath
 
 
-def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
+def upload_to_openai(
+    filepath: Path, client_manager: ClientManager = None
+) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.openai.files.create(
-        file=filepath.open("rb"), purpose="batch"
-    )
+    return client_manager.openai.files.create(file=filepath.open("rb"), purpose="batch")
 
 
 def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
@@ -246,14 +244,18 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
+def add_batch_summary(
+    summary: BatchSummary, client_manager: ClientManager = None
+) -> None:
     """Write the BatchSummary entity to DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
     client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_line_embedding_status(lines: list[ReceiptLine], client_manager: ClientManager = None) -> None:
+def update_line_embedding_status(
+    lines: list[ReceiptLine], client_manager: ClientManager = None
+) -> None:
     """Update the Embedding Status of the Lines"""
     if client_manager is None:
         client_manager = get_client_manager()

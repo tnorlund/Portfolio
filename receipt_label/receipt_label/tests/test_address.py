@@ -18,10 +18,7 @@ class TestAddressUtils:
 
         # Test abbreviation handling
         assert normalize_address("789 N. Blvd") == "789 north boulevard"
-        assert (
-            normalize_address("321 SE Circle Dr.")
-            == "321 southeast circle drive"
-        )
+        assert normalize_address("321 SE Circle Dr.") == "321 southeast circle drive"
 
         # Test whitespace handling
         assert normalize_address("  100   Pine    St  ") == "100 pine street"

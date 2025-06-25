@@ -73,9 +73,7 @@ notification_system = NotificationSystem(
 )
 
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant"
-)
+validate_merchant_step_functions = ValidateMerchantStepFunctions("validate-merchant")
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -86,9 +84,7 @@ upload_images = UploadImages(
 )
 
 # Create the enhanced receipt processor with error handling
-enhanced_receipt_processor = create_enhanced_receipt_processor(
-    notification_system
-)
+enhanced_receipt_processor = create_enhanced_receipt_processor(notification_system)
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
@@ -98,9 +94,7 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export(
-    "critical_error_topic_arn", notification_system.critical_error_topic_arn
-)
+pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
 
 # Export enhanced step function ARN
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
@@ -109,7 +103,9 @@ pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+key_pair_name = (
+    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+)
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(

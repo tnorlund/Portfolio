@@ -22,9 +22,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -98,9 +96,7 @@ class _BatchSummary(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -375,9 +371,7 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -484,17 +478,13 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
 
             summaries = [
-                summary
-                for summary in summaries
-                if summary.batch_type == batch_type
+                summary for summary in summaries if summary.batch_type == batch_type
             ]
             return summaries, last_evaluated_key
         except ClientError as e:
@@ -508,6 +498,4 @@ class _BatchSummary(DynamoClientProtocol):
             elif error_code == "ProvisionedThroughputExceededException":
                 raise ValueError("provisioned throughput exceeded")
             else:
-                raise ValueError(
-                    f"Error retrieving batch summaries by status: {e}"
-                )
+                raise ValueError(f"Error retrieving batch summaries by status: {e}")

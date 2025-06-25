@@ -22,7 +22,9 @@ from receipt_label.utils.client_manager import ClientManager
 logger = logging.getLogger(__name__)
 
 
-def list_receipt_metadatas(client_manager: ClientManager = None) -> List[ReceiptMetadata]:
+def list_receipt_metadatas(
+    client_manager: ClientManager = None,
+) -> List[ReceiptMetadata]:
     """
     Lists all receipt metadata entities from the DynamoDB table.
 
@@ -46,7 +48,9 @@ def list_receipt_metadatas(client_manager: ClientManager = None) -> List[Receipt
         raise
 
 
-def list_receipts_for_merchant_validation(client_manager: ClientManager = None) -> List[Tuple[str, int]]:
+def list_receipts_for_merchant_validation(
+    client_manager: ClientManager = None,
+) -> List[Tuple[str, int]]:
     """
     Lists all receipts that do not have receipt metadata.
 
@@ -93,8 +97,7 @@ def list_receipts_for_merchant_validation(client_manager: ClientManager = None) 
         raise
     # Create a set of tuples with (image_id, receipt_id) from metadata for efficient lookup
     metadata_keys = {
-        (metadata.image_id, metadata.receipt_id)
-        for metadata in receipt_metadatas
+        (metadata.image_id, metadata.receipt_id) for metadata in receipt_metadatas
     }
 
     # Return receipts that don't have corresponding metadata
@@ -105,7 +108,9 @@ def list_receipts_for_merchant_validation(client_manager: ClientManager = None) 
     ]
 
 
-def get_receipt_details(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> Tuple[
+def get_receipt_details(
+    image_id: str, receipt_id: int, client_manager: ClientManager = None
+) -> Tuple[
     Receipt,
     List[ReceiptLine],
     List[ReceiptWord],
@@ -162,9 +167,7 @@ def get_receipt_details(image_id: str, receipt_id: int, client_manager: ClientMa
             image_id, receipt_id
         )
     except (ClientError, BotoCoreError) as e:
-        logger.error(
-            f"Failed to get receipt details for {image_id}/{receipt_id}: {e}"
-        )
+        logger.error(f"Failed to get receipt details for {image_id}/{receipt_id}: {e}")
         raise
 
     return (
@@ -177,7 +180,9 @@ def get_receipt_details(image_id: str, receipt_id: int, client_manager: ClientMa
     )
 
 
-def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata, client_manager: ClientManager = None) -> None:
+def write_receipt_metadata_to_dynamo(
+    metadata: ReceiptMetadata, client_manager: ClientManager = None
+) -> None:
     """
     Write receipt metadata to DynamoDB.
 
@@ -220,7 +225,9 @@ def write_receipt_metadata_to_dynamo(metadata: ReceiptMetadata, client_manager: 
         raise
 
 
-def query_records_by_place_id(place_id: str, client_manager: ClientManager = None) -> List[ReceiptMetadata]:
+def query_records_by_place_id(
+    place_id: str, client_manager: ClientManager = None
+) -> List[ReceiptMetadata]:
     """
     Query DynamoDB for all ReceiptMetadata records with the given place_id.
 
@@ -245,17 +252,15 @@ def query_records_by_place_id(place_id: str, client_manager: ClientManager = Non
 
     try:
         all_records = list_receipt_metadatas(client_manager)
-        return [
-            record for record in all_records if record.place_id == place_id
-        ]
+        return [record for record in all_records if record.place_id == place_id]
     except Exception as e:
         logger.error(f"Failed to query records by place_id {place_id}: {e}")
         raise
 
 
-def list_all_receipt_metadatas(client_manager: ClientManager = None) -> (
-    Tuple[List[ReceiptMetadata], Dict[str, List[ReceiptMetadata]]]
-):
+def list_all_receipt_metadatas(
+    client_manager: ClientManager = None,
+) -> Tuple[List[ReceiptMetadata], Dict[str, List[ReceiptMetadata]]]:
     """
     List all receipt metadata records and group them by place_id.
 
@@ -291,7 +296,9 @@ def list_all_receipt_metadatas(client_manager: ClientManager = None) -> (
         raise
 
 
-def persist_alias_updates(records: List[ReceiptMetadata], client_manager: ClientManager = None) -> None:
+def persist_alias_updates(
+    records: List[ReceiptMetadata], client_manager: ClientManager = None
+) -> None:
     """
     Persist canonical alias updates to DynamoDB in batches.
 
@@ -323,9 +330,7 @@ def persist_alias_updates(records: List[ReceiptMetadata], client_manager: Client
     batch_size = 25  # DynamoDB batch write limit
     total_batches = (len(records) + batch_size - 1) // batch_size
 
-    logger.info(
-        f"Persisting {len(records)} records in {total_batches} batches"
-    )
+    logger.info(f"Persisting {len(records)} records in {total_batches} batches")
 
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
@@ -334,11 +339,7 @@ def persist_alias_updates(records: List[ReceiptMetadata], client_manager: Client
         try:
             for record in batch:
                 client_manager.dynamo.updateReceiptMetadata(record)
-            logger.debug(
-                f"Successfully processed batch {batch_num}/{total_batches}"
-            )
+            logger.debug(f"Successfully processed batch {batch_num}/{total_batches}")
         except (ClientError, BotoCoreError) as e:
-            logger.error(
-                f"Failed to process batch {batch_num}/{total_batches}: {e}"
-            )
+            logger.error(f"Failed to process batch {batch_num}/{total_batches}: {e}")
             raise

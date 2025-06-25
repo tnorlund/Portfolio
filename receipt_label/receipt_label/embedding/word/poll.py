@@ -58,7 +58,9 @@ def _parse_metadata_from_custom_id(custom_id: str) -> dict:
     }
 
 
-def list_pending_embedding_batches(client_manager: ClientManager = None) -> List[BatchSummary]:
+def list_pending_embedding_batches(
+    client_manager: ClientManager = None,
+) -> List[BatchSummary]:
     """
     List embedding batches that are pending processing.
     Returns a list of pending batch identifiers.
@@ -82,7 +84,9 @@ def list_pending_embedding_batches(client_manager: ClientManager = None) -> List
     return summaries
 
 
-def get_openai_batch_status(openai_batch_id: str, client_manager: ClientManager = None) -> str:
+def get_openai_batch_status(
+    openai_batch_id: str, client_manager: ClientManager = None
+) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
 
@@ -96,7 +100,9 @@ def get_openai_batch_status(openai_batch_id: str, client_manager: ClientManager 
     return client_manager.openai.batches.retrieve(openai_batch_id).status
 
 
-def download_openai_batch_result(openai_batch_id: str, client_manager: ClientManager = None) -> List[dict]:
+def download_openai_batch_result(
+    openai_batch_id: str, client_manager: ClientManager = None
+) -> List[dict]:
     """
     Download and parse the results of an OpenAI embedding batch job.
     Returns a list of embedding result objects with `custom_id` and
@@ -200,7 +206,8 @@ def _get_unique_receipt_and_image_ids(
 
 
 def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
-    results: List[dict], descriptions: dict[str, dict[int, dict]],
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
     client_manager: ClientManager = None,
 ):
     """
@@ -255,11 +262,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
         target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
+            (w for w in words if w.line_id == line_id and w.word_id == word_id),
             None,
         )
         if target_word is None:
@@ -280,14 +283,10 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         #    "unvalidated" if none VALID,
         #    "auto_suggested" if ANY PENDING and none VALID,
         #    "validated" if at least one VALID
-        if any(
-            lbl.validation_status == ValidationStatus.VALID.value
-            for lbl in labels
-        ):
+        if any(lbl.validation_status == ValidationStatus.VALID.value for lbl in labels):
             label_status = "validated"
         elif any(
-            lbl.validation_status == ValidationStatus.PENDING.value
-            for lbl in labels
+            lbl.validation_status == ValidationStatus.PENDING.value for lbl in labels
         ):
             label_status = "auto_suggested"
         else:
@@ -302,9 +301,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         if auto_suggestions:
             # assume the last‑added pending label is the one your LLM just
             # suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
-                -1
-            ]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -450,11 +447,7 @@ def write_embedding_results_to_dynamo(
         # Find the ReceiptWord object to get text
         words = descriptions[image_id][receipt_id]["words"]
         target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
+            (w for w in words if w.line_id == line_id and w.word_id == word_id),
             None,
         )
         if target_word is None:

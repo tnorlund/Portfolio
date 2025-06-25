@@ -41,9 +41,7 @@ def generate_batch_id() -> str:
 
 def list_receipt_lines_with_no_embeddings() -> list[ReceiptLine]:
     """Fetch all ReceiptLine items with embedding_status == NONE."""
-    return dynamo_client.listReceiptLinesByEmbeddingStatus(
-        EmbeddingStatus.NONE
-    )
+    return dynamo_client.listReceiptLinesByEmbeddingStatus(EmbeddingStatus.NONE)
 
 
 def chunk_into_line_embedding_batches(
@@ -95,9 +93,7 @@ def _format_line_context_embedding_input(
     Includes the previous and next lines as context.
     """
     # Sort lines vertically
-    sorted_lines = sorted(
-        lines, key=lambda l: l.calculate_centroid()[1], reverse=True
-    )
+    sorted_lines = sorted(lines, key=lambda l: l.calculate_centroid()[1], reverse=True)
 
     # Find the index of our target line
     try:
@@ -138,9 +134,7 @@ def format_line_context_embedding(
             f"RECEIPT#{line.receipt_id:05d}#"
             f"LINE#{line.line_id:05d}"
         )
-        body_input = _format_line_context_embedding_input(
-            line, all_lines_in_receipt
-        )
+        body_input = _format_line_context_embedding_input(line, all_lines_in_receipt)
         entry = {
             "custom_id": pinecone_id,
             "method": "POST",
@@ -186,9 +180,7 @@ def serialize_receipt_lines(
             ]
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
-            filepath = Path(
-                f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson"
-            )
+            filepath = Path(f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson")
             with filepath.open("w") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
@@ -258,9 +250,7 @@ def deserialize_receipt_lines(filepath: Path) -> list[ReceiptLine]:
 
 def query_receipt_lines(image_id: str, receipt_id: int) -> list[ReceiptLine]:
     """Query the ReceiptLines from DynamoDB."""
-    _, lines, _, _, _, _ = dynamo_client.getReceiptDetails(
-        image_id, receipt_id
-    )
+    _, lines, _, _, _, _ = dynamo_client.getReceiptDetails(image_id, receipt_id)
     return lines
 
 
@@ -275,9 +265,7 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
 
 def upload_to_openai(filepath: Path) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
-    return openai_client.files.create(
-        file=filepath.open("rb"), purpose="batch"
-    )
+    return openai_client.files.create(file=filepath.open("rb"), purpose="batch")
 
 
 def submit_openai_batch(file_id: str) -> Batch:

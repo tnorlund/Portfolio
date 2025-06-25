@@ -53,9 +53,7 @@ functions = [
                         "properties": {
                             "id": {
                                 "type": "string",
-                                "description": (
-                                    "The original label identifier"
-                                ),
+                                "description": ("The original label identifier"),
                             },
                             "is_valid": {
                                 "type": "boolean",
@@ -86,7 +84,10 @@ functions = [
 
 
 def _make_tagged_example(
-    word: ReceiptWord, label: ReceiptWordLabel, window=2, client_manager: ClientManager = None
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
+    window=2,
+    client_manager: ClientManager = None,
 ) -> str:
     """
     Return a short, receipt-style string with <LABEL>…</LABEL> around the
@@ -170,9 +171,7 @@ def _prompt_receipt_text(word: ReceiptWord, lines: list[ReceiptLine]) -> str:
         if current_line.line_id == word.line_id:
             # Replace the word in the line text with <TARGET>text</TARGET>
             line_text = current_line.text
-            line_text = line_text.replace(
-                word.text, f"<TARGET>{word.text}</TARGET>"
-            )
+            line_text = line_text.replace(word.text, f"<TARGET>{word.text}</TARGET>")
         else:
             line_text = current_line.text
         current_line_centroid = current_line.calculate_centroid()
@@ -249,8 +248,7 @@ def _format_first_pass_prompt(
     prompt_lines.append("### Allowed labels")
     prompt_lines.append(", ".join(CORE_LABELS.keys()))
     prompt_lines.append(
-        "Only labels from the above list are valid; do NOT propose any other "
-        "label."
+        "Only labels from the above list are valid; do NOT propose any other " "label."
     )
     prompt_lines.append("")  # blank line
     prompt_lines.append("### Targets")

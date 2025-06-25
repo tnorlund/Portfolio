@@ -47,10 +47,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} already exists"
                 )
@@ -60,13 +57,9 @@ class _ReceiptSection(DynamoClientProtocol):
     def addReceiptSections(self, sections: list[ReceiptSection]):
         """Adds multiple ReceiptSections to DynamoDB in batches of CHUNK_SIZE."""
         if sections is None:
-            raise ValueError(
-                "sections parameter is required and cannot be None."
-            )
+            raise ValueError("sections parameter is required and cannot be None.")
         if not isinstance(sections, list):
-            raise ValueError(
-                "sections must be a list of ReceiptSection instances."
-            )
+            raise ValueError("sections must be a list of ReceiptSection instances.")
         if not all(isinstance(s, ReceiptSection) for s in sections):
             raise ValueError(
                 "All sections must be instances of the ReceiptSection class."
@@ -74,22 +67,16 @@ class _ReceiptSection(DynamoClientProtocol):
         try:
             for i in range(0, len(sections), CHUNK_SIZE):
                 chunk = sections[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": s.to_item()}} for s in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": s.to_item()}} for s in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not add ReceiptSections to the database"
-            ) from e
+            raise ValueError("Could not add ReceiptSections to the database") from e
 
     def updateReceiptSection(self, section: ReceiptSection):
         """Updates an existing ReceiptSection in DynamoDB."""
@@ -100,10 +87,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} does not exist"
                 )
@@ -113,13 +97,9 @@ class _ReceiptSection(DynamoClientProtocol):
     def updateReceiptSections(self, sections: list[ReceiptSection]):
         """Updates multiple existing ReceiptSections in DynamoDB."""
         if sections is None:
-            raise ValueError(
-                "sections parameter is required and cannot be None."
-            )
+            raise ValueError("sections parameter is required and cannot be None.")
         if not isinstance(sections, list):
-            raise ValueError(
-                "sections must be a list of ReceiptSection instances."
-            )
+            raise ValueError("sections must be a list of ReceiptSection instances.")
         if not all(isinstance(s, ReceiptSection) for s in sections):
             raise ValueError(
                 "All sections must be instances of the ReceiptSection class."
@@ -141,17 +121,13 @@ class _ReceiptSection(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more ReceiptSections do not exist"
-                    )
+                    raise ValueError("One or more ReceiptSections do not exist")
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise ValueError("Provisioned throughput exceeded")
                 elif error_code == "InternalServerError":
                     raise ValueError("Internal server error")
                 elif error_code == "ValidationException":
-                    raise ValueError(
-                        "One or more parameters given were invalid"
-                    )
+                    raise ValueError("One or more parameters given were invalid")
                 elif error_code == "AccessDeniedException":
                     raise ValueError("Access denied")
                 else:
@@ -159,26 +135,19 @@ class _ReceiptSection(DynamoClientProtocol):
                         f"Could not update ReceiptSections in the database: {e}"
                     )
 
-    def deleteReceiptSection(
-        self, receipt_id: int, image_id: str, section_type: str
-    ):
+    def deleteReceiptSection(self, receipt_id: int, image_id: str, section_type: str):
         """Deletes a single ReceiptSection by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
                 )
@@ -190,17 +159,13 @@ class _ReceiptSection(DynamoClientProtocol):
         try:
             for i in range(0, len(sections), CHUNK_SIZE):
                 chunk = sections[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": s.key()}} for s in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": s.key()}} for s in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
@@ -216,9 +181,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
                 },
             )
             return itemToReceiptSection(response["Item"])
@@ -255,9 +218,7 @@ class _ReceiptSection(DynamoClientProtocol):
                     f"Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
+                raise ValueError(f"Provisioned throughput exceeded: {e}") from e
             else:
                 raise ValueError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
@@ -269,9 +230,7 @@ class _ReceiptSection(DynamoClientProtocol):
         """Returns all ReceiptSections from the table with optional pagination."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         receipt_sections = []
@@ -281,9 +240,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_SECTION"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_SECTION"}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -298,15 +255,10 @@ class _ReceiptSection(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the receipt sections
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     receipt_sections.extend(
-                        [
-                            itemToReceiptSection(item)
-                            for item in response["Items"]
-                        ]
+                        [itemToReceiptSection(item) for item in response["Items"]]
                     )
                 # No further pages left. LEK is None.
                 last_evaluated_key = None

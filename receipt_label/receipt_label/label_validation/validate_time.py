@@ -93,9 +93,7 @@ def _validate_time_components(time_str: str) -> bool:
     return True
 
 
-def _merged_time_candidate_from_text(
-    word: ReceiptWord, metadata: dict
-) -> list[str]:
+def _merged_time_candidate_from_text(word: ReceiptWord, metadata: dict) -> list[str]:
     """Return possible time strings from the word and its neighbors."""
 
     current = word.text.strip()
@@ -162,9 +160,7 @@ def validate_time(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches)
-        if matches
-        else 0.0
+        sum(match.score for match in matches) / len(matches) if matches else 0.0
     )
 
     variants = _merged_time_candidate_from_text(word, vector_data.metadata)

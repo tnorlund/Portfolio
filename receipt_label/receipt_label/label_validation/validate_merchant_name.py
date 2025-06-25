@@ -91,9 +91,7 @@ def validate_merchant_name_pinecone(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches)
-        if matches
-        else 0.0
+        sum(match.score for match in matches) / len(matches) if matches else 0.0
     )
 
     looks_like_name = (
@@ -136,16 +134,10 @@ def validate_merchant_name_google(
     vector_data = fetch_response.vectors.get(pinecone_id)
     vector_metadata = vector_data.metadata if vector_data else {}
 
-    normalized_canonical = normalize_text(
-        metadata.canonical_merchant_name or ""
-    )
+    normalized_canonical = normalize_text(metadata.canonical_merchant_name or "")
 
-    variants = _merged_merchant_name_candidates_from_text(
-        word, vector_metadata
-    )
-    best_score = max(
-        ratio(normalize_text(v), normalized_canonical) for v in variants
-    )
+    variants = _merged_merchant_name_candidates_from_text(word, vector_metadata)
+    best_score = max(ratio(normalize_text(v), normalized_canonical) for v in variants)
     is_consistent = best_score > 85
 
     return LabelValidationResult(

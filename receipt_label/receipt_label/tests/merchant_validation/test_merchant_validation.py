@@ -16,12 +16,14 @@ from receipt_dynamo.entities import ReceiptMetadata
 pytest.register_assert_rewrite("receipt_label.utils.clients")
 from receipt_label.utils import clients
 
+
 # Create a mock for get_clients
 def mock_get_clients():
     mock_dynamo = Mock()
     mock_openai = Mock()
     mock_pinecone = Mock()
     return mock_dynamo, mock_openai, mock_pinecone
+
 
 # Patch get_clients before importing modules that use it
 clients.get_clients = mock_get_clients
@@ -55,18 +57,16 @@ def mock_places_api(mocker):
 @pytest.fixture(autouse=True)
 def mock_openai(mocker):
     fake_msg = type("M", (), {})()
-    fake_resp = type(
-        "R", (), {"choices": [type("C", (), {"message": fake_msg})()]}
-    )
+    fake_resp = type("R", (), {"choices": [type("C", (), {"message": fake_msg})()]})
     # Mock get_client_manager to return a mock client manager with mock openai
     mock_client_manager = mocker.Mock()
     mock_openai_client = mocker.Mock()
     mock_openai_client.chat.completions.create.return_value = fake_resp
     mock_client_manager.openai = mock_openai_client
-    
+
     mocker.patch(
         "receipt_label.merchant_validation.gpt_integration.get_client_manager",
-        return_value=mock_client_manager
+        return_value=mock_client_manager,
     )
     return fake_resp
 
@@ -77,10 +77,10 @@ def mock_dynamo(mocker):
     mock_client_manager = mocker.Mock()
     mock_dynamo_client = mocker.Mock()
     mock_client_manager.dynamo = mock_dynamo_client
-    
+
     mocker.patch(
         "receipt_label.merchant_validation.data_access.get_client_manager",
-        return_value=mock_client_manager
+        return_value=mock_client_manager,
     )
     return mock_dynamo_client
 
@@ -96,17 +96,21 @@ class DummyWord:
 @pytest.mark.parametrize(
     "phone_resp,address_resp,expected",
     [
-        ({"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}, None, {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}),
-        ({"status": "NO_RESULTS"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}),
+        (
+            {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"},
+            None,
+            {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"},
+        ),
+        (
+            {"status": "NO_RESULTS"},
+            {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"},
+            {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"},
+        ),
         (None, None, None),
     ],
 )
-def test_query_google_places_branches(
-    phone_resp, address_resp, expected, mocker
-):
-    mocker.patch.object(
-        gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
-    )
+def test_query_google_places_branches(phone_resp, address_resp, expected, mocker):
+    mocker.patch.object(gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp)
     mocker.patch.object(
         gp.PlacesAPI,
         "search_by_address",
@@ -161,15 +165,11 @@ def test_query_google_places_branches(
 )
 
 # Tests for infer_merchant_with_gpt
-def test_infer_merchant_with_gpt_branches(
-    mock_openai, has_call, args, expected
-):
+def test_infer_merchant_with_gpt_branches(mock_openai, has_call, args, expected):
     msg = mock_openai.choices[0].message
     if has_call:
         if isinstance(args, dict):
-            msg.function_call = type(
-                "F", (), {"arguments": json.dumps(args)}
-            )()
+            msg.function_call = type("F", (), {"arguments": json.dumps(args)})()
         else:
             msg.function_call = type("F", (), {"arguments": args})()
     else:
@@ -221,9 +221,7 @@ def test_infer_merchant_with_gpt_branches(
 )
 
 # Tests for validate_match_with_gpt
-def test_validate_match_with_gpt_branches(
-    mock_openai, mocker, args, expected_fields
-):
+def test_validate_match_with_gpt_branches(mock_openai, mocker, args, expected_fields):
     # Mock the entire module function (not just the one in the class)
     result = args.copy()
     result["matched_fields"] = expected_fields
@@ -279,26 +277,26 @@ def test_extract_candidate_merchant_fields():
     # Create mock ReceiptWord objects instead of DummyWord
     from unittest.mock import Mock
     from receipt_dynamo.entities import ReceiptWord
-    
+
     words = []
     # Mock word with address label
     addr_word = Mock(spec=ReceiptWord)
     addr_word.text = "123 Main St"
     addr_word.labels = ["address"]
     words.append(addr_word)
-    
-    # Mock word with phone label  
+
+    # Mock word with phone label
     phone_word = Mock(spec=ReceiptWord)
     phone_word.text = "555-1234"
     phone_word.labels = ["phone"]
     words.append(phone_word)
-    
+
     # Mock word with url label
-    url_word = Mock(spec=ReceiptWord) 
+    url_word = Mock(spec=ReceiptWord)
     url_word.text = "http://example.com"
     url_word.labels = ["url"]
     words.append(url_word)
-    
+
     result = mv.extract_candidate_merchant_fields(words)
     assert "address" in result and result["address"] == "123 Main St"
     assert "phone_number" in result and result["phone_number"] == "555-1234"
@@ -546,9 +544,7 @@ def test_build_receipt_metadata_from_result_category_and_timestamp(mocker):
 
     assert result.merchant_category == "shop"
     assert result.timestamp.tzinfo is not None
-    assert datetime.now(timezone.utc) - result.timestamp < timedelta(
-        seconds=15
-    )
+    assert datetime.now(timezone.utc) - result.timestamp < timedelta(seconds=15)
 
 
 def test_write_receipt_metadata_to_dynamo_errors():
@@ -636,11 +632,17 @@ def test_is_valid_google_match_no_types_with_fragment():
 def test_extract_candidate_merchant_fields_ignores_empty():
     from unittest.mock import Mock
     from receipt_dynamo.entities import ReceiptWord
-    
+
     # Create a mock ReceiptWord with no labels
     word = Mock(spec=ReceiptWord)
     word.text = ""
     word.labels = []
 
     out = mv.extract_candidate_merchant_fields([word])
-    assert out == {"name": "", "address": "", "phone_number": "", "emails": [], "urls": []}
+    assert out == {
+        "name": "",
+        "address": "",
+        "phone_number": "",
+        "emails": [],
+        "urls": [],
+    }

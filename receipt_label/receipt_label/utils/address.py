@@ -70,9 +70,7 @@ def parse_address(address: str) -> Dict[str, str]:
     }
 
     # First extract unit/suite if present
-    unit_match = re.search(
-        r"(?:suite|ste|apt|apartment|unit)\s+(\w+)", address.lower()
-    )
+    unit_match = re.search(r"(?:suite|ste|apt|apartment|unit)\s+(\w+)", address.lower())
     if unit_match:
         components["unit"] = unit_match.group(1)
 
@@ -191,9 +189,7 @@ def compare_addresses(addr1: str, addr2: str) -> float:
     for component in optional:
         if addr1_components.get(component) or addr2_components.get(component):
             total += 1
-            if addr1_components.get(component) == addr2_components.get(
-                component
-            ):
+            if addr1_components.get(component) == addr2_components.get(component):
                 matches += 1
 
     # If no components matched, fall back to string similarity
@@ -208,9 +204,7 @@ def compare_addresses(addr1: str, addr2: str) -> float:
     # Boost score if street number and name match
     if addr1_components.get("street_number") == addr2_components.get(
         "street_number"
-    ) and addr1_components.get("street_name") == addr2_components.get(
-        "street_name"
-    ):
+    ) and addr1_components.get("street_name") == addr2_components.get("street_name"):
         matches += 4
         total += 4
 
@@ -227,9 +221,7 @@ def compare_addresses(addr1: str, addr2: str) -> float:
         total += 2
 
     # If street type is similar (e.g., St vs Street), give partial credit
-    if addr1_components.get("street_type") and addr2_components.get(
-        "street_type"
-    ):
+    if addr1_components.get("street_type") and addr2_components.get("street_type"):
         st1 = normalize_address(addr1_components["street_type"])
         st2 = normalize_address(addr2_components["street_type"])
         if st1 == st2:
@@ -239,16 +231,12 @@ def compare_addresses(addr1: str, addr2: str) -> float:
     # If all required components match exactly, but one has a unit and the other doesn't,
     # return a high but not perfect score
     if (
-        addr1_components.get("street_number")
-        == addr2_components.get("street_number")
-        and addr1_components.get("street_name")
-        == addr2_components.get("street_name")
+        addr1_components.get("street_number") == addr2_components.get("street_number")
+        and addr1_components.get("street_name") == addr2_components.get("street_name")
         and addr1_components.get("city") == addr2_components.get("city")
         and addr1_components.get("state") == addr2_components.get("state")
     ):
-        if bool(addr1_components.get("unit")) != bool(
-            addr2_components.get("unit")
-        ):
+        if bool(addr1_components.get("unit")) != bool(addr2_components.get("unit")):
             return 0.9
         return 1.0
 

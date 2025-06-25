@@ -277,8 +277,7 @@ class ReceiptAnalyzer:
 
             # Set receipt and image IDs which are required for DynamoDB storage
             field_analysis_obj.set_receipt_info(
-                receipt_id=str(receipt.receipt_id),
-                image_id=receipt.image_id
+                receipt_id=str(receipt.receipt_id), image_id=receipt.image_id
             )
 
             # Log the number of labels

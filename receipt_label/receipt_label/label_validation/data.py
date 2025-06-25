@@ -62,9 +62,7 @@ def get_unique_merchants_and_data(
 
 
 def _separate_valid_and_invalid_labels(
-    label_validation_results: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ]
+    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]]
 ) -> tuple[
     list[tuple[LabelValidationResult, ReceiptWordLabel]],
     list[tuple[LabelValidationResult, ReceiptWordLabel]],
@@ -133,12 +131,8 @@ def _update_pinecone_metadata(
 
 
 def _update_dynamodb_labels(
-    labels_to_mark_as_valid: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ],
-    labels_to_mark_as_invalid: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ],
+    labels_to_mark_as_valid: list[tuple[LabelValidationResult, ReceiptWordLabel]],
+    labels_to_mark_as_invalid: list[tuple[LabelValidationResult, ReceiptWordLabel]],
     client_manager: ClientManager,
 ) -> None:
     """Update label validation status in DynamoDB."""
@@ -156,9 +150,7 @@ def _update_dynamodb_labels(
 
 
 def update_labels(
-    label_validation_results: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ],
+    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]],
     client_manager: Optional[ClientManager] = None,
 ):
     """Apply validation results to DynamoDB and Pinecone."""

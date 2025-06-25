@@ -25,12 +25,10 @@ class NotificationSystem(ComponentResource):
             opts: Pulumi resource options
         """
         super().__init__("custom:infrastructure:NotificationSystem", name, None, opts)
-        
+
         self.name = name
         self.tags = tags or {}
-        self.tags.update(
-            {"Component": "NotificationSystem", "ManagedBy": "Pulumi"}
-        )
+        self.tags.update({"Component": "NotificationSystem", "ManagedBy": "Pulumi"})
 
         # Create SNS topic for step function failures
         self.step_function_failure_topic = aws.sns.Topic(

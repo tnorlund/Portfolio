@@ -16,9 +16,7 @@ class _LabelCountCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
-            raise ValueError(
-                "item must be an instance of the LabelCountCache class."
-            )
+            raise ValueError("item must be an instance of the LabelCountCache class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -42,9 +40,7 @@ class _LabelCountCache(DynamoClientProtocol):
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
-            raise ValueError(
-                "items must be a list of LabelCountCache objects."
-            )
+            raise ValueError("items must be a list of LabelCountCache objects.")
         try:
             for i in range(0, len(items), 25):
                 chunk = items[i : i + 25]
@@ -58,19 +54,14 @@ class _LabelCountCache(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
         except ClientError:
-            raise ValueError(
-                "Could not add label count caches to the database"
-            )
+            raise ValueError("Could not add label count caches to the database")
 
             self._client.batch_write_item(
                 RequestItems={
                     self.table_name: [
-                        {"PutRequest": {"Item": item.to_item()}}
-                        for item in items
+                        {"PutRequest": {"Item": item.to_item()}} for item in items
                     ],
                 },
             )
@@ -89,9 +80,7 @@ class _LabelCountCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
-            raise ValueError(
-                "item must be an instance of the LabelCountCache class."
-            )
+            raise ValueError("item must be an instance of the LabelCountCache class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -136,9 +125,7 @@ class _LabelCountCache(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "LABEL_COUNT_CACHE"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "LABEL_COUNT_CACHE"}},
                 "ScanIndexForward": True,
             }
             if lastEvaluatedKey is not None:
@@ -146,20 +133,13 @@ class _LabelCountCache(DynamoClientProtocol):
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
-            counts.extend(
-                [itemToLabelCountCache(item) for item in response["Items"]]
-            )
+            counts.extend([itemToLabelCountCache(item) for item in response["Items"]])
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     counts.extend(
-                        [
-                            itemToLabelCountCache(item)
-                            for item in response["Items"]
-                        ]
+                        [itemToLabelCountCache(item) for item in response["Items"]]
                     )
                 last_evaluated_key = None
             else:

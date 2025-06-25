@@ -15,9 +15,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -28,9 +26,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 class _EmbeddingBatchResult(DynamoClientProtocol):
     """DynamoDB accessor for EmbeddingBatchResult items."""
 
-    def addEmbeddingBatchResult(
-        self, embedding_batch_result: EmbeddingBatchResult
-    ):
+    def addEmbeddingBatchResult(self, embedding_batch_result: EmbeddingBatchResult):
         """
         Adds an EmbeddingBatchResult to the database.
 
@@ -81,8 +77,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult)
-            for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -91,26 +86,18 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         try:
             for i in range(0, len(embedding_batch_results), 25):
                 chunk = embedding_batch_results[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": r.to_item()}} for r in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": r.to_item()}} for r in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise Exception(
-                f"Error adding embedding batch results: {e}"
-            ) from e
+            raise Exception(f"Error adding embedding batch results: {e}") from e
 
-    def updateEmbeddingBatchResult(
-        self, embedding_batch_result: EmbeddingBatchResult
-    ):
+    def updateEmbeddingBatchResult(self, embedding_batch_result: EmbeddingBatchResult):
         """
         Updates an EmbeddingBatchResult in DynamoDB. Raises if it does not exist.
         """
@@ -136,9 +123,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
                 ) from e
             else:
-                raise Exception(
-                    f"Error updating embedding batch result: {e}"
-                ) from e
+                raise Exception(f"Error updating embedding batch result: {e}") from e
 
     def updateEmbeddingBatchResults(
         self, embedding_batch_results: List[EmbeddingBatchResult]
@@ -155,8 +140,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult)
-            for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -177,13 +161,9 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
-                raise Exception(
-                    f"Error updating embedding batch results: {e}"
-                ) from e
+                raise Exception(f"Error updating embedding batch results: {e}") from e
 
-    def deleteEmbeddingBatchResult(
-        self, embedding_batch_result: EmbeddingBatchResult
-    ):
+    def deleteEmbeddingBatchResult(self, embedding_batch_result: EmbeddingBatchResult):
         """
         Deletes an EmbeddingBatchResult from DynamoDB.
         """
@@ -209,9 +189,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
                 ) from e
             else:
-                raise Exception(
-                    f"Error deleting embedding batch result: {e}"
-                ) from e
+                raise Exception(f"Error deleting embedding batch result: {e}") from e
 
     def deleteEmbeddingBatchResults(
         self, embedding_batch_results: List[EmbeddingBatchResult]
@@ -228,8 +206,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult)
-            for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -250,9 +227,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
             except ClientError as e:
-                raise Exception(
-                    f"Error deleting embedding batch results: {e}"
-                ) from e
+                raise Exception(f"Error deleting embedding batch results: {e}") from e
 
     def getEmbeddingBatchResult(
         self,
@@ -291,9 +266,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     f"Embedding batch result for Batch ID '{batch_id}', Image ID {image_id}, Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id} does not exist."
                 )
         except ClientError as e:
-            raise Exception(
-                f"Error getting embedding batch result: {e}"
-            ) from e
+            raise Exception(f"Error getting embedding batch result: {e}") from e
 
     def listEmbeddingBatchResults(
         self, limit: int = None, lastEvaluatedKey: dict = None
@@ -315,9 +288,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "EMBEDDING_BATCH_RESULT"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "EMBEDDING_BATCH_RESULT"}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -329,10 +300,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [
-                        itemToEmbeddingBatchResult(item)
-                        for item in response["Items"]
-                    ]
+                    [itemToEmbeddingBatchResult(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -341,18 +309,14 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
 
             return results, last_evaluated_key
         except ClientError as e:
-            raise Exception(
-                f"Error listing embedding batch results: {e}"
-            ) from e
+            raise Exception(f"Error listing embedding batch results: {e}") from e
 
     def getEmbeddingBatchResultsByStatus(
         self, status: str, limit: int = None, lastEvaluatedKey: dict = None
@@ -364,8 +328,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             raise ValueError("Status must be a non-empty string")
         if status not in [s.value for s in EmbeddingStatus]:
             raise ValueError(
-                "Status must be one of: "
-                + ", ".join(s.value for s in EmbeddingStatus)
+                "Status must be one of: " + ", ".join(s.value for s in EmbeddingStatus)
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer.")
@@ -380,9 +343,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2SK = :sk",
-                "ExpressionAttributeValues": {
-                    ":sk": {"S": f"STATUS#{status}"}
-                },
+                "ExpressionAttributeValues": {":sk": {"S": f"STATUS#{status}"}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -394,10 +355,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [
-                        itemToEmbeddingBatchResult(item)
-                        for item in response["Items"]
-                    ]
+                    [itemToEmbeddingBatchResult(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -406,9 +364,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -471,10 +427,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [
-                        itemToEmbeddingBatchResult(item)
-                        for item in response["Items"]
-                    ]
+                    [itemToEmbeddingBatchResult(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -483,9 +436,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break

@@ -25,11 +25,7 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 
 code = AssetArchive(
-    {
-        "lambda.py": FileAsset(
-            os.path.join(os.path.dirname(__file__), "lambda.py")
-        )
-    }
+    {"lambda.py": FileAsset(os.path.join(os.path.dirname(__file__), "lambda.py"))}
 )
 stack = pulumi.get_stack()
 
@@ -91,8 +87,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
-                                    "arn:aws:dynamodb:*:*:table/"
-                                    f"{table_name}*"
+                                    "arn:aws:dynamodb:*:*:table/" f"{table_name}*"
                                 ),
                             }
                         ],

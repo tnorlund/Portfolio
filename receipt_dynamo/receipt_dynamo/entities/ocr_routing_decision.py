@@ -146,6 +146,4 @@ def itemToOCRRoutingDecision(item: dict) -> OCRRoutingDecision:
             status=status,
         )
     except Exception as e:
-        raise ValueError(
-            f"Invalid item format\nitem: {item}\nerror: {e}"
-        ) from e
+        raise ValueError(f"Invalid item format\nitem: {item}\nerror: {e}") from e

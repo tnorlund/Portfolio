@@ -106,9 +106,7 @@ label_count_cache_updater_lambda = aws.lambda_.Function(
 # CloudWatch log group for the Lambda function
 log_group = aws.cloudwatch.LogGroup(
     f"{FUNCTION_NAME}_lambda_log_group",
-    name=pulumi.Output.concat(
-        "/aws/lambda/", label_count_cache_updater_lambda.name
-    ),
+    name=pulumi.Output.concat("/aws/lambda/", label_count_cache_updater_lambda.name),
     retention_in_days=30,
 )
 
@@ -136,7 +134,5 @@ lambda_permission = aws.lambda_.Permission(
 )
 
 # Export the Lambda function ARN
-pulumi.export(
-    f"{FUNCTION_NAME}_lambda_arn", label_count_cache_updater_lambda.arn
-)
+pulumi.export(f"{FUNCTION_NAME}_lambda_arn", label_count_cache_updater_lambda.arn)
 pulumi.export(f"{FUNCTION_NAME}_schedule_arn", cache_update_schedule.arn)

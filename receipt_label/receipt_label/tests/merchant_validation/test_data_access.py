@@ -29,7 +29,10 @@ class TestListReceiptMetadatas:
             Mock(spec=ReceiptMetadata),
         ]
         mock_client_manager = Mock()
-        mock_client_manager.dynamo.listReceiptMetadatas.return_value = (mock_metadatas, None)
+        mock_client_manager.dynamo.listReceiptMetadatas.return_value = (
+            mock_metadatas,
+            None,
+        )
         mock_get_client_manager.return_value = mock_client_manager
 
         # Act
@@ -178,9 +181,7 @@ class TestWriteReceiptMetadataToDynamo:
 class TestQueryRecordsByPlaceId:
     """Tests for query_records_by_place_id function."""
 
-    @patch(
-        "receipt_label.merchant_validation.data_access.list_receipt_metadatas"
-    )
+    @patch("receipt_label.merchant_validation.data_access.list_receipt_metadatas")
     def test_query_records_by_place_id_success(self, mock_list):
         """Test successful querying by place_id."""
         # Arrange
@@ -219,7 +220,7 @@ class TestPersistAliasUpdates:
         """Test successful persistence of alias updates."""
         # Arrange
         records = [Mock(spec=ReceiptMetadata) for _ in range(3)]
-        
+
         mock_client_manager = Mock()
         mock_get_client_manager.return_value = mock_client_manager
 
@@ -236,7 +237,7 @@ class TestPersistAliasUpdates:
         """Test persistence with large batch (more than 25 records)."""
         # Arrange
         records = [Mock(spec=ReceiptMetadata) for _ in range(50)]
-        
+
         mock_client_manager = Mock()
         mock_get_client_manager.return_value = mock_client_manager
 
