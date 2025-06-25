@@ -109,8 +109,20 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
+          # Find test directory (packages have tests in different locations)
+          if [[ -d "tests" ]]; then
+            TEST_DIR="tests"
+          elif [[ -d "test" ]]; then
+            TEST_DIR="test"
+          elif [[ "${{ matrix.package }}" == "receipt_label" ]] && [[ -d "receipt_label/tests" ]]; then
+            TEST_DIR="receipt_label/tests"
+          else
+            echo "No test directory found, running pytest to discover tests"
+            TEST_DIR="."
+          fi
+          
           # Run tests with proper module discovery
-          python -m pytest tests -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml -v
+          python -m pytest $TEST_DIR -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml -v
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -154,6 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    continue-on-error: true  # Don't fail the whole workflow if docs fail
     steps:
       - uses: actions/checkout@v4
         with:
@@ -173,11 +186,13 @@ jobs:
           npm run docs
       
       - name: Commit documentation
+        continue-on-error: true
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'docs: update TypeDoc documentation [skip ci]'
           file_pattern: 'portfolio/docs/**'
           skip_dirty_check: false
+          skip_checkout: true
 
   # Stage 4: Deploy (only on main)
   deploy:
