@@ -1,6 +1,5 @@
 """Merchant name label validation logic."""
-
-# pylint: disable=duplicate-code,line-too-long
+# pylint: disable=duplicate-code
 
 import re
 from typing import Optional

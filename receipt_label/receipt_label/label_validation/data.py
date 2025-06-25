@@ -1,7 +1,5 @@
 """Data utilities for label validation."""
 
-# pylint: disable=duplicate-code,line-too-long,too-many-instance-attributes
-
 from collections import Counter
 from dataclasses import dataclass
 from typing import Literal, Optional
