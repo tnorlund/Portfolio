@@ -1,13 +1,13 @@
-from typing import Literal
 from datetime import datetime
+from typing import Literal
 
 import pytest
 
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import SectionType
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
 )
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import SectionType
 
 
 @pytest.fixture

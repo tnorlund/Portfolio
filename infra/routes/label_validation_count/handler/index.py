@@ -1,10 +1,11 @@
-import os
 import concurrent.futures
-import logging
 import json
-from receipt_dynamo.constants import ValidationStatus
+import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

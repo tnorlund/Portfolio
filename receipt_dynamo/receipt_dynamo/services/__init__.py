@@ -11,6 +11,6 @@ __all__ = [
     "InstanceService",
 ]
 
+from receipt_dynamo.services.instance_service import InstanceService
 from receipt_dynamo.services.job_service import JobService
 from receipt_dynamo.services.queue_service import QueueService
-from receipt_dynamo.services.instance_service import InstanceService

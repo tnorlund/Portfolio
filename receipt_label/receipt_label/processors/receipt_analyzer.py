@@ -19,13 +19,13 @@ logger.setLevel(logging.INFO)
 class ReceiptAnalyzer:
     """Analyzes receipts using GPT for structure, fields, and line items."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: Optional[str] = None):
         """Initialize the receipt analyzer.
 
         Args:
             api_key: GPT API key for analysis
         """
-        self.api_key = api_key
+        self.api_key = api_key or ""
 
     def analyze_structure(
         self,

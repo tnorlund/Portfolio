@@ -1,6 +1,5 @@
 """Core functionality for receipt labeling."""
 
-from .labeler import ReceiptLabeler, LabelingResult
-from .validator import ReceiptValidator
+from .labeler import LabelingResult, ReceiptLabeler
 
-__all__ = ["ReceiptLabeler", "LabelingResult", "ReceiptValidator"]
+__all__ = ["ReceiptLabeler", "LabelingResult"]
