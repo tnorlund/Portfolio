@@ -3,18 +3,38 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
-                            ReceiptLine, ReceiptWord, ReceiptWordTag, Word,
-                            WordTag, itemToImage, itemToLetter, itemToLine,
-                            itemToReceipt, itemToReceiptLetter,
-                            itemToReceiptLine, itemToReceiptWord,
-                            itemToReceiptWordTag, itemToWord, itemToWordTag)
+from receipt_dynamo import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    Word,
+    WordTag,
+    itemToImage,
+    itemToLetter,
+    itemToLine,
+    itemToReceipt,
+    itemToReceiptLetter,
+    itemToReceiptLine,
+    itemToReceiptWord,
+    itemToReceiptWordTag,
+    itemToWord,
+    itemToWordTag,
+)
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities import (ImageDetails, ReceiptMetadata,
-                                     assert_valid_uuid, itemToOCRJob,
-                                     itemToOCRRoutingDecision,
-                                     itemToReceiptMetadata)
+from receipt_dynamo.entities import (
+    ImageDetails,
+    ReceiptMetadata,
+    assert_valid_uuid,
+    itemToOCRJob,
+    itemToOCRRoutingDecision,
+    itemToReceiptMetadata,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.

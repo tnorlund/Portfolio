@@ -3,8 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_line_item_analysis import \
-    ReceiptLineItemAnalysis
+from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
 
 from .metadata import MetadataMixin
 

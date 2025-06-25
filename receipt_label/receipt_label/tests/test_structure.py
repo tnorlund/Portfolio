@@ -4,16 +4,22 @@ from typing import Dict, List, Optional
 
 import pytest
 
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    ContentPattern as DynamoContentPattern
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    ReceiptSection as DynamoReceiptSection
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    ReceiptStructureAnalysis
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    SpatialPattern as DynamoSpatialPattern
-from receipt_label.models.structure import (ContentPattern, ReceiptSection,
-                                            SpatialPattern, StructureAnalysis)
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ContentPattern as DynamoContentPattern,
+)
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ReceiptSection as DynamoReceiptSection,
+)
+from receipt_dynamo.entities.receipt_structure_analysis import ReceiptStructureAnalysis
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    SpatialPattern as DynamoSpatialPattern,
+)
+from receipt_label.models.structure import (
+    ContentPattern,
+    ReceiptSection,
+    SpatialPattern,
+    StructureAnalysis,
+)
 
 
 # Test data fixtures

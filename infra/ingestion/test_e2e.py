@@ -9,10 +9,20 @@ import pulumi.automation as auto
 import pytest
 
 from . import upload_images_to_s3
-from .utils import (assert_dynamo, assert_s3_cdn, assert_s3_raw, backup_cdn_s3,
-                    backup_dynamo_items, backup_raw_s3, delete_cdn_s3,
-                    delete_dynamo_items, delete_raw_s3, group_images,
-                    restore_dynamo_items, restore_s3)
+from .utils import (
+    assert_dynamo,
+    assert_s3_cdn,
+    assert_s3_raw,
+    backup_cdn_s3,
+    backup_dynamo_items,
+    backup_raw_s3,
+    delete_cdn_s3,
+    delete_dynamo_items,
+    delete_raw_s3,
+    group_images,
+    restore_dynamo_items,
+    restore_s3,
+)
 
 
 @pytest.fixture(scope="session")

@@ -4,9 +4,12 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities import ReceiptMetadata, itemToReceiptMetadata
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_valid_point,
-                                          assert_valid_uuid)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_point,
+    assert_valid_uuid,
+)
 
 
 class _ReceiptMetadata(DynamoClientProtocol):

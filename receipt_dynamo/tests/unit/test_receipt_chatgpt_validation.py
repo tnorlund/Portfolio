@@ -4,8 +4,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from receipt_dynamo import (ReceiptChatGPTValidation,
-                            itemToReceiptChatGPTValidation)
+from receipt_dynamo import ReceiptChatGPTValidation, itemToReceiptChatGPTValidation
 
 
 @pytest.fixture

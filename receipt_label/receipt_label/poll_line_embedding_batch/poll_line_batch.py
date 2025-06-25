@@ -22,11 +22,11 @@ This supports scalable, event-driven processing of line embedding jobs for
 receipt section classification.
 """
 
-from receipt_dynamo.constants import (BatchType, EmbeddingStatus,
-                                      ValidationStatus)
+from receipt_dynamo.constants import BatchType, EmbeddingStatus, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
-from receipt_label.submit_line_embedding_batch.submit_line_batch import \
-    _format_line_context_embedding_input
+from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+    _format_line_context_embedding_input,
+)
 from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
@@ -227,8 +227,9 @@ def upsert_line_embeddings_to_pinecone(
         height = target_line.bounding_box["height"]
 
         # Format the line context to extract prev/next lines
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import \
-            _format_line_context_embedding_input
+        from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+            _format_line_context_embedding_input,
+        )
 
         embedding_input = _format_line_context_embedding_input(target_line, lines)
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
