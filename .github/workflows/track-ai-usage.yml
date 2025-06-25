@@ -40,7 +40,12 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-1
-          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME || 'ai-usage-tracking' }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          WORKFLOW_RUN_JSON: ${{ toJson(github.event.workflow_run) }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number || '' }}
+          INPUT_ESTIMATED_TOKENS: ${{ inputs.estimated_tokens || '5000' }}
         run: |
           python -c "
           import os
@@ -49,21 +54,27 @@ jobs:
           from datetime import datetime
           import boto3
           
-          # Get context
-          event_name = '${{ github.event_name }}'
-          workflow_name = '${{ github.workflow }}'
+          # Get context from environment variables
+          event_name = os.environ.get('GITHUB_EVENT_NAME', '')
+          workflow_name = os.environ.get('GITHUB_WORKFLOW', '')
           
           if event_name == 'workflow_run':
               # Extract PR number from workflow run
               pr_number = None
-              workflow_run = ${{ toJson(github.event.workflow_run) }}
-              if workflow_run.get('head_branch') and workflow_run['head_branch'].startswith('pull/'):
-                  pr_number = int(workflow_run['head_branch'].split('/')[1])
+              workflow_run_json = os.environ.get('WORKFLOW_RUN_JSON', '{}')
+              try:
+                  workflow_run = json.loads(workflow_run_json) if workflow_run_json != '{}' else {}
+                  head_branch = workflow_run.get('head_branch', '')
+                  if head_branch and 'pull/' in head_branch:
+                      pr_number = int(head_branch.split('/')[-1])
+              except (json.JSONDecodeError, ValueError, IndexError):
+                  pr_number = None
               estimated_tokens = 5000  # Default estimate
           else:
               # Manual trigger
-              pr_number = ${{ inputs.pr_number || 'None' }}
-              estimated_tokens = ${{ inputs.estimated_tokens || 5000 }}
+              pr_number_str = os.environ.get('INPUT_PR_NUMBER', '')
+              pr_number = int(pr_number_str) if pr_number_str.isdigit() else None
+              estimated_tokens = int(os.environ.get('INPUT_ESTIMATED_TOKENS', '5000'))
           
           # Calculate cost estimate
           model = 'claude-3-opus'
