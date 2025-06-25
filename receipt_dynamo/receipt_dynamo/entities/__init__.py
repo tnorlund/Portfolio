@@ -5,8 +5,8 @@ TODO: Make this import work with intellisense
 """
 
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric  # noqa: F401
-from receipt_dynamo.entities.batch_summary import (BatchSummary,  # noqa: F401
-                                                   itemToBatchSummary)
+from receipt_dynamo.entities.batch_summary import BatchSummary  # noqa: F401
+from receipt_dynamo.entities.batch_summary import itemToBatchSummary
 from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
     CompletionBatchResult, itemToCompletionBatchResult)
 from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
@@ -15,13 +15,13 @@ from receipt_dynamo.entities.image import Image, itemToImage  # noqa: F401
 from receipt_dynamo.entities.image_details import ImageDetails  # noqa: F401
 from receipt_dynamo.entities.instance import (Instance,  # noqa: F401
                                               itemToInstance)
-from receipt_dynamo.entities.instance_job import (InstanceJob,  # noqa: F401
-                                                  itemToInstanceJob)
+from receipt_dynamo.entities.instance_job import InstanceJob  # noqa: F401
+from receipt_dynamo.entities.instance_job import itemToInstanceJob
 from receipt_dynamo.entities.job import Job, itemToJob  # noqa: F401
 from receipt_dynamo.entities.job_metric import (JobMetric,  # noqa: F401
                                                 itemToJobMetric)
-from receipt_dynamo.entities.job_resource import (JobResource,  # noqa: F401
-                                                  itemToJobResource)
+from receipt_dynamo.entities.job_resource import JobResource  # noqa: F401
+from receipt_dynamo.entities.job_resource import itemToJobResource
 from receipt_dynamo.entities.job_status import (JobStatus,  # noqa: F401
                                                 itemToJobStatus)
 from receipt_dynamo.entities.label_count_cache import (  # noqa: F401
@@ -45,14 +45,14 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
     ReceiptChatGPTValidation, itemToReceiptChatGPTValidation)
 from receipt_dynamo.entities.receipt_details import \
     ReceiptDetails  # noqa: F401
-from receipt_dynamo.entities.receipt_field import (ReceiptField,  # noqa: F401
-                                                   itemToReceiptField)
+from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
+from receipt_dynamo.entities.receipt_field import itemToReceiptField
 from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
     ReceiptLabelAnalysis, itemToReceiptLabelAnalysis)
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter, itemToReceiptLetter)
-from receipt_dynamo.entities.receipt_line import (ReceiptLine,  # noqa: F401
-                                                  itemToReceiptLine)
+from receipt_dynamo.entities.receipt_line import ReceiptLine  # noqa: F401
+from receipt_dynamo.entities.receipt_line import itemToReceiptLine
 from receipt_dynamo.entities.receipt_line_item_analysis import (  # noqa: F401
     ReceiptLineItemAnalysis, itemToReceiptLineItemAnalysis)
 from receipt_dynamo.entities.receipt_metadata import (  # noqa: F401
@@ -67,8 +67,8 @@ from receipt_dynamo.entities.receipt_validation_result import (  # noqa: F401
     ReceiptValidationResult, itemToReceiptValidationResult)
 from receipt_dynamo.entities.receipt_validation_summary import (  # noqa: F401
     ReceiptValidationSummary, itemToReceiptValidationSummary)
-from receipt_dynamo.entities.receipt_word import (ReceiptWord,  # noqa: F401
-                                                  itemToReceiptWord)
+from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: F401
+from receipt_dynamo.entities.receipt_word import itemToReceiptWord
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel, itemToReceiptWordLabel)
 from receipt_dynamo.entities.receipt_word_tag import (  # noqa: F401
