@@ -7,13 +7,18 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
-from ..data.gpt import (gpt_request_line_item_analysis,
-                        gpt_request_spatial_currency_analysis)
+from ..data.gpt import (
+    gpt_request_line_item_analysis,
+    gpt_request_spatial_currency_analysis,
+)
 from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
-from ..models.uncertainty import (MissingComponentUncertainty,
-                                  MultipleAmountsUncertainty,
-                                  TotalMismatchUncertainty, UncertaintyItem)
+from ..models.uncertainty import (
+    MissingComponentUncertainty,
+    MultipleAmountsUncertainty,
+    TotalMismatchUncertainty,
+    UncertaintyItem,
+)
 from .llm_processor import LLMProcessor
 
 logger = logging.getLogger(__name__)
@@ -153,7 +158,9 @@ class FastPatternMatcher:
             for match in re.finditer(pattern, text):
                 try:
                     # Clean the matched text
-                    amount_str = match.group(0).replace("$", "").replace(",", "")
+                    amount_str = (
+                        match.group(0).replace("$", "").replace(",", "")
+                    )
                     # Handle quantity @ price pattern
                     if "@" in amount_str:
                         qty, price = amount_str.split("@")
@@ -172,7 +179,9 @@ class FastPatternMatcher:
                         )
                     )
                 except (ValueError, InvalidOperation):
-                    logger.debug(f"Failed to parse amount from {match.group(0)}")
+                    logger.debug(
+                        f"Failed to parse amount from {match.group(0)}"
+                    )
                     continue
 
         return matches
@@ -207,7 +216,10 @@ class FastPatternMatcher:
                 )
 
             if isinstance(word.bounding_box, dict):
-                if "x" not in word.bounding_box or "y" not in word.bounding_box:
+                if (
+                    "x" not in word.bounding_box
+                    or "y" not in word.bounding_box
+                ):
                     raise ValueError(
                         f"Bounding box missing required x,y coordinates: {word.bounding_box}"
                     )
@@ -244,7 +256,9 @@ class FastPatternMatcher:
             else:
                 raise ValueError(f"Word missing required text: {word}")
 
-            matches = self.find_currency_amounts(text, line_id, position, word_id)
+            matches = self.find_currency_amounts(
+                text, line_id, position, word_id
+            )
             currency_matches.extend(matches)
 
         # Organize currency amounts by line ID
@@ -259,9 +273,13 @@ class FastPatternMatcher:
         line_positions = {}
         for line in receipt_lines:
             line_id = (
-                line.line_id if hasattr(line, "line_id") else line.get("line_id", "")
+                line.line_id
+                if hasattr(line, "line_id")
+                else line.get("line_id", "")
             )
-            line_text = line.text if hasattr(line, "text") else line.get("text", "")
+            line_text = (
+                line.text if hasattr(line, "text") else line.get("text", "")
+            )
             line_texts[line_id] = line_text
 
             # Extract y-position from the first word of the line
@@ -423,7 +441,10 @@ class FastPatternMatcher:
                             line=next(
                                 l
                                 for l in receipt_lines
-                                if (hasattr(l, "line_id") and l.line_id == line_id)
+                                if (
+                                    hasattr(l, "line_id")
+                                    and l.line_id == line_id
+                                )
                                 or (
                                     isinstance(l, dict)
                                     and l.get("line_id", "") == line_id
@@ -455,7 +476,10 @@ class FastPatternMatcher:
                 continue
 
             # Check for tax indicators
-            if any(pattern in line_text for pattern in ["tax", "vat", "gst", "hst"]):
+            if any(
+                pattern in line_text
+                for pattern in ["tax", "vat", "gst", "hst"]
+            ):
                 tax = amount
                 continue
 
@@ -476,7 +500,9 @@ class FastPatternMatcher:
             # If we get here, this might be a line item
             # Create a basic description from text to the left
             description = (
-                left_text.strip() if left_text else f"Item on line {context['line_id']}"
+                left_text.strip()
+                if left_text
+                else f"Item on line {context['line_id']}"
             )
 
             # Clean up the description
@@ -517,7 +543,9 @@ class FastPatternMatcher:
         result.currency_amounts = []
 
         # Debug the currency detection
-        logger.info(f"Detected {len(currency_contexts)} currency amounts in receipt")
+        logger.info(
+            f"Detected {len(currency_contexts)} currency amounts in receipt"
+        )
 
         for ctx in currency_contexts:
             # Get details about the match
@@ -528,7 +556,9 @@ class FastPatternMatcher:
             y_position = ctx.get("y_position", 0)
 
             # Log details
-            logger.info(f"Currency amount: {amount}, Text: {text}, Line: {line_id}")
+            logger.info(
+                f"Currency amount: {amount}, Text: {text}, Line: {line_id}"
+            )
 
             # Create context for this currency amount
             context = {
@@ -549,7 +579,9 @@ class FastPatternMatcher:
             # Add to the result list
             result.currency_amounts.append(currency_amount)
 
-        logger.info(f"Added {len(result.currency_amounts)} currency amounts to result")
+        logger.info(
+            f"Added {len(result.currency_amounts)} currency amounts to result"
+        )
 
         return result
 
@@ -565,16 +597,23 @@ class LineItemValidator:
 
         # Check for missing components
         if result.subtotal is None:
-            uncertain_items.append(MissingComponentUncertainty(component="subtotal"))
+            uncertain_items.append(
+                MissingComponentUncertainty(component="subtotal")
+            )
         if result.tax is None:
-            uncertain_items.append(MissingComponentUncertainty(component="tax"))
+            uncertain_items.append(
+                MissingComponentUncertainty(component="tax")
+            )
         if result.total is None:
-            uncertain_items.append(MissingComponentUncertainty(component="total"))
+            uncertain_items.append(
+                MissingComponentUncertainty(component="total")
+            )
 
         # Validate totals
         if result.subtotal and result.line_items:
             calculated_subtotal = sum(
-                item.price.extended_price or Decimal("0") for item in result.line_items
+                item.price.extended_price or Decimal("0")
+                for item in result.line_items
             )
             if abs(calculated_subtotal - result.subtotal) > Decimal("0.01"):
                 uncertain_items.append(
@@ -647,7 +686,9 @@ class LineItemProcessor:
         if env_key:
             # Only log first and last few characters for security
             masked_key = (
-                env_key[:4] + "..." + env_key[-4:] if len(env_key) > 8 else "***"
+                env_key[:4] + "..." + env_key[-4:]
+                if len(env_key) > 8
+                else "***"
             )
             logger.info(f"ENV variable OPENAI_API_KEY is set: {masked_key}")
         else:
@@ -682,7 +723,10 @@ class LineItemProcessor:
         self.llm_processor = LLMProcessor(self.openai_api_key)
 
     def _find_description_words(
-        self, receipt_words: List[ReceiptWord], description: str, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        description: str,
+        line_ids: List[int],
     ) -> List[ReceiptWord]:
         """
         Find words that correspond to an item description.
@@ -704,7 +748,9 @@ class LineItemProcessor:
             return []
 
         # Get all words from the requested lines
-        line_words = [word for word in receipt_words if word.line_id in line_ids]
+        line_words = [
+            word for word in receipt_words if word.line_id in line_ids
+        ]
         if not line_words:
             return []
 
@@ -723,7 +769,9 @@ class LineItemProcessor:
         # If description contains "Item on line X", it's a placeholder
         if re.match(r"item on line \d+", clean_description):
             # Return all non-price words as potential description words
-            return [word for word in line_words if not is_price_like(word.text)]
+            return [
+                word for word in line_words if not is_price_like(word.text)
+            ]
         else:
             # Otherwise, find words that match parts of the description
             matched_words = []
@@ -731,7 +779,10 @@ class LineItemProcessor:
             # Try exact matching first
             for word in line_words:
                 word_text = word.text.lower().strip()
-                if not is_price_like(word_text) and word_text in clean_description:
+                if (
+                    not is_price_like(word_text)
+                    and word_text in clean_description
+                ):
                     matched_words.append(word)
 
             # If we got exact matches, return them
@@ -751,19 +802,28 @@ class LineItemProcessor:
                     if (
                         word_text in clean_description
                         or clean_description in word_text
-                        or any(w in word_text for w in clean_description.split())
-                        or any(word_text in d for d in clean_description.split())
+                        or any(
+                            w in word_text for w in clean_description.split()
+                        )
+                        or any(
+                            word_text in d for d in clean_description.split()
+                        )
                     ):
                         matched_words.append(word)
 
             # If we still don't have matches, return all non-financial words as a fallback
             if not matched_words:
-                return [word for word in line_words if not is_price_like(word.text)]
+                return [
+                    word for word in line_words if not is_price_like(word.text)
+                ]
 
             return matched_words
 
     def _find_quantity_words(
-        self, receipt_words: List[ReceiptWord], quantity: Quantity, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        quantity: Quantity,
+        line_ids: List[int],
     ) -> Dict[str, List[ReceiptWord]]:
         """
         Find words that correspond to quantity and unit.
@@ -776,7 +836,9 @@ class LineItemProcessor:
         Returns:
             Dictionary with 'amount' and 'unit' keys mapping to lists of matching words
         """
-        line_words = [word for word in receipt_words if word.line_id in line_ids]
+        line_words = [
+            word for word in receipt_words if word.line_id in line_ids
+        ]
         result = {"amount": [], "unit": []}
 
         # Convert amount to string representations (handle both "2" and "2.0")
@@ -809,7 +871,10 @@ class LineItemProcessor:
         return result
 
     def _find_price_words(
-        self, receipt_words: List[ReceiptWord], price: Decimal, line_ids: List[int]
+        self,
+        receipt_words: List[ReceiptWord],
+        price: Decimal,
+        line_ids: List[int],
     ) -> List[ReceiptWord]:
         """
         Find words that correspond to a price.
@@ -822,7 +887,9 @@ class LineItemProcessor:
         Returns:
             List of ReceiptWord objects that match the price
         """
-        line_words = [word for word in receipt_words if word.line_id in line_ids]
+        line_words = [
+            word for word in receipt_words if word.line_id in line_ids
+        ]
         matching_words = []
 
         # Generate different string representations of the price
@@ -843,7 +910,9 @@ class LineItemProcessor:
         return matching_words
 
     def _create_word_labels(
-        self, receipt_words: List[ReceiptWord], initial_results: ProcessingResult
+        self,
+        receipt_words: List[ReceiptWord],
+        initial_results: ProcessingResult,
     ) -> Dict[Tuple[int, int], Dict]:
         """
         Create word labels based on line item analysis results.
@@ -924,9 +993,14 @@ class LineItemProcessor:
                 # Label unit words
                 for word in quantity_words["unit"]:
                     # Check if this word is already labeled as an amount (combined case)
-                    if (word.line_id, word.word_id) in word_labels and word_labels[
+                    if (
+                        word.line_id,
+                        word.word_id,
+                    ) in word_labels and word_labels[
                         (word.line_id, word.word_id)
-                    ]["label"] == ITEM_QUANTITY_LABEL:
+                    ][
+                        "label"
+                    ] == ITEM_QUANTITY_LABEL:
                         # Update the reasoning to indicate it's both
                         word_labels[(word.line_id, word.word_id)][
                             "reasoning"
@@ -1001,13 +1075,15 @@ class LineItemProcessor:
         if initial_results.subtotal:
             for word in receipt_words:
                 clean_text = re.sub(r"[$€£¥\s,]", "", word.text)
-                if clean_text == str(initial_results.subtotal) or clean_text == str(
-                    float(initial_results.subtotal)
-                ):
+                if clean_text == str(
+                    initial_results.subtotal
+                ) or clean_text == str(float(initial_results.subtotal)):
                     # Check if this word is near "subtotal" text
                     is_subtotal = False
                     nearby_words = [
-                        w for w in receipt_words if abs(w.line_id - word.line_id) <= 1
+                        w
+                        for w in receipt_words
+                        if abs(w.line_id - word.line_id) <= 1
                     ]
                     for nearby in nearby_words:
                         if "subtotal" in nearby.text.lower():
@@ -1015,7 +1091,10 @@ class LineItemProcessor:
                             break
 
                     # If confirmed subtotal or no better label exists
-                    if is_subtotal or (word.line_id, word.word_id) not in word_labels:
+                    if (
+                        is_subtotal
+                        or (word.line_id, word.word_id) not in word_labels
+                    ):
                         word_labels[(word.line_id, word.word_id)] = {
                             "label": SUBTOTAL_LABEL,
                             "item_index": None,
@@ -1040,7 +1119,9 @@ class LineItemProcessor:
                     # Check if this word is near "tax" text
                     is_tax = False
                     nearby_words = [
-                        w for w in receipt_words if abs(w.line_id - word.line_id) <= 1
+                        w
+                        for w in receipt_words
+                        if abs(w.line_id - word.line_id) <= 1
                     ]
                     for nearby in nearby_words:
                         if "tax" in nearby.text.lower():
@@ -1048,7 +1129,10 @@ class LineItemProcessor:
                             break
 
                     # If confirmed tax or no better label exists
-                    if is_tax or (word.line_id, word.word_id) not in word_labels:
+                    if (
+                        is_tax
+                        or (word.line_id, word.word_id) not in word_labels
+                    ):
                         word_labels[(word.line_id, word.word_id)] = {
                             "label": TAX_LABEL,
                             "item_index": None,
@@ -1067,13 +1151,15 @@ class LineItemProcessor:
         if initial_results.total:
             for word in receipt_words:
                 clean_text = re.sub(r"[$€£¥\s,]", "", word.text)
-                if clean_text == str(initial_results.total) or clean_text == str(
-                    float(initial_results.total)
-                ):
+                if clean_text == str(
+                    initial_results.total
+                ) or clean_text == str(float(initial_results.total)):
                     # Check if this word is near "total" text
                     is_total = False
                     nearby_words = [
-                        w for w in receipt_words if abs(w.line_id - word.line_id) <= 1
+                        w
+                        for w in receipt_words
+                        if abs(w.line_id - word.line_id) <= 1
                     ]
                     for nearby in nearby_words:
                         if "total" in nearby.text.lower():
@@ -1081,7 +1167,10 @@ class LineItemProcessor:
                             break
 
                     # If confirmed total or no better label exists
-                    if is_total or (word.line_id, word.word_id) not in word_labels:
+                    if (
+                        is_total
+                        or (word.line_id, word.word_id) not in word_labels
+                    ):
                         word_labels[(word.line_id, word.word_id)] = {
                             "label": TOTAL_LABEL,
                             "item_index": None,
@@ -1135,7 +1224,9 @@ class LineItemProcessor:
                     financial_summary["total"]["words"].append(word)
 
         # Log a pretty summary of the labeled words
-        self._log_label_summary(initial_results, financial_summary, word_labels)
+        self._log_label_summary(
+            initial_results, financial_summary, word_labels
+        )
 
         return word_labels
 
@@ -1155,12 +1246,16 @@ class LineItemProcessor:
         """
         divider = "=" * 70
 
-        logger.info(f"\n{divider}\n📋 LINE ITEM LABELING SUMMARY 📋\n{divider}")
+        logger.info(
+            f"\n{divider}\n📋 LINE ITEM LABELING SUMMARY 📋\n{divider}"
+        )
 
         # Financial overview section
         logger.info("💰 FINANCIAL OVERVIEW:")
 
-        subtotal_display = f"{results.subtotal}" if results.subtotal else "Not found"
+        subtotal_display = (
+            f"{results.subtotal}" if results.subtotal else "Not found"
+        )
         tax_display = f"{results.tax}" if results.tax else "Not found"
         total_display = f"{results.total}" if results.total else "Not found"
 
@@ -1169,19 +1264,17 @@ class LineItemProcessor:
             # Check if we have source words for financial fields
             if financial_fields["subtotal"]["words"]:
                 word = financial_fields["subtotal"]["words"][0]
-                subtotal_display = (
-                    f"{results.subtotal} (found at L{word.line_id}W{word.word_id})"
-                )
+                subtotal_display = f"{results.subtotal} (found at L{word.line_id}W{word.word_id})"
 
             if financial_fields["tax"]["words"]:
                 word = financial_fields["tax"]["words"][0]
-                tax_display = f"{results.tax} (found at L{word.line_id}W{word.word_id})"
+                tax_display = (
+                    f"{results.tax} (found at L{word.line_id}W{word.word_id})"
+                )
 
             if financial_fields["total"]["words"]:
                 word = financial_fields["total"]["words"][0]
-                total_display = (
-                    f"{results.total} (found at L{word.line_id}W{word.word_id})"
-                )
+                total_display = f"{results.total} (found at L{word.line_id}W{word.word_id})"
 
         logger.info(f"   Subtotal: {subtotal_display}")
         logger.info(f"   Tax:      {tax_display}")
@@ -1210,7 +1303,9 @@ class LineItemProcessor:
             quantity_display = "N/A"
             if item.quantity:
                 if item.quantity.amount and item.quantity.unit:
-                    quantity_display = f"{item.quantity.amount} {item.quantity.unit}"
+                    quantity_display = (
+                        f"{item.quantity.amount} {item.quantity.unit}"
+                    )
                 elif item.quantity.amount:
                     quantity_display = str(item.quantity.amount)
             logger.info(f"      Quantity: {quantity_display}")
@@ -1246,11 +1341,17 @@ class LineItemProcessor:
             ]
             if subtotal_labels:
                 logger.info(f"   Subtotal: {len(subtotal_labels)} labels")
-                for (line_id, word_id), label in subtotal_labels[:3]:  # Show up to 3
+                for (line_id, word_id), label in subtotal_labels[
+                    :3
+                ]:  # Show up to 3
                     word_text = label.get("text", "")
-                    logger.info(f"      • '{word_text}' (L{line_id}W{word_id})")
+                    logger.info(
+                        f"      • '{word_text}' (L{line_id}W{word_id})"
+                    )
                 if len(subtotal_labels) > 3:
-                    logger.info(f"      • ... and {len(subtotal_labels) - 3} more")
+                    logger.info(
+                        f"      • ... and {len(subtotal_labels) - 3} more"
+                    )
             else:
                 logger.info(f"   Subtotal: No labels found")
 
@@ -1262,9 +1363,13 @@ class LineItemProcessor:
             ]
             if tax_labels:
                 logger.info(f"   Tax: {len(tax_labels)} labels")
-                for (line_id, word_id), label in tax_labels[:3]:  # Show up to 3
+                for (line_id, word_id), label in tax_labels[
+                    :3
+                ]:  # Show up to 3
                     word_text = label.get("text", "")
-                    logger.info(f"      • '{word_text}' (L{line_id}W{word_id})")
+                    logger.info(
+                        f"      • '{word_text}' (L{line_id}W{word_id})"
+                    )
                 if len(tax_labels) > 3:
                     logger.info(f"      • ... and {len(tax_labels) - 3} more")
             else:
@@ -1278,11 +1383,17 @@ class LineItemProcessor:
             ]
             if total_labels:
                 logger.info(f"   Total: {len(total_labels)} labels")
-                for (line_id, word_id), label in total_labels[:3]:  # Show up to 3
+                for (line_id, word_id), label in total_labels[
+                    :3
+                ]:  # Show up to 3
                     word_text = label.get("text", "")
-                    logger.info(f"      • '{word_text}' (L{line_id}W{word_id})")
+                    logger.info(
+                        f"      • '{word_text}' (L{line_id}W{word_id})"
+                    )
                 if len(total_labels) > 3:
-                    logger.info(f"      • ... and {len(total_labels) - 3} more")
+                    logger.info(
+                        f"      • ... and {len(total_labels) - 3} more"
+                    )
             else:
                 logger.info(f"   Total: No labels found")
 
@@ -1293,7 +1404,9 @@ class LineItemProcessor:
         logger.info(f"{divider}\n")
 
     def _find_financial_summary_fields(
-        self, receipt_lines: List[ReceiptLine], receipt_words: List[ReceiptWord]
+        self,
+        receipt_lines: List[ReceiptLine],
+        receipt_words: List[ReceiptWord],
     ) -> Dict:
         """
         Find subtotal, tax, and total fields in the receipt.
@@ -1325,11 +1438,17 @@ class LineItemProcessor:
         for line_id in candidate_line_ids:
             line = receipt_lines_by_id[line_id]
             line_text = " ".join(
-                [word.text for word in receipt_words if word.line_id == line_id]
+                [
+                    word.text
+                    for word in receipt_words
+                    if word.line_id == line_id
+                ]
             )
 
             # Check for subtotal patterns
-            if any(re.search(pattern, line_text) for pattern in SUBTOTAL_PATTERNS):
+            if any(
+                re.search(pattern, line_text) for pattern in SUBTOTAL_PATTERNS
+            ):
                 # Extract amount from this line
                 currency_amounts = []
                 for word in [w for w in receipt_words if w.line_id == line_id]:
@@ -1352,7 +1471,11 @@ class LineItemProcessor:
         for line_id in candidate_line_ids:
             line = receipt_lines_by_id[line_id]
             line_text = " ".join(
-                [word.text for word in receipt_words if word.line_id == line_id]
+                [
+                    word.text
+                    for word in receipt_words
+                    if word.line_id == line_id
+                ]
             )
 
             # Check for tax patterns
@@ -1390,11 +1513,17 @@ class LineItemProcessor:
         for line_id in candidate_line_ids:
             line = receipt_lines_by_id[line_id]
             line_text = " ".join(
-                [word.text for word in receipt_words if word.line_id == line_id]
+                [
+                    word.text
+                    for word in receipt_words
+                    if word.line_id == line_id
+                ]
             )
 
             # Check for total patterns
-            if any(re.search(pattern, line_text) for pattern in TOTAL_PATTERNS):
+            if any(
+                re.search(pattern, line_text) for pattern in TOTAL_PATTERNS
+            ):
                 # Extract amount from this line
                 currency_amounts = []
                 for word in [w for w in receipt_words if w.line_id == line_id]:
@@ -1413,7 +1542,9 @@ class LineItemProcessor:
                     result["total"]["value"] = amount
                     result["total"]["words"].append(word)
                     found_total = True
-                    logger.debug(f"Found explicit total: {amount} in line: {line_text}")
+                    logger.debug(
+                        f"Found explicit total: {amount} in line: {line_text}"
+                    )
 
         # If we still don't have a total, look for line items that might represent totals
         # (This is a fallback for receipts that don't have explicit "TOTAL" text)
@@ -1446,14 +1577,20 @@ class LineItemProcessor:
             for line_id in candidate_line_ids:
                 line = receipt_lines_by_id[line_id]
                 line_text = " ".join(
-                    [word.text for word in receipt_words if word.line_id == line_id]
+                    [
+                        word.text
+                        for word in receipt_words
+                        if word.line_id == line_id
+                    ]
                 ).lower()
 
                 # Check if this line has total-like text
                 if any(phrase in line_text for phrase in total_phrases):
                     # Extract amount from this line
                     currency_amounts = []
-                    for word in [w for w in receipt_words if w.line_id == line_id]:
+                    for word in [
+                        w for w in receipt_words if w.line_id == line_id
+                    ]:
                         try:
                             # Clean the text
                             clean_text = re.sub(r"[$€£¥\s,]", "", word.text)
@@ -1474,7 +1611,9 @@ class LineItemProcessor:
                         amount, word, score = max(
                             currency_amounts, key=lambda x: (x[2], x[0])
                         )
-                        potential_totals.append((amount, word, score, line_text))
+                        potential_totals.append(
+                            (amount, word, score, line_text)
+                        )
 
             # If we found potential totals, use the one with the highest score
             # (or the highest amount if scores are equal)
@@ -1490,7 +1629,9 @@ class LineItemProcessor:
 
         return result
 
-    def _post_process_line_items(self, result: ProcessingResult) -> ProcessingResult:
+    def _post_process_line_items(
+        self, result: ProcessingResult
+    ) -> ProcessingResult:
         """
         Post-process line items to identify and handle items that appear to be totals.
 
@@ -1541,7 +1682,9 @@ class LineItemProcessor:
                     if any(phrase in desc_lower for phrase in total_phrases):
                         # Score the match based on phrase appearance
                         score = sum(
-                            1 for phrase in total_phrases if phrase in desc_lower
+                            1
+                            for phrase in total_phrases
+                            if phrase in desc_lower
                         )
                         potential_total_items.append((item, score))
                     else:
@@ -1569,7 +1712,9 @@ class LineItemProcessor:
 
                     # Keep all remaining items
                     updated_result.line_items = [
-                        item for item in updated_result.line_items if item != best_match
+                        item
+                        for item in updated_result.line_items
+                        if item != best_match
                     ]
 
                     # Add reasoning about this conversion
@@ -1602,7 +1747,9 @@ class LineItemProcessor:
 
         return updated_result
 
-    def _process_line_items(self, line_items: List[LineItem]) -> List[LineItem]:
+    def _process_line_items(
+        self, line_items: List[LineItem]
+    ) -> List[LineItem]:
         """Process line items to differentiate between regular items and summary items.
 
         Args:
@@ -1653,7 +1800,14 @@ class LineItemProcessor:
             # Check for exact tax-like items
             is_tax_item = any(
                 term in desc_lower
-                for term in ["tax", "vat", "gst", "hst", "sales tax", "tax amount"]
+                for term in [
+                    "tax",
+                    "vat",
+                    "gst",
+                    "hst",
+                    "sales tax",
+                    "tax amount",
+                ]
             )
 
             # Only filter out items that are clearly financial summary items
@@ -1714,7 +1868,9 @@ class LineItemProcessor:
             if self.openai_api_key:
                 logger.info("API key is available for GPT analysis")
             else:
-                logger.warning("GPT API key missing, using basic analysis only")
+                logger.warning(
+                    "GPT API key missing, using basic analysis only"
+                )
 
             # If no need for advanced analysis or no API key, return the basic results
             use_llm = True  # Default to using LLM if available
@@ -1725,7 +1881,9 @@ class LineItemProcessor:
                 or not initial_result.currency_amounts
             ):
                 if not self.openai_api_key:
-                    logger.warning("GPT API key missing, using basic analysis only")
+                    logger.warning(
+                        "GPT API key missing, using basic analysis only"
+                    )
                 # Convert ProcessingResult to LineItemAnalysis and return
                 return LineItemAnalysis(
                     items=initial_result.line_items,
@@ -1735,7 +1893,9 @@ class LineItemProcessor:
                     total=initial_result.total,
                     discrepancies=[],
                     reasoning=initial_result.reasoning,
-                    word_labels=self._create_word_labels(receipt_words, initial_result),
+                    word_labels=self._create_word_labels(
+                        receipt_words, initial_result
+                    ),
                 )
 
             # Prepare currency contexts for GPT analysis
@@ -1772,7 +1932,9 @@ class LineItemProcessor:
                     )
 
                     # Debug: Log the GPT result
-                    logger.info(f"GPT Response: {json.dumps(gpt_result, indent=2)}")
+                    logger.info(
+                        f"GPT Response: {json.dumps(gpt_result, indent=2)}"
+                    )
 
                     # Extract information from GPT result
                     if gpt_result:
@@ -1800,7 +1962,10 @@ class LineItemProcessor:
 
                             # Create quantity if available
                             quantity = None
-                            if "quantity" in item and item["quantity"] is not None:
+                            if (
+                                "quantity" in item
+                                and item["quantity"] is not None
+                            ):
                                 try:
                                     quantity = Quantity(
                                         amount=Decimal(str(item["quantity"])),
@@ -1849,7 +2014,11 @@ class LineItemProcessor:
                             ):
                                 try:
                                     subtotal = Decimal(
-                                        str(gpt_result["financial_summary"]["subtotal"])
+                                        str(
+                                            gpt_result["financial_summary"][
+                                                "subtotal"
+                                            ]
+                                        )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
@@ -1858,11 +2027,16 @@ class LineItemProcessor:
 
                             if (
                                 "tax" in gpt_result["financial_summary"]
-                                and gpt_result["financial_summary"]["tax"] is not None
+                                and gpt_result["financial_summary"]["tax"]
+                                is not None
                             ):
                                 try:
                                     tax = Decimal(
-                                        str(gpt_result["financial_summary"]["tax"])
+                                        str(
+                                            gpt_result["financial_summary"][
+                                                "tax"
+                                            ]
+                                        )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
@@ -1871,11 +2045,16 @@ class LineItemProcessor:
 
                             if (
                                 "total" in gpt_result["financial_summary"]
-                                and gpt_result["financial_summary"]["total"] is not None
+                                and gpt_result["financial_summary"]["total"]
+                                is not None
                             ):
                                 try:
                                     total = Decimal(
-                                        str(gpt_result["financial_summary"]["total"])
+                                        str(
+                                            gpt_result["financial_summary"][
+                                                "total"
+                                            ]
+                                        )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
@@ -1947,9 +2126,13 @@ class LineItemProcessor:
                                         hasattr(item, "price")
                                         and item.price
                                         and item.price.extended_price
-                                        and item.price.extended_price > Decimal("0")
+                                        and item.price.extended_price
+                                        > Decimal("0")
                                     ):
-                                        tax_ratio = item.price.extended_price / subtotal
+                                        tax_ratio = (
+                                            item.price.extended_price
+                                            / subtotal
+                                        )
                                         if (
                                             Decimal("0.03")
                                             < tax_ratio
@@ -1960,7 +2143,8 @@ class LineItemProcessor:
                                             )
                                             if (
                                                 tax is None
-                                                or item.price.extended_price > tax
+                                                or item.price.extended_price
+                                                > tax
                                             ):
                                                 tax = item.price.extended_price
                                                 # Remove this item from line items as it's likely tax
@@ -2051,14 +2235,18 @@ class LineItemProcessor:
                             uncertain_items=initial_result.uncertain_items,
                         )
                 else:
-                    logger.warning("GPT API key missing, using basic analysis only")
+                    logger.warning(
+                        "GPT API key missing, using basic analysis only"
+                    )
 
             except Exception as e:
                 logger.error(f"Error in GPT classification: {str(e)}")
                 logger.error(traceback.format_exc())
 
             # Create the final analysis
-            validation_results = self.validator.validate_full_receipt(initial_result)
+            validation_results = self.validator.validate_full_receipt(
+                initial_result
+            )
             try:
                 return LineItemAnalysis(
                     items=initial_result.line_items,
@@ -2067,11 +2255,17 @@ class LineItemProcessor:
                     tax=initial_result.tax,
                     total=initial_result.total,
                     discrepancies=[
-                        f"{item}" for item in validation_results.get("warnings", [])
+                        f"{item}"
+                        for item in validation_results.get("warnings", [])
                     ]
-                    + [f"{item}" for item in validation_results.get("errors", [])],
+                    + [
+                        f"{item}"
+                        for item in validation_results.get("errors", [])
+                    ],
                     reasoning=initial_result.reasoning,
-                    word_labels=self._create_word_labels(receipt_words, initial_result),
+                    word_labels=self._create_word_labels(
+                        receipt_words, initial_result
+                    ),
                 )
             except Exception as e:
                 logger.error(f"Error creating LineItemAnalysis: {str(e)}")
@@ -2083,7 +2277,9 @@ class LineItemProcessor:
                     subtotal=None,
                     tax=None,
                     total=None,
-                    discrepancies=["Error creating LineItemAnalysis: " + str(e)],
+                    discrepancies=[
+                        "Error creating LineItemAnalysis: " + str(e)
+                    ],
                     reasoning=f"Error creating LineItemAnalysis: {str(e)}",
                     word_labels={},
                 )

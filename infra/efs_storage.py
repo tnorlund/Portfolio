@@ -205,5 +205,9 @@ class EFSStorage:
 
         pulumi.export(f"{name}_efs_file_system_id", self.file_system_id)
         pulumi.export(f"{name}_efs_dns_name", self.file_system_dns_name)
-        pulumi.export(f"{name}_efs_training_ap_id", self.training_access_point_id)
-        pulumi.export(f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id)
+        pulumi.export(
+            f"{name}_efs_training_ap_id", self.training_access_point_id
+        )
+        pulumi.export(
+            f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id
+        )

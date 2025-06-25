@@ -17,9 +17,11 @@ def fetch_merchant_counts():
         limit=1000,
     )
     while last_evaluated_key is not None:
-        next_receipt_metadatas, last_evaluated_key = dynamo_client.listReceiptMetadatas(
-            limit=1000,
-            lastEvaluatedKey=last_evaluated_key,
+        next_receipt_metadatas, last_evaluated_key = (
+            dynamo_client.listReceiptMetadatas(
+                limit=1000,
+                lastEvaluatedKey=last_evaluated_key,
+            )
         )
         receipt_metadatas.extend(next_receipt_metadatas)
 

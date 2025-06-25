@@ -39,9 +39,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Parse query parameters
         query_params = event.get("queryStringParameters") or {}
         start_date = query_params.get(
-            "start_date", (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+            "start_date",
+            (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d"),
         )
-        end_date = query_params.get("end_date", datetime.utcnow().strftime("%Y-%m-%d"))
+        end_date = query_params.get(
+            "end_date", datetime.utcnow().strftime("%Y-%m-%d")
+        )
         service = query_params.get("service")
         operation = query_params.get("operation")
         aggregation = query_params.get("aggregation", "day").split(",")
@@ -69,7 +72,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "total_tokens": total_tokens,
                 "total_api_calls": total_calls,
                 "average_cost_per_call": (
-                    round(total_cost / total_calls, 6) if total_calls > 0 else 0
+                    round(total_cost / total_calls, 6)
+                    if total_calls > 0
+                    else 0
                 ),
                 "date_range": {"start": start_date, "end": end_date},
             },
@@ -126,7 +131,9 @@ def query_ai_usage_metrics(
             response = table.query(
                 IndexName="GSI1",
                 KeyConditionExpression=Key("GSI1PK").eq(f"AI_USAGE#{service}")
-                & Key("GSI1SK").between(f"DATE#{start_date}", f"DATE#{end_date}"),
+                & Key("GSI1SK").between(
+                    f"DATE#{start_date}", f"DATE#{end_date}"
+                ),
                 ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             items.extend(response.get("Items", []))
@@ -140,7 +147,9 @@ def query_ai_usage_metrics(
             response = table.query(
                 IndexName="GSI1",
                 KeyConditionExpression=Key("GSI1PK").eq(f"AI_USAGE#{svc}")
-                & Key("GSI1SK").between(f"DATE#{start_date}", f"DATE#{end_date}"),
+                & Key("GSI1SK").between(
+                    f"DATE#{start_date}", f"DATE#{end_date}"
+                ),
             )
             items = response.get("Items", [])
 
@@ -149,7 +158,9 @@ def query_ai_usage_metrics(
                 response = table.query(
                     IndexName="GSI1",
                     KeyConditionExpression=Key("GSI1PK").eq(f"AI_USAGE#{svc}")
-                    & Key("GSI1SK").between(f"DATE#{start_date}", f"DATE#{end_date}"),
+                    & Key("GSI1SK").between(
+                        f"DATE#{start_date}", f"DATE#{end_date}"
+                    ),
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 items.extend(response.get("Items", []))
@@ -233,15 +244,25 @@ def aggregate_by_service(metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_service[service]["tokens"] += int(metric.get("totalTokens", 0))
         by_service[service]["api_calls"] += 1
         by_service[service]["models"].add(metric.get("model", "unknown"))
-        by_service[service]["operations"].add(metric.get("operation", "unknown"))
+        by_service[service]["operations"].add(
+            metric.get("operation", "unknown")
+        )
 
     # Convert sets to lists and round costs
     for service in by_service:
         by_service[service]["models"] = list(by_service[service]["models"])
-        by_service[service]["operations"] = list(by_service[service]["operations"])
-        by_service[service]["cost_usd"] = round(by_service[service]["cost_usd"], 4)
+        by_service[service]["operations"] = list(
+            by_service[service]["operations"]
+        )
+        by_service[service]["cost_usd"] = round(
+            by_service[service]["cost_usd"], 4
+        )
         by_service[service]["average_cost_per_call"] = (
-            round(by_service[service]["cost_usd"] / by_service[service]["api_calls"], 6)
+            round(
+                by_service[service]["cost_usd"]
+                / by_service[service]["api_calls"],
+                6,
+            )
             if by_service[service]["api_calls"] > 0
             else 0
         )
@@ -296,11 +317,15 @@ def aggregate_by_operation(metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_operation[operation]["cost_usd"] += float(metric.get("costUSD", 0))
         by_operation[operation]["tokens"] += int(metric.get("totalTokens", 0))
         by_operation[operation]["api_calls"] += 1
-        by_operation[operation]["services"].add(metric.get("service", "unknown"))
+        by_operation[operation]["services"].add(
+            metric.get("service", "unknown")
+        )
 
     # Convert sets to lists and round costs
     for operation in by_operation:
-        by_operation[operation]["services"] = list(by_operation[operation]["services"])
+        by_operation[operation]["services"] = list(
+            by_operation[operation]["services"]
+        )
         by_operation[operation]["cost_usd"] = round(
             by_operation[operation]["cost_usd"], 4
         )

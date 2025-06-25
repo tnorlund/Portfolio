@@ -61,7 +61,9 @@ class _Word(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add words to the database")
@@ -82,7 +84,10 @@ class _Word(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Word with ID {word.word_id} not found")
             else:
                 raise Exception(f"Error updating word: {e}")
@@ -140,7 +145,9 @@ class _Word(DynamoClientProtocol):
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more words do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -187,7 +194,9 @@ class _Word(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete words from the database")
@@ -247,7 +256,9 @@ class _Word(DynamoClientProtocol):
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -276,9 +287,13 @@ class _Word(DynamoClientProtocol):
             words.extend([itemToWord(item) for item in response["Items"]])
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    words.extend([itemToWord(item) for item in response["Items"]])
+                    words.extend(
+                        [itemToWord(item) for item in response["Items"]]
+                    )
                 lastEvaluatedKey = None
             else:
                 lastEvaluatedKey = response.get("LastEvaluatedKey", None)

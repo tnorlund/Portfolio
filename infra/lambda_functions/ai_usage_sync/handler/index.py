@@ -95,7 +95,10 @@ def sync_openai_usage(table) -> Dict:
     # Get organization ID for usage endpoint
     # Note: This is a simplified example. The actual OpenAI usage API
     # might require different authentication or endpoints
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
 
     # Get usage for the last 24 hours
     end_date = datetime.utcnow()
@@ -189,7 +192,9 @@ def sync_google_cloud_usage(table) -> Dict:
         # Process results and store in DynamoDB
         usage_count = 0
         for result in results:
-            usage_count += sum(point.value.int64_value for point in result.points)
+            usage_count += sum(
+                point.value.int64_value for point in result.points
+            )
 
         return {
             "status": "success",
