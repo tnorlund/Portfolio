@@ -11,6 +11,7 @@ from routes.process.infra import process_lambda
 from routes.random_image_details.infra import random_image_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
+
 from routes.ai_usage.infra import ai_usage_lambda
 
 # Detect the current Pulumi stack

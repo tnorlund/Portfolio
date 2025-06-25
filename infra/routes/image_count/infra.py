@@ -88,7 +88,6 @@ image_count_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    architectures=["arm64"],
     timeout=300,
     memory_size=1024,  # Increase the RAM to 1024 MB
     tags={"environment": pulumi.get_stack()},

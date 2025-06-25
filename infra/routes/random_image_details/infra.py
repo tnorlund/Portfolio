@@ -87,7 +87,6 @@ random_image_details_lambda = aws.lambda_.Function(
     ),
     handler="index.handler",
     layers=[dynamo_layer.arn],
-    architectures=["arm64"],
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,

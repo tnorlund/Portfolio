@@ -90,7 +90,6 @@ receipts_lambda = aws.lambda_.Function(
     },
     memory_size=1024,
     timeout=60 * 2,
-    architectures=["arm64"],
     tags={"environment": pulumi.get_stack()},
 )
 

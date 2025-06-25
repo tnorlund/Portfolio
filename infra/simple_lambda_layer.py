@@ -496,6 +496,11 @@ simple_dynamo_layer = simple_lambda_layers["receipt-dynamo"]
 simple_label_layer = simple_lambda_layers["receipt-label"]
 simple_upload_layer = simple_lambda_layers["receipt-upload"]
 
+# Create aliases for backward compatibility
+dynamo_layer = simple_dynamo_layer
+label_layer = simple_label_layer
+upload_layer = simple_upload_layer
+
 # Export the layer ARNs for reference
 pulumi.export("simple_dynamo_layer_arn", simple_dynamo_layer.arn)
 pulumi.export("simple_label_layer_arn", simple_label_layer.arn)

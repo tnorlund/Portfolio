@@ -1130,6 +1130,11 @@ fast_dynamo_layer = fast_lambda_layers["receipt-dynamo"]
 fast_label_layer = fast_lambda_layers["receipt-label"]
 fast_upload_layer = fast_lambda_layers["receipt-upload"]
 
+# Create aliases for backward compatibility
+dynamo_layer = fast_dynamo_layer
+label_layer = fast_label_layer
+upload_layer = fast_upload_layer
+
 # Export the layer ARNs for reference
 pulumi.export("fast_dynamo_layer_arn", fast_dynamo_layer.arn)
 pulumi.export("fast_label_layer_arn", fast_label_layer.arn)

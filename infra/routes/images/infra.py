@@ -67,7 +67,6 @@ images_lambda = aws.lambda_.Function(
     handler="index.handler",
     layers=[dynamo_layer.arn],
     environment={"variables": {"DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME}},
-    architectures=["arm64"],
     memory_size=1024,
     timeout=30,
     tags={"environment": pulumi.get_stack()},

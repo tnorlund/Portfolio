@@ -135,7 +135,6 @@ merchant_counts_lambda = aws.lambda_.Function(
     },
     memory_size=3072,
     timeout=300,
-    architectures=["arm64"],
     tags={"environment": pulumi.get_stack()},
     opts=pulumi.ResourceOptions(
         ignore_changes=["layers"],
