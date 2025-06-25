@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 def setup_test_environment():
     """
     Set up the test environment with required mocks and environment variables.
-    
+
     This function should be called at the top of test modules before any
     imports from the merchant_validation package.
     """
@@ -25,16 +25,16 @@ def setup_test_environment():
         "PINECONE_INDEX_NAME": "test-index",
         "PINECONE_HOST": "test-host",
     }
-    
+
     for key, value in env_defaults.items():
         os.environ.setdefault(key, value)
-    
+
     # Mock the agents module if not already mocked
-    if 'agents' not in sys.modules:
+    if "agents" not in sys.modules:
         mock_agents = MagicMock()
         mock_agents.Agent = MagicMock()
         mock_agents.Runner = MagicMock()
         mock_agents.function_tool = MagicMock()
-        sys.modules['agents'] = mock_agents
-    
-    return sys.modules['agents']
+        sys.modules["agents"] = mock_agents
+
+    return sys.modules["agents"]

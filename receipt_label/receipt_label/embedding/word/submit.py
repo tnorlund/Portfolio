@@ -24,9 +24,9 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -106,7 +106,9 @@ def deserialize_receipt_words(filepath: Path) -> list[ReceiptWord]:
     return words
 
 
-def query_receipt_words(image_id: str, receipt_id: int, client_manager: ClientManager = None) -> list[ReceiptWord]:
+def query_receipt_words(
+    image_id: str, receipt_id: int, client_manager: ClientManager = None
+) -> list[ReceiptWord]:
     """Query the ReceiptWords from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
@@ -132,9 +134,7 @@ def chunk_into_embedding_batches(
     """
     # Build a mapping image_id -> receipt_id ->
     # dict[(line_id, word_id) -> ReceiptWord] for uniqueness
-    words_by_image: dict[
-        str, dict[int, dict[tuple[int, int], ReceiptWord]]
-    ] = {}
+    words_by_image: dict[str, dict[int, dict[tuple[int, int], ReceiptWord]]] = {}
     for word in words:
         image_dict = words_by_image.setdefault(word.image_id, {})
         receipt_dict = image_dict.setdefault(word.receipt_id, {})
@@ -156,13 +156,13 @@ def generate_batch_id() -> str:
     return str(uuid4())
 
 
-def list_receipt_words_with_no_embeddings(client_manager: ClientManager = None) -> list[ReceiptWord]:
+def list_receipt_words_with_no_embeddings(
+    client_manager: ClientManager = None,
+) -> list[ReceiptWord]:
     """Fetch all ReceiptWord items with embedding_status == NONE."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.listReceiptWordsByEmbeddingStatus(
-        EmbeddingStatus.NONE
-    )
+    return client_manager.dynamo.listReceiptWordsByEmbeddingStatus(EmbeddingStatus.NONE)
 
 
 def _format_word_context_embedding_input(
@@ -257,9 +257,7 @@ def format_word_context_embedding(
             f"LINE#{word.line_id:05d}#"
             f"WORD#{word.word_id:05d}"
         )
-        body_input = _format_word_context_embedding_input(
-            word, all_words_in_receipt
-        )
+        body_input = _format_word_context_embedding_input(word, all_words_in_receipt)
         entry = {
             "custom_id": pinecone_id,
             "method": "POST",
@@ -282,13 +280,13 @@ def write_ndjson(batch_id: str, input_data: list[dict]) -> Path:
     return filepath
 
 
-def upload_to_openai(filepath: Path, client_manager: ClientManager = None) -> FileObject:
+def upload_to_openai(
+    filepath: Path, client_manager: ClientManager = None
+) -> FileObject:
     """Upload the NDJSON file to OpenAI."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.openai.files.create(
-        file=filepath.open("rb"), purpose="batch"
-    )
+    return client_manager.openai.files.create(file=filepath.open("rb"), purpose="batch")
 
 
 def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
@@ -343,14 +341,18 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(summary: BatchSummary, client_manager: ClientManager = None) -> None:
+def add_batch_summary(
+    summary: BatchSummary, client_manager: ClientManager = None
+) -> None:
     """Write the BatchSummary entity to DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
     client_manager.dynamo.addBatchSummary(summary)
 
 
-def update_word_embedding_status(words: list[ReceiptWord], client_manager: ClientManager = None) -> None:
+def update_word_embedding_status(
+    words: list[ReceiptWord], client_manager: ClientManager = None
+) -> None:
     """Update the Embedding Status of the Words"""
     if client_manager is None:
         client_manager = get_client_manager()

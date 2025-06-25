@@ -3,20 +3,13 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import (
-    AssetArchive,
-    ComponentResource,
-    Config,
-    FileAsset,
-    Output,
-    ResourceOptions,
-)
+from dynamo_db import dynamodb_table
+from lambda_layer import dynamo_layer, label_layer
+from pulumi import (AssetArchive, ComponentResource, Config, FileAsset, Output,
+                    ResourceOptions)
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sfn import StateMachine
-
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -25,11 +18,7 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 
 code = AssetArchive(
-    {
-        "lambda.py": FileAsset(
-            os.path.join(os.path.dirname(__file__), "lambda.py")
-        )
-    }
+    {"lambda.py": FileAsset(os.path.join(os.path.dirname(__file__), "lambda.py"))}
 )
 stack = pulumi.get_stack()
 
@@ -66,8 +55,7 @@ class ValidationPipeline(ComponentResource):
             f"{name}-lambda-basic-execution",
             role=submit_lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
         )
 
@@ -92,8 +80,7 @@ class ValidationPipeline(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
-                                    "arn:aws:dynamodb:*:*:table/"
-                                    f"{table_name}*"
+                                    "arn:aws:dynamodb:*:*:table/" f"{table_name}*"
                                 ),
                             }
                         ],

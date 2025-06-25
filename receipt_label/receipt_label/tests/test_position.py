@@ -150,9 +150,7 @@ def test_bounding_box_from_corners():
     bottom_left = Point(10, 60)
     bottom_right = Point(40, 60)
 
-    bbox = BoundingBox.from_corners(
-        top_left, top_right, bottom_left, bottom_right
-    )
+    bbox = BoundingBox.from_corners(top_left, top_right, bottom_left, bottom_right)
 
     assert bbox.x == 10
     assert bbox.y == 20
@@ -167,9 +165,7 @@ def test_bounding_box_from_corners_dicts():
     bottom_left = {"x": 10, "y": 60}
     bottom_right = {"x": 40, "y": 60}
 
-    bbox = BoundingBox.from_corners(
-        top_left, top_right, bottom_left, bottom_right
-    )
+    bbox = BoundingBox.from_corners(top_left, top_right, bottom_left, bottom_right)
 
     assert bbox.x == 10
     assert bbox.y == 20

@@ -29,9 +29,7 @@ def _process_ocr_dict(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(
-            line_data.get("words", []), start=1
-        ):
+        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
