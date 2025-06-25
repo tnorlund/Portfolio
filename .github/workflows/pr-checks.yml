@@ -86,8 +86,14 @@ jobs:
           pip install pytest pytest-xdist
           pip install -e .
           
-          # Run only fast unit tests
-          pytest tests/unit -n auto -m "not slow" --tb=short -q
+          # Run only fast unit tests (handle different test organization patterns)
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label uses marker-based organization
+            pytest receipt_label/tests -n auto -m "unit and not slow" --tb=short -q
+          else
+            # receipt_dynamo uses directory-based organization
+            pytest tests/unit -n auto -m "not slow" --tb=short -q
+          fi
 
       - name: Run TypeScript checks
         if: matrix.package == 'portfolio'
