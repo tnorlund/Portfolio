@@ -13,11 +13,14 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
-
 from receipt_dynamo.constants import ValidationMethod
 from receipt_label.merchant_validation.result_processor import (
-    _validate_match_quality, build_receipt_metadata_from_partial_result,
-    extract_best_partial_match, sanitize_metadata_strings, sanitize_string)
+    _validate_match_quality,
+    build_receipt_metadata_from_partial_result,
+    extract_best_partial_match,
+    sanitize_metadata_strings,
+    sanitize_string,
+)
 
 
 @pytest.mark.unit
@@ -402,7 +405,9 @@ def test_sanitize_metadata_strings_empty():
 
     result = sanitize_metadata_strings(metadata)
 
-    assert result["place_id"] == '""'  # Empty quotes preserved as per sanitize_string
+    assert (
+        result["place_id"] == '""'
+    )  # Empty quotes preserved as per sanitize_string
     assert result["merchant_name"] == ""  # None converted to empty string
     assert result["address"] == ""
     assert "phone_number" not in result  # Missing fields not added

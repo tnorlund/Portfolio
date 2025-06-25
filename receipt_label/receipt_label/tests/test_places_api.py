@@ -3,10 +3,12 @@
 import os
 
 import pytest
-
-from receipt_label.data.places_api import (BatchPlacesProcessor,
-                                           ConfidenceLevel, PlacesAPI,
-                                           ValidationResult)
+from receipt_label.data.places_api import (
+    BatchPlacesProcessor,
+    ConfidenceLevel,
+    PlacesAPI,
+    ValidationResult,
+)
 
 
 @pytest.fixture
@@ -209,7 +211,9 @@ def test_validate_business_name(mocker, dynamodb_table):
     assert score == 0.5
 
     # Test no match
-    is_valid, message, score = processor._validate_business_name("Walmart", "Target")
+    is_valid, message, score = processor._validate_business_name(
+        "Walmart", "Target"
+    )
     assert not is_valid
     assert "mismatch" in message
     assert score == 0.7

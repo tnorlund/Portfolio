@@ -1,22 +1,21 @@
 """Instance coordination and health monitoring utilities."""
 
-import os
-import time
-import json
-import uuid
-import socket
-import logging
-import threading
 import datetime
-from typing import Dict, List, Optional, Any, Tuple, Set, Callable
+import json
+import logging
+import os
+import socket
+import threading
+import time
+import uuid
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
-
-from receipt_trainer.utils.infrastructure import EC2Metadata, InstanceRegistry
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.instance import Instance
+from receipt_dynamo.entities.job import Job
+from receipt_trainer.utils.infrastructure import EC2Metadata, InstanceRegistry
 
 logger = logging.getLogger(__name__)
 

@@ -7,22 +7,21 @@ This script demonstrates the end-to-end flow:
 3. Processes the job
 """
 
+import argparse
+import logging
 import os
 import sys
 import time
 import uuid
-import argparse
-import logging
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import boto3
-
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
 from receipt_trainer.jobs import (
     Job,
+    JobPriority,
     JobQueue,
     JobQueueConfig,
-    JobPriority,
     JobStatus,
 )
 from receipt_trainer.jobs.worker import process_training_jobs
