@@ -380,7 +380,7 @@ class AIUsageTracker:
             user_id="github-actions",
             metadata={
                 "pr_number": pr_number,
-                "workflow": "claude-code-review",
+                "workflow": "claude-review",
             },
         )
         self._store_metric(metric)

@@ -1,353 +1,265 @@
-name: Pulumi
+name: Main CI/CD Pipeline
 on:
   push:
     branches:
       - main
-jobs:
-  lint:
-    name: Lint Python
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+  pull_request:
+    branches:
+      - main
 
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Stage 1: Fast checks (fail fast)
+  fast-checks:
+    name: Format & Lint Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.13
-
-      - name: Install package with all dependencies
-        run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-
-      - name: Run Black formatter check
-        working-directory: receipt_dynamo
-        run: |
-          black --check .
-
-      - uses: actions/cache@v3
+          python-version: '3.12'
+      
+      - name: Cache pip packages
+        uses: actions/cache@v3
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-
-  lint-portfolio:
-    name: Lint TypeScript/Next.js
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node
+      
+      - name: Install minimal dependencies
+        run: |
+          pip install black isort
+      
+      - name: Check Python formatting
+        run: |
+          black --check receipt_dynamo receipt_label infra
+          isort --check-only receipt_dynamo receipt_label infra
+      
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Install dependencies
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+      
+      - name: Check TypeScript/ESLint
         working-directory: portfolio
-        run: npm install
+        run: |
+          npm ci --prefer-offline
+          npm run lint
+          npm run type-check
 
-      - name: Run ESLint
-        working-directory: portfolio
-        run: npm run lint
-
-      - name: Run TypeScript type check
-        working-directory: portfolio
-        run: npm run type-check
-
-  test-portfolio:
-    name: Test TypeScript/Next.js
-    runs-on: ubuntu-24.04
+  # Stage 2: Tests (parallel)
+  test-python:
+    name: Python Tests
+    needs: fast-checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [receipt_dynamo, receipt_label]
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package)) }}
+      
+      - name: Install package
+        run: |
+          pip install -e "${{ matrix.package }}[test]"
+      
+      - name: Run tests
+        working-directory: ${{ matrix.package }}
+        run: |
+          pytest -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml
+      
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.package }}
+          path: ${{ matrix.package }}/coverage.xml
+          retention-days: 1
 
-      - name: Set up Node
+  test-typescript:
+    name: TypeScript Tests
+    needs: fast-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Install dependencies
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+      
+      - name: Install and test
         working-directory: portfolio
-        run: npm install
-
-      - name: Run Jest tests with coverage
-        working-directory: portfolio
-        run: npm run test:ci
-
-      - name: Upload test coverage
+        run: |
+          npm ci --prefer-offline
+          npm run test:ci
+      
+      - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-portfolio
           path: portfolio/coverage
-          if-no-files-found: warn
           retention-days: 1
 
+  # Stage 3: Documentation (can run in parallel with tests)
   docs:
     name: Generate Documentation
-    runs-on: ubuntu-24.04
+    needs: fast-checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Node
+      
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Install dependencies
-        working-directory: portfolio
-        run: npm install
-
-      - name: Generate documentation
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+      
+      - name: Generate docs
         working-directory: portfolio
         run: |
+          npm ci --prefer-offline
           npm run docs
-          npm run docs:md
+      
+      - name: Commit documentation
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'docs: update TypeDoc documentation [skip ci]'
+          file_pattern: 'portfolio/docs/**'
+          skip_dirty_check: false
 
-      - name: Check for documentation changes
-        id: check_changes
-        run: |
-          if [ -n "$(git status --porcelain portfolio/docs portfolio/docs-md)" ]; then
-            echo "changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "changes=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit documentation changes
-        if: steps.check_changes.outputs.changes == 'true'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add portfolio/docs portfolio/docs-md
-          git commit -m "docs: update generated documentation [skip ci]"
-          git push
-
-  test:
-    name: Run ${{ matrix.test-type }} Tests
-    needs: lint
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        test-type: [unit, integration]
+  # Stage 4: Deploy (only on main)
+  deploy:
+    name: Deploy with Pulumi
+    needs: [test-python, test-typescript]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.13
-
-      - name: Install package with all dependencies
-        run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-
-      - name: Run tests with coverage
-        working-directory: receipt_dynamo
-        run: |
-          echo "Running tests for ${{ matrix.test-type }}"
-          export COVERAGE_FILE="$PWD/.coverage.${{ matrix.test-type }}"
-          python -m pytest -m ${{ matrix.test-type }} -n auto --cov=receipt_dynamo --cov-report=term
-
-      - name: Upload test coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.test-type }}
-          path: receipt_dynamo/.coverage.${{ matrix.test-type }}
-          if-no-files-found: error
-          retention-days: 1
-          include-hidden-files: true
-
-  deploy:
-    name: Build and Deploy
-    needs: [test, lint-portfolio, test-portfolio, docs]
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node
+          python-version: '3.12'
+      
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Set up AWS CLI
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+      
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Install and build Next.js app
+      
+      - name: Build Next.js app
         working-directory: portfolio
         run: |
-          npm install && npm run build
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.13
-
-      - name: Install Pulumi Python dependencies
+          npm ci --prefer-offline
+          npm run build
+      
+      - name: Install Python dependencies
         run: |
-          pip install -e "${{ github.workspace }}/infra[dev]"
-
-      - name: Setup Pulumi
-        uses: pulumi/setup-pulumi@v2
-
-      - name: Configure Pulumi Stack
-        working-directory: infra
+          pip install -r infra/requirements.txt
+      
+      - name: Deploy with Pulumi
         run: |
+          cd infra
           pulumi stack select tnorlund/portfolio/prod
+          pulumi up --yes
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-      - name: Pulumi Deploy
-        uses: pulumi/actions@v6
-        with:
-          command: up
-          stack-name: tnorlund/portfolio/prod
-          work-dir: infra
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
+      
       - name: Get Pulumi outputs
         id: pulumi-outputs
-        working-directory: infra
         run: |
-          BUCKET_NAME=$(pulumi stack output cdn_bucket_name --stack tnorlund/portfolio/prod)
-          AWS_REGION_FROM_PULUMI=$(pulumi stack output region --stack tnorlund/portfolio/prod)
-          DISTRIBUTION_ID=$(pulumi stack output cdn_distribution_id --stack tnorlund/portfolio/prod)
-
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "aws_region=$AWS_REGION_FROM_PULUMI" >> $GITHUB_OUTPUT
-          echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Sync files to S3
+          cd infra
+          echo "bucket_name=$(pulumi stack output site_bucket_name)" >> $GITHUB_OUTPUT
+          echo "distribution_id=$(pulumi stack output distribution_id)" >> $GITHUB_OUTPUT
+      
+      - name: Sync to S3
         run: |
-          aws s3 sync portfolio/out "s3://${{ steps.pulumi-outputs.outputs.bucket_name }}"
-
+          aws s3 sync portfolio/out s3://${{ steps.pulumi-outputs.outputs.bucket_name }} \
+            --delete \
+            --cache-control "public, max-age=3600"
+      
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.pulumi-outputs.outputs.distribution_id }} \
             --paths "/*"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-  end_to_end_test:
-    name: Run end-to-end Tests
+  # Stage 5: E2E tests (only after deploy)
+  e2e-tests:
+    name: End-to-End Tests
     needs: deploy
-    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.13
-
-      - name: Install package with all dependencies
+          python-version: '3.12'
+      
+      - name: Install package
         run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-
-      - name: Run end-to-end tests with coverage
+          pip install -e "receipt_dynamo[test]"
+      
+      - name: Run E2E tests
         working-directory: receipt_dynamo
         run: |
-          echo "Running end-to-end tests"
-          export COVERAGE_FILE="$PWD/.coverage.end_to_end"
-          python -m pytest -m end_to_end --cov=receipt_dynamo --cov-report=term
+          pytest -m end_to_end --tb=short
         env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-      - name: Upload end-to-end test coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-end_to_end
-          path: receipt_dynamo/.coverage.end_to_end
-          if-no-files-found: error
-          retention-days: 1
-          include-hidden-files: true
-
-  coverage:
-    name: Combine Test Coverage
-    needs: [test, end_to_end_test]
-    runs-on: ubuntu-24.04
+  # Summary job for branch protection
+  ci-success:
+    name: CI Success
+    needs: [fast-checks, test-python, test-typescript]
+    runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.13
-
-      - name: Install package with all dependencies
+      - name: Check all jobs
         run: |
-          pip install -e "${{ github.workspace }}/receipt_dynamo[test,dev]"
-          pip install coverage
-
-      - name: Download coverage data
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-*
-          path: coverage-data
-          merge-multiple: true
-
-      - name: Debug coverage files
-        run: |
-          echo "Contents of coverage-data directory:"
-          ls -la coverage-data/
-
-      - name: Combine coverage
-        working-directory: receipt_dynamo
-        run: |
-          # Create a directory for collecting all coverage files
-          mkdir -p coverage-files
-
-          # Find and copy all coverage files from various possible locations
-          find ../coverage-data -name ".coverage*" -type f -exec cp {} coverage-files/ \;
-
-          if [ "$(ls -A coverage-files 2>/dev/null)" ]; then
-            echo "Copying coverage files to current directory..."
-            cp coverage-files/.* . 2>/dev/null || true  # Use .* to copy hidden files
-            echo "Running coverage combine..."
-            coverage combine
-            coverage report
-            coverage xml
-          else
-            echo "No coverage files found to combine"
-            echo "{}" > coverage.xml
+          if [[ "${{ needs.fast-checks.result }}" != "success" || 
+                "${{ needs.test-python.result }}" != "success" || 
+                "${{ needs.test-typescript.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
+            exit 1
           fi
-
-      - name: Upload combined coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: receipt_dynamo/coverage.xml
-          if-no-files-found: error
+          echo "All CI checks passed!"
