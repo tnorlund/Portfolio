@@ -4,8 +4,12 @@ from typing import Dict, List
 import pytest
 
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    ContentPattern, ReceiptSection, ReceiptStructureAnalysis, SpatialPattern,
-    itemToReceiptStructureAnalysis)
+    ContentPattern,
+    ReceiptSection,
+    ReceiptStructureAnalysis,
+    SpatialPattern,
+    itemToReceiptStructureAnalysis,
+)
 
 
 # Fixtures for test data

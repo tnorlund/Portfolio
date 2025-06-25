@@ -18,10 +18,13 @@ from receipt_upload.receipt_processing.photo import process_photo
 from receipt_upload.receipt_processing.receipt import refine_receipt
 from receipt_upload.receipt_processing.scan import process_scan
 from receipt_upload.route_images import classify_image_layout
-from receipt_upload.utils import (download_file_from_s3,
-                                  download_image_from_s3, get_ocr_job,
-                                  get_ocr_routing_decision,
-                                  image_ocr_to_receipt_ocr)
+from receipt_upload.utils import (
+    download_file_from_s3,
+    download_image_from_s3,
+    get_ocr_job,
+    get_ocr_routing_decision,
+    image_ocr_to_receipt_ocr,
+)
 
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
 if TABLE_NAME is None:

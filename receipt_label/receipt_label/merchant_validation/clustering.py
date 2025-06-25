@@ -6,8 +6,13 @@ from typing import Any, List, Optional
 
 from receipt_dynamo.entities import ReceiptMetadata
 
-from .utils import (format_canonical_merchant_name, get_address_similarity,
-                    get_name_similarity, get_phone_similarity, normalize_text)
+from .utils import (
+    format_canonical_merchant_name,
+    get_address_similarity,
+    get_name_similarity,
+    get_phone_similarity,
+    normalize_text,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)

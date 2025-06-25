@@ -292,7 +292,6 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_id=1,
         place_id="id",
         merchant_name="Merchant",
-        match_confidence=0.9,
         matched_fields=["name"],
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime(2025, 1, 1, 0, 0, 0),
@@ -373,7 +372,6 @@ def test_image_get_details_multiple_receipt_metadatas(dynamodb_table, example_im
         receipt_id=1,
         place_id="place_1",
         merchant_name="Merchant A",
-        match_confidence=0.95,
         matched_fields=["name", "address"],
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime(2025, 1, 1, 0, 0, 0),
@@ -384,9 +382,8 @@ def test_image_get_details_multiple_receipt_metadatas(dynamodb_table, example_im
         receipt_id=2,
         place_id="place_2",
         merchant_name="Merchant B",
-        match_confidence=0.88,
         matched_fields=["name"],
-        validated_by="FUZZY_MATCH",
+        validated_by="TEXT_SEARCH",
         timestamp=datetime(2025, 1, 1, 1, 0, 0),
     )
 
@@ -395,9 +392,8 @@ def test_image_get_details_multiple_receipt_metadatas(dynamodb_table, example_im
         receipt_id=3,
         place_id="place_3",
         merchant_name="Merchant C",
-        match_confidence=0.92,
         matched_fields=["name", "phone"],
-        validated_by="EXACT_MATCH",
+        validated_by="PHONE_LOOKUP",
         timestamp=datetime(2025, 1, 1, 2, 0, 0),
     )
 

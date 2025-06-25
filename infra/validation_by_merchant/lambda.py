@@ -5,14 +5,18 @@ from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-from receipt_label.label_validation import (LabelValidationResult,
-                                            get_unique_merchants_and_data,
-                                            update_labels, validate_address,
-                                            validate_currency, validate_date,
-                                            validate_merchant_name_google,
-                                            validate_merchant_name_pinecone,
-                                            validate_phone_number,
-                                            validate_time)
+from receipt_label.label_validation import (
+    LabelValidationResult,
+    get_unique_merchants_and_data,
+    update_labels,
+    validate_address,
+    validate_currency,
+    validate_date,
+    validate_merchant_name_google,
+    validate_merchant_name_pinecone,
+    validate_phone_number,
+    validate_time,
+)
 from receipt_label.utils import get_clients
 
 logger = getLogger()

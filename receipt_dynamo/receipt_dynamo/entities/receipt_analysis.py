@@ -1,19 +1,15 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from receipt_dynamo.entities.receipt_chatgpt_validation import \
-    ReceiptChatGPTValidation
+from receipt_dynamo.entities.receipt_chatgpt_validation import ReceiptChatGPTValidation
 from receipt_dynamo.entities.receipt_label_analysis import ReceiptLabelAnalysis
-from receipt_dynamo.entities.receipt_line_item_analysis import \
-    ReceiptLineItemAnalysis
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    ReceiptStructureAnalysis
-from receipt_dynamo.entities.receipt_validation_category import \
-    ReceiptValidationCategory
-from receipt_dynamo.entities.receipt_validation_result import \
-    ReceiptValidationResult
-from receipt_dynamo.entities.receipt_validation_summary import \
-    ReceiptValidationSummary
+from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
+from receipt_dynamo.entities.receipt_structure_analysis import ReceiptStructureAnalysis
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+)
+from receipt_dynamo.entities.receipt_validation_result import ReceiptValidationResult
+from receipt_dynamo.entities.receipt_validation_summary import ReceiptValidationSummary
 
 
 @dataclass
