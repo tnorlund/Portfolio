@@ -239,9 +239,7 @@ def convert_to_dynamodb_format(data: Dict) -> Dict:
         elif isinstance(value, dict):
             result[key] = {"M": convert_to_dynamodb_format(value)}
         elif isinstance(value, list):
-            result[key] = {
-                "L": [_convert_value_to_dynamodb(v) for v in value]
-            }
+            result[key] = {"L": [_convert_value_to_dynamodb(v) for v in value]}
     return result
 
 
