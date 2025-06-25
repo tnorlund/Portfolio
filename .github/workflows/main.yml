@@ -19,10 +19,44 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
+      receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
+      portfolio_changed: ${{ steps.changes.outputs.portfolio }}
+      infra_changed: ${{ steps.changes.outputs.infra }}
+      workflows_changed: ${{ steps.changes.outputs.workflows }}
+      any_code_changed: ${{ steps.changes.outputs.all_code }}
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # Need full history for change detection
+      
+      - name: Detect changed files
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            receipt_dynamo:
+              - 'receipt_dynamo/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            receipt_label:
+              - 'receipt_label/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            infra:
+              - 'infra/**'
+            portfolio:
+              - 'portfolio/**'
+            scripts:
+              - 'scripts/**'
+            workflows:
+              - '.github/workflows/**'
+            all_code:
+              - '**/*.py'
+              - '**/*.js'
+              - '**/*.ts'
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -49,6 +83,7 @@ jobs:
           isort --check-only receipt_dynamo receipt_label infra || echo "::warning::Some imports need isort formatting"
       
       - name: Set up Node.js
+        if: steps.changes.outputs.portfolio == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: 20
@@ -56,6 +91,7 @@ jobs:
           cache-dependency-path: 'portfolio/package-lock.json'
       
       - name: Check TypeScript/ESLint
+        if: steps.changes.outputs.portfolio == 'true'
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
@@ -64,12 +100,47 @@ jobs:
 
   # Stage 2: Tests (parallel)
   test-python:
-    name: Python Tests
+    name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
     runs-on: ubuntu-latest
+    if: |
+      (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
+      (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
+      needs.fast-checks.outputs.workflows_changed == 'true' ||
+      github.event_name == 'schedule'
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label]
+        include:
+          # receipt_dynamo unit tests
+          - package: receipt_dynamo
+            test_type: unit
+            test_path: tests/unit
+          # Split receipt_dynamo integration tests into 4 parallel groups
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-1  
+            test_path: tests/integration/test__receipt_word_label.py tests/integration/test__receipt.py tests/integration/test__receipt_validation_category.py tests/integration/test__geometry.py tests/integration/test__job_metric.py tests/integration/test__receipt_structure_analysis.py tests/integration/test__line.py tests/integration/test__receipt_line.py tests/integration/test__pulumi.py tests/integration/test__cluster.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-2
+            test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py tests/integration/test__receipt_validation_summary.py tests/integration/test__gpt.py tests/integration/test__job_checkpoint.py tests/integration/test__word.py tests/integration/test__word_tag.py tests/integration/test__letter.py tests/integration/test__label_count_cache.py tests/integration/test_dynamo_client.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-3
+            test_path: tests/integration/test__receipt_letter.py tests/integration/test__receipt_line_item_analysis.py tests/integration/test__queue.py tests/integration/test__instance.py tests/integration/test__receipt_word.py tests/integration/test__job_dependency.py tests/integration/test__ocr_job.py tests/integration/test__batch_summary.py tests/integration/test__receipt_section.py tests/integration/test__export_and_import.py
+          - package: receipt_dynamo
+            test_type: integration
+            test_group: group-4
+            test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__receipt_word_tag.py tests/integration/test__ocr.py
+          # receipt_label tests (marker-based, not directory-based)
+          - package: receipt_label
+            test_type: unit
+            test_path: receipt_label/tests
+            test_markers: "-m unit"
+          - package: receipt_label
+            test_type: integration
+            test_path: receipt_label/tests
+            test_markers: "-m integration"
     steps:
       - uses: actions/checkout@v4
       
@@ -78,56 +149,108 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Cache pip packages
-        uses: actions/cache@v3
+      - name: Cache pip packages and virtual environment
+        uses: actions/cache@v4  # Use latest cache action
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package)) }}
+          path: |
+            ~/.cache/pip
+            ${{ env.pythonLocation }}
+            ~/.local/lib/python3.12/site-packages
+            **/__pycache__
+            .pytest_cache/pytest-results
+          key: ${{ runner.os }}-python-v2-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml', 'conftest.py', 'pytest*.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-python-v2-${{ matrix.package }}-
+            ${{ runner.os }}-python-v2-
       
-      - name: Install package
+      - name: Cache pytest results and coverage
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.package }}/.pytest_cache
+            ${{ matrix.package }}/.coverage
+            .pytest_cache
+          key: ${{ runner.os }}-pytest-${{ matrix.package }}-${{ hashFiles(format('{0}/**/*.py', matrix.package)) }}
+          restore-keys: |
+            ${{ runner.os }}-pytest-${{ matrix.package }}-
+      
+      - name: Install package with optimizations
         run: |
+          # Upgrade pip for faster installs
+          python -m pip install --upgrade pip wheel --disable-pip-version-check
+          
+          # Check if packages are already cached
+          if pip list | grep -q "pytest-xdist"; then
+            echo "✓ Test dependencies already cached"
+          else
+            echo "Installing test dependencies..."
+            # Use parallel installs and disable version checks for speed
+            pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
+            pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
+          fi
+          
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            pip install -e "receipt_dynamo[dev]"
+            if pip list | grep -q "receipt-dynamo"; then
+              echo "✓ receipt_dynamo already cached"
+            else
+              pip install -e "receipt_dynamo[dev]" --no-deps
+              pip install -e "receipt_dynamo[dev]"
+            fi
           fi
           
-          # Install the package with appropriate extras
+          # Install the target package with minimal dependencies first
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-            # These packages only have [dev] extras which include test dependencies
             pip install -e "${{ matrix.package }}[dev]"
           else
-            # Other packages have separate [test] extras
-            # Install base package first, then test extras to ensure all dependencies are met
-            pip install -e "${{ matrix.package }}"
-            pip install -e "${{ matrix.package }}[test]"
+            # Check if already installed
+            PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
+            if pip list | grep -q "${PACKAGE_NAME}"; then
+              echo "✓ ${{ matrix.package }} already cached"
+            else
+              # Install with minimum dependencies first, then test extras
+              pip install -e "${{ matrix.package }}" --no-deps
+              pip install -e "${{ matrix.package }}[test]"
+            fi
           fi
           
-          # Debug: Show installed packages for troubleshooting
-          echo "=== Installed packages ==="
-          pip list | grep -E "(pinecone|openai|receipt)" || true
+          # Verify installation
+          echo "=== Key packages installed ==="
+          pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
       
-      - name: Run tests
-        working-directory: ${{ matrix.package }}
+      - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         run: |
-          # Find test directory (packages have tests in different locations)
-          if [[ -d "tests" ]]; then
-            TEST_DIR="tests"
-          elif [[ -d "test" ]]; then
-            TEST_DIR="test"
-          elif [[ "${{ matrix.package }}" == "receipt_label" ]] && [[ -d "receipt_label/tests" ]]; then
-            TEST_DIR="receipt_label/tests"
-          else
-            echo "No test directory found, running pytest to discover tests"
-            TEST_DIR="."
-          fi
+          # Use smart test runner that can skip unchanged tests
+          echo "🔍 Analyzing test dependencies and changes..."
           
-          # Run tests with proper module discovery
-          python -m pytest $TEST_DIR -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml -v
+          # First, try smart test selection (skip if no meaningful changes)
+          python scripts/smart_test_runner.py \
+            ${{ matrix.package }} \
+            ${{ matrix.test_path }} \
+            --dry-run
+          
+          # Then run with the optimized test runner
+          # Handle marker-based testing for receipt_label
+          if [[ "${{ matrix.package }}" == "receipt_label" && -n "${{ matrix.test_markers || '' }}" ]]; then
+            echo "Using marker-based test selection: ${{ matrix.test_markers }}"
+            cd ${{ matrix.package }}
+            python -m pytest ${{ matrix.test_path }} ${{ matrix.test_markers }} -n auto --timeout=600 --tb=short
+          else
+            python scripts/smart_test_runner.py \
+              ${{ matrix.package }} \
+              ${{ matrix.test_path }} || \
+            python scripts/run_tests_optimized.py \
+              ${{ matrix.package }} \
+              ${{ matrix.test_path }} \
+              --test-type ${{ matrix.test_type }} \
+              --coverage \
+              --timeout 600
+          fi
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.package }}
+          name: coverage-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 

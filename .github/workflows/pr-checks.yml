@@ -84,18 +84,32 @@ jobs:
         run: |
           # Install minimal dependencies
           pip install pytest pytest-xdist
-          pip install -e .
           
-          # Run only fast unit tests
-          pytest tests/unit -n auto -m "not slow" --tb=short -q || true
+          # Install package with test dependencies for receipt_label
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label depends on receipt_dynamo (cross-package dependency)
+            pip install -e "../receipt_dynamo"
+            pip install -e ".[test]"
+          else
+            pip install -e .
+          fi
+          
+          # Run only fast unit tests (handle different test organization patterns)
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label uses marker-based organization
+            pytest receipt_label/tests -n auto -m "unit and not slow" --tb=short -q
+          else
+            # receipt_dynamo uses directory-based organization
+            pytest tests/unit -n auto -m "not slow" --tb=short -q
+          fi
 
       - name: Run TypeScript checks
         if: matrix.package == 'portfolio'
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
-          npm run lint || true
-          npm run type-check || true
+          npm run lint
+          npm run type-check
 
   # Status check for branch protection
   pr-status:
@@ -103,6 +117,10 @@ jobs:
     needs: [format-check, quick-tests]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
     steps:
       - name: Comment status
         uses: actions/github-script@v7
@@ -110,9 +128,26 @@ jobs:
           script: |
             const formatted = '${{ needs.format-check.outputs.formatted }}' === 'true';
             const icon = formatted ? '🎨' : '✅';
-            const message = formatted 
-              ? 'Code has been auto-formatted. Please pull the latest changes.'
-              : 'All PR checks passed!';
+            const formatCheck = '${{ needs.format-check.result }}';
+            const quickTests = '${{ needs.quick-tests.result }}';
+            
+            let message = 'All PR checks passed!';
+            let details = [];
+            
+            if (formatted) {
+              message = 'Code has been auto-formatted. Please pull the latest changes.';
+              details.push('📝 **Auto-formatting**: Applied black and isort formatting');
+            }
+            
+            if (formatCheck === 'success' && quickTests === 'success') {
+              details.push('✅ **Format check**: Passed');
+              details.push('✅ **Quick tests**: Passed');
+            } else {
+              if (formatCheck !== 'success') details.push('❌ **Format check**: Failed');
+              if (quickTests !== 'success') details.push('❌ **Quick tests**: Failed');
+            }
+            
+            const detailsText = details.length > 0 ? '\n\n' + details.join('\n') : '';
             
             // Find and update existing comment or create new
             const { data: comments } = await github.rest.issues.listComments({
@@ -121,19 +156,21 @@ jobs:
             });
             
             const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('PR Status')
+              comment.user.login === 'github-actions[bot]' && 
+              (comment.body.includes('## ✅ PR Status') || comment.body.includes('## 🎨 PR Status'))
             );
             
-            const body = `## ${icon} PR Status\n\n${message}\n\n<sub>Last updated: ${new Date().toISOString()}</sub>`;
+            const body = `## ${icon} PR Status\n\n${message}${detailsText}\n\n<sub>Last updated: ${new Date().toISOString()} | Run: ${context.runId}</sub>`;
             
             if (botComment) {
+              console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
               await github.rest.issues.updateComment({
                 ...context.repo,
                 comment_id: botComment.id,
                 body
               });
             } else {
+              console.log('Creating new PR status comment');
               await github.rest.issues.createComment({
                 ...context.repo,
                 issue_number: context.issue.number,
