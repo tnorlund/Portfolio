@@ -19,6 +19,13 @@ on:
       - '!**.lock'
       - '!**.log'
 
+# Required permissions for PR comments and reviews
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
 jobs:
   check-review-needed:
     name: Check if review needed

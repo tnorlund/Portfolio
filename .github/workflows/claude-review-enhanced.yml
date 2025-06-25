@@ -17,6 +17,13 @@ on:
       - '!**.txt'
       - '!**.toml'
 
+# Required permissions for comment management and PR access
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
 jobs:
   manage-comments:
     name: Manage Previous Comments
