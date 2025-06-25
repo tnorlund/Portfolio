@@ -1,16 +1,15 @@
-from typing import Dict, List, Optional, Tuple, Union
 import logging
-import traceback
 import re
-from ..models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
+import traceback
+from typing import Dict, List, Optional, Tuple, Union
+
+from ..data.gpt import (gpt_request_field_labeling,
+                        gpt_request_line_item_analysis,
+                        gpt_request_structure_analysis)
 from ..data.places_api import BatchPlacesProcessor
-from ..data.gpt import (
-    gpt_request_structure_analysis,
-    gpt_request_field_labeling,
-    gpt_request_line_item_analysis,
-)
-from ..models.structure import StructureAnalysis
 from ..models.label import LabelAnalysis
+from ..models.receipt import Receipt, ReceiptLine, ReceiptSection, ReceiptWord
+from ..models.structure import StructureAnalysis
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -277,8 +276,7 @@ class ReceiptAnalyzer:
 
             # Set receipt and image IDs which are required for DynamoDB storage
             field_analysis_obj.set_receipt_info(
-                receipt_id=str(receipt.receipt_id),
-                image_id=receipt.image_id
+                receipt_id=str(receipt.receipt_id), image_id=receipt.image_id
             )
 
             # Log the number of labels

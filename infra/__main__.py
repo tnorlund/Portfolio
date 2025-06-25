@@ -2,26 +2,22 @@
 
 import base64
 
+import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
-from pulumi import ResourceOptions
-
-import api_gateway  # noqa: F401
-
 # Import our infrastructure components
 import s3_website  # noqa: F401
-from dynamo_db import (  # Import DynamoDB table from original code
-    dynamodb_table,
-)
+from dynamo_db import \
+    dynamodb_table  # Import DynamoDB table from original code
 from embedding_step_functions import LineEmbeddingStepFunction
 from notifications import NotificationSystem
+from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
 from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
-
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
 # from instance_registry import InstanceRegistry
@@ -34,9 +30,8 @@ from word_label_step_functions import WordLabelStepFunctions
 try:
     # import lambda_layer  # noqa: F401
     import fast_lambda_layer  # noqa: F401
-    from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
-        label_count_cache_updater_lambda,
-    )
+    from lambda_functions.label_count_cache_updater.infra import \
+        label_count_cache_updater_lambda  # noqa: F401
     from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
@@ -73,9 +68,7 @@ notification_system = NotificationSystem(
 )
 
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant"
-)
+validate_merchant_step_functions = ValidateMerchantStepFunctions("validate-merchant")
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -86,9 +79,7 @@ upload_images = UploadImages(
 )
 
 # Create the enhanced receipt processor with error handling
-enhanced_receipt_processor = create_enhanced_receipt_processor(
-    notification_system
-)
+enhanced_receipt_processor = create_enhanced_receipt_processor(notification_system)
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
@@ -98,9 +89,7 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export(
-    "critical_error_topic_arn", notification_system.critical_error_topic_arn
-)
+pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
 
 # Export enhanced step function ARN
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
@@ -109,7 +98,9 @@ pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+key_pair_name = (
+    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+)
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(

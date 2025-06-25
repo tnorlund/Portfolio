@@ -3,13 +3,11 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, FileArchive
-
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
-
 # Import Lambda layers from the lambda_layer module
 from lambda_layer import dynamo_layer, label_layer
+from pulumi import AssetArchive, FileArchive
 
 # Get the directory where this file is located
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -1,6 +1,6 @@
 import pulumi
 import pulumi_aws as aws
-
+from routes.ai_usage.infra import ai_usage_lambda
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda
@@ -88,9 +88,7 @@ route_random_image_details = aws.apigatewayv2.Route(
     "random_image_details_route",
     api_id=api.id,
     route_key="GET /random_image_details",
-    target=integration_random_image_details.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_random_image_details.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,
@@ -294,6 +292,34 @@ lambda_permission_process = aws.lambda_.Permission(
     "process_lambda_permission",
     action="lambda:InvokeFunction",
     function=process_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+# /ai_usage
+integration_ai_usage = aws.apigatewayv2.Integration(
+    "ai_usage_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=ai_usage_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_ai_usage = aws.apigatewayv2.Route(
+    "ai_usage_route",
+    api_id=api.id,
+    route_key="GET /ai_usage",
+    target=integration_ai_usage.id.apply(lambda id: f"integrations/{id}"),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_ai_usage = aws.lambda_.Permission(
+    "ai_usage_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=ai_usage_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

@@ -2,12 +2,8 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities.util import (
-    _repr_str,
-    assert_type,
-    format_type_error,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import (_repr_str, assert_type,
+                                          format_type_error, normalize_enum)
 
 
 class BatchSummary:
@@ -38,9 +34,7 @@ class BatchSummary:
                 )
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
-                format_type_error(
-                    "submitted_at", submitted_at, (datetime, str)
-                )
+                format_type_error("submitted_at", submitted_at, (datetime, str))
             )
         self.submitted_at = submitted_at
 
@@ -64,9 +58,7 @@ class BatchSummary:
     def gsi1_key(self) -> dict:
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {
-                "S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"
-            },
+            "GSI1SK": {"S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"},
         }
 
     def to_item(self) -> dict:

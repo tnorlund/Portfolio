@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import boto3
 import pytest
 from moto import mock_aws
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 import receipt_label.utils.clients as clients
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
 @pytest.fixture
@@ -78,9 +78,7 @@ def dynamodb_table_and_s3_bucket():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -91,9 +89,7 @@ def dynamodb_table_and_s3_bucket():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         # Create a mock S3 bucket for uploads
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -145,9 +141,7 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     # 1) Fake Dynamo + OpenAI in get_clients()
     fake_openai = mocker.Mock()
     fake_openai.files.create.return_value = SimpleNamespace(id="fake-file-id")
-    fake_openai.batches.create.return_value = SimpleNamespace(
-        id="fake-batch-id"
-    )
+    fake_openai.batches.create.return_value = SimpleNamespace(id="fake-batch-id")
     # Stub the batch status retrieval to return "completed"
     fake_openai.batches.retrieve.return_value = SimpleNamespace(
         status="completed", output_file_id="fake-output-file-id"
@@ -168,28 +162,28 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
         return {"upserted_count": len(vectors or [])}
 
     fake_index.upsert.side_effect = fake_upsert
-    
+
     # Create mock client_manager
     from receipt_label.utils.client_manager import ClientManager
+
     mock_client_manager = mocker.Mock(spec=ClientManager)
     # Use a mock for dynamo since the real one requires AWS setup
     mock_dynamo = mocker.Mock()
     mock_client_manager.dynamo = mock_dynamo
     mock_client_manager.openai = fake_openai
     mock_client_manager.pinecone = fake_index
-    
+
     # Patch get_client_manager to return our mock
     mocker.patch(
         "receipt_label.utils.clients.get_client_manager",
-        return_value=mock_client_manager
+        return_value=mock_client_manager,
     )
-    
+
     # Also patch it in the main utils module
     mocker.patch(
-        "receipt_label.utils.get_client_manager",
-        return_value=mock_client_manager
+        "receipt_label.utils.get_client_manager", return_value=mock_client_manager
     )
-    
+
     # Legacy support - keep get_clients patched for any old code
     def fake_get_clients():
         # Use mock dynamo instead of real DynamoClient to avoid AWS dependencies

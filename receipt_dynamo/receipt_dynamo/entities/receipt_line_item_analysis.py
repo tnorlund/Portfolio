@@ -89,9 +89,7 @@ class ReceiptLineItemAnalysis:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         # Store timestamp_updated if provided
         if timestamp_updated is not None:
@@ -173,9 +171,7 @@ class ReceiptLineItemAnalysis:
             try:
                 return Decimal(value)
             except:
-                raise ValueError(
-                    f"{field_name} string must be convertible to Decimal"
-                )
+                raise ValueError(f"{field_name} string must be convertible to Decimal")
         raise ValueError(f"{field_name} must be a Decimal, string, or None")
 
     def key(self) -> dict:
@@ -208,9 +204,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def to_item(self) -> dict:
@@ -235,9 +229,7 @@ class ReceiptLineItemAnalysis:
             item["timestamp_updated"] = {"S": self.timestamp_updated}
 
         # Convert items list to DynamoDB format
-        item["items"] = {
-            "L": [self._convert_item_to_dynamo(i) for i in self.items]
-        }
+        item["items"] = {"L": [self._convert_item_to_dynamo(i) for i in self.items]}
 
         # Convert discrepancies list to DynamoDB format
         item["discrepancies"] = {
@@ -289,9 +281,7 @@ class ReceiptLineItemAnalysis:
 
         # Add metadata if present
         if self.metadata:
-            item["metadata"] = {
-                "M": self._convert_dict_to_dynamo(self.metadata)
-            }
+            item["metadata"] = {"M": self._convert_dict_to_dynamo(self.metadata)}
         else:
             item["metadata"] = {"NULL": True}
 
@@ -342,13 +332,8 @@ class ReceiptLineItemAnalysis:
             if "unit_price" in price and price["unit_price"] is not None:
                 price_map["M"]["unit_price"] = {"S": str(price["unit_price"])}
 
-            if (
-                "extended_price" in price
-                and price["extended_price"] is not None
-            ):
-                price_map["M"]["extended_price"] = {
-                    "S": str(price["extended_price"])
-                }
+            if "extended_price" in price and price["extended_price"] is not None:
+                price_map["M"]["extended_price"] = {"S": str(price["extended_price"])}
 
             result["M"]["price"] = price_map
 
@@ -434,9 +419,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             str: A detailed explanation of how items were identified and calculations performed.
         """
-        reasoning_parts = [
-            f"Analyzed {self.total_found} line items from the receipt."
-        ]
+        reasoning_parts = [f"Analyzed {self.total_found} line items from the receipt."]
 
         # Add financial summary
         financial_parts = []
@@ -454,9 +437,7 @@ class ReceiptLineItemAnalysis:
             financial_parts.append(f"Total: ${self.total}")
 
         if financial_parts:
-            reasoning_parts.append(
-                "Financial summary: " + ", ".join(financial_parts)
-            )
+            reasoning_parts.append("Financial summary: " + ", ".join(financial_parts))
 
         # Add discrepancies if any
         if self.discrepancies:
@@ -466,9 +447,7 @@ class ReceiptLineItemAnalysis:
 
         # Add item reasoning summary
         item_reasons = [
-            item.get("reasoning", "")
-            for item in self.items
-            if item.get("reasoning")
+            item.get("reasoning", "") for item in self.items if item.get("reasoning")
         ]
         if item_reasons:
             # Just include a summary count to avoid extremely long reasoning strings
@@ -645,10 +624,7 @@ def itemToReceiptLineItemAnalysis(item: dict) -> ReceiptLineItemAnalysis:
         total_found = int(item["total_found"]["N"])
 
         # Convert items from DynamoDB format
-        items = [
-            _convert_dynamo_to_item(item_dict)
-            for item_dict in item["items"]["L"]
-        ]
+        items = [_convert_dynamo_to_item(item_dict) for item_dict in item["items"]["L"]]
 
         # Extract optional financial fields
         subtotal = item.get("subtotal", {}).get("S")
@@ -678,9 +654,7 @@ def itemToReceiptLineItemAnalysis(item: dict) -> ReceiptLineItemAnalysis:
             word_labels_dynamo = item["word_labels"]["M"]
             for key, value in word_labels_dynamo.items():
                 line_id, word_id = map(int, key.split(":"))
-                word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(
-                    value["M"]
-                )
+                word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(value["M"])
 
         return ReceiptLineItemAnalysis(
             image_id=image_id,
@@ -702,9 +676,7 @@ def itemToReceiptLineItemAnalysis(item: dict) -> ReceiptLineItemAnalysis:
             word_labels=word_labels,
         )
     except KeyError as e:
-        raise ValueError(
-            f"Error converting item to ReceiptLineItemAnalysis: {e}"
-        )
+        raise ValueError(f"Error converting item to ReceiptLineItemAnalysis: {e}")
 
 
 def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
@@ -728,9 +700,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
 
     # Extract line_ids
     if "line_ids" in item_map:
-        item["line_ids"] = [
-            int(line_id["N"]) for line_id in item_map["line_ids"]["L"]
-        ]
+        item["line_ids"] = [int(line_id["N"]) for line_id in item_map["line_ids"]["L"]]
 
     # Extract quantity
     if "quantity" in item_map:
@@ -752,9 +722,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
             item["price"]["unit_price"] = Decimal(price_map["unit_price"]["S"])
 
         if "extended_price" in price_map:
-            item["price"]["extended_price"] = Decimal(
-                price_map["extended_price"]["S"]
-            )
+            item["price"]["extended_price"] = Decimal(price_map["extended_price"]["S"])
 
     # Extract metadata
     if "metadata" in item_map and "M" in item_map["metadata"]:

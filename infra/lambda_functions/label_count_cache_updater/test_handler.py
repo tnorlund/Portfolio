@@ -43,9 +43,7 @@ def create_mock_dynamo_client():
         None,
     )  # Empty cache list
     mock_client.addLabelCountCache.return_value = None
-    mock_client.updateLabelCountCache.side_effect = ValueError(
-        "does not exist"
-    )
+    mock_client.updateLabelCountCache.side_effect = ValueError("does not exist")
 
     return mock_client
 

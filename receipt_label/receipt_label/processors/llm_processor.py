@@ -1,18 +1,16 @@
-from typing import Dict, List, Optional, Tuple
-from decimal import Decimal, InvalidOperation
-import logging
-from ..models.receipt import Receipt, ReceiptWord, ReceiptLine
-from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
-from ..models.uncertainty import (
-    MultipleAmountsUncertainty,
-    MissingComponentUncertainty,
-    TotalMismatchUncertainty,
-    UncertaintyItem,
-    ensure_decimal,
-)
-from ..data.gpt import gpt_request_line_item_analysis
-import traceback
 import json
+import logging
+import traceback
+from decimal import Decimal, InvalidOperation
+from typing import Dict, List, Optional, Tuple
+
+from ..data.gpt import gpt_request_line_item_analysis
+from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
+from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
+from ..models.uncertainty import (MissingComponentUncertainty,
+                                  MultipleAmountsUncertainty,
+                                  TotalMismatchUncertainty, UncertaintyItem,
+                                  ensure_decimal)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

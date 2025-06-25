@@ -1,12 +1,8 @@
 import pytest
 
 from receipt_label.merchant_validation.utils.normalization import (
-    format_canonical_merchant_name,
-    normalize_address,
-    normalize_phone,
-    normalize_text,
-    preprocess_for_comparison,
-)
+    format_canonical_merchant_name, normalize_address, normalize_phone,
+    normalize_text, preprocess_for_comparison)
 
 
 @pytest.mark.unit
@@ -53,7 +49,10 @@ class TestNormalizeAddress:
         # Test that periods without abbreviations are removed
         assert normalize_address("123. Main. Street.") == "123 main street"
         # Test multiple abbreviations in one address
-        assert normalize_address("123 N. Main St. Apt. 5 NE.") == "123 north main street apartment 5 northeast"
+        assert (
+            normalize_address("123 N. Main St. Apt. 5 NE.")
+            == "123 north main street apartment 5 northeast"
+        )
 
 
 @pytest.mark.unit
@@ -83,7 +82,9 @@ class TestNormalizePhone:
         """Test special phone formats."""
         assert normalize_phone("555 123 4567") == "5551234567"
         assert normalize_phone("555/123/4567") == "5551234567"
-        assert normalize_phone("(555)123-4567") == "5551234567"  # No space after area code
+        assert (
+            normalize_phone("(555)123-4567") == "5551234567"
+        )  # No space after area code
 
     def test_normalize_phone_edge_cases(self):
         """Test edge cases."""
@@ -174,7 +175,9 @@ class TestFormatCanonicalMerchantName:
         """Test dash removal with surrounding spaces."""
         assert format_canonical_merchant_name("7 - eleven") == "7 Eleven"
         assert format_canonical_merchant_name("wal - mart") == "Wal Mart"
-        assert format_canonical_merchant_name("cvs-pharmacy") == "Cvs-Pharmacy"  # No spaces around dash
+        assert (
+            format_canonical_merchant_name("cvs-pharmacy") == "Cvs-Pharmacy"
+        )  # No spaces around dash
 
     def test_format_whitespace(self):
         """Test whitespace handling."""
@@ -207,13 +210,24 @@ class TestNormalizationIntegration:
     def test_address_normalization_real_examples(self):
         """Test with real-world address examples."""
         # Common US addresses
-        assert normalize_address("123 N. Main St., Apt. 5B") == "123 north main street apartment 5b"
-        assert normalize_address("456 SW Oak Blvd., Ste. 200") == "456 southwest oak boulevard suite 200"
-        assert normalize_address("789 E. 1st Ave. Fl. 3") == "789 east 1st avenue floor 3"
-        
+        assert (
+            normalize_address("123 N. Main St., Apt. 5B")
+            == "123 north main street apartment 5b"
+        )
+        assert (
+            normalize_address("456 SW Oak Blvd., Ste. 200")
+            == "456 southwest oak boulevard suite 200"
+        )
+        assert (
+            normalize_address("789 E. 1st Ave. Fl. 3") == "789 east 1st avenue floor 3"
+        )
+
         # Edge cases from real data
         assert normalize_address("One Market Plaza") == "one market plaza"
-        assert normalize_address("1600 Pennsylvania Ave NW") == "1600 pennsylvania avenue northwest"
+        assert (
+            normalize_address("1600 Pennsylvania Ave NW")
+            == "1600 pennsylvania avenue northwest"
+        )
 
     def test_phone_normalization_international(self):
         """Test international phone number formats."""
@@ -227,7 +241,13 @@ class TestNormalizationIntegration:
     def test_merchant_name_common_chains(self):
         """Test formatting common merchant names."""
         assert format_canonical_merchant_name("STARBUCKS COFFEE") == "Starbucks Coffee"
-        assert format_canonical_merchant_name("walmart supercenter") == "Walmart Supercenter"
+        assert (
+            format_canonical_merchant_name("walmart supercenter")
+            == "Walmart Supercenter"
+        )
         assert format_canonical_merchant_name("CVS/pharmacy") == "Cvs/Pharmacy"
         assert format_canonical_merchant_name("7-ELEVEN") == "7-Eleven"
-        assert format_canonical_merchant_name("McDonald's Restaurant") == "Mcdonald's Restaurant"
+        assert (
+            format_canonical_merchant_name("McDonald's Restaurant")
+            == "Mcdonald's Restaurant"
+        )

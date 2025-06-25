@@ -104,9 +104,7 @@ class ReceiptChatGPTValidation:
         elif isinstance(value, (int, float)):
             return {"N": str(value)}
         elif isinstance(value, dict):
-            return {
-                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
-            }
+            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -155,9 +153,7 @@ class ReceiptChatGPTValidation:
             response=item["response"]["S"],
             timestamp=timestamp,
             metadata=(
-                cls._dynamo_to_python(item["metadata"])
-                if "metadata" in item
-                else {}
+                cls._dynamo_to_python(item["metadata"]) if "metadata" in item else {}
             ),
         )
 

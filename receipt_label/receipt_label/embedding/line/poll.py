@@ -24,12 +24,8 @@ import re
 from typing import List
 
 from receipt_dynamo.constants import BatchType, EmbeddingStatus
-from receipt_dynamo.entities import (
-    BatchSummary,
-    EmbeddingBatchResult,
-    ReceiptSection,
-)
-
+from receipt_dynamo.entities import (BatchSummary, EmbeddingBatchResult,
+                                     ReceiptSection)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -63,7 +59,9 @@ def _parse_metadata_from_line_id(custom_id: str) -> dict:
     }
 
 
-def list_pending_line_embedding_batches(client_manager: ClientManager = None) -> List[BatchSummary]:
+def list_pending_line_embedding_batches(
+    client_manager: ClientManager = None,
+) -> List[BatchSummary]:
     """
     List line embedding batches that are pending processing.
     Returns a list of pending batch identifiers.
@@ -87,14 +85,18 @@ def list_pending_line_embedding_batches(client_manager: ClientManager = None) ->
     return summaries
 
 
-def get_openai_batch_status(openai_batch_id: str, client_manager: ClientManager = None) -> str:
+def get_openai_batch_status(
+    openai_batch_id: str, client_manager: ClientManager = None
+) -> str:
     """Retrieve the status of an OpenAI embedding batch job."""
     if client_manager is None:
         client_manager = get_client_manager()
     return client_manager.openai.batches.retrieve(openai_batch_id).status
 
 
-def download_openai_batch_result(openai_batch_id: str, client_manager: ClientManager = None) -> List[dict]:
+def download_openai_batch_result(
+    openai_batch_id: str, client_manager: ClientManager = None
+) -> List[dict]:
     """
     Download and parse the results of an OpenAI embedding batch job.
     Returns a list of embedding result objects with `custom_id` and
@@ -202,19 +204,16 @@ def _get_unique_receipt_and_image_ids(
     )
 
 
-def _get_section_by_line_id(
-    sections: list[ReceiptSection], line_id: int
-) -> str | None:
+def _get_section_by_line_id(sections: list[ReceiptSection], line_id: int) -> str | None:
     """
     Get the section for a given line id.
     """
-    return next(
-        (s.section_type for s in sections if line_id in s.line_ids), None
-    )
+    return next((s.section_type for s in sections if line_id in s.line_ids), None)
 
 
 def upsert_line_embeddings_to_pinecone(
-    results: List[dict], descriptions: dict[str, dict[int, dict]],
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
     client_manager: ClientManager = None,
 ):
     """
@@ -263,13 +262,10 @@ def upsert_line_embeddings_to_pinecone(
 
         # Format the line context to extract prev/next lines
         # Import locally to avoid circular import
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import (  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
-            _format_line_context_embedding_input,
-        )
+        from receipt_label.submit_line_embedding_batch.submit_line_batch import \
+            _format_line_context_embedding_input  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
 
-        embedding_input = _format_line_context_embedding_input(
-            target_line, lines
-        )
+        embedding_input = _format_line_context_embedding_input(target_line, lines)
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
 
         # Merchant name handling - same as word embeddings
@@ -405,7 +401,8 @@ def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
 
 
 def update_line_embedding_status_to_success(
-    results: List[dict], descriptions: dict[str, dict[int, dict]],
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
     client_manager: ClientManager = None,
 ):
     """

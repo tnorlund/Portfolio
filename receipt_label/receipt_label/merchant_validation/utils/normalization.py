@@ -154,13 +154,13 @@ def format_canonical_merchant_name(name: str) -> str:
 
     # Strip whitespace
     name = name.strip()
-    
+
     # Remove dashes only when surrounded by spaces (not dashes without spaces)
     name = re.sub(r"\s+-\s+", " ", name)  # Only remove " - " not "-"
-    
+
     # Normalize whitespace first
     name = re.sub(r"\s+", " ", name)
-    
+
     # Apply proper title case while preserving apostrophes and handling dashes
     words = []
     for word in name.split():
@@ -189,5 +189,5 @@ def format_canonical_merchant_name(name: str) -> str:
         else:
             # No special characters - just capitalize first letter
             words.append(word.capitalize())
-    
+
     return " ".join(words)
