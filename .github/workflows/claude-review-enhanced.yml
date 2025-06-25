@@ -1,4 +1,4 @@
-name: Claude Review Enhanced
+name: Claude Code Review
 on:
   pull_request:
     types: [ready_for_review, labeled, synchronize]
@@ -16,6 +16,13 @@ on:
       - '!**.yml'
       - '!**.txt'
       - '!**.toml'
+
+# Required permissions for comment management and PR access
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
 
 jobs:
   manage-comments:
