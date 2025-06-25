@@ -131,13 +131,15 @@ jobs:
             test_type: integration
             test_group: group-4
             test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__receipt_word_tag.py tests/integration/test__ocr.py
-          # receipt_label tests split by type
+          # receipt_label tests (marker-based, not directory-based)
           - package: receipt_label
             test_type: unit
-            test_path: tests/unit
+            test_path: receipt_label/tests
+            test_markers: "-m unit"
           - package: receipt_label
             test_type: integration
-            test_path: tests/integration
+            test_path: receipt_label/tests
+            test_markers: "-m integration"
     steps:
       - uses: actions/checkout@v4
       
@@ -227,15 +229,22 @@ jobs:
             --dry-run
           
           # Then run with the optimized test runner
-          python scripts/smart_test_runner.py \
-            ${{ matrix.package }} \
-            ${{ matrix.test_path }} || \
-          python scripts/run_tests_optimized.py \
-            ${{ matrix.package }} \
-            ${{ matrix.test_path }} \
-            --test-type ${{ matrix.test_type }} \
-            --coverage \
-            --timeout 600
+          # Handle marker-based testing for receipt_label
+          if [[ "${{ matrix.package }}" == "receipt_label" && -n "${{ matrix.test_markers || '' }}" ]]; then
+            echo "Using marker-based test selection: ${{ matrix.test_markers }}"
+            cd ${{ matrix.package }}
+            python -m pytest ${{ matrix.test_path }} ${{ matrix.test_markers }} -n auto --timeout=600 --tb=short
+          else
+            python scripts/smart_test_runner.py \
+              ${{ matrix.package }} \
+              ${{ matrix.test_path }} || \
+            python scripts/run_tests_optimized.py \
+              ${{ matrix.package }} \
+              ${{ matrix.test_path }} \
+              --test-type ${{ matrix.test_type }} \
+              --coverage \
+              --timeout 600
+          fi
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4

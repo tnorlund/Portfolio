@@ -40,12 +40,14 @@
     {
       "package": "receipt_label",
       "test_type": "unit",
-      "test_path": "tests/unit"
+      "test_path": "receipt_label/tests",
+      "test_markers": "-m unit"
     },
     {
       "package": "receipt_label",
       "test_type": "integration",
-      "test_path": "tests/integration"
+      "test_path": "receipt_label/tests",
+      "test_markers": "-m integration"
     }
   ]
 }
