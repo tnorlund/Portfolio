@@ -2,12 +2,9 @@ import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_label.submit_line_embedding_batch.submit_line_batch import (
-    chunk_into_line_embedding_batches,
-    generate_batch_id,
-    list_receipt_lines_with_no_embeddings,
-    serialize_receipt_lines,
-    upload_serialized_lines,
-)
+    chunk_into_line_embedding_batches, generate_batch_id,
+    list_receipt_lines_with_no_embeddings, serialize_receipt_lines,
+    upload_serialized_lines)
 
 logger = getLogger()
 logger.setLevel(INFO)

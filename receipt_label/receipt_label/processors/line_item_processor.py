@@ -7,18 +7,13 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
-from ..data.gpt import (
-    gpt_request_line_item_analysis,
-    gpt_request_spatial_currency_analysis,
-)
+from ..data.gpt import (gpt_request_line_item_analysis,
+                        gpt_request_spatial_currency_analysis)
 from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
-from ..models.uncertainty import (
-    MissingComponentUncertainty,
-    MultipleAmountsUncertainty,
-    TotalMismatchUncertainty,
-    UncertaintyItem,
-)
+from ..models.uncertainty import (MissingComponentUncertainty,
+                                  MultipleAmountsUncertainty,
+                                  TotalMismatchUncertainty, UncertaintyItem)
 from .llm_processor import LLMProcessor
 
 logger = logging.getLogger(__name__)

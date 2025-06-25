@@ -9,12 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
-from receipt_dynamo import (
-    ContentPattern,
-    ReceiptSection,
-    ReceiptStructureAnalysis,
-    SpatialPattern,
-)
+from receipt_dynamo import (ContentPattern, ReceiptSection,
+                            ReceiptStructureAnalysis, SpatialPattern)
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 

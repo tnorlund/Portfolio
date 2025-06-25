@@ -8,14 +8,8 @@ import pulumi
 from dynamo_db import dynamodb_table  # pylint: disable=import-error
 from lambda_layer import dynamo_layer  # pylint: disable=import-error
 from lambda_layer import label_layer
-from pulumi import (
-    AssetArchive,
-    ComponentResource,
-    Config,
-    FileAsset,
-    Output,
-    ResourceOptions,
-)
+from pulumi import (AssetArchive, ComponentResource, Config, FileAsset, Output,
+                    ResourceOptions)
 from pulumi_aws.cloudwatch import EventRule, EventTarget
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs

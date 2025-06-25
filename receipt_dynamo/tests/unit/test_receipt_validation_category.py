@@ -2,7 +2,8 @@ from copy import deepcopy
 
 import pytest
 
-from receipt_dynamo import ReceiptValidationCategory, itemToReceiptValidationCategory
+from receipt_dynamo import (ReceiptValidationCategory,
+                            itemToReceiptValidationCategory)
 
 
 @pytest.fixture

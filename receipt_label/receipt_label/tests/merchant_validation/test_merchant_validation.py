@@ -30,7 +30,6 @@ def mock_get_clients():
 clients.get_clients = mock_get_clients
 
 import receipt_label.merchant_validation.google_places as gp
-
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
 

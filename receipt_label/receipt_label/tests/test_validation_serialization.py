@@ -4,18 +4,13 @@ from typing import Dict, List
 
 import pytest
 
-from receipt_dynamo import (
-    ReceiptValidationCategory,
-    ReceiptValidationResult,
-    ReceiptValidationSummary,
-)
-from receipt_label.models.validation import (
-    FieldValidation,
-    ValidationAnalysis,
-    ValidationResult,
-    ValidationResultType,
-    ValidationStatus,
-)
+from receipt_dynamo import (ReceiptValidationCategory, ReceiptValidationResult,
+                            ReceiptValidationSummary)
+from receipt_label.models.validation import (FieldValidation,
+                                             ValidationAnalysis,
+                                             ValidationResult,
+                                             ValidationResultType,
+                                             ValidationStatus)
 
 
 @pytest.fixture

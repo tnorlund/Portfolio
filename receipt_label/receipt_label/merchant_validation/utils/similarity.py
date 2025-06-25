@@ -2,7 +2,8 @@
 
 from fuzzywuzzy import fuzz
 
-from .normalization import normalize_address, normalize_phone, preprocess_for_comparison
+from .normalization import (normalize_address, normalize_phone,
+                            preprocess_for_comparison)
 
 
 def get_name_similarity(name1: str, name2: str) -> int:

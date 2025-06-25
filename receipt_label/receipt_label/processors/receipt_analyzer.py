@@ -3,11 +3,9 @@ import re
 import traceback
 from typing import Dict, List, Optional, Tuple, Union
 
-from ..data.gpt import (
-    gpt_request_field_labeling,
-    gpt_request_line_item_analysis,
-    gpt_request_structure_analysis,
-)
+from ..data.gpt import (gpt_request_field_labeling,
+                        gpt_request_line_item_analysis,
+                        gpt_request_structure_analysis)
 from ..data.places_api import BatchPlacesProcessor
 from ..models.label import LabelAnalysis
 from ..models.receipt import Receipt, ReceiptLine, ReceiptSection, ReceiptWord

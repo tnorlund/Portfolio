@@ -1,9 +1,7 @@
 import pytest
 
-from receipt_dynamo.entities.receipt_word_tag import (
-    ReceiptWordTag,
-    itemToReceiptWordTag,
-)
+from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
+                                                      itemToReceiptWordTag)
 
 
 @pytest.fixture

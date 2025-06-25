@@ -3,20 +3,10 @@ import json
 import os
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (
-    Image,
-    Letter,
-    Line,
-    OCRJob,
-    OCRRoutingDecision,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordTag,
-    Word,
-    WordTag,
-)
+from receipt_dynamo.entities import (Image, Letter, Line, OCRJob,
+                                     OCRRoutingDecision, Receipt,
+                                     ReceiptLetter, ReceiptLine, ReceiptWord,
+                                     ReceiptWordTag, Word, WordTag)
 
 
 def import_image(table_name: str, json_path: str) -> None:
