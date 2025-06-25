@@ -2,16 +2,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ContentPattern as DynamoContentPattern,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptSection as DynamoReceiptSection,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import ReceiptStructureAnalysis
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    SpatialPattern as DynamoSpatialPattern,
-)
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ContentPattern as DynamoContentPattern
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ReceiptSection as DynamoReceiptSection
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ReceiptStructureAnalysis
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    SpatialPattern as DynamoSpatialPattern
 
 from .metadata import MetadataMixin
 

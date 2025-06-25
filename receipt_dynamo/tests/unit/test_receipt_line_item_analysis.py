@@ -5,9 +5,7 @@ from decimal import Decimal
 import pytest
 
 from receipt_dynamo.entities.receipt_line_item_analysis import (
-    ReceiptLineItemAnalysis,
-    itemToReceiptLineItemAnalysis,
-)
+    ReceiptLineItemAnalysis, itemToReceiptLineItemAnalysis)
 
 
 @pytest.fixture

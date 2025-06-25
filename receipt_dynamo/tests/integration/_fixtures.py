@@ -3,19 +3,9 @@ import os
 
 import pytest
 
-from receipt_dynamo import (
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordLabel,
-    ReceiptWordTag,
-    Word,
-    WordTag,
-)
+from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
+                            ReceiptLine, ReceiptWord, ReceiptWordLabel,
+                            ReceiptWordTag, Word, WordTag)
 
 CURRENT_DIR = os.path.dirname(__file__)
 
