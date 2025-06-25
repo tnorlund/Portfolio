@@ -2,12 +2,9 @@ import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_label.embedding.word import (
-    chunk_into_embedding_batches,
-    generate_batch_id,
-    list_receipt_words_with_no_embeddings,
-    serialize_receipt_words,
-    upload_serialized_words,
-)
+    chunk_into_embedding_batches, generate_batch_id,
+    list_receipt_words_with_no_embeddings, serialize_receipt_words,
+    upload_serialized_words)
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -39,9 +36,7 @@ def submit_handler(event, context):
     """
     logger.info("Starting prepare_embedding_batch_handler")
     words_without_embeddings = list_receipt_words_with_no_embeddings()
-    logger.info(
-        f"Found {len(words_without_embeddings)} words without embeddings"
-    )
+    logger.info(f"Found {len(words_without_embeddings)} words without embeddings")
     batches = chunk_into_embedding_batches(words_without_embeddings)
     logger.info(f"Chunked into {len(batches)} batches")
     # Debugging logs for chunked batches
@@ -57,9 +52,7 @@ def submit_handler(event, context):
                 logger.info(
                     f"Words count OK for image {image_id}, receipt {receipt_id}: {total} words"
                 )
-    uploaded = upload_serialized_words(
-        serialize_receipt_words(batches), bucket
-    )
+    uploaded = upload_serialized_words(serialize_receipt_words(batches), bucket)
     logger.info(f"Uploaded {len(uploaded)} files")
     cleaned = [
         {

@@ -6,29 +6,21 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    ReceiptLetter,
-    itemToReceiptLetter,
-)
+from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
+                                                    itemToReceiptLetter)
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
-from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
-    itemToReceiptWordLabel,
-)
-from receipt_dynamo.entities.receipt_word_tag import (
-    ReceiptWordTag,
-    itemToReceiptWordTag,
-)
+from receipt_dynamo.entities.receipt_word_label import (ReceiptWordLabel,
+                                                        itemToReceiptWordLabel)
+from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
+                                                      itemToReceiptWordTag)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     # You might also check that each key maps to a dictionary with a DynamoDB
     # type key (e.g., "S")
     for key in required_keys:
@@ -49,13 +41,9 @@ class _Receipt(DynamoClientProtocol):
             ValueError: When a receipt with the same ID already exists
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -69,17 +57,13 @@ class _Receipt(DynamoClientProtocol):
                     f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add receipt to DynamoDB: {e}") from e
 
     def addReceipts(self, receipts: list[Receipt]):
         """Adds a list of receipts to the database
@@ -91,21 +75,16 @@ class _Receipt(DynamoClientProtocol):
             ValueError: When a receipt with the same ID already exists
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
         try:
             for i in range(0, len(receipts), 25):
                 chunk = receipts[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": receipt.to_item()}}
-                    for receipt in chunk
+                    {"PutRequest": {"Item": receipt.to_item()}} for receipt in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -114,9 +93,7 @@ class _Receipt(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -143,13 +120,9 @@ class _Receipt(DynamoClientProtocol):
             ValueError: When the receipt does not exist
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
 
         try:
             self._client.put_item(
@@ -198,15 +171,11 @@ class _Receipt(DynamoClientProtocol):
                 - or any other unexpected errors.
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
 
         # Process receipts in chunks of 25 because transact_write_items
         # supports a maximum of 25 operations.
@@ -228,13 +197,9 @@ class _Receipt(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more receipts do not exist"
-                    ) from e
+                    raise ValueError("One or more receipts do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -256,13 +221,9 @@ class _Receipt(DynamoClientProtocol):
             ValueError: When the receipt does not exist
         """
         if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
+            raise ValueError("Receipt parameter is required and cannot be None.")
         if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+            raise ValueError("receipt must be an instance of the Receipt class.")
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -305,15 +266,11 @@ class _Receipt(DynamoClientProtocol):
             ValueError: When a receipt does not exist or if another error occurs.
         """
         if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
+            raise ValueError("Receipts parameter is required and cannot be None.")
         if not isinstance(receipts, list):
             raise ValueError("receipts must be a list of Receipt instances.")
         if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            raise ValueError("All receipts must be instances of the Receipt class.")
 
         try:
             # Process receipts in chunks of 25 items (the maximum allowed per
@@ -410,9 +367,7 @@ class _Receipt(DynamoClientProtocol):
             else:
                 raise Exception(f"Error getting receipt: {e}") from e
 
-    def getReceiptDetails(
-        self, image_id: str, receipt_id: int
-    ) -> ReceiptDetails:
+    def getReceiptDetails(self, image_id: str, receipt_id: int) -> ReceiptDetails:
         """Get a receipt with its details
 
         Args:
@@ -450,9 +405,7 @@ class _Receipt(DynamoClientProtocol):
                         labels.append(itemToReceiptWordLabel(item))
                 # paginate
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     break
             return ReceiptDetails(
@@ -527,9 +480,7 @@ class _Receipt(DynamoClientProtocol):
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                receipts.extend(
-                    [itemToReceipt(item) for item in response["Items"]]
-                )
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
                 # If we have reached or exceeded the limit, trim the list and
                 # break.
@@ -542,9 +493,7 @@ class _Receipt(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -588,9 +537,7 @@ class _Receipt(DynamoClientProtocol):
                     ":sk": {"S": "RECEIPT#"},
                 },
             )
-            receipts.extend(
-                [itemToReceipt(item) for item in response["Items"]]
-            )
+            receipts.extend([itemToReceipt(item) for item in response["Items"]])
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -601,9 +548,7 @@ class _Receipt(DynamoClientProtocol):
                         ":sk": {"S": "RECEIPT#"},
                     },
                 )
-                receipts.extend(
-                    [itemToReceipt(item) for item in response["Items"]]
-                )
+                receipts.extend([itemToReceipt(item) for item in response["Items"]])
             return receipts
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
@@ -615,9 +560,7 @@ class _Receipt(DynamoClientProtocol):
     ) -> Tuple[
         Dict[
             str,
-            Dict[
-                str, Union[Receipt, List[ReceiptWord], List[ReceiptWordLabel]]
-            ],
+            Dict[str, Union[Receipt, List[ReceiptWord], List[ReceiptWordLabel]]],
         ],
         Optional[Dict],
     ]:
@@ -677,9 +620,7 @@ class _Receipt(DynamoClientProtocol):
                             return payload, last_evaluated_key
 
                         receipt = itemToReceipt(item)
-                        current_key = (
-                            f"{receipt.image_id}_{receipt.receipt_id}"
-                        )
+                        current_key = f"{receipt.image_id}_{receipt.receipt_id}"
                         payload[current_key] = {
                             "receipt": receipt,
                             "words": [],
@@ -708,14 +649,10 @@ class _Receipt(DynamoClientProtocol):
                 if "LastEvaluatedKey" not in response:
                     return payload, None
 
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list receipt details from the database"
-            ) from e
+            raise ValueError("Could not list receipt details from the database") from e
 
     def listReceiptAndWords(
         self, image_id: str, receipt_id: int

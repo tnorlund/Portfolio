@@ -45,10 +45,7 @@ def test_job_metric_init_valid(example_job_metric):
 @pytest.mark.unit
 def test_job_metric_init_minimal(example_job_metric_minimal):
     """Test the JobMetric constructor with minimal parameters."""
-    assert (
-        example_job_metric_minimal.job_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_job_metric_minimal.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_job_metric_minimal.metric_name == "accuracy"
     assert example_job_metric_minimal.timestamp == "2021-01-01T12:35:45"
     assert example_job_metric_minimal.value == 87.5
@@ -76,9 +73,7 @@ def test_job_metric_init_invalid_id():
 @pytest.mark.unit
 def test_job_metric_init_invalid_metric_name():
     """Test the JobMetric constructor with invalid metric_name."""
-    with pytest.raises(
-        ValueError, match="metric_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="metric_name must be a non-empty string"):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",  # Invalid: empty string
@@ -113,9 +108,7 @@ def test_job_metric_init_invalid_value():
 @pytest.mark.unit
 def test_job_metric_init_invalid_timestamp():
     """Test the JobMetric constructor with invalid timestamp."""
-    with pytest.raises(
-        ValueError, match="timestamp must be datetime, str, got"
-    ):
+    with pytest.raises(ValueError, match="timestamp must be datetime, str, got"):
         JobMetric(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "loss",
@@ -187,9 +180,7 @@ def test_job_metric_gsi1_key(example_job_metric):
     assert isinstance(gsi1_key, dict)
     assert "GSI1PK" in gsi1_key
     assert "GSI1SK" in gsi1_key
-    assert (
-        gsi1_key["GSI1PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
-    )
+    assert gsi1_key["GSI1PK"]["S"] == f"METRIC#{example_job_metric.metric_name}"
     assert gsi1_key["GSI1SK"]["S"] == f"{example_job_metric.timestamp}"
 
 

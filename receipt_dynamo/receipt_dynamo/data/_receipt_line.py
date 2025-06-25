@@ -41,13 +41,8 @@ class _ReceiptLine(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} already exists"
-                )
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"ReceiptLine with ID {line.line_id} already exists")
             else:
                 raise
 
@@ -58,28 +53,20 @@ class _ReceiptLine(DynamoClientProtocol):
         if not isinstance(lines, list):
             raise ValueError("lines must be a list of ReceiptLine instances.")
         if not all(isinstance(ln, ReceiptLine) for ln in lines):
-            raise ValueError(
-                "All lines must be instances of the ReceiptLine class."
-            )
+            raise ValueError("All lines must be instances of the ReceiptLine class.")
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": ln.to_item()}} for ln in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": ln.to_item()}} for ln in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not add ReceiptLines to the database"
-            ) from e
+            raise ValueError("Could not add ReceiptLines to the database") from e
 
     def updateReceiptLine(self, line: ReceiptLine):
         """Updates an existing ReceiptLine in DynamoDB."""
@@ -90,13 +77,8 @@ class _ReceiptLine(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} does not exist"
-                )
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"ReceiptLine with ID {line.line_id} does not exist")
             else:
                 raise
 
@@ -107,9 +89,7 @@ class _ReceiptLine(DynamoClientProtocol):
         if not isinstance(lines, list):
             raise ValueError("lines must be a list of ReceiptLine instances.")
         if not all(isinstance(ln, ReceiptLine) for ln in lines):
-            raise ValueError(
-                "All lines must be instances of the ReceiptLine class."
-            )
+            raise ValueError("All lines must be instances of the ReceiptLine class.")
         for i in range(0, len(lines), CHUNK_SIZE):
             chunk = lines[i : i + CHUNK_SIZE]
             transact_items = [
@@ -133,9 +113,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 elif error_code == "InternalServerError":
                     raise ValueError("Internal server error")
                 elif error_code == "ValidationException":
-                    raise ValueError(
-                        "One or more parameters given were invalid"
-                    )
+                    raise ValueError("One or more parameters given were invalid")
                 elif error_code == "AccessDeniedException":
                     raise ValueError("Access denied")
                 else:
@@ -150,17 +128,12 @@ class _ReceiptLine(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"ReceiptLine with ID {line_id} not found")
             else:
                 raise
@@ -170,22 +143,16 @@ class _ReceiptLine(DynamoClientProtocol):
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": ln.key()}} for ln in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": ln.key()}} for ln in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not delete ReceiptLines from the database"
-            ) from e
+            raise ValueError("Could not delete ReceiptLines from the database") from e
 
     def getReceiptLine(
         self, receipt_id: int, image_id: str, line_id: int
@@ -196,9 +163,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
                 },
             )
             return itemToReceiptLine(response["Item"])
@@ -210,9 +175,7 @@ class _ReceiptLine(DynamoClientProtocol):
     ) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their indices."""
         if indices is None:
-            raise ValueError(
-                "indices parameter is required and cannot be None."
-            )
+            raise ValueError("indices parameter is required and cannot be None.")
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):
@@ -220,9 +183,7 @@ class _ReceiptLine(DynamoClientProtocol):
 
         for index in indices:
             if len(index) != 3:
-                raise ValueError(
-                    "indices must be a list of tuples with 3 elements."
-                )
+                raise ValueError("indices must be a list of tuples with 3 elements.")
             if not isinstance(index[0], str):
                 raise ValueError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
@@ -282,12 +243,8 @@ class _ReceiptLine(DynamoClientProtocol):
 
                 unprocessed = response.get("UnprocessedKeys", {})
                 while unprocessed.get(self.table_name, {}).get("Keys"):
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
+                    response = self._client.batch_get_item(RequestItems=unprocessed)
+                    batch_items = response["Responses"].get(self.table_name, [])
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
             except ClientError as e:
@@ -305,9 +262,7 @@ class _ReceiptLine(DynamoClientProtocol):
         """Returns all ReceiptLines from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
         receipt_lines = []
         try:
@@ -330,9 +285,7 @@ class _ReceiptLine(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the receipt lines.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     receipt_lines.extend(
                         [itemToReceiptLine(item) for item in response["Items"]]
@@ -377,9 +330,7 @@ class _ReceiptLine(DynamoClientProtocol):
             )
 
         if status_str not in [status.value for status in EmbeddingStatus]:
-            raise ValueError(
-                "embedding_status must be a valid EmbeddingStatus"
-            )
+            raise ValueError("embedding_status must be a valid EmbeddingStatus")
 
         try:
             response = self._client.query(
@@ -462,6 +413,4 @@ class _ReceiptLine(DynamoClientProtocol):
 
             return receipt_lines
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptLines from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptLines from the database") from e

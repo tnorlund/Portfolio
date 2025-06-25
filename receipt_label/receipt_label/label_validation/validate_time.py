@@ -5,11 +5,8 @@
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (  # type: ignore
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-
+from receipt_dynamo.entities import (ReceiptWord,  # type: ignore
+                                     ReceiptWordLabel)
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
@@ -93,9 +90,7 @@ def _validate_time_components(time_str: str) -> bool:
     return True
 
 
-def _merged_time_candidate_from_text(
-    word: ReceiptWord, metadata: dict
-) -> list[str]:
+def _merged_time_candidate_from_text(word: ReceiptWord, metadata: dict) -> list[str]:
     """Return possible time strings from the word and its neighbors."""
 
     current = word.text.strip()
@@ -162,9 +157,7 @@ def validate_time(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches)
-        if matches
-        else 0.0
+        sum(match.score for match in matches) / len(matches) if matches else 0.0
     )
 
     variants = _merged_time_candidate_from_text(word, vector_data.metadata)

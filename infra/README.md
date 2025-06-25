@@ -139,6 +139,9 @@ Defines the API infrastructure:
 - Manages API stages and deployments
 - Configures API access controls
 
+For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
+For recent fixes and deployment issues, see [API_GATEWAY_FIXES.md](API_GATEWAY_FIXES.md).
+
 #### `dynamo_db.py`
 
 Manages the DynamoDB infrastructure:
