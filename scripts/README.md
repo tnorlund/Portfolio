@@ -76,7 +76,7 @@ python generate_test_matrix.py [--verbose]
 ## 🏃‍♂️ Test Runners
 
 ### `run_tests_optimized.py`
-**Advanced test runner with intelligent resource management**
+**Advanced test runner with intelligent resource management** *(Recently enhanced)*
 
 ```bash
 # Run unit tests
@@ -87,6 +87,9 @@ python run_tests_optimized.py receipt_dynamo tests/integration --test-type integ
 
 # Run specific test files
 python run_tests_optimized.py receipt_dynamo tests/integration/test__receipt.py --test-type integration --timeout 300
+
+# Run with space-separated test paths (GitHub Actions compatible)
+python run_tests_optimized.py receipt_dynamo "tests/integration/test_a.py tests/integration/test_b.py" --test-type integration
 ```
 
 **Features:**
@@ -95,6 +98,7 @@ python run_tests_optimized.py receipt_dynamo tests/integration/test__receipt.py 
 - Intelligent timeout and resource management
 - Built-in coverage reporting
 - Performance monitoring and reporting
+- **NEW**: GitHub Actions compatible argument parsing for space-separated test paths
 
 **Options:**
 - `--test-type`: unit, integration, end_to_end

@@ -22,7 +22,7 @@
 
 ### **1. Comment Deduplication**
 ```javascript
-// Find existing comment by specific criteria
+// Find existing comment by specific criteria (FIXED: proper operator precedence)
 const botComment = comments.find(comment => 
   comment.user.login === 'github-actions[bot]' && 
   (comment.body.includes('## ✅ PR Status') || comment.body.includes('## 🎨 PR Status'))
@@ -35,6 +35,8 @@ if (botComment) {
   await github.rest.issues.createComment({ issue_number, body });
 }
 ```
+
+**Recent Fix:** Added parentheses around body inclusion checks to fix operator precedence bug that could match wrong comments.
 
 ### **2. Informative Comments**
 - **Status indicators**: ✅ ❌ 🎨 icons for quick visual feedback
@@ -139,11 +141,11 @@ if (formatCheck !== 'skipped' || quickTests !== 'skipped') {
 ## 🔄 Monitoring and Maintenance
 
 ### **Regular Review Items:**
-- [ ] Check for comment duplication patterns
+- [x] Check for comment duplication patterns *(Fixed: operator precedence bug in PR status logic)*
 - [ ] Monitor Claude review cleanup effectiveness
-- [ ] Validate status comment update logic
+- [x] Validate status comment update logic *(Fixed: parentheses added around body inclusion checks)*
 - [ ] Review comment content for clarity and usefulness
-- [ ] Ensure proper permissions for comment management
+- [x] Ensure proper permissions for comment management *(Confirmed: pull-requests: write permission set)*
 
 ### **Metrics to Track:**
 - **Comments per PR** (target: 1 status + Claude reviews)
