@@ -1,7 +1,9 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (ReceiptLineItemAnalysis,
-                            itemToReceiptLineItemAnalysis)
+from receipt_dynamo import (
+    ReceiptLineItemAnalysis,
+    itemToReceiptLineItemAnalysis,
+)
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -43,7 +45,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be added to DynamoDB.
         """
         if analysis is None:
-            raise ValueError("analysis parameter is required and cannot be None.")
+            raise ValueError(
+                "analysis parameter is required and cannot be None."
+            )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptLineItemAnalysis class."
@@ -79,7 +83,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                     f"Could not add receipt line item analysis to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptLineItemAnalyses(self, analyses: list[ReceiptLineItemAnalysis]):
+    def addReceiptLineItemAnalyses(
+        self, analyses: list[ReceiptLineItemAnalysis]
+    ):
         """Adds multiple ReceiptLineItemAnalyses to DynamoDB in batches.
 
         Args:
@@ -90,7 +96,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be added to DynamoDB.
         """
         if analyses is None:
-            raise ValueError("analyses parameter is required and cannot be None.")
+            raise ValueError(
+                "analyses parameter is required and cannot be None."
+            )
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptLineItemAnalysis instances."
@@ -102,13 +110,17 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [{"PutRequest": {"Item": a.to_item()}} for a in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": a.to_item()}} for a in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -138,7 +150,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be updated in DynamoDB.
         """
         if analysis is None:
-            raise ValueError("analysis parameter is required and cannot be None.")
+            raise ValueError(
+                "analysis parameter is required and cannot be None."
+            )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptLineItemAnalysis class.",
@@ -171,7 +185,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                     f"Could not update ReceiptLineItemAnalysis in the database: {e}"
                 ) from e
 
-    def updateReceiptLineItemAnalyses(self, analyses: list[ReceiptLineItemAnalysis]):
+    def updateReceiptLineItemAnalyses(
+        self, analyses: list[ReceiptLineItemAnalysis]
+    ):
         """Updates multiple ReceiptLineItemAnalyses in the database.
 
         Args:
@@ -182,7 +198,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be updated in DynamoDB.
         """
         if analyses is None:
-            raise ValueError("analyses parameter is required and cannot be None.")
+            raise ValueError(
+                "analyses parameter is required and cannot be None."
+            )
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptLineItemAnalysis instances."
@@ -214,7 +232,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                             "One or more ReceiptLineItemAnalyses do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -242,7 +262,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         if analysis is None:
-            raise ValueError("analysis parameter is required and cannot be None.")
+            raise ValueError(
+                "analysis parameter is required and cannot be None."
+            )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptLineItemAnalysis class."
@@ -274,7 +296,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                     f"Could not delete ReceiptLineItemAnalysis from the database: {e}"
                 ) from e
 
-    def deleteReceiptLineItemAnalyses(self, analyses: list[ReceiptLineItemAnalysis]):
+    def deleteReceiptLineItemAnalyses(
+        self, analyses: list[ReceiptLineItemAnalysis]
+    ):
         """Deletes multiple ReceiptLineItemAnalyses in batch.
 
         Args:
@@ -285,7 +309,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
         if analyses is None:
-            raise ValueError("analyses parameter is required and cannot be None.")
+            raise ValueError(
+                "analyses parameter is required and cannot be None."
+            )
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptLineItemAnalysis instances."
@@ -297,13 +323,17 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [{"DeleteRequest": {"Key": a.key()}} for a in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": a.key()}} for a in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -339,20 +369,26 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If the receipt line item analysis cannot be retrieved from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be greater than 0")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"
+                    },
                 },
             )
             if "Item" in response:
@@ -372,7 +408,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt line item analysis: {e}") from e
+                raise Exception(
+                    f"Error getting receipt line item analysis: {e}"
+                ) from e
 
     def listReceiptLineItemAnalyses(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -393,7 +431,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         analyses = []
@@ -413,13 +453,18 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             analyses.extend(
-                [itemToReceiptLineItemAnalysis(item) for item in response["Items"]]
+                [
+                    itemToReceiptLineItemAnalysis(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
                 # Paginate through all the analyses.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     analyses.extend(
                         [
@@ -447,7 +492,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt line item analyses: {e}") from e
+                raise Exception(
+                    f"Error listing receipt line item analyses: {e}"
+                ) from e
 
     def listReceiptLineItemAnalysesForImage(
         self, image_id: str
@@ -465,7 +512,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             Exception: If analyses cannot be retrieved from DynamoDB.
         """
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
 
         analyses = []
@@ -512,7 +561,9 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {error_message}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {error_message}")
+                raise Exception(
+                    f"Provisioned throughput exceeded: {error_message}"
+                )
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {error_message}"

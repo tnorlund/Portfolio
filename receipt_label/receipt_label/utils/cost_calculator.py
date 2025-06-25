@@ -44,7 +44,10 @@ class AICostCalculator:
         # Claude 3 Opus
         "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
         "claude-3-opus": {"input": 0.015, "output": 0.075},
-        "claude-opus-4": {"input": 0.015, "output": 0.075},  # Assuming same as 3-opus
+        "claude-opus-4": {
+            "input": 0.015,
+            "output": 0.075,
+        },  # Assuming same as 3-opus
         # Claude 3.5 Sonnet
         "claude-3.5-sonnet": {"input": 0.003, "output": 0.015},
         "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
