@@ -10,12 +10,8 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from openai import OpenAI
-<<<<<<< Updated upstream
-from pinecone import Pinecone
-
-=======
 from pinecone import Index, Pinecone
->>>>>>> Stashed changes
+
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
