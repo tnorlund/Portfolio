@@ -41,27 +41,18 @@ jobs:
         run: |
           pip install black isort
       
-      - name: Format Python code
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          # Format all Python files
-          black receipt_dynamo receipt_label infra scripts spec || true
-          isort receipt_dynamo receipt_label infra scripts spec || true
-          
-          # Check if there are any changes
-          if [[ -n $(git diff --name-only) ]]; then
-            git config user.email "action@github.com"
-            git config user.name "GitHub Action"
-            git add -A
-            git commit -m "style: auto-format Python code [skip ci]"
-            git push
-          fi
-      
       - name: Check Python formatting
-        if: github.event_name == 'pull_request'
         run: |
-          black --check receipt_dynamo receipt_label infra
-          isort --check-only receipt_dynamo receipt_label infra
+          # For PRs, enforce formatting
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            black --check receipt_dynamo receipt_label infra
+            isort --check-only receipt_dynamo receipt_label infra
+          else
+            # For main branch, just check but don't fail
+            echo "Checking Python formatting (non-blocking)..."
+            black --check receipt_dynamo receipt_label infra || echo "Note: Some files need formatting"
+            isort --check-only receipt_dynamo receipt_label infra || echo "Note: Some imports need sorting"
+          fi
       
       - name: Set up Node.js
         uses: actions/setup-node@v3
