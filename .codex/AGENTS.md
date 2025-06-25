@@ -15,6 +15,10 @@
   - For `receipt_dynamo`
     - Unit: `pytest -m unit receipt_dynamo`
     - Integration `pytest -m integration receipt_dynamo`
+  - For `receipt_label`
+    - All tests: `pytest receipt_label`
+    - Specific test: `pytest receipt_label/tests/test_validation.py`
+    - With coverage: `pytest --cov=receipt_label receipt_label`
 - Ensure code coverage is measured with `pytest-cov`.
 - Mock AWS services using `moto` during tests.
 
@@ -114,8 +118,78 @@
 
 - `receipt_dynamo/`: Interfaces with DynamoDB for receipt data processing.
 - `receipt_dynamo/tests`: Contains unit and integration tests for both packages.
+- `receipt_label/`: Processes receipts to extract, label, and validate data using ML and external APIs.
+
+## receipt_label Package Development
+
+### Key Concepts
+
+- **Dual Embedding Strategy**: Each receipt word gets word-level (semantic) and context-level (layout) embeddings
+- **3-Pass Validation**: Batch GPT → Embedding refinement with Pinecone → Agentic resolution
+- **Batch Processing**: Uses OpenAI Batch API for cost-efficient processing at scale
+
+### Important Files
+
+- **Entry Points**:
+  - `receipt_label/core/labeler.py`: Main orchestration
+  - `receipt_label/submit_line_embedding_batch/submit_line_batch.py`: Batch line embedding submission
+- **Models**: `receipt_label/models/` - Receipt, Word, Line, Validation data structures
+- **Validators**: `receipt_label/label_validation/` - Field-specific validation logic
+
+### Development Workflow
+
+1. **Before Making Changes**:
+
+   - Review existing patterns in similar files
+   - Check test fixtures in `receipt_label/tests/fixtures/`
+   - Understand the DynamoDB entity models from `receipt_dynamo`
+
+2. **Common Tasks**:
+
+   - Adding a validator: Create in `label_validation/validate_<field>.py`
+   - Modifying batch logic: Review `submit_*_batch/` and `poll_*_batch/` patterns
+   - Working with embeddings: Update metadata, never duplicate vectors
+
+3. **Testing Changes**:
+   ```bash
+   cd receipt_label
+   pytest tests/test_<module>.py  # Test specific module
+   black receipt_label/           # Format code
+   mypy receipt_label/            # Type check
+   ```
+
+### Offline Testing Support
+**All tests can run completely offline!** The package has comprehensive mocking:
+- **AWS Services**: Mocked with `moto` (DynamoDB, S3)
+- **OpenAI API**: Mocked with `pytest-mock`
+- **Pinecone**: Mocked with `pytest-mock`
+- **Google Places API**: Custom mock implementation
+
+No internet connection or API keys needed for testing. The test suite validates business logic while isolating external dependencies.
+
+### Environment Variables
+
+**For Production/Development** (with real API calls):
+```bash
+OPENAI_API_KEY        # Required for GPT and embeddings
+PINECONE_API_KEY      # Required for vector storage
+AWS_ACCESS_KEY_ID     # Required for DynamoDB/S3
+AWS_SECRET_ACCESS_KEY # Required for DynamoDB/S3
+GOOGLE_PLACES_API_KEY # Required for address validation
+```
+
+**For Testing**: None required! All external services are mocked.
+
+### Key Patterns to Follow
+
+- Always update entity status in DynamoDB when processing
+- Use idempotent operations for retry safety
+- Handle rate limits and API errors gracefully
+- Log important operations for debugging
+- Keep embedding metadata updated instead of creating duplicates
 
 ## Additional Notes
 
-- Use Python 3.8 or higher.
+- Use Python 3.12 or higher.
 - The entities are stored in `receipt_dynamo/receipt_dynamo/entities` and the accessors are in `receipt_dynamo/receipt_dynamo/data`. The style and formatting should remain similar in these directories.
+- When working with `receipt_label`, ensure you understand the batch processing flow and status tracking mechanisms.

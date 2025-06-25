@@ -1,31 +1,33 @@
 """Utility functions for receipt labeling."""
 
+import importlib.metadata
+
 from .address import (
+    compare_addresses,
+    format_address,
     normalize_address,
     parse_address,
-    format_address,
-    compare_addresses,
 )
+from .clients import get_clients, get_client_manager
+from .client_manager import ClientConfig, ClientManager
 from .date import (
-    parse_datetime,
     extract_datetime,
     format_datetime,
-    is_valid_date,
-    is_valid_time,
     get_date_range,
     get_time_difference,
+    is_valid_date,
+    is_valid_time,
+    parse_datetime,
 )
 from .validation import (
-    validate_business_name,
-    validate_phone_number,
     validate_address,
-    validate_datetime,
     validate_amounts,
+    validate_business_name,
+    validate_datetime,
+    validate_phone_number,
     validate_receipt_data,
     validate_receipt_format,
 )
-import importlib.metadata
-from .clients import get_clients
 
 __all__ = [
     # Address utilities
@@ -51,6 +53,9 @@ __all__ = [
     "validate_receipt_format",
     # Client utilities
     "get_clients",
+    "get_client_manager",
+    "ClientConfig",
+    "ClientManager",
 ]
 
 

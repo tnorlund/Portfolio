@@ -1,9 +1,10 @@
-import pytest
-from typing import Literal, Dict, List, Optional, Any, Type
-from unittest.mock import MagicMock, patch, call
-from botocore.exceptions import ClientError, ParamValidationError
 import uuid
 from copy import deepcopy
+from typing import Any, Dict, List, Literal, Optional, Type
+from unittest.mock import MagicMock, call, patch
+
+import pytest
+from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import (
     ReceiptValidationResult,

@@ -14,9 +14,10 @@ Functions include:
 This script utilizes the boto3 library to interact with AWS Lambda services.
 """
 
-import os
-import boto3
 import logging
+import os
+
+import boto3
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -1,9 +1,10 @@
 import pytest
+
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.embedding_batch_result import (
     EmbeddingBatchResult,
     itemToEmbeddingBatchResult,
 )
-from receipt_dynamo.constants import EmbeddingStatus
 
 
 @pytest.fixture
@@ -94,7 +95,7 @@ def test_embedding_batch_result_iter(example_embedding_batch_result):
         ("line_id", "nope", "line_id must be int, got str"),
         ("word_id", "fail", "word_id must be int, got str"),
         ("pinecone_id", "invalid", "pinecone_id must be in the format"),
-        ("status", 123, "status must be str, got int"),
+        ("status", 123, "EmbeddingStatus must be a str or EmbeddingStatus instance"),
         ("text", 456, "text must be str, got int"),
         ("error_message", 999, "error_message must be str, got int"),
     ],
@@ -172,7 +173,7 @@ def test_word_id_must_be_positive():
 
 @pytest.mark.unit
 def test_invalid_embedding_status_enum():
-    with pytest.raises(ValueError, match="status must be one of"):
+    with pytest.raises(ValueError, match="EmbeddingStatus must be one of"):
         EmbeddingBatchResult(
             batch_id="dc7e61ba-5722-43a2-8e99-9df9f54287a9",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

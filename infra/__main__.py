@@ -1,18 +1,26 @@
 """Main Pulumi program for AWS infrastructure."""
 
+import base64
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ResourceOptions
-import base64
+
+import api_gateway  # noqa: F401
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
-import api_gateway  # noqa: F401
+from dynamo_db import (  # Import DynamoDB table from original code
+    dynamodb_table,
+)
+from embedding_step_functions import LineEmbeddingStepFunction
+from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
-from dynamo_db import (
-    dynamodb_table,
-)  # Import DynamoDB table from original code
+from upload_images import UploadImages
+from validate_merchant_step_functions import ValidateMerchantStepFunctions
+from validation_by_merchant import ValidationByMerchantStepFunction
+from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -21,24 +29,20 @@ from dynamo_db import (
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
 from word_label_step_functions import WordLabelStepFunctions
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
-from validation_pipeline import ValidationPipeline
-from embedding_step_functions import LineEmbeddingStepFunction
-from validation_by_merchant import ValidationByMerchantStepFunction
-from upload_images import UploadImages
 
 # Import other necessary components
 try:
     # import lambda_layer  # noqa: F401
     import fast_lambda_layer  # noqa: F401
-    from routes.health_check.infra import health_check_lambda  # noqa: F401
-    from lambda_functions.label_count_cache_updater.infra import (
+    from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
-    )  # noqa: F401
+    )
+    from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
     pass
 import step_function
+from step_function_enhanced import create_enhanced_receipt_processor
 
 # Create the dedicated VPC network infrastructure
 # network = VpcForCodeBuild("codebuild-network")
@@ -54,6 +58,20 @@ try:
 except FileNotFoundError:
     pulumi.export("readme", "README file not found")
 
+# Create notification system
+# Get email endpoints from portfolio config
+portfolio_config = pulumi.Config("portfolio")
+notification_emails = portfolio_config.get_object("notification_emails") or []
+
+notification_system = NotificationSystem(
+    "receipt-processing",
+    email_endpoints=notification_emails,
+    tags={
+        "Environment": pulumi.get_stack(),
+        "Purpose": "Infrastructure Monitoring",
+    },
+)
+
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
@@ -67,8 +85,25 @@ upload_images = UploadImages(
     "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket
 )
 
+# Create the enhanced receipt processor with error handling
+enhanced_receipt_processor = create_enhanced_receipt_processor(
+    notification_system
+)
+
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+
+# Export notification topics
+pulumi.export(
+    "step_function_failure_topic_arn",
+    notification_system.step_function_topic_arn,
+)
+pulumi.export(
+    "critical_error_topic_arn", notification_system.critical_error_topic_arn
+)
+
+# Export enhanced step function ARN
+pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # ML Training Infrastructure
 # -------------------------
 

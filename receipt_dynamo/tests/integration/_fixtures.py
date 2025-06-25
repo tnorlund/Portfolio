@@ -11,10 +11,10 @@ from receipt_dynamo import (
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
+    ReceiptWordLabel,
     ReceiptWordTag,
     Word,
     WordTag,
-    ReceiptWordLabel,
 )
 
 CURRENT_DIR = os.path.dirname(__file__)

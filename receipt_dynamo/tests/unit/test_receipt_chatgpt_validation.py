@@ -1,7 +1,8 @@
-import pytest
 from copy import deepcopy
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import pytest
 
 from receipt_dynamo import (
     ReceiptChatGPTValidation,

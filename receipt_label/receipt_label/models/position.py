@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Any
 from decimal import Decimal
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -81,7 +81,9 @@ class BoundingBox:
         """Center point of the bounding box."""
         return Point(self.x + self.width / 2, self.y + self.height / 2)
 
-    def contains_point(self, point: Union[Point, Dict[str, float], tuple]) -> bool:
+    def contains_point(
+        self, point: Union[Point, Dict[str, float], tuple]
+    ) -> bool:
         """
         Check if the bounding box contains a given point.
 
@@ -99,12 +101,18 @@ class BoundingBox:
             x, y = point[0], point[1]
 
         return (
-            self.x <= x <= self.x + self.width and self.y <= y <= self.y + self.height
+            self.x <= x <= self.x + self.width
+            and self.y <= y <= self.y + self.height
         )
 
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary representation."""
-        return {"x": self.x, "y": self.y, "width": self.width, "height": self.height}
+        return {
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+        }
 
     def to_dynamo(self) -> Dict[str, Dict[str, str]]:
         """Convert to DynamoDB representation."""
@@ -160,7 +168,9 @@ class BoundingBox:
         )
 
     @classmethod
-    def from_points(cls, top_left: Point, bottom_right: Point) -> "BoundingBox":
+    def from_points(
+        cls, top_left: Point, bottom_right: Point
+    ) -> "BoundingBox":
         """Create a BoundingBox from top-left and bottom-right points."""
         return cls(
             x=top_left.x,

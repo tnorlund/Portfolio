@@ -1,7 +1,8 @@
-import os
-import boto3
-import urllib.parse
 import json
+import os
+import urllib.parse
+
+import boto3
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
 s3 = boto3.client("s3")

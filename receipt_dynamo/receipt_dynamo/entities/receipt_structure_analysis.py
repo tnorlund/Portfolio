@@ -3,11 +3,12 @@ The Receipt Structure Analysis entity for a receipt represents the structural an
 This is used for storing and retrieving data from DynamoDB.
 """
 
-from typing import Dict, List, Optional, Tuple, Generator, Any, Union, cast
-import json
-import hashlib
 import decimal
+import hashlib
+import json
 from datetime import datetime
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
+
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
 

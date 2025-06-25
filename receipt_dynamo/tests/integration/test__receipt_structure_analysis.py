@@ -1,19 +1,19 @@
+import copy
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Type
 from unittest.mock import MagicMock, patch
-import copy
-import re
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import (
-    ReceiptStructureAnalysis,
-    SpatialPattern,
     ContentPattern,
     ReceiptSection,
+    ReceiptStructureAnalysis,
+    SpatialPattern,
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
 

@@ -1,6 +1,7 @@
-import os
-import logging
 import json
+import logging
+import os
+
 from receipt_dynamo import DynamoClient  # type: ignore
 
 logger = logging.getLogger()

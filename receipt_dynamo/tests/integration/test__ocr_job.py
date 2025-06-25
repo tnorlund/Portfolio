@@ -1,10 +1,12 @@
-import pytest
 from datetime import datetime
 from typing import Literal
+
+import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
-from receipt_dynamo.constants import OCRStatus, OCRJobType
 
 
 @pytest.fixture

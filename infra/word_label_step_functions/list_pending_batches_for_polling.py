@@ -1,5 +1,6 @@
-from logging import getLogger, StreamHandler, Formatter, INFO
-from receipt_label.poll_embedding_batch import list_pending_embedding_batches
+from logging import INFO, Formatter, StreamHandler, getLogger
+
+from receipt_label.embedding.word import list_pending_embedding_batches
 
 logger = getLogger()
 logger.setLevel(INFO)

@@ -1,14 +1,14 @@
 from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    normalize_enum,
 )
-
-from receipt_dynamo.constants import ValidationStatus
 
 
 class ReceiptWordLabel:
@@ -101,15 +101,7 @@ class ReceiptWordLabel:
 
         # Always assign a valid enum value for validation_status
         status = validation_status or ValidationStatus.NONE.value
-        if not isinstance(status, str):
-            raise ValueError("validation_status must be a string")
-        if not status:
-            raise ValueError("validation_status cannot be empty")
-        if status not in [s.value for s in ValidationStatus]:
-            raise ValueError(
-                f"validation_status must be one of: {', '.join(s.value for s in ValidationStatus)}\nGot: {status}"
-            )
-        self.validation_status = status
+        self.validation_status = normalize_enum(status, ValidationStatus)
 
         if label_proposed_by is not None:
             if not isinstance(label_proposed_by, str):

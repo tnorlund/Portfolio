@@ -1,10 +1,11 @@
+import logging
 import os
 import time
-import logging
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from receipt_dynamo.constants import ValidationStatus
+from datetime import datetime
+
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.label_count_cache import LabelCountCache
 
 logger = logging.getLogger()

@@ -1,9 +1,13 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Tuple, Any
-from decimal import Decimal
-from .metadata import MetadataMixin
 from datetime import datetime
-from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
+from decimal import Decimal
+from typing import Any, Dict, List, Optional, Tuple
+
+from receipt_dynamo.entities.receipt_line_item_analysis import (
+    ReceiptLineItemAnalysis,
+)
+
+from .metadata import MetadataMixin
 
 
 @dataclass
@@ -111,13 +115,17 @@ class LineItemAnalysis(MetadataMixin):
         # Calculate total if not provided
         if self.total is None and self.subtotal is not None:
             self.total = (
-                self.subtotal + self.tax + self.fees - self.discounts + self.tips
+                self.subtotal
+                + self.tax
+                + self.fees
+                - self.discounts
+                + self.tips
             )
 
         # Initialize word_labels if None
         if self.word_labels is None:
             self.word_labels = {}
-            
+
         # Initialize metadata if None
         if self.metadata is None:
             self.metadata = {}
@@ -150,7 +158,9 @@ class LineItemAnalysis(MetadataMixin):
             for label_info in self.word_labels.values():
                 label_type = label_info.get("label")
                 if label_type:
-                    label_counts[label_type] = label_counts.get(label_type, 0) + 1
+                    label_counts[label_type] = (
+                        label_counts.get(label_type, 0) + 1
+                    )
             self.add_processing_metric("label_distribution", label_counts)
 
         # If there are discrepancies, add to history
@@ -172,7 +182,9 @@ class LineItemAnalysis(MetadataMixin):
         Returns:
             str: A detailed explanation of how items were identified and calculations performed.
         """
-        reasoning_parts = [f"Analyzed {self.total_found} line items from the receipt."]
+        reasoning_parts = [
+            f"Analyzed {self.total_found} line items from the receipt."
+        ]
 
         # Add financial summary
         financial_parts = []
@@ -190,7 +202,9 @@ class LineItemAnalysis(MetadataMixin):
             financial_parts.append(f"Total: ${self.total}")
 
         if financial_parts:
-            reasoning_parts.append("Financial summary: " + ", ".join(financial_parts))
+            reasoning_parts.append(
+                "Financial summary: " + ", ".join(financial_parts)
+            )
 
         # Add discrepancies if any
         if self.discrepancies:
@@ -199,7 +213,9 @@ class LineItemAnalysis(MetadataMixin):
             )
 
         # Add item reasoning summary
-        item_reasons = [item.reasoning for item in self.items if item.reasoning]
+        item_reasons = [
+            item.reasoning for item in self.items if item.reasoning
+        ]
         if item_reasons:
             # Just include a summary count to avoid extremely long reasoning strings
             reasoning_parts.append(
@@ -235,7 +251,9 @@ class LineItemAnalysis(MetadataMixin):
         """
         # Check if required fields are set
         if self.receipt_id is None:
-            raise ValueError("receipt_id must be set before calling to_dynamo()")
+            raise ValueError(
+                "receipt_id must be set before calling to_dynamo()"
+            )
 
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
@@ -271,7 +289,9 @@ class LineItemAnalysis(MetadataMixin):
         if self.timestamp_added:
             if isinstance(self.timestamp_added, str):
                 try:
-                    timestamp_added = datetime.fromisoformat(self.timestamp_added)
+                    timestamp_added = datetime.fromisoformat(
+                        self.timestamp_added
+                    )
                 except ValueError:
                     timestamp_added = datetime.now()
             else:
@@ -281,7 +301,9 @@ class LineItemAnalysis(MetadataMixin):
         if self.timestamp_updated:
             if isinstance(self.timestamp_updated, str):
                 try:
-                    timestamp_updated = datetime.fromisoformat(self.timestamp_updated)
+                    timestamp_updated = datetime.fromisoformat(
+                        self.timestamp_updated
+                    )
                 except ValueError:
                     timestamp_updated = datetime.now()
             else:
@@ -297,7 +319,11 @@ class LineItemAnalysis(MetadataMixin):
             k: v
             for k, v in self.metadata.items()
             if k
-            not in ["processing_metrics", "processing_history", "source_information"]
+            not in [
+                "processing_metrics",
+                "processing_history",
+                "source_information",
+            ]
         }
 
         # Create the DynamoDB ReceiptLineItemAnalysis
@@ -327,7 +353,9 @@ class LineItemAnalysis(MetadataMixin):
         )
 
     @classmethod
-    def from_dynamo(cls, analysis: ReceiptLineItemAnalysis) -> "LineItemAnalysis":
+    def from_dynamo(
+        cls, analysis: ReceiptLineItemAnalysis
+    ) -> "LineItemAnalysis":
         """
         Create a LineItemAnalysis instance from a DynamoDB ReceiptLineItemAnalysis entity.
 
@@ -385,22 +413,36 @@ class LineItemAnalysis(MetadataMixin):
         instance.receipt_id = analysis.receipt_id
         instance.version = analysis.version
         instance.timestamp_added = (
-            analysis.timestamp_added if isinstance(analysis.timestamp_added, str) 
-            else analysis.timestamp_added.isoformat() if analysis.timestamp_added 
-            else None
+            analysis.timestamp_added
+            if isinstance(analysis.timestamp_added, str)
+            else (
+                analysis.timestamp_added.isoformat()
+                if analysis.timestamp_added
+                else None
+            )
         )
         instance.timestamp_updated = (
-            analysis.timestamp_updated if isinstance(analysis.timestamp_updated, str)
-            else analysis.timestamp_updated.isoformat() if analysis.timestamp_updated
-            else None
+            analysis.timestamp_updated
+            if isinstance(analysis.timestamp_updated, str)
+            else (
+                analysis.timestamp_updated.isoformat()
+                if analysis.timestamp_updated
+                else None
+            )
         )
 
         # Create metadata from the DynamoDB entity's fields
         instance.metadata = {
             **analysis.metadata,
-            "processing_metrics": analysis.metadata.get("processing_metrics", {}),
-            "processing_history": analysis.metadata.get("processing_history", []),
-            "source_information": analysis.metadata.get("source_information", {}),
+            "processing_metrics": analysis.metadata.get(
+                "processing_metrics", {}
+            ),
+            "processing_history": analysis.metadata.get(
+                "processing_history", []
+            ),
+            "source_information": analysis.metadata.get(
+                "source_information", {}
+            ),
         }
 
         # Minimal initialization to avoid overriding timestamps

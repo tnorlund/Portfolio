@@ -1,17 +1,19 @@
-from dataclasses import dataclass, field as dataclass_field
-from typing import Dict, List, Optional, Literal, Any
-from enum import Enum
+import json
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import datetime
 from decimal import Decimal
-from .metadata import MetadataMixin
-import json
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
 # Import the ReceiptValidationSummary class
 from receipt_dynamo import (
-    ReceiptValidationSummary,
     ReceiptValidationCategory,
     ReceiptValidationResult,
+    ReceiptValidationSummary,
 )
+
+from .metadata import MetadataMixin
 
 
 class ValidationResultType(str, Enum):

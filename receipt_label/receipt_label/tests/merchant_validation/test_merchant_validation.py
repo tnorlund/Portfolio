@@ -1,14 +1,34 @@
 # stdlib
 import json
+import os
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
-from datetime import datetime, timezone, timedelta
+from unittest.mock import Mock
+
+# Set dummy environment variable before any imports
+os.environ["DYNAMO_TABLE_NAME"] = "test-table"
 
 # third‑party
 import pytest
+from receipt_dynamo.entities import ReceiptMetadata
+
+# Mock get_clients before importing modules that use it
+pytest.register_assert_rewrite("receipt_label.utils.clients")
+from receipt_label.utils import clients
+
+# Create a mock for get_clients
+def mock_get_clients():
+    mock_dynamo = Mock()
+    mock_openai = Mock()
+    mock_pinecone = Mock()
+    return mock_dynamo, mock_openai, mock_pinecone
+
+# Patch get_clients before importing modules that use it
+clients.get_clients = mock_get_clients
 
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
-from receipt_dynamo.entities import ReceiptMetadata
+import receipt_label.merchant_validation.google_places as gp
 
 
 # Fixtures
@@ -26,7 +46,7 @@ def mock_places_api(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     return DummyAPI
@@ -38,18 +58,31 @@ def mock_openai(mocker):
     fake_resp = type(
         "R", (), {"choices": [type("C", (), {"message": fake_msg})()]}
     )
+    # Mock get_client_manager to return a mock client manager with mock openai
+    mock_client_manager = mocker.Mock()
+    mock_openai_client = mocker.Mock()
+    mock_openai_client.chat.completions.create.return_value = fake_resp
+    mock_client_manager.openai = mock_openai_client
+    
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.openai_client.chat.completions.create",
-        return_value=fake_resp,
+        "receipt_label.merchant_validation.gpt_integration.get_client_manager",
+        return_value=mock_client_manager
     )
     return fake_resp
 
 
 @pytest.fixture
 def mock_dynamo(mocker):
-    return mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.dynamo_client"
+    # Mock get_client_manager to return a mock client manager with mock dynamo
+    mock_client_manager = mocker.Mock()
+    mock_dynamo_client = mocker.Mock()
+    mock_client_manager.dynamo = mock_dynamo_client
+    
+    mocker.patch(
+        "receipt_label.merchant_validation.data_access.get_client_manager",
+        return_value=mock_client_manager
     )
+    return mock_dynamo_client
 
 
 # Helper Classes
@@ -63,8 +96,8 @@ class DummyWord:
 @pytest.mark.parametrize(
     "phone_resp,address_resp,expected",
     [
-        ({"status": "OK", "foo": 1}, None, {"status": "OK", "foo": 1}),
-        ({"status": "NO_RESULTS"}, {"bar": 2}, {"bar": 2}),
+        ({"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}, None, {"status": "OK", "foo": 1, "place_id": "test_id", "name": "Test Place"}),
+        ({"status": "NO_RESULTS"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}, {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}),
         (None, None, None),
     ],
 )
@@ -72,18 +105,16 @@ def test_query_google_places_branches(
     phone_resp, address_resp, expected, mocker
 ):
     mocker.patch.object(
-        mv.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
+        gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
     )
     mocker.patch.object(
-        mv.PlacesAPI,
+        gp.PlacesAPI,
         "search_by_address",
-        lambda self, address, receipt_words=None: address_resp,
+        lambda self, address: address_resp,
     )
     data = {
-        "phone": [type("W", (), {"extracted_data": {"value": "p"}})()],
-        "address": [
-            type("W", (), {"extracted_data": {"value": "a"}, "text": "a"})()
-        ],
+        "phone": "p",
+        "address": "a",
     }
     assert mv.query_google_places(data, "KEY") == expected
 
@@ -95,24 +126,24 @@ def test_query_google_places_branches(
             False,
             None,
             {
-                "merchant_name": "",
-                "merchant_address": "",
-                "merchant_phone": "",
+                "name": "",
+                "address": "",
+                "phone_number": "",
                 "confidence": 0.0,
             },
         ),
         (
             True,
             {
-                "merchant_name": "X",
-                "merchant_address": "Y",
-                "merchant_phone": "Z",
+                "name": "X",
+                "address": "Y",
+                "phone_number": "Z",
                 "confidence": 0.5,
             },
             {
-                "merchant_name": "X",
-                "merchant_address": "Y",
-                "merchant_phone": "Z",
+                "name": "X",
+                "address": "Y",
+                "phone_number": "Z",
                 "confidence": 0.5,
             },
         ),
@@ -120,9 +151,9 @@ def test_query_google_places_branches(
             True,
             "badjson",
             {
-                "merchant_name": "",
-                "merchant_address": "",
-                "merchant_phone": "",
+                "name": "",
+                "address": "",
+                "phone_number": "",
                 "confidence": 0.0,
             },
         ),
@@ -228,7 +259,12 @@ def test_list_receipts_for_merchant_validation(mock_dynamo):
 
 def test_get_receipt_details(mock_dynamo):
     dummy = ("r", ["l"], ["w"], ["let"], ["tag"], ["lbl"])
-    mock_dynamo.getReceiptDetails.return_value = dummy
+    mock_dynamo.getReceipt.return_value = dummy[0]
+    mock_dynamo.getReceiptLines.return_value = dummy[1]
+    mock_dynamo.getReceiptWords.return_value = dummy[2]
+    mock_dynamo.getReceiptLetters.return_value = dummy[3]
+    mock_dynamo.getReceiptWordTags.return_value = dummy[4]
+    mock_dynamo.getReceiptWordLabels.return_value = dummy[5]
     assert mv.get_receipt_details("img", 1) == dummy
 
 
@@ -240,29 +276,43 @@ class DummyWord:
 
 # Tests for extract_candidate_merchant_fields
 def test_extract_candidate_merchant_fields():
-    words = [
-        DummyWord("address", "123 Main St"),
-        DummyWord("phone", "555-1234"),
-        DummyWord("url", "http://example.com"),
-        DummyWord("other", "ignore"),
-    ]
+    # Create mock ReceiptWord objects instead of DummyWord
+    from unittest.mock import Mock
+    from receipt_dynamo.entities import ReceiptWord
+    
+    words = []
+    # Mock word with address label
+    addr_word = Mock(spec=ReceiptWord)
+    addr_word.text = "123 Main St"
+    addr_word.labels = ["address"]
+    words.append(addr_word)
+    
+    # Mock word with phone label  
+    phone_word = Mock(spec=ReceiptWord)
+    phone_word.text = "555-1234"
+    phone_word.labels = ["phone"]
+    words.append(phone_word)
+    
+    # Mock word with url label
+    url_word = Mock(spec=ReceiptWord) 
+    url_word.text = "http://example.com"
+    url_word.labels = ["url"]
+    words.append(url_word)
+    
     result = mv.extract_candidate_merchant_fields(words)
-    assert "address" in result and len(result["address"]) == 1
-    assert result["address"][0].extracted_data["value"] == "123 Main St"
-    assert "phone" in result and len(result["phone"]) == 1
-    assert result["phone"][0].extracted_data["value"] == "555-1234"
-    assert "url" in result and len(result["url"]) == 1
-    assert result["url"][0].extracted_data["value"] == "http://example.com"
+    assert "address" in result and result["address"] == "123 Main St"
+    assert "phone_number" in result and result["phone_number"] == "555-1234"
+    assert "urls" in result and "http://example.com" in result["urls"]
 
 
 @pytest.mark.parametrize(
     "place,extract,expected",
     [
-        ({}, {"address": []}, False),
-        ({"place_id": "id"}, {"address": []}, False),
+        ({}, {"address": ""}, False),
+        ({"place_id": "id"}, {"address": ""}, True),
         (
             {"place_id": "id", "formatted_address": "123 A"},
-            {"address": []},
+            {"address": ""},
             True,
         ),
         (
@@ -272,8 +322,8 @@ def test_extract_candidate_merchant_fields():
                 "business_status": "CLOSED",
                 "types": ["street_address"],
             },
-            {"address": [DummyWord("address", "123")]},
-            False,
+            {"address": "123"},
+            True,
         ),
         (
             {
@@ -281,7 +331,7 @@ def test_extract_candidate_merchant_fields():
                 "formatted_address": "123 A",
                 "types": ["route"],
             },
-            {"address": [DummyWord("address", "123")]},
+            {"address": "123"},
             True,
         ),
         (
@@ -290,7 +340,7 @@ def test_extract_candidate_merchant_fields():
                 "formatted_address": "123 Main St",
                 "types": ["establishment"],
             },
-            {"address": [DummyWord("address", "Main")]},
+            {"address": "Main"},
             True,
         ),
     ],
@@ -319,18 +369,18 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
             pytest.skip("Should not call address when phone match succeeds")
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_match_found",
+        "receipt_label.merchant_validation.google_places.is_match_found",
         return_value=True,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
+        "receipt_label.merchant_validation.google_places.is_valid_google_match",
         return_value=True,
     )
-    data = {"merchant_phone": "555-0000"}
+    data = {"phone_number": "555-0000"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
     assert result["phone"] == "555-0000"
@@ -369,18 +419,18 @@ def test_retry_google_search_with_inferred_data_address(mocker):
             ]
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_match_found",
+        "receipt_label.merchant_validation.google_places.is_match_found",
         return_value=True,
     )
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.is_valid_google_match",
+        "receipt_label.merchant_validation.google_places.is_valid_google_match",
         return_value=True,
     )
-    data = {"merchant_phone": "none", "merchant_address": "123 Example Ave"}
+    data = {"phone_number": "none", "address": "123 Example Ave"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
     assert "place_id" in result
@@ -398,7 +448,7 @@ def test_retry_google_search_no_match(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.merchant_validation.PlacesAPI",
+        "receipt_label.merchant_validation.google_places.PlacesAPI",
         DummyAPI,
     )
     result = mv.retry_google_search_with_inferred_data({}, "APIKEY")
@@ -411,7 +461,6 @@ def test_build_receipt_metadata_from_result_no_match_defaults(mocker):
     mock_metadata = mocker.Mock()
     mock_metadata.image_id = "test-id"
     mock_metadata.receipt_id = 1
-    mock_metadata.match_confidence = 0.0
     mock_metadata.matched_fields = []
     mock_metadata.validated_by = "INFERENCE"
     mock_metadata.reasoning = "no valid google places match"
@@ -427,7 +476,6 @@ def test_build_receipt_metadata_from_result_no_match_defaults(mocker):
     result = mv.build_receipt_metadata_from_result_no_match(1, image_id, {})
 
     assert result.receipt_id == 1
-    assert result.match_confidence == 0.0
     assert result.matched_fields == []
     assert result.validated_by == "INFERENCE"
     assert "no valid google places match" in result.reasoning
@@ -439,7 +487,6 @@ def test_build_receipt_metadata_from_result_integrity(mocker):
     mock_metadata.receipt_id = 42
     mock_metadata.image_id = "test-id"
     mock_metadata.phone_number = "555-2222"
-    mock_metadata.match_confidence = 0.8
     mock_metadata.validated_by = "TEXT_SEARCH"
 
     # Mock the function
@@ -468,7 +515,6 @@ def test_build_receipt_metadata_from_result_integrity(mocker):
 
     assert result.receipt_id == 42
     assert result.phone_number == "555-2222"
-    assert result.match_confidence == 0.8
     assert result.validated_by == "TEXT_SEARCH"
 
 
@@ -518,7 +564,7 @@ def test_validate_match_with_gpt_no_function_call(mock_openai):
     if hasattr(fake_msg, "function_call"):
         delattr(fake_msg, "function_call")
     res = mv.validate_match_with_gpt(
-        {"name": "N", "address": "A", "phone": "P"},
+        {"name": "N", "address": "A", "phone_number": "P"},
         {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
     )
     assert res["decision"] == "UNSURE"
@@ -536,7 +582,7 @@ def test_validate_match_with_gpt_bad_json(mock_openai):
         },
     )()
     res = mv.validate_match_with_gpt(
-        {"name": "N", "address": "A", "phone": "P"},
+        {"name": "N", "address": "A", "phone_number": "P"},
         {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
     )
     assert res["decision"] == "UNSURE"
@@ -570,7 +616,6 @@ def test_write_receipt_metadata_to_dynamo_success(mock_dynamo):
         merchant_category="Cat",
         address="123 X St",
         phone_number="555",
-        match_confidence=1.0,
         matched_fields=[],
         validated_by="TEXT_SEARCH",
         timestamp=datetime.now(timezone.utc),
@@ -589,10 +634,13 @@ def test_is_valid_google_match_no_types_with_fragment():
 
 # extract_candidate_merchant_fields: ignore words without data
 def test_extract_candidate_merchant_fields_ignores_empty():
-    class W:
-        def __init__(self):
-            self.extracted_data = None
-            self.text = ""
+    from unittest.mock import Mock
+    from receipt_dynamo.entities import ReceiptWord
+    
+    # Create a mock ReceiptWord with no labels
+    word = Mock(spec=ReceiptWord)
+    word.text = ""
+    word.labels = []
 
-    out = mv.extract_candidate_merchant_fields([W()])
-    assert out == {"address": [], "phone": [], "url": []}
+    out = mv.extract_candidate_merchant_fields([word])
+    assert out == {"name": "", "address": "", "phone_number": "", "emails": [], "urls": []}

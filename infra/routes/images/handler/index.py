@@ -93,12 +93,12 @@ def handler(event, _):
             # Use a set to track unique image_ids
             seen_ids = set()
             unique_images = []
-            
+
             for img in photo_images + scan_images:
                 if img.image_id not in seen_ids:
                     seen_ids.add(img.image_id)
                     unique_images.append(img)
-            
+
             # Shuffle for mixed distribution
             images = unique_images
             random.shuffle(images)

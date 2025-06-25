@@ -6,6 +6,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
     format_type_error,
+    normalize_enum,
 )
 
 
@@ -23,23 +24,7 @@ class BatchSummary:
         assert_type("batch_id", batch_id, str, ValueError)
         self.batch_id = batch_id
 
-        # Accept batch_type as either BatchType or str
-        if isinstance(batch_type, BatchType):
-            batch_type_str = batch_type.value
-        elif isinstance(batch_type, str):
-            batch_type_str = batch_type
-        else:
-            raise ValueError(
-                format_type_error("batch_type", batch_type, (BatchType, str))
-            )
-
-        # Validate batch_type_str against allowed values
-        valid_types = [t.value for t in BatchType]
-        if batch_type_str not in valid_types:
-            raise ValueError(
-                f"Invalid batch type: {batch_type_str} must be one of {', '.join(valid_types)}"
-            )
-        self.batch_type = batch_type_str
+        self.batch_type = normalize_enum(batch_type, BatchType)
 
         assert_type("openai_batch_id", openai_batch_id, str, ValueError)
         self.openai_batch_id = openai_batch_id
@@ -59,23 +44,7 @@ class BatchSummary:
             )
         self.submitted_at = submitted_at
 
-        # Accept status as either a BatchStatus enum or a string
-        if isinstance(status, BatchStatus):
-            status_str = status.value
-        elif isinstance(status, str):
-            status_str = status
-        else:
-            raise ValueError(
-                format_type_error("status", status, (BatchStatus, str))
-            )
-
-        # Validate the string against allowed values
-        valid_statuses = [s.value for s in BatchStatus]
-        if status_str not in valid_statuses:
-            raise ValueError(
-                f"Invalid status: {status_str} must be one of {', '.join(valid_statuses)}"
-            )
-        self.status = status_str
+        self.status = normalize_enum(status, BatchStatus)
 
         assert_type("result_file_id", result_file_id, str, ValueError)
         self.result_file_id = result_file_id

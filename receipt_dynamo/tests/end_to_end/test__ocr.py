@@ -1,7 +1,8 @@
-import sys
-import pytest
-import boto3
 import os
+import sys
+
+import boto3
+import pytest
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._ocr import apple_vision_ocr

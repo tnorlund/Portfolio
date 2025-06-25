@@ -1,11 +1,11 @@
-import os
 import json
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 from receipt_dynamo import DynamoClient
 from receipt_label import ReceiptLabeler
 from receipt_label.models.validation import ValidationStatus
-
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -1,7 +1,8 @@
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
-from typing import Optional
 
 
 class VpcForCodeBuild(ComponentResource):

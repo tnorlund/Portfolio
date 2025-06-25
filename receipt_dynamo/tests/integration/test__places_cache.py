@@ -1,9 +1,11 @@
-import pytest
 from datetime import datetime
 from typing import Literal
+
+import pytest
 from botocore.exceptions import ClientError
-from receipt_dynamo.entities.places_cache import PlacesCache
+
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.entities.places_cache import PlacesCache
 
 
 @pytest.fixture

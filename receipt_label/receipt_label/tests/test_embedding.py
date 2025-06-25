@@ -1,19 +1,21 @@
 import json
 from datetime import datetime
-from typing import Literal
-import pytest
-import boto3
 from types import SimpleNamespace
-from receipt_label.submit_embedding_batch import submit_batch
-from receipt_label.poll_embedding_batch import poll_batch
+from typing import Literal
+
+import boto3
+import pytest
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import EmbeddingStatus, BatchStatus, BatchType
+from receipt_dynamo.constants import BatchStatus, BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
-    ReceiptWord,
     BatchSummary,
     Receipt,
     ReceiptMetadata,
+    ReceiptWord,
 )
+
+from receipt_label.embedding.word import poll as poll_batch
+from receipt_label.embedding.word import submit as submit_batch
 
 
 @pytest.fixture
@@ -643,7 +645,6 @@ def receipt_and_metadata():
             receipt_id=1,
             place_id="test_place_id",
             merchant_name="test_merchant_name",
-            match_confidence=0.5,
             matched_fields=["test_field1", "test_field2"],
             timestamp=datetime.now(),
             merchant_category="test_merchant_category",
@@ -657,7 +658,6 @@ def receipt_and_metadata():
             receipt_id=2,
             place_id="test_place_id",
             merchant_name="test_merchant_name",
-            match_confidence=0.5,
             matched_fields=["test_field1", "test_field2"],
             timestamp=datetime.now(),
             merchant_category="test_merchant_category",
@@ -671,7 +671,6 @@ def receipt_and_metadata():
             receipt_id=3,
             place_id="test_place_id",
             merchant_name="test_merchant_name",
-            match_confidence=0.5,
             matched_fields=["test_field1", "test_field2"],
             timestamp=datetime.now(),
             merchant_category="test_merchant_category",
@@ -688,13 +687,25 @@ def receipt_and_metadata():
 def test_embedding_batch_submit(
     dynamodb_table_and_s3_bucket: tuple[str, str],
     receipt_words: list[ReceiptWord],
+    patch_clients,
     mocker,
 ):
     # Arrange: point the handler at your Moto table
     dynamo_table, s3_bucket = dynamodb_table_and_s3_bucket
     moto_client = DynamoClient(dynamo_table)
-    # Monkey‑patch the global in the submit_batch module
-    mocker.patch.object(submit_batch, "dynamo_client", moto_client)
+    fake_openai, fake_index = patch_clients
+    
+    # Create a custom mock client manager for this test
+    mock_client_manager = mocker.Mock()
+    mock_client_manager.dynamo = moto_client
+    mock_client_manager.openai = fake_openai
+    mock_client_manager.pinecone = fake_index
+    
+    # Patch get_client_manager specifically for the embedding module
+    mocker.patch(
+        "receipt_label.embedding.word.submit.get_client_manager",
+        return_value=mock_client_manager
+    )
 
     # Populate the table
     moto_client.addWords(receipt_words)
@@ -775,7 +786,7 @@ def test_embedding_batch_submit(
             assert obj["url"] == "/v1/embeddings"
             assert "input" in obj["body"] and "model" in obj["body"]
     # Verify the OpenAI client is called correctly
-    fake = submit_batch.openai_client  # get the patched OpenAI client
+    fake = fake_openai  # get the mocked OpenAI client
     fake.files.create.assert_called_once()
     fake.batches.create.assert_called_once_with(
         input_file_id="fake-file-id",
@@ -786,10 +797,7 @@ def test_embedding_batch_submit(
     # Verify the batch summary is created correctly
     stored = moto_client.getBatchSummary(batch_summary.batch_id)
     assert stored.status == "PENDING"
-    assert stored.word_count == 5  # or whatever your test case is
-    assert set(stored.receipt_refs) == {
-        (event["image_id"], event["receipt_id"])
-    }
+    assert stored.receipt_refs == [(event["image_id"], event["receipt_id"])]
     assert stored.batch_type == "EMBEDDING"
     assert stored.openai_batch_id == "fake-batch-id"
     assert stored.submitted_at is not None
@@ -854,8 +862,18 @@ def test_embedding_batch_poll(
     fake_openai, fake_index = patch_clients
     dynamo_table, s3_bucket = dynamodb_table_and_s3_bucket
     moto_client = DynamoClient(dynamo_table)
-    # Monkey‑patch the global in the submit_batch module
-    mocker.patch.object(poll_batch, "dynamo_client", moto_client)
+    
+    # Create a custom mock client manager for this test
+    mock_client_manager = mocker.Mock()
+    mock_client_manager.dynamo = moto_client
+    mock_client_manager.openai = fake_openai
+    mock_client_manager.pinecone = fake_index
+    
+    # Patch get_client_manager specifically for the embedding module
+    mocker.patch(
+        "receipt_label.embedding.word.poll.get_client_manager",
+        return_value=mock_client_manager
+    )
 
     for word in receipt_words:
         word.embedding_status = EmbeddingStatus.PENDING
@@ -865,7 +883,6 @@ def test_embedding_batch_poll(
         BatchSummary(
             batch_id=batch_id,
             batch_type=BatchType.EMBEDDING,
-            word_count=5,
             result_file_id="fake-result-file-id",
             openai_batch_id="fake-batch-id",
             submitted_at=datetime.now(),

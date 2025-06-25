@@ -1,7 +1,8 @@
-import pytest
+import uuid
 from datetime import datetime
 from decimal import Decimal
-import uuid
+
+import pytest
 
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,

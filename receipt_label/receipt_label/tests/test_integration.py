@@ -1,25 +1,31 @@
-import sys
-import os
 import asyncio
-import logging
-from typing import Dict, List
 import json
-import pytest
-from unittest.mock import patch, MagicMock
+import logging
+import os
+import sys
 from decimal import Decimal
+from typing import Dict, List
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add the current directory to the path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 
-from receipt_label.models.receipt import Receipt, ReceiptWord, ReceiptLine
-from receipt_label.models.structure import StructureAnalysis
+from receipt_label.core.labeler import LabelingResult, ReceiptLabeler
 from receipt_label.models.label import LabelAnalysis
+from receipt_label.models.line_item import (
+    LineItem,
+    LineItemAnalysis,
+    Price,
+    Quantity,
+)
+from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
+from receipt_label.models.structure import StructureAnalysis
 from receipt_label.models.validation import ValidationAnalysis
-from receipt_label.models.line_item import LineItemAnalysis, LineItem, Quantity, Price
-from receipt_label.processors.receipt_analyzer import ReceiptAnalyzer
-from receipt_label.core.labeler import ReceiptLabeler, LabelingResult
+# from receipt_label.processors.receipt_analyzer import ReceiptAnalyzer  # Class doesn't exist
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -135,7 +141,9 @@ def mock_line_items():
         LineItem(
             description="Test Item",
             quantity=Quantity(amount=Decimal("1")),
-            price=Price(unit_price=Decimal("15.99"), extended_price=Decimal("15.99")),
+            price=Price(
+                unit_price=Decimal("15.99"), extended_price=Decimal("15.99")
+            ),
             reasoning="Single test item",
             line_ids=[1],
             metadata={},
@@ -159,11 +167,15 @@ def mock_line_item_analysis(mock_line_items):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-@patch("receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure")
-@patch("receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields")
-@patch(
-    "receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items"
-)
+# @patch(
+#     "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.analyze_structure"
+# )
+# @patch(
+#     "receipt_label.processors.receipt_analyzer.ReceiptAnalyzer.label_fields"
+# )
+# @patch(
+#     "receipt_label.processors.line_item_processor.LineItemProcessor.analyze_line_items"
+# )
 @patch("receipt_label.data.places_api.PlacesAPI")
 @patch("receipt_dynamo.data.dynamo_client.DynamoClient")
 @patch("receipt_label.core.labeler.ReceiptLabeler.label_receipt")
@@ -171,9 +183,9 @@ def test_labeling_result_with_base_classes(
     mock_label_receipt,
     mock_dynamo_client,
     mock_places_api,
-    mock_analyze_line_items,
-    mock_label_fields,
-    mock_analyze_structure,
+    # mock_analyze_line_items,  # Removed - ReceiptAnalyzer doesn't exist
+    # mock_label_fields,        # Removed - ReceiptAnalyzer doesn't exist
+    # mock_analyze_structure,   # Removed - LineItemProcessor doesn't exist
     receipt,
     receipt_words,
     receipt_lines,
@@ -182,14 +194,13 @@ def test_labeling_result_with_base_classes(
     mock_line_item_analysis,
 ):
     """Test that LabelingResult correctly uses our base classes."""
-    # Set up mocks
-    structure_analysis = StructureAnalysis.from_gpt_response(mock_structure_analysis)
-    mock_analyze_structure.return_value = structure_analysis
+    # Set up mocks - these functions don't exist in the current implementation
+    # so we'll create the analysis objects directly
+    structure_analysis = StructureAnalysis.from_gpt_response(
+        mock_structure_analysis
+    )
 
     field_analysis = LabelAnalysis.from_gpt_response(mock_field_analysis)
-    mock_label_fields.return_value = field_analysis
-
-    mock_analyze_line_items.return_value = mock_line_item_analysis
 
     # Create a mock result
     result = LabelingResult(
@@ -217,7 +228,10 @@ def test_labeling_result_with_base_classes(
     assert isinstance(result.validation_analysis, ValidationAnalysis)
 
     # Verify validation results
-    assert result.validation_analysis.overall_reasoning == "No discrepancies found"
+    assert (
+        result.validation_analysis.overall_reasoning
+        == "No discrepancies found"
+    )
 
 
 # Run the test directly when this file is executed

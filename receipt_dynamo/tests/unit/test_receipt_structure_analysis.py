@@ -1,12 +1,13 @@
-import pytest
 from datetime import datetime
 from typing import Dict, List
 
+import pytest
+
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    SpatialPattern,
     ContentPattern,
     ReceiptSection,
     ReceiptStructureAnalysis,
+    SpatialPattern,
     itemToReceiptStructureAnalysis,
 )
 

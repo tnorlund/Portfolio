@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 import boto3
 import pytest
 from botocore.exceptions import ClientError
-from pytest_mock import MockerFixture
 from moto import mock_aws
+from pytest_mock import MockerFixture
 
 from receipt_dynamo import DynamoClient, ReceiptLineItemAnalysis
 

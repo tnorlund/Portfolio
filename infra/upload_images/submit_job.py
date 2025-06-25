@@ -1,14 +1,14 @@
-import os
 import json
-import uuid
-import boto3
 import logging
-from logging import StreamHandler, Formatter
+import os
+import uuid
 from datetime import datetime
+from logging import Formatter, StreamHandler
 
+import boto3
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
-from receipt_dynamo.constants import OCRStatus, OCRJobType
 from receipt_upload.utils import send_message_to_sqs
 
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]

@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive
@@ -77,6 +78,7 @@ aws.iam.RolePolicyAttachment(
 random_image_details_lambda = aws.lambda_.Function(
     f"api_{ROUTE_NAME}_GET_lambda",
     runtime="python3.12",
+    architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive(
         {

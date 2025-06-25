@@ -1,13 +1,14 @@
+import re
 from typing import Any, Generator, Optional, Tuple
 
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
-    assert_valid_uuid,
     assert_type,
+    assert_valid_uuid,
     format_type_error,
+    normalize_enum,
 )
-from receipt_dynamo.constants import EmbeddingStatus
-import re
 
 
 def validate_pinecone_id_format(
@@ -75,12 +76,7 @@ class EmbeddingBatchResult:
             raise ValueError("word_id must be greater than or equal to zero")
         self.word_id = word_id
 
-        assert_type("status", status, str, ValueError)
-        if status not in [s.value for s in EmbeddingStatus]:
-            raise ValueError(
-                f"status must be one of: {', '.join(s.value for s in EmbeddingStatus)}"
-            )
-        self.status = status
+        self.status = normalize_enum(status, EmbeddingStatus)
 
         assert_type("text", text, str, ValueError)
         self.text = text

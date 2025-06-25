@@ -23,3 +23,5 @@ config:
     - 10.10.3.0/24
   portfolio:vpcCidr: 10.10.0.0/16
   lambda-layer:sync-mode: "true"
+  portfolio:notification_emails:
+    - "tnorlund@icloud.com" # Replace with your actual email address

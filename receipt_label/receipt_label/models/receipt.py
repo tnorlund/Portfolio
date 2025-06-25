@@ -1,9 +1,15 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 from datetime import datetime
-from receipt_dynamo.entities.receipt_word import ReceiptWord as DynamoReceiptWord
-from receipt_dynamo.entities.receipt_line import ReceiptLine as DynamoReceiptLine
+from typing import Dict, List, Optional
+
 from receipt_dynamo.entities.receipt import Receipt as DynamoReceipt
+from receipt_dynamo.entities.receipt_line import (
+    ReceiptLine as DynamoReceiptLine,
+)
+from receipt_dynamo.entities.receipt_word import (
+    ReceiptWord as DynamoReceiptWord,
+)
+
 
 @dataclass
 class ReceiptWord:
@@ -42,13 +48,19 @@ class ReceiptWord:
             bounding_box=word.bounding_box,
             # Extract font information from extracted_data if available
             font_size=(
-                word.extracted_data.get("font_size") if word.extracted_data else None
+                word.extracted_data.get("font_size")
+                if word.extracted_data
+                else None
             ),
             font_weight=(
-                word.extracted_data.get("font_weight") if word.extracted_data else None
+                word.extracted_data.get("font_weight")
+                if word.extracted_data
+                else None
             ),
             font_style=(
-                word.extracted_data.get("font_style") if word.extracted_data else None
+                word.extracted_data.get("font_style")
+                if word.extracted_data
+                else None
             ),
             receipt_id=word.receipt_id,
             image_id=word.image_id,
@@ -59,16 +71,18 @@ class ReceiptWord:
 
         Returns:
             DynamoDB ReceiptWord instance
-            
+
         Raises:
             ValueError: If receipt_id or image_id are not set
         """
         if self.receipt_id is None:
-            raise ValueError("receipt_id must be set before calling to_dynamo()")
-            
+            raise ValueError(
+                "receipt_id must be set before calling to_dynamo()"
+            )
+
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
-            
+
         # Update extracted_data with font information
         extracted_data = self.extracted_data or {}
         if self.font_size:
@@ -143,16 +157,18 @@ class ReceiptLine:
 
         Returns:
             DynamoDB ReceiptLine instance
-            
+
         Raises:
             ValueError: If receipt_id or image_id are not set
         """
         if self.receipt_id is None:
-            raise ValueError("receipt_id must be set before calling to_dynamo()")
-            
+            raise ValueError(
+                "receipt_id must be set before calling to_dynamo()"
+            )
+
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
-            
+
         return DynamoReceiptLine(
             receipt_id=self.receipt_id,
             image_id=self.image_id,
@@ -214,18 +230,22 @@ class Receipt:
             Receipt instance for labeling
         """
         # Convert DynamoReceiptWord objects to ReceiptWord
-        receipt_words = [ReceiptWord.from_dynamo(word) for word in words] if words else []
-        
+        receipt_words = (
+            [ReceiptWord.from_dynamo(word) for word in words] if words else []
+        )
+
         # Convert DynamoReceiptLine objects to ReceiptLine
-        receipt_lines = [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
-        
+        receipt_lines = (
+            [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
+        )
+
         return cls(
             receipt_id=str(receipt_data.receipt_id),
             image_id=receipt_data.image_id,
             words=receipt_words,
             lines=receipt_lines,
         )
-            
+
     @classmethod
     def from_dynamo_data(
         cls,
@@ -235,30 +255,34 @@ class Receipt:
         lines: List[DynamoReceiptLine] = None,
     ) -> "Receipt":
         """Create a Receipt instance directly from raw DynamoDB data.
-        
-        This method is primarily intended for testing or when a DynamoReceipt object 
+
+        This method is primarily intended for testing or when a DynamoReceipt object
         is not available but individual receipt/image IDs are.
-        
+
         Args:
             receipt_id: The receipt ID as a string
             image_id: The image ID
             words: List of DynamoReceiptWord instances
             lines: Optional list of DynamoReceiptLine instances
-            
+
         Returns:
             Receipt instance for labeling
         """
         # Convert DynamoReceiptWord objects to ReceiptWord
-        receipt_words = [ReceiptWord.from_dynamo(word) for word in words] if words else []
-        
+        receipt_words = (
+            [ReceiptWord.from_dynamo(word) for word in words] if words else []
+        )
+
         # Convert DynamoReceiptLine objects to ReceiptLine
-        receipt_lines = [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
-        
+        receipt_lines = (
+            [ReceiptLine.from_dynamo(line) for line in lines] if lines else []
+        )
+
         return cls(
             receipt_id=receipt_id,
             image_id=image_id,
             words=receipt_words,
-            lines=receipt_lines
+            lines=receipt_lines,
         )
 
     def get_words_by_line(self, line_id: int) -> List[ReceiptWord]:
@@ -283,18 +307,23 @@ class Receipt:
 
     def get_section_words(self, section: ReceiptSection) -> List[ReceiptWord]:
         """Get all words in a specific section."""
-        return [word for word in self.words if word.line_id in section.line_ids]
+        return [
+            word for word in self.words if word.line_id in section.line_ids
+        ]
 
     def get_section_lines(self, section: ReceiptSection) -> List[ReceiptLine]:
         """Get all lines in a specific section."""
-        return [line for line in self.lines if line.line_id in section.line_ids]
+        return [
+            line for line in self.lines if line.line_id in section.line_ids
+        ]
 
     def get_field_words(self, field_name: str) -> List[ReceiptWord]:
         """Get all words associated with a specific field."""
         return [
             word
             for word in self.words
-            if word.extracted_data and word.extracted_data.get("field") == field_name
+            if word.extracted_data
+            and word.extracted_data.get("field") == field_name
         ]
 
     def to_dict(self) -> Dict:
@@ -345,8 +374,12 @@ class Receipt:
                 for section in (self.sections or [])
             ],
             "metadata": self.metadata,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
         }
 
     @classmethod
@@ -356,7 +389,9 @@ class Receipt:
             receipt_id=data["receipt_id"],
             image_id=data["image_id"],
             words=[ReceiptWord(**word_data) for word_data in data["words"]],
-            lines=[ReceiptLine(**line_data) for line_data in data.get("lines", [])],
+            lines=[
+                ReceiptLine(**line_data) for line_data in data.get("lines", [])
+            ],
             sections=[
                 ReceiptSection(**section_data)
                 for section_data in data.get("sections", [])

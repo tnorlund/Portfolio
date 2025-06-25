@@ -1,7 +1,8 @@
 import json
 import time
 from datetime import datetime
-from typing import Dict, Any, Literal, Generator, Tuple
+from typing import Any, Dict, Generator, Literal, Tuple
+
 from receipt_dynamo.entities.util import normalize_address
 
 SEARCH_TYPES = Literal["ADDRESS", "PHONE", "URL"]

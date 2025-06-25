@@ -1,16 +1,22 @@
+import os
 from datetime import datetime, timezone
-from typing import Any, Generator, Tuple, Optional
+from typing import Any, Generator, List, Optional, Tuple
 
-from receipt_dynamo.constants import ValidationMethod, MerchantValidationStatus
-
-
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    normalize_enum,
 )
-from receipt_dynamo.constants import MerchantValidationStatus
+
+# Validation thresholds
+MIN_PHONE_DIGITS = (
+    7  # Minimum digits for valid phone number (tolerates missing area code)
+)
+MIN_NAME_LENGTH = 2  # Minimum length for meaningful merchant name
+MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
 class ReceiptMetadata:
@@ -24,7 +30,7 @@ class ReceiptMetadata:
     - Enable clustering and quality control across receipts
 
     Each ReceiptMetadata record is stored in DynamoDB using the image_id and receipt_id,
-    and indexed by merchant name and match confidence via GSIs.
+    and indexed by merchant name via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
@@ -34,7 +40,6 @@ class ReceiptMetadata:
         merchant_category (str): Optional business type/category (e.g., "Coffee Shop").
         address (str): Normalized address returned from Google.
         phone_number (str): Formatted phone number.
-        match_confidence (float): Confidence (0-1) from GPT or heuristics on the match quality.
         matched_fields (list[str]): List of fields that matched (e.g., ["name", "phone"]).
         validated_by (str): Source of validation (e.g., "GPT+GooglePlaces").
         timestamp (datetime): ISO timestamp when this record was created.
@@ -51,7 +56,6 @@ class ReceiptMetadata:
         receipt_id: int,
         place_id: str,
         merchant_name: str,
-        match_confidence: float,
         matched_fields: list[str],
         timestamp: datetime,
         merchant_category: str = "",
@@ -94,14 +98,6 @@ class ReceiptMetadata:
             raise ValueError("phone number must be a string")
         self.phone_number = phone_number
 
-        if not isinstance(match_confidence, float):
-            raise ValueError(
-                f"match confidence must be a float\nGot a {type(match_confidence)}"
-            )
-        if match_confidence < 0 or match_confidence > 1:
-            raise ValueError("match confidence must be between 0 and 1")
-        self.match_confidence = match_confidence
-
         if not isinstance(matched_fields, list):
             raise ValueError("matched fields must be a list")
         for field in matched_fields:
@@ -112,20 +108,7 @@ class ReceiptMetadata:
             raise ValueError("matched fields must be unique")
         self.matched_fields = matched_fields
 
-        if isinstance(validated_by, ValidationMethod):
-            validated_by_value = validated_by.value
-        elif isinstance(validated_by, str):
-            validated_by_value = validated_by
-        else:
-            raise ValueError(
-                f"validated_by must be a string or ValidationMethod enum\nGot: {type(validated_by)}"
-            )
-        valid_values = [s.value for s in ValidationMethod]
-        if validated_by_value not in valid_values:
-            raise ValueError(
-                f"validated_by must be one of: {', '.join(valid_values)}\nGot: {validated_by_value}"
-            )
-        self.validated_by = validated_by_value
+        self.validated_by = normalize_enum(validated_by, ValidationMethod)
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
@@ -152,19 +135,95 @@ class ReceiptMetadata:
             raise ValueError("canonical phone number must be a string")
         self.canonical_phone_number = canonical_phone_number
 
-        num_fields = len(self.matched_fields)
+        # Validate field quality before determining validation status
+        high_quality_fields = self._get_high_quality_matched_fields()
+        num_fields = len(high_quality_fields)
 
-        # 1. If you've got at least two independent signals _and_ high confidence → MATCHED
-        if self.match_confidence >= 0.80 and num_fields >= 2:
+        # Use configurable thresholds from environment variables
+        min_fields_for_match = int(os.environ.get("MIN_FIELDS_FOR_MATCH", 2))
+        min_fields_for_unsure = int(os.environ.get("MIN_FIELDS_FOR_UNSURE", 1))
+
+        if num_fields >= min_fields_for_match:
             self.validation_status = MerchantValidationStatus.MATCHED.value
-
-        # 2. If you've got moderate confidence but fewer signals → UNSURE
-        elif self.match_confidence >= 0.50 and num_fields >= 1:
+        elif num_fields >= min_fields_for_unsure:
             self.validation_status = MerchantValidationStatus.UNSURE.value
-
-        # 3. Otherwise it's a hard NO
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
+
+    def _get_high_quality_matched_fields(self) -> List[str]:
+        """
+        Validates the quality of matched fields and returns only high-quality matches.
+
+        This method filters out potentially false positive field matches by checking:
+        - Name fields are not empty and have meaningful content
+        - Phone fields have sufficient digits
+        - Address fields have sufficient components
+
+        Returns:
+            list[str]: List of high-quality matched field names
+        """
+        high_quality_fields = []
+
+        for field in self.matched_fields:
+            if field == "name":
+                # Name must be non-empty and more than just whitespace/punctuation
+                if (
+                    self.merchant_name
+                    and len(self.merchant_name.strip()) > MIN_NAME_LENGTH
+                ):
+                    high_quality_fields.append(field)
+            elif field == "phone":
+                # Phone must have at least 7 digits (tolerate missing area code)
+                phone_digits = "".join(
+                    c for c in self.phone_number if c.isdigit()
+                )
+                if len(phone_digits) >= MIN_PHONE_DIGITS:
+                    high_quality_fields.append(field)
+            elif field == "address":
+                # Address must have at least 2 meaningful components
+                tokens = self.address.split()
+                meaningful_tokens = 0
+                has_number = False
+
+                for i, token in enumerate(tokens):
+                    token_clean = token.rstrip(".,;:")
+
+                    # Count as meaningful if:
+                    # 1. It's a number (house/street number)
+                    if token_clean.replace("-", "").replace("/", "").isdigit():
+                        meaningful_tokens += 1
+                        has_number = True
+                    # 2. It contains digits (1st, 2nd, etc)
+                    elif any(c.isdigit() for c in token_clean):
+                        meaningful_tokens += 1
+                    # 3. It's a word with 3+ letters
+                    elif (
+                        len(token_clean) >= MIN_ADDRESS_TOKENS
+                        and token_clean.isalpha()
+                    ):
+                        meaningful_tokens += 1
+                    # 4. It's a short token (likely abbreviation) but not the only token
+                    elif len(tokens) > 1 and token_clean.isalpha():
+                        meaningful_tokens += 0.5  # Count as half
+
+                # Consider valid if there are at least two meaningful tokens,
+                # a single descriptive token, or a street number with other
+                # components (e.g., "123 Main").
+                if (
+                    meaningful_tokens >= 2
+                    or (
+                        len(tokens) == 1
+                        and meaningful_tokens >= 1
+                        and not has_number
+                    )
+                    or (has_number and len(tokens) > 1)
+                ):
+                    high_quality_fields.append(field)
+            else:
+                # Unknown fields are kept as-is (future-proofing)
+                high_quality_fields.append(field)
+
+        return high_quality_fields
 
     def key(self) -> dict:
         """Returns the primary key used to store this record in DynamoDB."""
@@ -241,7 +300,6 @@ class ReceiptMetadata:
             "place_id": {"S": self.place_id},
             # Required fields (always present)
             "merchant_name": {"S": self.merchant_name},
-            "match_confidence": {"N": str(self.match_confidence)},
             "validation_status": {"S": self.validation_status},
             "timestamp": {"S": self.timestamp.isoformat()},
         }
@@ -292,7 +350,6 @@ class ReceiptMetadata:
             f"merchant_category={_repr_str(self.merchant_category)}, "
             f"address={_repr_str(self.address)}, "
             f"phone_number={_repr_str(self.phone_number)}, "
-            f"match_confidence={_format_float(self.match_confidence)}, "
             f"matched_fields={self.matched_fields}, "
             f"validated_by={_repr_str(self.validated_by)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
@@ -319,7 +376,6 @@ class ReceiptMetadata:
         yield "merchant_category", self.merchant_category
         yield "address", self.address
         yield "phone_number", self.phone_number
-        yield "match_confidence", self.match_confidence
         yield "matched_fields", self.matched_fields
         yield "validated_by", self.validated_by
         yield "timestamp", self.timestamp.isoformat()
@@ -346,7 +402,6 @@ class ReceiptMetadata:
                 self.merchant_category,
                 self.address,
                 self.phone_number,
-                self.match_confidence,
                 self.matched_fields,
                 self.validated_by,
                 self.timestamp,
@@ -367,7 +422,6 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         "TYPE",
         "place_id",
         "merchant_name",
-        "match_confidence",
         "timestamp",
     }
 
@@ -378,11 +432,31 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
-        image_id = item["PK"]["S"].split("#")[1]
-        receipt_id = int(item["SK"]["S"].split("#")[1])
+        # Parse primary key components
+        pk_parts = item["PK"]["S"].split("#")
+        if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
+            raise ValueError(f"Invalid PK format: {item['PK']['S']}")
+        image_id = pk_parts[1]
+
+        # Parse sort key components
+        sk_parts = item["SK"]["S"].split("#")
+        if (
+            len(sk_parts) != 3
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "METADATA"
+        ):
+            raise ValueError(f"Invalid SK format: {item['SK']['S']}")
+
+        try:
+            receipt_id = int(sk_parts[1])
+        except ValueError:
+            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}")
+
+        # Extract required fields
         place_id = item["place_id"]["S"]
         merchant_name = item["merchant_name"]["S"]
-        match_confidence = float(item["match_confidence"]["N"])
+
+        # Extract optional fields with defaults
         matched_fields = item.get("matched_fields", {}).get("SS", [])
         merchant_category = item.get("merchant_category", {}).get("S") or ""
         address = item.get("address", {}).get("S") or ""
@@ -397,15 +471,19 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         canonical_phone_number = (
             item.get("canonical_phone_number", {}).get("S") or ""
         )
-        # Required timestamp field
+
+        # Parse timestamp
         timestamp_str = item["timestamp"]["S"]
-        timestamp = datetime.fromisoformat(timestamp_str)
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str)
+        except ValueError:
+            raise ValueError(f"Invalid timestamp format: {timestamp_str}")
+
         return ReceiptMetadata(
             image_id=image_id,
             receipt_id=receipt_id,
             place_id=place_id,
             merchant_name=merchant_name,
-            match_confidence=match_confidence,
             matched_fields=matched_fields,
             timestamp=timestamp,
             merchant_category=merchant_category,
@@ -418,5 +496,12 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
             canonical_address=canonical_address,
             canonical_phone_number=canonical_phone_number,
         )
+    except KeyError as e:
+        raise ValueError(f"Missing required field in item: {e}")
+    except IndexError as e:
+        raise ValueError(f"Error parsing key components: {e}")
+    except ValueError:
+        # Re-raise ValueError as is
+        raise
     except Exception as e:
-        raise ValueError(f"Error parsing receipt metadata: {e}")
+        raise ValueError(f"Unexpected error parsing receipt metadata: {e}")

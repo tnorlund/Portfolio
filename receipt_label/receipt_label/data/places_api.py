@@ -4,20 +4,20 @@ It handles different combinations of available data (address, phone, url, date) 
 appropriate validation and fallback strategies.
 """
 
-from typing import List, Dict, Optional, Tuple, Set
-from dataclasses import dataclass
-from enum import Enum
 import logging
-import requests
 import re
-from receipt_dynamo.entities.places_cache import PlacesCache
-from datetime import datetime, timezone
 import time
 import traceback
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
 
-from receipt_label.utils import get_clients
+import requests
+from receipt_dynamo.entities.places_cache import PlacesCache
 
-dynamo_client, openai_client, _ = get_clients()
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -40,17 +40,19 @@ class PlacesAPI:
 
     BASE_URL = "https://maps.googleapis.com/maps/api/place"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, client_manager: ClientManager = None):
         """Initialize the Places API client.
 
         Args:
             api_key (str): Your Google Places API key
-            dynamo_table_name (str): Name of the DynamoDB table for caching
+            client_manager (ClientManager): Client manager for external services
         """
         self.api_key = api_key
-        self.dynamo_client = dynamo_client
+        if client_manager is None:
+            client_manager = get_client_manager()
+        self.client_manager = client_manager
         logger.debug(
-            f"Initializing Places API with key: {api_key[:6]}..."
+            f"Initializing Places API with key: {api_key[:6] if api_key else 'None'}..."
         )  # Only show first 6 chars for security
 
     def _get_cached_place(
@@ -79,7 +81,7 @@ class PlacesAPI:
 
                 # Skip cache for route-level results
                 try:
-                    cached_item = self.dynamo_client.getPlacesCache(
+                    cached_item = self.client_manager.dynamo.getPlacesCache(
                         search_type, search_value
                     )
                     if cached_item and cached_item.places_response.get(
@@ -94,7 +96,7 @@ class PlacesAPI:
 
             # Try to get from cache
             try:
-                cached_item = self.dynamo_client.getPlacesCache(
+                cached_item = self.client_manager.dynamo.getPlacesCache(
                     search_type, search_value
                 )
                 if cached_item:
@@ -105,7 +107,7 @@ class PlacesAPI:
                     logger.info(f"   Query count: {cached_item.query_count}")
                     # Increment query count
                     try:
-                        self.dynamo_client.incrementQueryCount(cached_item)
+                        self.client_manager.dynamo.incrementQueryCount(cached_item)
                         logger.info(
                             f"   Incremented query count to: {cached_item.query_count + 1}"
                         )
@@ -210,7 +212,7 @@ class PlacesAPI:
             )
 
             try:
-                self.dynamo_client.addPlacesCache(cache_item)
+                self.client_manager.dynamo.addPlacesCache(cache_item)
                 logger.info(f"SUCCESS: Cached {search_type} - {search_value}")
                 if search_type == "ADDRESS":
                     logger.info(
@@ -762,14 +764,14 @@ class ValidationResult:
 class BatchPlacesProcessor:
     """Handles batch processing of receipts through Places API with validation and fallback strategies."""
 
-    def __init__(self, api_key: str, dynamo_table_name: str):
+    def __init__(self, api_key: str, client_manager: ClientManager = None):
         """Initialize the batch processor.
 
         Args:
             api_key (str): Google Places API key
-            dynamo_table_name (str): Name of the DynamoDB table for caching
+            client_manager (ClientManager): Client manager for external services
         """
-        self.places_api = PlacesAPI(api_key, dynamo_table_name)
+        self.places_api = PlacesAPI(api_key, client_manager)
         self.logger = logging.getLogger(__name__)
 
     def process_receipt_batch(self, receipts_data: List[Dict]) -> List[Dict]:

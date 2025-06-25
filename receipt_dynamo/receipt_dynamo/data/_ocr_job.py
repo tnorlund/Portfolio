@@ -1,4 +1,5 @@
 from typing import Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import OCRStatus

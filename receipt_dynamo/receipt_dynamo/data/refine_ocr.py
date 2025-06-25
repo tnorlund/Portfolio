@@ -11,13 +11,15 @@ The approach uses a delete-and-recreate strategy where all old OCR entities
 maintaining tag information.
 """
 
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data._ocr import apple_vision_ocr
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptLetter
-import boto3
 import tempfile
 from pathlib import Path
+
+import boto3
+
+from receipt_dynamo.data._ocr import apple_vision_ocr
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptLetter, ReceiptLine, ReceiptWord
 
 
 def is_point_in_quadrilateral(point_x, point_y, corners):

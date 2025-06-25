@@ -1,33 +1,103 @@
+"""Time label validation logic."""
+
+# pylint: disable=duplicate-code
+
 import re
-from rapidfuzz.fuzz import partial_ratio, ratio
-from datetime import datetime, timezone
+from typing import Optional
 
-
-from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    pinecone_id_from_label,
-    normalize_text,
-)
-from receipt_label.utils import get_clients
-from receipt_dynamo.entities import (
+from receipt_dynamo.entities import (  # type: ignore
     ReceiptWord,
     ReceiptWordLabel,
 )
 
+from receipt_label.label_validation.data import LabelValidationResult
+from receipt_label.label_validation.utils import pinecone_id_from_label
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
-_, _, pinecone_index = get_clients()
+# Time format patterns
+TIME_WITH_TZ_ABBR = r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$"
+TIME_WITH_TZ_OFFSET = r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$"
+TIME_WITH_Z = r"^(\d{1,2}:\d{2}:\d{2})Z$"
+TIME_BASIC = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"
 
 
 def _is_time(text: str) -> bool:
-    # Match HH:MM, HH:MM AM/PM, HH:MM:SS (24-hour or AM/PM optional)
-    return bool(
-        re.match(r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?)$", text.strip())
-    )
+    """Return ``True`` if the text resembles a valid time."""
+
+    # More comprehensive time validation including timezone support
+    text = text.strip()
+
+    # Time with timezone patterns
+    timezone_patterns = [
+        TIME_WITH_TZ_ABBR,
+        TIME_WITH_TZ_OFFSET,
+        TIME_WITH_Z,
+    ]
+
+    # Standard time patterns
+    basic_patterns = [
+        TIME_BASIC,
+    ]
+
+    # Check if it matches any timezone pattern first
+    for pattern in timezone_patterns:
+        match = re.match(pattern, text)
+        if match:
+            # Extract the time part for validation
+            time_part = match.group(1)
+            return _validate_time_components(time_part)
+
+    # Check basic patterns
+    for pattern in basic_patterns:
+        match = re.match(pattern, text)
+        if match:
+            return _validate_time_components(text)
+
+    return False
+
+
+def _validate_time_components(time_str: str) -> bool:
+    """Validate the actual time values for range and logic."""
+    # Extract components
+    am_pm_pattern = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"
+    match = re.match(am_pm_pattern, time_str.strip())
+
+    if not match:
+        return False
+
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    second_part = match.group(3)
+    am_pm = match.group(4)
+
+    second = 0
+    if second_part:
+        second = int(second_part[1:])  # Remove the ':'
+
+    # Validate ranges
+    if minute >= 60 or second >= 60:
+        return False
+
+    if am_pm:  # 12-hour format with AM/PM
+        am_pm = am_pm.strip().upper()
+        if hour < 1 or hour > 12:
+            return False
+        # Check for invalid combinations
+        if hour == 0 and am_pm in ["AM", "PM"]:  # 00:00 AM is invalid
+            return False
+    else:  # 24-hour format
+        if hour >= 24:
+            return False
+
+    return True
 
 
 def _merged_time_candidate_from_text(
     word: ReceiptWord, metadata: dict
 ) -> list[str]:
+    """Return possible time strings from the word and its neighbors."""
+
     current = word.text.strip()
     variants = [current]
 
@@ -50,8 +120,17 @@ def _merged_time_candidate_from_text(
 
 
 def validate_time(
-    word: ReceiptWord, label: ReceiptWordLabel
+    word: ReceiptWord,
+    label: ReceiptWordLabel,
+    client_manager: Optional[ClientManager] = None,
 ) -> LabelValidationResult:
+    """Validate that a word is a time using Pinecone neighbors."""
+
+    # Get pinecone index from client manager
+    if client_manager is None:
+        client_manager = get_client_manager()
+    pinecone_index = client_manager.pinecone
+
     pinecone_id = pinecone_id_from_label(label)
     fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
     vector_data = fetch_response.vectors.get(pinecone_id)

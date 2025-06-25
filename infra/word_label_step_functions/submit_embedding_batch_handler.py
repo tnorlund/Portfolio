@@ -1,19 +1,19 @@
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
 from pathlib import Path
-from receipt_label.submit_embedding_batch import (
-    download_serialized_words,
-    deserialize_receipt_words,
-    format_word_context_embedding,
-    write_ndjson,
-    upload_to_openai,
-    submit_openai_batch,
-    create_batch_summary,
-    update_word_embedding_status,
-    add_batch_summary,
-    query_receipt_words,
-    generate_batch_id,
-)
 
+from receipt_label.embedding.word import (
+    add_batch_summary,
+    create_batch_summary,
+    deserialize_receipt_words,
+    download_serialized_words,
+    format_word_context_embedding,
+    generate_batch_id,
+    query_receipt_words,
+    submit_openai_batch,
+    update_word_embedding_status,
+    upload_to_openai,
+    write_ndjson,
+)
 
 logger = getLogger()
 logger.setLevel(INFO)

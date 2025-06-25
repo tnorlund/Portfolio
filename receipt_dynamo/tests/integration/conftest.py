@@ -1,6 +1,6 @@
+from datetime import datetime
 from json import load
 from os.path import dirname, join
-from datetime import datetime
 
 import boto3
 import pytest
@@ -14,10 +14,10 @@ from receipt_dynamo import (
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
+    ReceiptWordLabel,
     ReceiptWordTag,
     Word,
     WordTag,
-    ReceiptWordLabel,
 )
 
 

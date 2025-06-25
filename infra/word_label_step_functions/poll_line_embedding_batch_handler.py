@@ -1,12 +1,13 @@
-from logging import getLogger, StreamHandler, Formatter, INFO
+from logging import INFO, Formatter, StreamHandler, getLogger
+
 from receipt_label.poll_line_embedding_batch.poll_line_batch import (
-    get_openai_batch_status,
     download_openai_batch_result,
+    get_openai_batch_status,
     get_receipt_descriptions,
-    upsert_line_embeddings_to_pinecone,
-    write_line_embedding_results_to_dynamo,
     mark_batch_complete,
     update_line_embedding_status_to_success,
+    upsert_line_embeddings_to_pinecone,
+    write_line_embedding_results_to_dynamo,
 )
 
 logger = getLogger()
