@@ -7,16 +7,28 @@ from datetime import datetime, timezone
 from json import JSONDecodeError
 from typing import List, Optional, Tuple
 
-from receipt_dynamo.entities import (Receipt, ReceiptLetter, ReceiptLine,
-                                     ReceiptMetadata, ReceiptWord,
-                                     ReceiptWordLabel, ReceiptWordTag)
+from receipt_dynamo.entities import (
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptMetadata,
+    ReceiptWord,
+    ReceiptWordLabel,
+    ReceiptWordTag,
+)
 from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
 from .utils import (  # Normalization functions; Similarity functions
-    format_canonical_merchant_name, get_address_similarity,
-    get_name_similarity, get_phone_similarity, normalize_address,
-    normalize_phone, normalize_text, preprocess_for_comparison)
+    format_canonical_merchant_name,
+    get_address_similarity,
+    get_name_similarity,
+    get_phone_similarity,
+    normalize_address,
+    normalize_phone,
+    normalize_text,
+    preprocess_for_comparison,
+)
 
 dynamo_client, openai_client, _ = get_clients()
 
