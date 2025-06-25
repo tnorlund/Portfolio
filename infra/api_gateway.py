@@ -4,11 +4,11 @@ import pulumi_aws as aws
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda
-from routes.random_image_details.infra import random_image_details_lambda
 from routes.images.infra import images_lambda
 from routes.label_validation_count.infra import label_validation_count_lambda
 from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda
+from routes.random_image_details.infra import random_image_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
 

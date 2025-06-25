@@ -1,19 +1,20 @@
-import pytest
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List
 
+import pytest
+from receipt_dynamo import (
+    ReceiptValidationCategory,
+    ReceiptValidationResult,
+    ReceiptValidationSummary,
+)
+
 from receipt_label.models.validation import (
+    FieldValidation,
     ValidationAnalysis,
     ValidationResult,
     ValidationResultType,
     ValidationStatus,
-    FieldValidation,
-)
-from receipt_dynamo import (
-    ReceiptValidationSummary,
-    ReceiptValidationCategory,
-    ReceiptValidationResult,
 )
 
 

@@ -1,7 +1,8 @@
-import os
 import json
 import logging
-from typing import Dict, Any
+import os
+from typing import Any, Dict
+
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()

@@ -1,20 +1,22 @@
 """Data models for receipt labeling."""
 
-from .receipt import Receipt, ReceiptWord, ReceiptSection
+from .label import FieldGroup, LabelAnalysis, SectionLabels, WordLabel
 from .line_item import LineItem, LineItemAnalysis, Price, Quantity
-from .label import WordLabel, FieldGroup, SectionLabels, LabelAnalysis
+from .receipt import Receipt, ReceiptSection, ReceiptWord
+from .structure import (
+    ContentPattern,
+)
+from .structure import ReceiptSection as StructureSection
 from .structure import (
     SpatialPattern,
-    ContentPattern,
-    ReceiptSection as StructureSection,
     StructureAnalysis,
 )
 from .validation import (
+    FieldValidation,
     ValidationAnalysis,
     ValidationResult,
-    FieldValidation,
-    ValidationStatus,
     ValidationResultType,
+    ValidationStatus,
 )
 
 __all__ = [

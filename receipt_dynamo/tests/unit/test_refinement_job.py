@@ -1,11 +1,12 @@
 from datetime import datetime
+
 import pytest
 
+from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import (
     OCRJob,
     itemToOCRJob,
 )
-from receipt_dynamo.constants import OCRStatus, OCRJobType
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def test_ocr_job_invalid_uuid():
 def test_ocr_job_invalid_status_value():
     with pytest.raises(
         ValueError,
-        match="status must be one of: PENDING, COMPLETED, FAILED",
+        match="OCRStatus must be one of:",
     ):
         OCRJob(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -60,7 +61,7 @@ def test_ocr_job_invalid_status_value():
         )
     with pytest.raises(
         ValueError,
-        match="status must be a OCRStatus or a string",
+        match="OCRStatus must be a str or OCRStatus instance",
     ):
         OCRJob(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

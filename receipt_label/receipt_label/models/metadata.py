@@ -1,6 +1,7 @@
 from dataclasses import field
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from ..version import __version__
 
 
@@ -54,7 +55,9 @@ class MetadataMixin:
 
         self.metadata["processing_metrics"][name] = value
 
-    def set_source_info(self, model: str, version: str = None, **kwargs) -> None:
+    def set_source_info(
+        self, model: str, version: str = None, **kwargs
+    ) -> None:
         """
         Set information about the source that generated this analysis.
 

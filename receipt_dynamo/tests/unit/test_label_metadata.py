@@ -1,10 +1,12 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
+from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.label_metadata import (
     LabelMetadata,
     itemToLabelMetadata,
 )
-from receipt_dynamo.constants import LabelStatus
 
 
 # Fixture
@@ -27,7 +29,7 @@ def example_label_metadata():
     "field,value,message",
     [
         ("label", 123, "label must be str, got int"),
-        ("status", 456, "status must be str, got int"),
+        ("status", 456, "LabelStatus must be a str or LabelStatus instance"),
         ("aliases", "not-a-list", "aliases must be list, got str"),
         ("description", 789, "description must be str, got int"),
         ("schema_version", "1", "schema_version must be int, got str"),
@@ -57,7 +59,7 @@ def test_label_metadata_field_validation(field, value, message):
 
 
 def test_label_metadata_invalid_status_enum():
-    with pytest.raises(ValueError, match="status must be one of"):
+    with pytest.raises(ValueError, match="LabelStatus must be one of"):
         LabelMetadata(
             label="FOO",
             status="INVALID",  # not in LabelStatus

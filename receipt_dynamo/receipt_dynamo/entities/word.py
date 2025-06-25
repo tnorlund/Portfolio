@@ -5,10 +5,10 @@ from typing import Generator, Tuple
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
+    assert_type,
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    assert_type,
     format_type_error,
     shear_point,
 )
