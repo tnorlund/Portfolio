@@ -14,12 +14,17 @@ from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 from .agent import MerchantValidationAgent
-from .merchant_validation import (build_receipt_metadata_from_result,
-                                  build_receipt_metadata_from_result_no_match,
-                                  extract_candidate_merchant_fields)
-from .result_processor import (build_receipt_metadata_from_partial_result,
-                               extract_best_partial_match,
-                               sanitize_metadata_strings, sanitize_string)
+from .merchant_validation import (
+    build_receipt_metadata_from_result,
+    build_receipt_metadata_from_result_no_match,
+    extract_candidate_merchant_fields,
+)
+from .result_processor import (
+    build_receipt_metadata_from_partial_result,
+    extract_best_partial_match,
+    sanitize_metadata_strings,
+    sanitize_string,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +32,9 @@ logger = logging.getLogger(__name__)
 class MerchantValidationHandler:
     """High-level handler for merchant validation operations."""
 
-    def __init__(self, google_places_api_key: str, model: str = "gpt-3.5-turbo"):
+    def __init__(
+        self, google_places_api_key: str, model: str = "gpt-3.5-turbo"
+    ):
         """
         Initialize the validation handler.
 
@@ -83,14 +90,18 @@ class MerchantValidationHandler:
         if metadata is not None:
             # Successful validation
             metadata = sanitize_metadata_strings(metadata)
-            return self._build_success_metadata(image_id, receipt_id, metadata), {
+            return self._build_success_metadata(
+                image_id, receipt_id, metadata
+            ), {
                 "status": "processed",
                 "place_id": metadata.get("place_id", ""),
                 "merchant_name": metadata.get("merchant_name", ""),
             }
 
         # Agent failed - try to use partial results
-        best_partial_match = extract_best_partial_match(partial_results, user_input)
+        best_partial_match = extract_best_partial_match(
+            partial_results, user_input
+        )
 
         if best_partial_match:
             logger.info(
@@ -109,7 +120,9 @@ class MerchantValidationHandler:
             )
 
         # Add failure context
-        failure_context = f"Agent validation failed after {max_attempts or 2} attempts."
+        failure_context = (
+            f"Agent validation failed after {max_attempts or 2} attempts."
+        )
         if partial_results:
             failure_context += f" Partial results were collected from: {', '.join([r['function'] for r in partial_results])}"
         metadata_obj.reasoning = f"{failure_context} {metadata_obj.reasoning}"
@@ -128,7 +141,11 @@ class MerchantValidationHandler:
             metadata.get("validated_by", ValidationMethod.INFERENCE.value)
         )
         matched_fields = list(
-            {f.strip() for f in metadata.get("matched_fields", []) if f.strip()}
+            {
+                f.strip()
+                for f in metadata.get("matched_fields", [])
+                if f.strip()
+            }
         )
 
         return ReceiptMetadata(
@@ -138,7 +155,9 @@ class MerchantValidationHandler:
             merchant_name=sanitize_string(metadata.get("merchant_name", "")),
             address=sanitize_string(metadata.get("address", "")),
             phone_number=sanitize_string(metadata.get("phone_number", "")),
-            merchant_category=sanitize_string(metadata.get("merchant_category", "")),
+            merchant_category=sanitize_string(
+                metadata.get("merchant_category", "")
+            ),
             matched_fields=matched_fields,
             timestamp=metadata.get("timestamp") or datetime.now(timezone.utc),
             validated_by=vb_enum,
