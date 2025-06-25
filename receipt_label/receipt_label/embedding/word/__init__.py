@@ -1,32 +1,17 @@
 """Utilities for submitting and polling word embedding batches."""
 
-from .poll import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    get_receipt_descriptions,
-    list_pending_embedding_batches,
-    mark_batch_complete,
-    upsert_embeddings_to_pinecone,
-    write_embedding_results_to_dynamo,
-)
-from .submit import (
-    _format_word_context_embedding_input,
-    add_batch_summary,
-    chunk_into_embedding_batches,
-    create_batch_summary,
-    deserialize_receipt_words,
-    download_serialized_words,
-    format_word_context_embedding,
-    generate_batch_id,
-    list_receipt_words_with_no_embeddings,
-    query_receipt_words,
-    serialize_receipt_words,
-    submit_openai_batch,
-    update_word_embedding_status,
-    upload_serialized_words,
-    upload_to_openai,
-    write_ndjson,
-)
+from .poll import (download_openai_batch_result, get_openai_batch_status,
+                   get_receipt_descriptions, list_pending_embedding_batches,
+                   mark_batch_complete, upsert_embeddings_to_pinecone,
+                   write_embedding_results_to_dynamo)
+from .submit import (_format_word_context_embedding_input, add_batch_summary,
+                     chunk_into_embedding_batches, create_batch_summary,
+                     deserialize_receipt_words, download_serialized_words,
+                     format_word_context_embedding, generate_batch_id,
+                     list_receipt_words_with_no_embeddings,
+                     query_receipt_words, serialize_receipt_words,
+                     submit_openai_batch, update_word_embedding_status,
+                     upload_serialized_words, upload_to_openai, write_ndjson)
 
 __all__ = [
     "list_receipt_words_with_no_embeddings",

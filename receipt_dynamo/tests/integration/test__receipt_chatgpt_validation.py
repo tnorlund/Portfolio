@@ -202,9 +202,7 @@ def test_addReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
-        if error_code == "ConditionalCheckFailedException"
-        else Exception
+        ValueError if error_code == "ConditionalCheckFailedException" else Exception
     )
     with pytest.raises(exception_type, match=expected_exception):
         client.addReceiptChatGPTValidation(sample_receipt_chatgpt_validation)
@@ -267,10 +265,7 @@ def test_addReceiptChatGPTValidations_success(
     )
 
     assert "Item" in response2
-    assert (
-        response2["Item"]["revised_status"]["S"]
-        == second_validation.revised_status
-    )
+    assert response2["Item"]["revised_status"]["S"] == second_validation.revised_status
 
 
 @pytest.mark.integration
@@ -348,9 +343,7 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
             unprocessed_items = {
-                dynamodb_table: [
-                    {"PutRequest": {"Item": validations[1].to_item()}}
-                ]
+                dynamodb_table: [{"PutRequest": {"Item": validations[1].to_item()}}]
             }
             return {"UnprocessedItems": unprocessed_items}
         # Second call returns no unprocessed items
@@ -649,14 +642,10 @@ def test_updateReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
-        if error_code == "ConditionalCheckFailedException"
-        else Exception
+        ValueError if error_code == "ConditionalCheckFailedException" else Exception
     )
     with pytest.raises(exception_type, match=expected_error):
-        client.updateReceiptChatGPTValidation(
-            sample_receipt_chatgpt_validation
-        )
+        client.updateReceiptChatGPTValidation(sample_receipt_chatgpt_validation)
 
 
 @pytest.mark.integration
@@ -1091,14 +1080,10 @@ def test_deleteReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
-        if error_code == "ConditionalCheckFailedException"
-        else Exception
+        ValueError if error_code == "ConditionalCheckFailedException" else Exception
     )
     with pytest.raises(exception_type, match=expected_error):
-        client.deleteReceiptChatGPTValidation(
-            sample_receipt_chatgpt_validation
-        )
+        client.deleteReceiptChatGPTValidation(sample_receipt_chatgpt_validation)
 
 
 @pytest.mark.integration
@@ -1330,9 +1315,7 @@ def test_deleteReceiptChatGPTValidations_with_unprocessed_items_retries(
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
             unprocessed_items = {
-                dynamodb_table: [
-                    {"DeleteRequest": {"Key": validations[1].key}}
-                ]
+                dynamodb_table: [{"DeleteRequest": {"Key": validations[1].key}}]
             }
             return {"UnprocessedItems": unprocessed_items}
         # Second call returns no unprocessed items
@@ -1435,14 +1418,8 @@ def test_getReceiptChatGPTValidation_success(
     assert result.receipt_id == sample_receipt_chatgpt_validation.receipt_id
     assert result.image_id == sample_receipt_chatgpt_validation.image_id
     assert result.timestamp == sample_receipt_chatgpt_validation.timestamp
-    assert (
-        result.original_status
-        == sample_receipt_chatgpt_validation.original_status
-    )
-    assert (
-        result.revised_status
-        == sample_receipt_chatgpt_validation.revised_status
-    )
+    assert result.original_status == sample_receipt_chatgpt_validation.original_status
+    assert result.revised_status == sample_receipt_chatgpt_validation.revised_status
     assert result.reasoning == sample_receipt_chatgpt_validation.reasoning
 
 
@@ -1650,9 +1627,7 @@ def test_listReceiptChatGPTValidations_success(
     mock_query.return_value = mock_response
 
     # Act
-    result_validations, last_evaluated_key = (
-        client.listReceiptChatGPTValidations()
-    )
+    result_validations, last_evaluated_key = client.listReceiptChatGPTValidations()
 
     # Assert
     assert result_validations is not None
@@ -1661,18 +1636,15 @@ def test_listReceiptChatGPTValidations_success(
 
     # Verify the validations were retrieved correctly
     assert any(
-        v.receipt_id == validation1.receipt_id
-        and v.timestamp == validation1.timestamp
+        v.receipt_id == validation1.receipt_id and v.timestamp == validation1.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation2.receipt_id
-        and v.timestamp == validation2.timestamp
+        v.receipt_id == validation2.receipt_id and v.timestamp == validation2.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation3.receipt_id
-        and v.timestamp == validation3.timestamp
+        v.receipt_id == validation3.receipt_id and v.timestamp == validation3.timestamp
         for v in result_validations
     )
 
@@ -1681,12 +1653,9 @@ def test_listReceiptChatGPTValidations_success(
     args, kwargs = mock_query.call_args
     assert kwargs["TableName"] == dynamodb_table
     assert kwargs["IndexName"] == "GSI1"
+    assert kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "ANALYSIS_TYPE"
     assert (
-        kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "ANALYSIS_TYPE"
-    )
-    assert (
-        kwargs["ExpressionAttributeValues"][":sk_prefix"]["S"]
-        == "VALIDATION_CHATGPT#"
+        kwargs["ExpressionAttributeValues"][":sk_prefix"]["S"] == "VALIDATION_CHATGPT#"
     )
 
 
@@ -1770,9 +1739,7 @@ def test_listReceiptChatGPTValidations_with_pagination(
     ]
 
     # Act - request without a limit to get all pages
-    result_validations, last_evaluated_key = (
-        client.listReceiptChatGPTValidations()
-    )
+    result_validations, last_evaluated_key = client.listReceiptChatGPTValidations()
 
     # Assert
     assert result_validations is not None
@@ -1787,8 +1754,8 @@ def test_listReceiptChatGPTValidations_with_pagination(
     mock_query.side_effect = [first_call_response]
 
     # Act - request with a limit to get only first page
-    result_validations, last_evaluated_key = (
-        client.listReceiptChatGPTValidations(limit=1)
+    result_validations, last_evaluated_key = client.listReceiptChatGPTValidations(
+        limit=1
     )
 
     # Assert
@@ -1820,9 +1787,7 @@ def test_listReceiptChatGPTValidations_empty_results(
     }
 
     # Act
-    result_validations, last_evaluated_key = (
-        client.listReceiptChatGPTValidations()
-    )
+    result_validations, last_evaluated_key = client.listReceiptChatGPTValidations()
 
     # Assert
     assert result_validations is not None
@@ -1965,13 +1930,11 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
 
     # Verify the correct validations were retrieved
     assert any(
-        v.receipt_id == validation1.receipt_id
-        and v.timestamp == validation1.timestamp
+        v.receipt_id == validation1.receipt_id and v.timestamp == validation1.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation2.receipt_id
-        and v.timestamp == validation2.timestamp
+        v.receipt_id == validation2.receipt_id and v.timestamp == validation2.timestamp
         for v in result_validations
     )
 
@@ -2099,8 +2062,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
     assert kwargs["TableName"] == dynamodb_table
     assert kwargs["IndexName"] == "GSI3"
     assert (
-        kwargs["ExpressionAttributeValues"][":pk_val"]["S"]
-        == "VALIDATION_STATUS#VALID"
+        kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "VALIDATION_STATUS#VALID"
     )
 
 
