@@ -3,8 +3,10 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo.constants import LabelStatus
-from receipt_dynamo.entities.label_metadata import (LabelMetadata,
-                                                    itemToLabelMetadata)
+from receipt_dynamo.entities.label_metadata import (
+    LabelMetadata,
+    itemToLabelMetadata,
+)
 
 
 # Fixture
@@ -98,7 +100,9 @@ def test_label_metadata_deserialization_invalid_date_format():
         "schema_version": {"N": "1"},
         "last_updated": {"S": "not-a-date"},
     }
-    with pytest.raises(ValueError, match="Error converting item to LabelMetadata"):
+    with pytest.raises(
+        ValueError, match="Error converting item to LabelMetadata"
+    ):
         itemToLabelMetadata(item)
 
 

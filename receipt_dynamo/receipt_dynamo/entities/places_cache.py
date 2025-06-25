@@ -61,7 +61,9 @@ class PlacesCache:
         """
         # Validate search_type
         if search_type not in ["ADDRESS", "PHONE", "URL"]:
-            raise ValueError(f"search_type must be one of: ADDRESS, PHONE, URL")
+            raise ValueError(
+                f"search_type must be one of: ADDRESS, PHONE, URL"
+            )
         self.search_type = search_type
 
         # Validate search_value
@@ -83,7 +85,9 @@ class PlacesCache:
         try:
             datetime.fromisoformat(last_updated)
         except (ValueError, TypeError):
-            raise ValueError("last_updated must be a valid ISO format timestamp")
+            raise ValueError(
+                "last_updated must be a valid ISO format timestamp"
+            )
         self.last_updated = last_updated
 
         # Validate query_count
@@ -303,7 +307,9 @@ def itemToPlacesCache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             search_value = item["search_value"]["S"]
         else:
             # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[1]  # Get the value after VALUE#
+            padded_value = item["SK"]["S"].split("#")[
+                1
+            ]  # Get the value after VALUE#
             if search_type == "ADDRESS":
                 # Extract the original value after the hash
                 parts = padded_value.split("_")
