@@ -1,0 +1,104 @@
+name: AI Code Reviews
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+
+# Ensure only one AI review runs per PR at a time
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  wait-for-cursor:
+    name: Wait for Cursor Bot Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
+    outputs:
+      cursor_completed: ${{ steps.check-cursor.outputs.completed }}
+    steps:
+      - name: Wait for Cursor Bot
+        id: check-cursor
+        run: |
+          echo "⏳ Allowing time for Cursor bot to complete its review..."
+          sleep 30  # Give Cursor bot time to start
+          echo "completed=true" >> $GITHUB_OUTPUT
+
+  claude-review:
+    name: Claude Code Review
+    needs: [wait-for-cursor]
+    runs-on: ubuntu-latest
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install requests PyGithub click
+
+      - name: Get PR Information
+        id: pr-info
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "📋 Analyzing PR #${PR_NUMBER}"
+
+      - name: Run Claude Review Analysis
+        id: claude-analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
+        run: |
+          python scripts/claude_review_analyzer.py \
+            --pr-number "$PR_NUMBER" \
+            --repository "${{ github.repository }}" \
+            --output-file "claude_review_results.md"
+
+      - name: Post Claude Review Comment
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
+        run: |
+          if [ -f "claude_review_results.md" ]; then
+            python scripts/post_review_comment.py \
+              --pr-number "$PR_NUMBER" \
+              --repository "${{ github.repository }}" \
+              --review-file "claude_review_results.md"
+          else
+            echo "⚠️ Claude review results not found"
+          fi
+
+      - name: Upload Review Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: claude-review-pr-${{ steps.pr-info.outputs.pr_number }}
+          path: |
+            claude_review_results.md
+            cursor_findings.json
+          retention-days: 30

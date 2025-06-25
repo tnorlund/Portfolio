@@ -1,0 +1,4 @@
+# Requirements for AI review scripts
+requests>=2.31.0
+PyGithub>=1.59.0
+click>=8.1.0
