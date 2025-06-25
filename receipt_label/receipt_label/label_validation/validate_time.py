@@ -15,6 +15,12 @@ from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
+# Time format patterns
+TIME_WITH_TZ_ABBR = r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$"  # 12:30 PM EST
+TIME_WITH_TZ_OFFSET = r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$"  # 12:30:00+00:00
+TIME_WITH_Z = r"^(\d{1,2}:\d{2}:\d{2})Z$"  # 12:30:00Z
+TIME_BASIC = r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$"  # HH:MM[:SS] [AM/PM]
+
 
 def _is_time(text: str) -> bool:
     """Return ``True`` if the text resembles a valid time."""
@@ -24,14 +30,14 @@ def _is_time(text: str) -> bool:
 
     # Time with timezone patterns
     timezone_patterns = [
-        r"^(\d{1,2}:\d{2}(:\d{2})?( ?[APap][Mm])?) ?([A-Z]{3,4})$",  # 12:30 PM EST
-        r"^(\d{1,2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$",  # 12:30:00+00:00
-        r"^(\d{1,2}:\d{2}:\d{2})Z$",  # 12:30:00Z
+        TIME_WITH_TZ_ABBR,
+        TIME_WITH_TZ_OFFSET,
+        TIME_WITH_Z,
     ]
 
     # Standard time patterns
     basic_patterns = [
-        r"^(\d{1,2}):(\d{2})(:\d{2})?( ?[APap][Mm])?$",  # HH:MM[:SS] [AM/PM]
+        TIME_BASIC,
     ]
 
     # Check if it matches any timezone pattern first

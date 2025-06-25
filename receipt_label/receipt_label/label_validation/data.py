@@ -63,50 +63,42 @@ def get_unique_merchants_and_data(
     return result
 
 
-def update_labels(
+def _separate_valid_and_invalid_labels(
     label_validation_results: list[
         tuple[LabelValidationResult, ReceiptWordLabel]
-    ],
-    client_manager: Optional[ClientManager] = None,
-):
-    """Apply validation results to DynamoDB and Pinecone."""
-
-    # pylint: disable=too-many-locals,too-many-branches
-    # Applies validation results to both DynamoDB and Pinecone.
-    # - Separates valid and invalid labels based on ``is_consistent`` flag.
-    # - Updates Pinecone vector metadata:
-    #   * Adds the label to ``valid_labels`` if consistent.
-    #   * Moves the label to ``invalid_labels`` and removes it from
-    #     ``valid_labels`` if inconsistent.
-    #   * Ensures that each Pinecone ID is upserted once with merged metadata.
-    # - Updates corresponding label validation status in DynamoDB to either
-    #   VALIDATED or INVALID.
-    labels_to_mark_as_valid: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ] = []
-    labels_to_mark_as_invalid: list[
-        tuple[LabelValidationResult, ReceiptWordLabel]
-    ] = []
+    ]
+) -> tuple[
+    list[tuple[LabelValidationResult, ReceiptWordLabel]],
+    list[tuple[LabelValidationResult, ReceiptWordLabel]],
+]:
+    """Separate labels based on validation results."""
+    valid_labels = []
+    invalid_labels = []
     for label_validation_result, label in label_validation_results:
         if label_validation_result.is_consistent:
-            labels_to_mark_as_valid.append((label_validation_result, label))
+            valid_labels.append((label_validation_result, label))
         else:
-            labels_to_mark_as_invalid.append((label_validation_result, label))
+            invalid_labels.append((label_validation_result, label))
+    return valid_labels, invalid_labels
 
-    # Group labels by pinecone_id for valid and invalid
-    valid_by_id: dict[str, list[ReceiptWordLabel]] = {}
-    for label_result, label in labels_to_mark_as_valid:
-        valid_by_id.setdefault(label_result.pinecone_id, []).append(label)
-    invalid_by_id: dict[str, list[ReceiptWordLabel]] = {}
-    for label_result, label in labels_to_mark_as_invalid:
-        invalid_by_id.setdefault(label_result.pinecone_id, []).append(label)
 
-    # Combine all pinecone ids to fetch once
+def _group_labels_by_pinecone_id(
+    labels: list[tuple[LabelValidationResult, ReceiptWordLabel]]
+) -> dict[str, list[ReceiptWordLabel]]:
+    """Group labels by their Pinecone ID."""
+    grouped = {}
+    for label_result, label in labels:
+        grouped.setdefault(label_result.pinecone_id, []).append(label)
+    return grouped
+
+
+def _update_pinecone_metadata(
+    valid_by_id: dict[str, list[ReceiptWordLabel]],
+    invalid_by_id: dict[str, list[ReceiptWordLabel]],
+    client_manager: ClientManager,
+) -> None:
+    """Update Pinecone vector metadata with validation results."""
     all_pinecone_ids = set(valid_by_id.keys()) | set(invalid_by_id.keys())
-
-    if client_manager is None:
-        client_manager = get_client_manager()
-
     vectors_by_id = {}
     for vector in client_manager.pinecone.fetch(
         list(all_pinecone_ids),
@@ -141,12 +133,65 @@ def update_labels(
             namespace="words",
         )
 
+
+def _update_dynamodb_labels(
+    labels_to_mark_as_valid: list[
+        tuple[LabelValidationResult, ReceiptWordLabel]
+    ],
+    labels_to_mark_as_invalid: list[
+        tuple[LabelValidationResult, ReceiptWordLabel]
+    ],
+    client_manager: ClientManager,
+) -> None:
+    """Update label validation status in DynamoDB."""
     labels_to_update: list[ReceiptWordLabel] = []
-    # Update the labels in DynamoDB
-    for label_validation_result, label in labels_to_mark_as_valid:
+
+    for _, label in labels_to_mark_as_valid:
         label.validation_status = ValidationStatus.VALID.value
         labels_to_update.append(label)
-    for label_validation_result, label in labels_to_mark_as_invalid:
+
+    for _, label in labels_to_mark_as_invalid:
         label.validation_status = ValidationStatus.INVALID.value
         labels_to_update.append(label)
+
     client_manager.dynamo.updateReceiptWordLabels(labels_to_update)
+
+
+def update_labels(
+    label_validation_results: list[
+        tuple[LabelValidationResult, ReceiptWordLabel]
+    ],
+    client_manager: Optional[ClientManager] = None,
+):
+    """Apply validation results to DynamoDB and Pinecone."""
+    # Applies validation results to both DynamoDB and Pinecone.
+    # - Separates valid and invalid labels based on ``is_consistent`` flag.
+    # - Updates Pinecone vector metadata:
+    #   * Adds the label to ``valid_labels`` if consistent.
+    #   * Moves the label to ``invalid_labels`` and removes it from
+    #     ``valid_labels`` if inconsistent.
+    #   * Ensures that each Pinecone ID is upserted once with merged metadata.
+    # - Updates corresponding label validation status in DynamoDB to either
+    #   VALIDATED or INVALID.
+
+    if client_manager is None:
+        client_manager = get_client_manager()
+
+    # Separate labels based on validation results
+    labels_to_mark_as_valid, labels_to_mark_as_invalid = (
+        _separate_valid_and_invalid_labels(label_validation_results)
+    )
+
+    # Group labels by pinecone_id
+    valid_by_id = _group_labels_by_pinecone_id(labels_to_mark_as_valid)
+    invalid_by_id = _group_labels_by_pinecone_id(labels_to_mark_as_invalid)
+
+    # Update Pinecone metadata
+    _update_pinecone_metadata(valid_by_id, invalid_by_id, client_manager)
+
+    # Update DynamoDB labels
+    _update_dynamodb_labels(
+        labels_to_mark_as_valid,
+        labels_to_mark_as_invalid,
+        client_manager,
+    )

@@ -16,22 +16,30 @@ from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
+# Date format patterns
+DATE_SLASH_FORMAT = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"  # MM/DD/YYYY or MM-DD-YYYY
+DATE_ISO_FORMAT = r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b"  # YYYY-MM-DD or YYYY/MM/DD
+DATE_ISO_WITH_Z = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b"  # ISO with Z
+DATE_ISO_WITH_TZ = r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b"  # ISO with timezone offset
+DATE_WITH_TZ_ABBR = r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b"  # Date with timezone abbreviation
+DATE_DD_MMM_YYYY = r"\b\d{1,2}[/-]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[/-]?\s*\d{2,4}\b"  # DD-MMM-YYYY
+DATE_MMM_DD_YYYY = r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{2,4}\b"  # MMM DD, YYYY
+DATE_DD_MMM_YYYY_ALT = r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b"  # DD MMM YYYY
+
 
 def _is_date(text: str) -> bool:
     """Return ``True`` if the text resembles a date."""
 
     # Match various date formats including month names and ISO formats
     patterns = [
-        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",  # MM/DD/YYYY or MM-DD-YYYY (must include day)
-        r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b",  # YYYY-MM-DD or YYYY/MM/DD
-        # ISO 8601 formats with timezone
-        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b",  # ISO with Z
-        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}\b",  # ISO with timezone offset
-        r"\b\d{4}-\d{2}-\d{2}\s+[A-Z]{3,4}\b",  # Date with timezone abbreviation like PST, UTC
-        # Month name patterns
-        r"\b\d{1,2}[/-]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[/-]?\s*\d{2,4}\b",  # DD-MMM-YYYY
-        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{2,4}\b",  # MMM DD, YYYY
-        r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b",  # DD MMM YYYY
+        DATE_SLASH_FORMAT,
+        DATE_ISO_FORMAT,
+        DATE_ISO_WITH_Z,
+        DATE_ISO_WITH_TZ,
+        DATE_WITH_TZ_ABBR,
+        DATE_DD_MMM_YYYY,
+        DATE_MMM_DD_YYYY,
+        DATE_DD_MMM_YYYY_ALT,
     ]
 
     # First check if it matches a pattern
