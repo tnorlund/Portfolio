@@ -62,9 +62,7 @@ def main():
             image_s3_bucket = ocr_job.s3_bucket
 
             # Download the image from the S3 bucket
-            image_path = download_image_from_s3(
-                image_s3_bucket, image_s3_key, image_id
-            )
+            image_path = download_image_from_s3(image_s3_bucket, image_s3_key, image_id)
             image_details.append((image_id, image_path))
 
         # Run the OCR

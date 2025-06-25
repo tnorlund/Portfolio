@@ -1,8 +1,12 @@
 import pytest
 
 from receipt_label.merchant_validation.utils.normalization import (
-    format_canonical_merchant_name, normalize_address, normalize_phone,
-    normalize_text, preprocess_for_comparison)
+    format_canonical_merchant_name,
+    normalize_address,
+    normalize_phone,
+    normalize_text,
+    preprocess_for_comparison,
+)
 
 
 @pytest.mark.unit

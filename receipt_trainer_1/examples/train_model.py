@@ -170,9 +170,7 @@ class MetricsCallback(TrainerCallback):
             plt.tight_layout()
 
             # Save the plot to a temporary file
-            with tempfile.NamedTemporaryFile(
-                suffix=".png", delete=False
-            ) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
                 plt_path = tmp_file.name
                 plt.savefig(plt_path)
 
@@ -242,12 +240,8 @@ def validate_environment():
 
 def parse_args():
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Train a Receipt Trainer model."
-    )
-    parser.add_argument(
-        "--run_name", type=str, default=None, help="Name of the run."
-    )
+    parser = argparse.ArgumentParser(description="Train a Receipt Trainer model.")
+    parser.add_argument("--run_name", type=str, default=None, help="Name of the run.")
     parser.add_argument(
         "--model_name",
         type=str,

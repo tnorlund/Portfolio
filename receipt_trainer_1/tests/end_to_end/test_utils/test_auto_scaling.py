@@ -238,9 +238,7 @@ def test_real_auto_scaling_e2e(aws_credentials, pulumi_config):
             status = manager.get_instance_status()
             running = sum(
                 count
-                for state, count in status.get(
-                    "instances_by_state", {}
-                ).items()
+                for state, count in status.get("instances_by_state", {}).items()
                 if state in ["pending", "running"]
             )
             if running >= 1:
@@ -288,9 +286,7 @@ def test_real_auto_scaling_e2e(aws_credentials, pulumi_config):
             # Exclude terminated instances from count
             active = sum(
                 count
-                for state, count in status.get(
-                    "instances_by_state", {}
-                ).items()
+                for state, count in status.get("instances_by_state", {}).items()
                 if state not in ["terminated", "shutting-down"]
             )
             if active == 0:
@@ -324,9 +320,7 @@ def test_real_auto_scaling_e2e(aws_credentials, pulumi_config):
 
             # Use direct boto3 call to verify instance status
             ec2 = boto3.client("ec2")
-            response = ec2.describe_instances(
-                InstanceIds=launched_instance_ids
-            )
+            response = ec2.describe_instances(InstanceIds=launched_instance_ids)
 
             for reservation in response.get("Reservations", []):
                 for instance in reservation.get("Instances", []):
@@ -343,9 +337,7 @@ def test_real_auto_scaling_e2e(aws_credentials, pulumi_config):
                                 f"Termination request sent for instance {instance_id}"
                             )
                         except Exception as e:
-                            print(
-                                f"Error terminating instance {instance_id}: {e}"
-                            )
+                            print(f"Error terminating instance {instance_id}: {e}")
                     else:
                         print(f"Instance {instance_id} is {state} as expected")
 

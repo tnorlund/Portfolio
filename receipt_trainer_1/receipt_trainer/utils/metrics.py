@@ -138,14 +138,10 @@ def entity_level_metrics(
 
     # Calculate overall micro-avg metrics across all entity types
     precision = (
-        overall_tp / (overall_tp + overall_fp)
-        if (overall_tp + overall_fp) > 0
-        else 0.0
+        overall_tp / (overall_tp + overall_fp) if (overall_tp + overall_fp) > 0 else 0.0
     )
     recall = (
-        overall_tp / (overall_tp + overall_fn)
-        if (overall_tp + overall_fn) > 0
-        else 0.0
+        overall_tp / (overall_tp + overall_fn) if (overall_tp + overall_fn) > 0 else 0.0
     )
     f1 = (
         2 * precision * recall / (precision + recall)
@@ -279,9 +275,7 @@ def confusion_matrix_entities(
     all_spans = set(true_span_to_type.keys()) | set(pred_span_to_type.keys())
 
     # All unique entity types
-    all_types = set(true_span_to_type.values()) | set(
-        pred_span_to_type.values()
-    )
+    all_types = set(true_span_to_type.values()) | set(pred_span_to_type.values())
     all_types = sorted(list(all_types))
 
     # Initialize confusion matrix
@@ -346,9 +340,7 @@ def field_extraction_accuracy(
         pred_value = pred_fields.get(field, "")
 
         # Exact match
-        field_accuracy[f"{field}_exact"] = (
-            1.0 if true_value == pred_value else 0.0
-        )
+        field_accuracy[f"{field}_exact"] = 1.0 if true_value == pred_value else 0.0
 
         # Character overlap (for partial matches)
         max_len = max(len(true_value), len(pred_value))
@@ -388,9 +380,7 @@ def compute_all_ner_metrics(
     metrics["entity_level"] = entity_level_metrics(true_labels, pred_labels)
 
     # Entity class accuracy
-    metrics["entity_accuracy"] = entity_class_accuracy(
-        true_labels, pred_labels
-    )
+    metrics["entity_accuracy"] = entity_class_accuracy(true_labels, pred_labels)
 
     # Confusion matrix for entities
     metrics["entity_confusion_matrix"] = confusion_matrix_entities(

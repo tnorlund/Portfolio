@@ -95,9 +95,7 @@ class DataSourceConfig(BaseModel):
         """Check that the required fields for each data source type are present."""
         source_type = self.type
         if source_type == "dynamodb" and not self.table:
-            raise ValueError(
-                "table must be specified for dynamodb data source"
-            )
+            raise ValueError("table must be specified for dynamodb data source")
         elif source_type == "sroie" and not self.path:
             raise ValueError("path must be specified for sroie data source")
         return self
@@ -117,9 +115,7 @@ class DatasetConfig(BaseModel):
     train_data: List[DataSourceConfig]
     validation_data: List[DataSourceConfig]
     test_data: Optional[List[DataSourceConfig]] = None
-    data_augmentation: Optional[DataAugmentationConfig] = (
-        DataAugmentationConfig()
-    )
+    data_augmentation: Optional[DataAugmentationConfig] = DataAugmentationConfig()
 
 
 class CheckpointConfig(BaseModel):
@@ -273,9 +269,7 @@ class JobDefinition:
         # Validate priority
         valid_priorities = ["low", "medium", "high", "critical"]
         if self.priority not in valid_priorities:
-            raise ValueError(
-                f"Priority must be one of: {', '.join(valid_priorities)}"
-            )
+            raise ValueError(f"Priority must be one of: {', '.join(valid_priorities)}")
 
     def _parse_dependencies(self, dependencies_list):
         """
@@ -308,9 +302,7 @@ class JobDefinition:
 
             condition = dep.get("condition")
             if dependency_type == "ARTIFACT" and not condition:
-                raise ValueError(
-                    "ARTIFACT dependency type requires a condition"
-                )
+                raise ValueError("ARTIFACT dependency type requires a condition")
 
             parsed_dependencies.append(
                 {

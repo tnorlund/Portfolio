@@ -6,8 +6,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
-from receipt_dynamo import (ReceiptValidationResult,
-                            itemToReceiptValidationResult)
+from receipt_dynamo import ReceiptValidationResult, itemToReceiptValidationResult
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 

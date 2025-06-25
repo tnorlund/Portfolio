@@ -49,9 +49,7 @@ class InstanceCoordinator:
             health_check_interval: Interval for health checks in seconds
         """
         self.table_name = table_name
-        self.region = (
-            region or EC2Metadata.get_instance_region() or "us-east-1"
-        )
+        self.region = region or EC2Metadata.get_instance_region() or "us-east-1"
         self.ttl_hours = ttl_hours
         self.health_check_interval = health_check_interval
 
@@ -128,9 +126,7 @@ class InstanceCoordinator:
             # Start leader election monitoring
             self._start_leadership_monitoring()
 
-            logger.info(
-                f"Instance coordinator initialized for {self.instance_id}"
-            )
+            logger.info(f"Instance coordinator initialized for {self.instance_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to register instance: {e}")
@@ -163,9 +159,7 @@ class InstanceCoordinator:
                 instance = self.dynamo_client.getInstance(self.instance_id)
                 # Delete instance using receipt_dynamo
                 self.dynamo_client.deleteInstance(instance)
-                logger.info(
-                    f"Instance {self.instance_id} deregistered from registry"
-                )
+                logger.info(f"Instance {self.instance_id} deregistered from registry")
             except ValueError:
                 # Instance already deleted or not found
                 pass
@@ -459,14 +453,12 @@ class InstanceCoordinator:
                     check=True,
                 )
                 gpu_utils = [
-                    float(x.strip())
-                    for x in result.stdout.split("\n")
-                    if x.strip()
+                    float(x.strip()) for x in result.stdout.split("\n") if x.strip()
                 ]
                 if gpu_utils:
-                    self.health_metrics["gpu_utilization"] = sum(
+                    self.health_metrics["gpu_utilization"] = sum(gpu_utils) / len(
                         gpu_utils
-                    ) / len(gpu_utils)
+                    )
 
                 # GPU memory usage
                 result = subprocess.run(
@@ -488,9 +480,9 @@ class InstanceCoordinator:
                             memory_usages.append(100 * (used / total))
 
                 if memory_usages:
-                    self.health_metrics["gpu_memory_usage"] = sum(
+                    self.health_metrics["gpu_memory_usage"] = sum(memory_usages) / len(
                         memory_usages
-                    ) / len(memory_usages)
+                    )
 
             except (
                 subprocess.SubprocessError,
@@ -608,9 +600,7 @@ class InstanceCoordinator:
         """
         try:
             # Query for tasks assigned to this instance using the DynamoClient's API
-            tasks, _ = self.dynamo_client.listTasksByAssignedInstance(
-                self.instance_id
-            )
+            tasks, _ = self.dynamo_client.listTasksByAssignedInstance(self.instance_id)
 
             for task in tasks:
                 if self.stop_threads.is_set():
@@ -709,9 +699,7 @@ class InstanceCoordinator:
                     Key={"instance_id": f"INSTANCE#{instance.instance_id}"}
                 )
 
-                if "Item" in response and response["Item"].get(
-                    "is_leader", False
-                ):
+                if "Item" in response and response["Item"].get("is_leader", False):
                     # Check if leader has sent a heartbeat recently
                     last_heartbeat = response["Item"].get("last_heartbeat")
                     if last_heartbeat:
@@ -886,9 +874,7 @@ class InstanceCoordinator:
             success = dynamo_client.putJob(task)
 
             if success:
-                logger.info(
-                    f"Task {task_id} assigned to instance {instance_id}"
-                )
+                logger.info(f"Task {task_id} assigned to instance {instance_id}")
 
                 # Create a record in instance_jobs if needed
                 # This would use a different entity type if available
@@ -976,9 +962,7 @@ class InstanceCoordinator:
             logger.error(f"Error getting pending tasks: {e}")
             return []
 
-    def claim_next_task(
-        self, instance_id: str, task_types: List[str]
-    ) -> Optional[str]:
+    def claim_next_task(self, instance_id: str, task_types: List[str]) -> Optional[str]:
         """Claim the next available task for an instance.
 
         Args:
@@ -1000,14 +984,10 @@ class InstanceCoordinator:
                 return None
 
             # Filter by task type
-            matching_jobs = [
-                job for job in pending_jobs if job.type in task_types
-            ]
+            matching_jobs = [job for job in pending_jobs if job.type in task_types]
 
             if not matching_jobs:
-                logger.info(
-                    f"No pending tasks of types {task_types} available"
-                )
+                logger.info(f"No pending tasks of types {task_types} available")
                 return None
 
             # Sort by priority and created_at

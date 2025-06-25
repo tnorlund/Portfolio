@@ -126,9 +126,7 @@ def print_instance_table(instances: Dict[str, Dict[str, Any]]) -> None:
 
         # Check if instance heartbeat is stale
         is_stale = False
-        if last_heartbeat and (
-            int(time.time()) - last_heartbeat > 180
-        ):  # 3 minutes
+        if last_heartbeat and (int(time.time()) - last_heartbeat > 180):  # 3 minutes
             is_stale = True
             health_icon = "⚠️"
 
@@ -200,12 +198,8 @@ def print_tasks_table(state: Dict[str, Any]) -> None:
         last_updated = task.get("last_updated")
 
         # Format timestamps
-        created_str = (
-            format_time_elapsed(created_at) if created_at else "unknown"
-        )
-        updated_str = (
-            format_time_elapsed(last_updated) if last_updated else "never"
-        )
+        created_str = format_time_elapsed(created_at) if created_at else "unknown"
+        updated_str = format_time_elapsed(last_updated) if last_updated else "never"
 
         # Add to rows
         rows.append(
@@ -213,11 +207,7 @@ def print_tasks_table(state: Dict[str, Any]) -> None:
                 task_id[:8] + "...",  # Truncate ID
                 task_type,
                 status,
-                (
-                    assigned_to[:10] + "..."
-                    if len(assigned_to) > 10
-                    else assigned_to
-                ),
+                (assigned_to[:10] + "..." if len(assigned_to) > 10 else assigned_to),
                 created_str,
                 updated_str,
             ]
@@ -277,11 +267,7 @@ def print_jobs_table(state: Dict[str, Any]) -> None:
                 job_id[:8] + "...",  # Truncate ID
                 name,
                 status,
-                (
-                    instance_id[:10] + "..."
-                    if len(instance_id) > 10
-                    else instance_id
-                ),
+                (instance_id[:10] + "..." if len(instance_id) > 10 else instance_id),
                 format_timestamp(start_time) if start_time else "unknown",
                 duration_str,
             ]
@@ -330,10 +316,7 @@ def print_cluster_summary(state: Dict[str, Any]) -> None:
     print(f"Total Instances: {total_instances}")
     print(f"Total GPUs: {total_gpus}")
     print(f"Leader Instance: {leader_str}")
-    print(
-        f"Current Instance: {current_instance}"
-        + (" (leader)" if is_leader else "")
-    )
+    print(f"Current Instance: {current_instance}" + (" (leader)" if is_leader else ""))
 
     if gpu_types:
         print("\nGPU Types:")

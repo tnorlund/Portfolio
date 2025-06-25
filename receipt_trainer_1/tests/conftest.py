@@ -20,9 +20,7 @@ def setup_logging():
 
 def pytest_configure(config):
     """Add custom markers."""
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
 
 
 @pytest.fixture(autouse=True)
@@ -68,9 +66,7 @@ def mock_dynamo_data():
     """Mock DynamoDB receipt data."""
     return {
         "receipt1": {
-            "receipt": Mock(
-                image_id="img1", receipt_id="rec1", width=800, height=1000
-            ),
+            "receipt": Mock(image_id="img1", receipt_id="rec1", width=800, height=1000),
             "words": [
                 Mock(
                     word_id=1,
@@ -82,9 +78,7 @@ def mock_dynamo_data():
                     bottom_right={"x": 0.2, "y": 0.2},
                 )
             ],
-            "word_tags": [
-                Mock(word_id=1, tag="store_name", human_validated=True)
-            ],
+            "word_tags": [Mock(word_id=1, tag="store_name", human_validated=True)],
         }
     }
 

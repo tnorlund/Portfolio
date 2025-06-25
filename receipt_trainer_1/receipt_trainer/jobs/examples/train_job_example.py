@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional
 import boto3
 
 # Add the parent directory to the path so we can import the jobs package
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from receipt_trainer.jobs.job import Job, JobStatus, JobPriority
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig, JobRetryStrategy
@@ -43,20 +43,20 @@ def create_training_job(
 ) -> Job:
     """
     Create a training job configuration.
-    
+
     Args:
         model_name: Name of the model to train
         dataset_id: ID of the dataset to use for training
         hyperparameters: Model hyperparameters
         priority: Job priority
         training_time_minutes: Expected training time in minutes
-        
+
     Returns:
         The created job
     """
     # Create a unique job ID
     job_id = str(uuid.uuid4())
-    
+
     # Create the job configuration
     config = {
         "model_name": model_name,
@@ -66,7 +66,7 @@ def create_training_job(
         "output_bucket": "my-ml-models",
         "output_prefix": f"models/{model_name}/{job_id}",
     }
-    
+
     # Create the job
     job = Job(
         name=f"Train {model_name} on {dataset_id}",
@@ -79,9 +79,11 @@ def create_training_job(
             "dataset": dataset_id,
             "environment": "development",
         },
-        timeout_seconds=training_time_minutes * 60 * 2,  # Double the expected training time
+        timeout_seconds=training_time_minutes
+        * 60
+        * 2,  # Double the expected training time
     )
-    
+
     return job
 
 
@@ -92,49 +94,68 @@ def simulate_training(
 ) -> bool:
     """
     Simulate a model training job.
-    
+
     Args:
         job: The job to process
         success_rate: Probability of successful training
         delay_seconds: Simulated training time in seconds
-        
+
     Returns:
         True if the job was successful, False otherwise
     """
     logger.info(f"Starting training job: {job.name}")
     logger.info(f"Job details: {json.dumps(job.to_dict(), indent=2)}")
-    
+
     # Simulate training time
     logger.info(f"Training will take approximately {delay_seconds} seconds")
     time.sleep(delay_seconds)
-    
+
     # Simulate training outcome
     import random
+
     success = random.random() < success_rate
-    
+
     if success:
         logger.info(f"Training job {job.job_id} completed successfully")
-        logger.info(f"Model saved to s3://{job.config['output_bucket']}/{job.config['output_prefix']}")
+        logger.info(
+            f"Model saved to s3://{job.config['output_bucket']}/{job.config['output_prefix']}"
+        )
     else:
         logger.error(f"Training job {job.job_id} failed")
-    
+
     return success
 
 
 def main():
     """Main entry point for the example script."""
-    parser = argparse.ArgumentParser(description="Example of using the job queue for ML training")
-    parser.add_argument("--queue-name", default="ml-training-jobs", help="Name of the SQS queue")
+    parser = argparse.ArgumentParser(
+        description="Example of using the job queue for ML training"
+    )
+    parser.add_argument(
+        "--queue-name", default="ml-training-jobs", help="Name of the SQS queue"
+    )
     parser.add_argument("--region", default="us-west-2", help="AWS region")
-    parser.add_argument("--create-queue", action="store_true", help="Create the queue if it doesn't exist")
-    parser.add_argument("--submit", action="store_true", help="Submit example jobs to the queue")
-    parser.add_argument("--process", action="store_true", help="Process jobs from the queue")
-    parser.add_argument("--num-jobs", type=int, default=5, help="Number of jobs to submit")
-    parser.add_argument("--process-time", type=int, default=60, help="Time to process jobs in seconds")
+    parser.add_argument(
+        "--create-queue",
+        action="store_true",
+        help="Create the queue if it doesn't exist",
+    )
+    parser.add_argument(
+        "--submit", action="store_true", help="Submit example jobs to the queue"
+    )
+    parser.add_argument(
+        "--process", action="store_true", help="Process jobs from the queue"
+    )
+    parser.add_argument(
+        "--num-jobs", type=int, default=5, help="Number of jobs to submit"
+    )
+    parser.add_argument(
+        "--process-time", type=int, default=60, help="Time to process jobs in seconds"
+    )
     args = parser.parse_args()
-    
+
     queue_url = None
-    
+
     # Get or create the queue
     if args.create_queue:
         logger.info(f"Creating queue: {args.queue_name}")
@@ -155,7 +176,7 @@ def main():
             logger.error(f"Queue {args.queue_name} does not exist")
             logger.info("Use --create-queue to create it")
             return
-    
+
     # Create the queue config
     queue_config = JobQueueConfig(
         queue_url=queue_url,
@@ -164,14 +185,14 @@ def main():
         retry_strategy=JobRetryStrategy.EXPONENTIAL_BACKOFF,
         base_retry_seconds=10,
     )
-    
+
     # Create the job queue
     queue = JobQueue(queue_config)
-    
+
     # Submit example jobs
     if args.submit:
         logger.info(f"Submitting {args.num_jobs} example jobs")
-        
+
         # Define some example model configurations
         models = [
             {
@@ -208,32 +229,33 @@ def main():
                 "training_time_minutes": 15,
             },
         ]
-        
+
         # Submit jobs
         submitted_job_ids = []
         for i in range(args.num_jobs):
             # Choose a random model configuration
             import random
+
             model_config = random.choice(models)
-            
+
             # Create the job
             job = create_training_job(**model_config)
-            
+
             # Submit the job
             job_id = queue.submit_job(job)
-            
+
             if job_id:
                 logger.info(f"Submitted job: {job_id}")
                 submitted_job_ids.append(job_id)
             else:
                 logger.error(f"Failed to submit job: {job.name}")
-        
+
         logger.info(f"Submitted {len(submitted_job_ids)} jobs")
-    
+
     # Process jobs
     if args.process:
         logger.info(f"Processing jobs for {args.process_time} seconds")
-        
+
         # Set up a handler for processing jobs
         def job_handler(job: Job) -> bool:
             return simulate_training(
@@ -241,24 +263,24 @@ def main():
                 success_rate=0.8,
                 delay_seconds=5,  # Reduced for demonstration
             )
-        
+
         # Start processing jobs in a background thread
         processing_thread = queue.start_processing(job_handler)
-        
+
         # Wait for the specified time
         try:
             time.sleep(args.process_time)
         except KeyboardInterrupt:
             logger.info("Processing interrupted by user")
-        
+
         # Stop processing
         queue.stop_processing()
-        
+
         # Wait for the thread to finish
         processing_thread.join()
-        
+
         logger.info("Job processing completed")
 
 
 if __name__ == "__main__":
-    main() 
+    main()

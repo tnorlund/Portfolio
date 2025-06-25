@@ -55,20 +55,14 @@ logger = logging.getLogger(__name__)
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
-    parser = argparse.ArgumentParser(
-        description="ML Training Job Queue Management CLI"
-    )
-    subparsers = parser.add_subparsers(
-        dest="command", help="Command to execute"
-    )
+    parser = argparse.ArgumentParser(description="ML Training Job Queue Management CLI")
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # Create queue command
     create_parser = subparsers.add_parser(
         "create-queue", help="Create a job queue with DLQ"
     )
-    create_parser.add_argument(
-        "queue_name", help="Name of the queue to create"
-    )
+    create_parser.add_argument("queue_name", help="Name of the queue to create")
     create_parser.add_argument(
         "--fifo", action="store_true", help="Create a FIFO queue"
     )
@@ -82,9 +76,7 @@ def create_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--tags", help="Tags in JSON format")
 
     # Delete queue command
-    delete_parser = subparsers.add_parser(
-        "delete-queue", help="Delete a job queue"
-    )
+    delete_parser = subparsers.add_parser("delete-queue", help="Delete a job queue")
     delete_parser.add_argument("queue_url", help="URL of the queue to delete")
     delete_parser.add_argument("--region", help="AWS region")
 
@@ -130,9 +122,7 @@ def create_parser() -> argparse.ArgumentParser:
     submit_file_parser.add_argument("--region", help="AWS region")
 
     # List pending jobs command
-    list_parser = subparsers.add_parser(
-        "list-jobs", help="List jobs in the queue"
-    )
+    list_parser = subparsers.add_parser("list-jobs", help="List jobs in the queue")
     list_parser.add_argument("queue_url", help="URL of the queue")
     list_parser.add_argument(
         "--count", type=int, default=10, help="Maximum number of jobs to list"
@@ -147,9 +137,7 @@ def create_parser() -> argparse.ArgumentParser:
     attributes_parser.add_argument("--region", help="AWS region")
 
     # Get job status command
-    status_parser = subparsers.add_parser(
-        "job-status", help="Get the status of a job"
-    )
+    status_parser = subparsers.add_parser("job-status", help="Get the status of a job")
     status_parser.add_argument("job_id", help="ID of the job")
     status_parser.add_argument(
         "--table",
@@ -253,11 +241,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 def handle_create_queue(args: argparse.Namespace) -> None:
     """Handle the create-queue command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create queue service
     queue_service = QueueService(region=region)
@@ -291,11 +275,7 @@ def handle_create_queue(args: argparse.Namespace) -> None:
 
 def handle_delete_queue(args: argparse.Namespace) -> None:
     """Handle the delete-queue command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create queue service
     queue_service = QueueService(region=region)
@@ -313,11 +293,7 @@ def handle_delete_queue(args: argparse.Namespace) -> None:
 
 def handle_purge_queue(args: argparse.Namespace) -> None:
     """Handle the purge-queue command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create queue service
     queue_service = QueueService(region=region)
@@ -335,11 +311,7 @@ def handle_purge_queue(args: argparse.Namespace) -> None:
 
 def handle_submit_job(args: argparse.Namespace) -> None:
     """Handle the submit-job command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Parse job config
     try:
@@ -398,9 +370,7 @@ def handle_submit_job(args: argparse.Namespace) -> None:
     if hasattr(args, "queue_url") and args.queue_url:
         try:
             # Create queue service
-            queue_service = QueueService(
-                table_name=DYNAMODB_TABLE, region=region
-            )
+            queue_service = QueueService(table_name=DYNAMODB_TABLE, region=region)
 
             # Extract queue ID from URL (assuming it's the last part of the URL)
             queue_url_parts = args.queue_url.split("/")
@@ -429,18 +399,12 @@ def handle_submit_job(args: argparse.Namespace) -> None:
 
         except Exception as e:
             logger.error(f"Error adding job to queue: {str(e)}")
-            print(
-                f"Warning: Job created but could not be added to queue: {str(e)}"
-            )
+            print(f"Warning: Job created but could not be added to queue: {str(e)}")
 
 
 def handle_submit_job_file(args: argparse.Namespace) -> None:
     """Handle the submit-job-file command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create services
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -454,9 +418,9 @@ def handle_submit_job_file(args: argparse.Namespace) -> None:
 
     try:
         # Determine file type by extension
-        if args.job_file.lower().endswith(
-            ".yaml"
-        ) or args.job_file.lower().endswith(".yml"):
+        if args.job_file.lower().endswith(".yaml") or args.job_file.lower().endswith(
+            ".yml"
+        ):
             job_definition = LayoutLMJobDefinition.from_yaml(args.job_file)
         elif args.job_file.lower().endswith(".json"):
             job_definition = LayoutLMJobDefinition.from_json(args.job_file)
@@ -480,9 +444,7 @@ def handle_submit_job_file(args: argparse.Namespace) -> None:
         )
 
         if job_id:
-            print(
-                f"Job '{job_definition.name}' created successfully with ID: {job_id}"
-            )
+            print(f"Job '{job_definition.name}' created successfully with ID: {job_id}")
 
             # Add job to queue if queue_url is provided
             if args.queue_url:
@@ -527,11 +489,7 @@ def handle_submit_job_file(args: argparse.Namespace) -> None:
 
 def handle_list_jobs(args: argparse.Namespace) -> None:
     """Handle the list-jobs command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -593,11 +551,7 @@ def handle_list_jobs(args: argparse.Namespace) -> None:
 
 def handle_queue_attributes(args: argparse.Namespace) -> None:
     """Handle the queue-attributes command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create queue service
     queue_service = QueueService(region=region)
@@ -619,11 +573,7 @@ def handle_queue_attributes(args: argparse.Namespace) -> None:
 
 def handle_job_status(args: argparse.Namespace) -> None:
     """Handle the job-status command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -672,11 +622,7 @@ def handle_job_status(args: argparse.Namespace) -> None:
 
 def handle_monitor_job(args: argparse.Namespace) -> None:
     """Handle the monitor-job command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -700,9 +646,7 @@ def handle_monitor_job(args: argparse.Namespace) -> None:
                     print(f"Name: {job.name}")
                     print(f"Type: {job.job_type}")
                     print(f"Status: {job.status}")
-                    print(
-                        f"Created: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
-                    )
+                    print(f"Created: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
                     # Get status history
                     statuses = job_service.get_job_status_history(args.job_id)
@@ -723,9 +667,7 @@ def handle_monitor_job(args: argparse.Namespace) -> None:
                             hasattr(latest_status, "instance_id")
                             and latest_status.instance_id
                         ):
-                            print(
-                                f"Processing Instance: {latest_status.instance_id}"
-                            )
+                            print(f"Processing Instance: {latest_status.instance_id}")
 
                         # Show recent history
                         if len(statuses) > 1:
@@ -744,9 +686,7 @@ def handle_monitor_job(args: argparse.Namespace) -> None:
                         "cancelled",
                         "error",
                     ]:
-                        print(
-                            f"\nJob has reached terminal state: {job.status}"
-                        )
+                        print(f"\nJob has reached terminal state: {job.status}")
                         print("Monitoring will end in 10 seconds...")
                         time.sleep(10)
                         break
@@ -766,11 +706,7 @@ def handle_monitor_job(args: argparse.Namespace) -> None:
 
 def handle_cancel_job(args: argparse.Namespace) -> None:
     """Handle the cancel-job command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -795,11 +731,7 @@ def handle_cancel_job(args: argparse.Namespace) -> None:
 
 def handle_job_logs(args: argparse.Namespace) -> None:
     """Handle the job-logs command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -809,9 +741,7 @@ def handle_job_logs(args: argparse.Namespace) -> None:
         logs = job_service.get_job_logs(args.job_id, limit=args.limit)
 
         if logs:
-            print(
-                f"Logs for job {args.job_id} (showing up to {args.limit} entries):"
-            )
+            print(f"Logs for job {args.job_id} (showing up to {args.limit} entries):")
             print("-" * 80)
 
             for log in logs:
@@ -821,17 +751,13 @@ def handle_job_logs(args: argparse.Namespace) -> None:
                     else "unknown"
                 )
                 level = log.level if hasattr(log, "level") else "INFO"
-                message = (
-                    log.message if hasattr(log, "message") else "No message"
-                )
+                message = log.message if hasattr(log, "message") else "No message"
                 source = log.source if hasattr(log, "source") else "unknown"
 
                 print(f"[{timestamp}] [{level}] [{source}]: {message}")
 
             if len(logs) == args.limit:
-                print(
-                    f"\nShowing first {args.limit} logs. Use --limit to see more."
-                )
+                print(f"\nShowing first {args.limit} logs. Use --limit to see more.")
         else:
             print(f"No logs found for job {args.job_id}")
 
@@ -842,16 +768,10 @@ def handle_job_logs(args: argparse.Namespace) -> None:
 
 def handle_list_instances(args: argparse.Namespace) -> None:
     """Handle the list-instances command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create instance service
-    instance_service = InstanceService(
-        table_name=DYNAMODB_TABLE, region=region
-    )
+    instance_service = InstanceService(table_name=DYNAMODB_TABLE, region=region)
 
     try:
         # Get all instances
@@ -874,23 +794,19 @@ def handle_list_instances(args: argparse.Namespace) -> None:
                 if hasattr(instance, "start_time") and instance.start_time:
                     try:
                         now = datetime.now()
-                        uptime_seconds = (
-                            now - instance.start_time
-                        ).total_seconds()
+                        uptime_seconds = (now - instance.start_time).total_seconds()
                         uptime = f"{uptime_seconds / 3600:.1f}"
                     except:
                         pass
 
                 last_heartbeat = (
                     instance.last_heartbeat.strftime("%Y-%m-%d %H:%M:%S")
-                    if hasattr(instance, "last_heartbeat")
-                    and instance.last_heartbeat
+                    if hasattr(instance, "last_heartbeat") and instance.last_heartbeat
                     else "N/A"
                 )
                 current_job = (
                     instance.current_job_id
-                    if hasattr(instance, "current_job_id")
-                    and instance.current_job_id
+                    if hasattr(instance, "current_job_id") and instance.current_job_id
                     else "None"
                 )
 
@@ -917,11 +833,7 @@ def handle_list_instances(args: argparse.Namespace) -> None:
 
 def handle_list_all_jobs(args: argparse.Namespace) -> None:
     """Handle the list-all-jobs command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -929,9 +841,7 @@ def handle_list_all_jobs(args: argparse.Namespace) -> None:
     try:
         # Get jobs based on status filter if provided
         if args.status:
-            jobs = job_service.list_jobs_by_status(
-                args.status, limit=args.limit
-            )
+            jobs = job_service.list_jobs_by_status(args.status, limit=args.limit)
         else:
             jobs = job_service.list_jobs(limit=args.limit)
 
@@ -963,7 +873,9 @@ def handle_list_all_jobs(args: argparse.Namespace) -> None:
                         # Format duration as hours:minutes:seconds
                         hours, remainder = divmod(duration_seconds, 3600)
                         minutes, seconds = divmod(remainder, 60)
-                        duration = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+                        duration = (
+                            f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+                        )
                     except:
                         pass
 
@@ -994,9 +906,7 @@ def handle_list_all_jobs(args: argparse.Namespace) -> None:
             print(f"\nTotal jobs: {len(jobs)}")
 
             if len(jobs) == args.limit:
-                print(
-                    f"Showing first {args.limit} jobs. Use --limit to see more."
-                )
+                print(f"Showing first {args.limit} jobs. Use --limit to see more.")
         else:
             print("No jobs found")
 
@@ -1007,11 +917,7 @@ def handle_list_all_jobs(args: argparse.Namespace) -> None:
 
 def handle_job_details(args: argparse.Namespace) -> None:
     """Handle the job-details command using the service layer."""
-    region = (
-        args.region
-        if hasattr(args, "region") and args.region
-        else DEFAULT_REGION
-    )
+    region = args.region if hasattr(args, "region") and args.region else DEFAULT_REGION
 
     # Create job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=region)
@@ -1036,9 +942,7 @@ def handle_job_details(args: argparse.Namespace) -> None:
         # Print status history
         if statuses:
             print("\nStatus History:")
-            for status in sorted(
-                statuses, key=lambda s: s.timestamp, reverse=True
-            ):
+            for status in sorted(statuses, key=lambda s: s.timestamp, reverse=True):
                 print(
                     f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {status.status}: {status.message}"
                 )
@@ -1056,9 +960,7 @@ def handle_job_details(args: argparse.Namespace) -> None:
             logs = job_service.get_job_logs(args.job_id)
             if logs:
                 print("\nLogs:")
-                for log in sorted(
-                    logs, key=lambda l: l.timestamp, reverse=True
-                )[:10]:
+                for log in sorted(logs, key=lambda l: l.timestamp, reverse=True)[:10]:
                     print(
                         f"  {log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}"
                     )
@@ -1073,9 +975,9 @@ def handle_job_details(args: argparse.Namespace) -> None:
             if metrics:
                 print("\nMetrics:")
                 metrics_table = []
-                for metric in sorted(
-                    metrics, key=lambda m: m.timestamp, reverse=True
-                )[:10]:
+                for metric in sorted(metrics, key=lambda m: m.timestamp, reverse=True)[
+                    :10
+                ]:
                     metrics_table.append(
                         [
                             metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1121,9 +1023,7 @@ def add_dependency_commands(subparsers):
     add_dep_parser = subparsers.add_parser(
         "add-dependency", help="Add a dependency between jobs"
     )
-    add_dep_parser.add_argument(
-        "job_id", help="ID of the job that depends on another"
-    )
+    add_dep_parser.add_argument("job_id", help="ID of the job that depends on another")
     add_dep_parser.add_argument(
         "dependency_job_id", help="ID of the job that is depended on"
     )
@@ -1140,9 +1040,7 @@ def add_dependency_commands(subparsers):
     add_dep_parser.add_argument(
         "--table-name", default=None, help="DynamoDB table name"
     )
-    add_dep_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    add_dep_parser.add_argument("--region", default="us-east-1", help="AWS region")
     add_dep_parser.set_defaults(func=_add_dependency)
 
     # Command to list dependencies for a job
@@ -1155,9 +1053,7 @@ def add_dependency_commands(subparsers):
     list_deps_parser.add_argument(
         "--table-name", default=None, help="DynamoDB table name"
     )
-    list_deps_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    list_deps_parser.add_argument("--region", default="us-east-1", help="AWS region")
     list_deps_parser.set_defaults(func=_list_dependencies)
 
     # Command to validate dependencies for a job
@@ -1196,9 +1092,7 @@ def add_dependency_commands(subparsers):
     vis_deps_parser.add_argument(
         "--table-name", default=None, help="DynamoDB table name"
     )
-    vis_deps_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    vis_deps_parser.add_argument("--region", default="us-east-1", help="AWS region")
     vis_deps_parser.set_defaults(func=_visualize_dependencies)
 
 
@@ -1292,9 +1186,7 @@ def _list_dependencies(args):
 
         print(f"Dependencies for job {args.job_id}:")
         for i, dep in enumerate(dependencies, 1):
-            condition_str = (
-                f", condition: {dep.condition}" if dep.condition else ""
-            )
+            condition_str = f", condition: {dep.condition}" if dep.condition else ""
             print(
                 f"  {i}. Depends on: {dep.dependency_job_id} (type: {dep.type}{condition_str})"
             )
@@ -1308,8 +1200,8 @@ def _list_dependencies(args):
 
         # Check if all dependencies are satisfied
         try:
-            is_satisfied, unsatisfied = (
-                job_service.check_dependencies_satisfied(args.job_id)
+            is_satisfied, unsatisfied = job_service.check_dependencies_satisfied(
+                args.job_id
             )
             print(f"\nAll dependencies satisfied: {is_satisfied}")
 
@@ -1337,9 +1229,7 @@ def _validate_dependencies(args):
             validate_dependencies_for_job,
         )
 
-        is_valid, issues = validate_dependencies_for_job(
-            args.job_id, job_service
-        )
+        is_valid, issues = validate_dependencies_for_job(args.job_id, job_service)
 
         if is_valid:
             print(f"All dependencies for job {args.job_id} are valid")
@@ -1459,9 +1349,7 @@ def _visualize_dependencies(args):
             # Print dot source
             print("\nGraphviz DOT representation:")
             print(dot.source)
-            print(
-                "\nTo visualize this graph, save it to a file with a .dot extension"
-            )
+            print("\nTo visualize this graph, save it to a file with a .dot extension")
             print("and use Graphviz tools (dot, neato, etc.) to render it.")
 
     except Exception as e:

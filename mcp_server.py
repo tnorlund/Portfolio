@@ -113,9 +113,7 @@ async def run_pulumi_logs(
     return await _run_pulumi("logs", stack, args)
 
 
-async def run_pulumi_config_get(
-    key: str, stack: str | None = None
-) -> str:
+async def run_pulumi_config_get(key: str, stack: str | None = None) -> str:
     """Get a configuration value from Pulumi."""
 
     cmd = ["pulumi", "config", "get", key]
@@ -124,9 +122,7 @@ async def run_pulumi_config_get(
     return await _run_cmd(cmd, ROOT / "infra")
 
 
-async def handle_tool(
-    name: str, arguments: dict[str, Any]
-) -> Iterable[TextContent]:
+async def handle_tool(name: str, arguments: dict[str, Any]) -> Iterable[TextContent]:
     """Dispatch a tool call based on its name."""
 
     if name == "run_tests":

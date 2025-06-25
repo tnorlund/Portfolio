@@ -271,9 +271,7 @@ def main():
                 logger.info(f"Hyperparameters: {params}")
             else:
                 # Submit job
-                logger.info(
-                    f"Submitting job {i+1}/{len(combinations)}: {job.name}"
-                )
+                logger.info(f"Submitting job {i+1}/{len(combinations)}: {job.name}")
                 logger.info(f"Hyperparameters: {params}")
                 queue.submit_job(job)
                 submitted_job_ids.append(job.job_id)
@@ -281,9 +279,7 @@ def main():
                 # Small delay between submissions to avoid SQS throttling
                 time.sleep(0.5)
 
-        logger.info(
-            f"Submitted {len(submitted_job_ids)} jobs to queue: {queue_url}"
-        )
+        logger.info(f"Submitted {len(submitted_job_ids)} jobs to queue: {queue_url}")
 
         # Start monitoring if requested
         if args.monitor and not args.dry_run:

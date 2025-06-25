@@ -95,9 +95,7 @@ class InstanceType:
             )
 
             if response.get("SpotPriceHistory"):
-                self.spot_price = float(
-                    response["SpotPriceHistory"][0]["SpotPrice"]
-                )
+                self.spot_price = float(response["SpotPriceHistory"][0]["SpotPrice"])
 
             # On-demand prices would require AWS Price List API
             # This is just a placeholder
@@ -108,9 +106,7 @@ class InstanceType:
 
     def __str__(self) -> str:
         """Return string representation."""
-        gpu_info = (
-            f", {self.gpu_count}x {self.gpu_type} GPU" if self.has_gpu else ""
-        )
+        gpu_info = f", {self.gpu_count}x {self.gpu_type} GPU" if self.has_gpu else ""
         return f"{self.name} ({self.vcpu} vCPU, {self.memory_gb} GB RAM{gpu_info})"
 
 
@@ -132,12 +128,8 @@ class AutoScalingManager:
     ]
 
     # Scaling thresholds
-    DEFAULT_SCALE_UP_THRESHOLD = (
-        5  # Queue items per instance before scaling up
-    )
-    DEFAULT_SCALE_DOWN_THRESHOLD = (
-        1  # Queue items per instance before scaling down
-    )
+    DEFAULT_SCALE_UP_THRESHOLD = 5  # Queue items per instance before scaling up
+    DEFAULT_SCALE_DOWN_THRESHOLD = 1  # Queue items per instance before scaling down
     DEFAULT_MAX_INSTANCES = 10  # Maximum number of instances to run
     DEFAULT_MIN_INSTANCES = 1  # Minimum number of instances to keep running
 
@@ -184,12 +176,8 @@ class AutoScalingManager:
         self.instance_registry_table = instance_registry_table
         self.key_name = key_name
 
-        self.cpu_instance_types = (
-            cpu_instance_types or self.DEFAULT_CPU_INSTANCES
-        )
-        self.gpu_instance_types = (
-            gpu_instance_types or self.DEFAULT_GPU_INSTANCES
-        )
+        self.cpu_instance_types = cpu_instance_types or self.DEFAULT_CPU_INSTANCES
+        self.gpu_instance_types = gpu_instance_types or self.DEFAULT_GPU_INSTANCES
 
         self.max_instances = max_instances
         self.min_instances = min_instances
@@ -204,9 +192,7 @@ class AutoScalingManager:
         self.tags["ManagedBy"] = "AutoScalingManager"
 
         # Set up AWS clients
-        self.region = (
-            region or EC2Metadata.get_instance_region() or "us-east-1"
-        )
+        self.region = region or EC2Metadata.get_instance_region() or "us-east-1"
         self.ec2 = boto3.client("ec2", region_name=self.region)
         self.sqs = boto3.client("sqs", region_name=self.region)
 
@@ -260,9 +246,7 @@ class AutoScalingManager:
                     gpu_type=gpu_type,
                 )
 
-            logger.info(
-                f"Initialized {len(self._instance_type_cache)} instance types"
-            )
+            logger.info(f"Initialized {len(self._instance_type_cache)} instance types")
 
         except Exception as e:
             logger.error(f"Error initializing instance types: {e}")
@@ -284,9 +268,7 @@ class AutoScalingManager:
 
         def monitoring_loop():
             """Background thread for queue monitoring and scaling."""
-            logger.info(
-                f"Starting queue monitoring with {interval_seconds}s interval"
-            )
+            logger.info(f"Starting queue monitoring with {interval_seconds}s interval")
 
             while not self._stop_monitoring.is_set():
                 try:
@@ -311,10 +293,7 @@ class AutoScalingManager:
 
     def stop_monitoring(self):
         """Stop the monitoring thread."""
-        if (
-            not self._monitoring_thread
-            or not self._monitoring_thread.is_alive()
-        ):
+        if not self._monitoring_thread or not self._monitoring_thread.is_alive():
             logger.warning("Monitoring thread is not running")
             return
 
@@ -331,12 +310,8 @@ class AutoScalingManager:
 
         # Get current instances
         current_instances = self._get_managed_instances()
-        running_count = len(
-            [i for i in current_instances if i["State"] == "running"]
-        )
-        pending_count = len(
-            [i for i in current_instances if i["State"] == "pending"]
-        )
+        running_count = len([i for i in current_instances if i["State"] == "running"])
+        pending_count = len([i for i in current_instances if i["State"] == "pending"])
         total_count = running_count + pending_count
 
         logger.debug(
@@ -356,8 +331,7 @@ class AutoScalingManager:
             # Need to scale up
             target_count = min(
                 self.max_instances,
-                total_count
-                + max(1, queue_depth // self.DEFAULT_SCALE_UP_THRESHOLD),
+                total_count + max(1, queue_depth // self.DEFAULT_SCALE_UP_THRESHOLD),
             )
             instances_to_add = target_count - total_count
 
@@ -405,9 +379,7 @@ class AutoScalingManager:
                 response["Attributes"].get("ApproximateNumberOfMessages", "0")
             )
             not_visible = int(
-                response["Attributes"].get(
-                    "ApproximateNumberOfMessagesNotVisible", "0"
-                )
+                response["Attributes"].get("ApproximateNumberOfMessagesNotVisible", "0")
             )
 
             # For scaling purposes, we primarily care about visible messages
@@ -561,10 +533,7 @@ class AutoScalingManager:
                 instance_type = price_item["InstanceType"]
                 price = float(price_item["SpotPrice"])
 
-                if (
-                    instance_type not in price_map
-                    or price < price_map[instance_type]
-                ):
+                if instance_type not in price_map or price < price_map[instance_type]:
                     price_map[instance_type] = price
 
             # If we have pricing information, select the cheapest option
@@ -602,9 +571,9 @@ class AutoScalingManager:
                     user_data = base64.b64encode(user_data.encode()).decode()
                 else:
                     # It's a script, encode as base64
-                    user_data = base64.b64encode(
-                        user_data.encode("utf-8")
-                    ).decode("utf-8")
+                    user_data = base64.b64encode(user_data.encode("utf-8")).decode(
+                        "utf-8"
+                    )
 
             # Prepare launch specification
             launch_spec = {
@@ -649,9 +618,7 @@ class AutoScalingManager:
             max_wait_time = 300  # 5 minutes
             start_time = time.time()
 
-            while (
-                spot_request_ids and time.time() - start_time < max_wait_time
-            ):
+            while spot_request_ids and time.time() - start_time < max_wait_time:
                 time.sleep(15)  # Check every 15 seconds
 
                 response = self.ec2.describe_spot_instance_requests(
@@ -701,9 +668,7 @@ class AutoScalingManager:
             instances = self._get_managed_instances()
 
             # Sort by launch time (terminate newest first to preserve older instances)
-            running_instances = [
-                i for i in instances if i["State"] == "running"
-            ]
+            running_instances = [i for i in instances if i["State"] == "running"]
 
             # Sort newest first (we'll terminate the newest instances first)
             running_instances.sort(
@@ -718,9 +683,7 @@ class AutoScalingManager:
                 logger.warning("No instances to terminate")
                 return
 
-            logger.info(
-                f"Terminating {len(instance_ids)} instances: {instance_ids}"
-            )
+            logger.info(f"Terminating {len(instance_ids)} instances: {instance_ids}")
 
             # Terminate instances
             self.ec2.terminate_instances(
@@ -807,9 +770,7 @@ export LOGGING_LEVEL="{logging_level}"
 
     # Add optional environment variables
     if instance_registry_table:
-        script += (
-            f'export INSTANCE_REGISTRY_TABLE="{instance_registry_table}"\n'
-        )
+        script += f'export INSTANCE_REGISTRY_TABLE="{instance_registry_table}"\n'
 
     if s3_bucket:
         script += f'export S3_BUCKET="{s3_bucket}"\n'

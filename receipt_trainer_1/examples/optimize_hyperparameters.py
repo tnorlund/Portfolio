@@ -28,7 +28,7 @@ class PerStepLoggingCallback(TrainerCallback):
                     job_id=self.job_id,
                     metric_name=f"train/{k}",
                     metric_value=v,
-                    metadata={"step": state.global_step}
+                    metadata={"step": state.global_step},
                 )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
@@ -38,7 +38,7 @@ class PerStepLoggingCallback(TrainerCallback):
                     job_id=self.job_id,
                     metric_name=f"eval/{k}",
                     metric_value=v,
-                    metadata={"step": state.global_step}
+                    metadata={"step": state.global_step},
                 )
 
 
