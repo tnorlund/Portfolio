@@ -5,10 +5,10 @@ import base64
 import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
+
 # Import our infrastructure components
 import s3_website  # noqa: F401
-from dynamo_db import \
-    dynamodb_table  # Import DynamoDB table from original code
+from dynamo_db import dynamodb_table  # Import DynamoDB table from original code
 from embedding_step_functions import LineEmbeddingStepFunction
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
@@ -18,6 +18,7 @@ from upload_images import UploadImages
 from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
+
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
 # from instance_registry import InstanceRegistry
@@ -30,8 +31,9 @@ from word_label_step_functions import WordLabelStepFunctions
 try:
     # import lambda_layer  # noqa: F401
     import fast_lambda_layer  # noqa: F401
-    from lambda_functions.label_count_cache_updater.infra import \
-        label_count_cache_updater_lambda  # noqa: F401
+    from lambda_functions.label_count_cache_updater.infra import (
+        label_count_cache_updater_lambda,
+    )  # noqa: F401
     from routes.health_check.infra import health_check_lambda  # noqa: F401
 except ImportError:
     # These may not be available in all environments
