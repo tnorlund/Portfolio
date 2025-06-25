@@ -51,6 +51,21 @@ def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
         # Mark slow tests based on name patterns
         if any(pattern in item.name for pattern in ["test_large", "test_heavy", "test_stress"]):
             item.add_marker(pytest.mark.slow)
+    
+    # Handle --quick option
+    if config.getoption("--quick"):
+        # Only run tests marked as unit and not slow
+        selected_items = []
+        deselected_items = []
+        
+        for item in items:
+            if item.get_closest_marker("unit") and not item.get_closest_marker("slow"):
+                selected_items.append(item)
+            else:
+                deselected_items.append(item)
+        
+        config.hook.pytest_deselected(items=deselected_items)
+        items[:] = selected_items
 
 
 def pytest_runtest_setup(item: Item) -> None:
@@ -58,7 +73,7 @@ def pytest_runtest_setup(item: Item) -> None:
     
     # Skip tests that require specific environments
     if item.get_closest_marker("requires_aws"):
-        if not pytest.config.getoption("--run-aws-tests", default=False):
+        if not item.config.getoption("--run-aws-tests", default=False):
             pytest.skip("Skipping AWS tests (use --run-aws-tests to run)")
 
 
@@ -92,18 +107,3 @@ def pytest_addoption(parser) -> None:
     )
 
 
-def pytest_collection_modifyitems_quick(config: Config, items: list[Item]) -> None:
-    """Modify test collection when --quick is used."""
-    if config.getoption("--quick"):
-        # Only run tests marked as unit and not slow
-        selected_items = []
-        deselected_items = []
-        
-        for item in items:
-            if item.get_closest_marker("unit") and not item.get_closest_marker("slow"):
-                selected_items.append(item)
-            else:
-                deselected_items.append(item)
-        
-        config.hook.pytest_deselected(items=deselected_items)
-        items[:] = selected_items

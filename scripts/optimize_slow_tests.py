@@ -177,7 +177,9 @@ def generate_optimization_report(package_dir: str, slow_files: List[str]) -> str
 
 def main():
     """Analyze the slowest test files and generate optimization report."""
-    package_dir = '/Users/tnorlund/GitHub/example-pytest-optimization/receipt_dynamo'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    package_dir = os.path.join(project_root, 'receipt_dynamo')
     
     # Top 10 slowest integration test files based on our analysis
     slow_files = [
@@ -201,7 +203,7 @@ def main():
     report = generate_optimization_report(package_dir, slow_files)
     
     # Save report
-    report_file = '/Users/tnorlund/GitHub/example-pytest-optimization/TEST_OPTIMIZATION_REPORT.md'
+    report_file = os.path.join(project_root, 'TEST_OPTIMIZATION_REPORT.md')
     with open(report_file, 'w') as f:
         f.write(report)
     

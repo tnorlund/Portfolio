@@ -148,7 +148,9 @@ def generate_github_matrix(groups: List[List[Dict]], package_name: str) -> Dict:
 def main():
     """Main analysis function."""
     # Analyze receipt_dynamo integration tests
-    receipt_dynamo_dir = '/Users/tnorlund/GitHub/example-pytest-optimization/receipt_dynamo'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    receipt_dynamo_dir = os.path.join(project_root, 'receipt_dynamo')
     
     print("Analyzing receipt_dynamo integration tests...")
     analysis = analyze_integration_tests(receipt_dynamo_dir)
@@ -182,7 +184,7 @@ def main():
     matrix = generate_github_matrix(groups, 'receipt_dynamo')
     
     # Save matrix to file
-    matrix_file = '/Users/tnorlund/GitHub/example-pytest-optimization/scripts/test_matrix.json'
+    matrix_file = os.path.join(script_dir, 'test_matrix.json')
     with open(matrix_file, 'w') as f:
         json.dump(matrix, f, indent=2)
     

@@ -19,8 +19,12 @@ def generate_dynamic_matrix() -> Dict[str, Any]:
     """Generate GitHub Actions matrix based on current test structure."""
     matrix_include = []
     
+    # Get project root directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    
     # Receipt DynamoDB - split integration tests into groups
-    receipt_dynamo_analysis = analyze_integration_tests('/Users/tnorlund/GitHub/example-pytest-optimization/receipt_dynamo')
+    receipt_dynamo_analysis = analyze_integration_tests(os.path.join(project_root, 'receipt_dynamo'))
     
     if receipt_dynamo_analysis and receipt_dynamo_analysis['files']:
         # Add unit tests (single job)
@@ -52,7 +56,7 @@ def generate_dynamic_matrix() -> Dict[str, Any]:
             })
     
     # Receipt Label - smaller package, single job for all tests
-    receipt_label_dir = '/Users/tnorlund/GitHub/example-pytest-optimization/receipt_label'
+    receipt_label_dir = os.path.join(project_root, 'receipt_label')
     if os.path.exists(receipt_label_dir):
         matrix_include.append({
             'package': 'receipt_label',
@@ -95,7 +99,9 @@ def print_matrix_summary(matrix: Dict[str, Any]) -> None:
 def save_matrix_for_github(matrix: Dict[str, Any], output_file: str = None) -> None:
     """Save matrix in format suitable for GitHub Actions."""
     if output_file is None:
-        output_file = '/Users/tnorlund/GitHub/example-pytest-optimization/.github/test_matrix.json'
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        output_file = os.path.join(project_root, '.github', 'test_matrix.json')
     
     # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(output_file), exist_ok=True)

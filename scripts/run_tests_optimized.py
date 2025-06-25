@@ -124,13 +124,24 @@ def run_tests(
     print(f"Running command: {' '.join(cmd)}")
     print(f"Working directory: {os.getcwd()}")
     print(f"Test type: {test_type}")
-    print(f"Workers: {workers if test_type != 'end_to_end' else 1}")
+    
+    # Handle workers variable for all test types
+    if test_type == "unit":
+        workers = get_optimal_worker_count()
+    elif test_type == "integration":
+        workers = min(get_optimal_worker_count(), 3)
+    else:
+        workers = 1  # Sequential for end-to-end tests
+    
+    print(f"Workers: {workers}")
     print("-" * 50)
     
     # Run tests
     start_time = time.time()
     try:
-        result = subprocess.run(cmd, timeout=timeout * len(test_paths))
+        # Use reasonable total timeout (max 30 minutes)
+        total_timeout = min(timeout * 3, 1800)  # Cap at 30 minutes
+        result = subprocess.run(cmd, timeout=total_timeout)
         execution_time = time.time() - start_time
         
         print("-" * 50)
@@ -139,7 +150,7 @@ def run_tests(
         return result.returncode == 0
         
     except subprocess.TimeoutExpired:
-        print(f"Tests timed out after {timeout * len(test_paths)}s")
+        print(f"Tests timed out after {total_timeout}s")
         return False
     except KeyboardInterrupt:
         print("Tests interrupted by user")
