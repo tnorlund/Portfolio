@@ -87,7 +87,8 @@ dynamodb_policy_attachment = aws.iam.RolePolicyAttachment(
 # Create Lambda function for listing receipts
 list_receipts_lambda = aws.lambda_.Function(
     "list_receipts_lambda",
-    runtime="python3.13",
+    runtime="python3.12",
+    architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive({".": FileArchive(HANDLER_DIR)}),
     handler="list_receipts.handler",
@@ -100,7 +101,8 @@ list_receipts_lambda = aws.lambda_.Function(
 # Create Lambda function for processing individual receipts
 process_receipt_lambda = aws.lambda_.Function(
     "process_receipt_lambda",
-    runtime="python3.13",
+    runtime="python3.12",
+    architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive({".": FileArchive(HANDLER_DIR)}),
     handler="process_receipt.handler",

@@ -84,6 +84,7 @@ aws.iam.RolePolicyAttachment(
 label_count_cache_updater_lambda = aws.lambda_.Function(
     f"{FUNCTION_NAME}_lambda",
     runtime="python3.12",
+    architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive(
         {
