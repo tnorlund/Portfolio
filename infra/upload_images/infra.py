@@ -3,22 +3,15 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import (
-    AssetArchive,
-    ComponentResource,
-    Config,
-    FileAsset,
-    Output,
-    ResourceOptions,
-)
+from dynamo_db import dynamodb_table
+from lambda_layer import dynamo_layer, label_layer, upload_layer
+from pulumi import (AssetArchive, ComponentResource, Config, FileAsset, Output,
+                    ResourceOptions)
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.sfn import StateMachine
 from pulumi_aws.sqs import Queue
-
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer, upload_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")

@@ -25,7 +25,6 @@ from typing import List
 
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -336,9 +335,8 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         height = target_word.bounding_box["height"]
         confidence = target_word.confidence
         # Import locally to avoid circular import
-        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
-            _format_word_context_embedding_input,
-        )
+        from receipt_label.embedding.word.submit import \
+            _format_word_context_embedding_input  # pylint: disable=import-outside-toplevel
 
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)

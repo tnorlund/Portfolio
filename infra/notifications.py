@@ -2,7 +2,7 @@
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import Output, ComponentResource
+from pulumi import ComponentResource, Output
 
 
 class NotificationSystem(ComponentResource):

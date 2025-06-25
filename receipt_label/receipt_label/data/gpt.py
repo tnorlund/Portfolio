@@ -5,8 +5,8 @@ This module provides GPT-based analysis functions for receipt processing.
 These are temporary stubs until the functions are properly implemented in receipt_dynamo.
 """
 
-from typing import Dict, List, Optional, Tuple, Any
 import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +70,8 @@ def gpt_request_structure_analysis(
     """
     Forward to the actual implementation in receipt_dynamo.
     """
-    from receipt_dynamo.data._gpt import (
-        gpt_request_structure_analysis as _gpt_request_structure_analysis,
-    )
+    from receipt_dynamo.data._gpt import \
+        gpt_request_structure_analysis as _gpt_request_structure_analysis
 
     return _gpt_request_structure_analysis(
         receipt, receipt_lines, receipt_words, places_api_data, gpt_api_key
@@ -90,9 +89,8 @@ def gpt_request_field_labeling(
     """
     Forward to the actual implementation in receipt_dynamo.
     """
-    from receipt_dynamo.data._gpt import (
-        gpt_request_field_labeling as _gpt_request_field_labeling,
-    )
+    from receipt_dynamo.data._gpt import \
+        gpt_request_field_labeling as _gpt_request_field_labeling
 
     return _gpt_request_field_labeling(
         receipt,

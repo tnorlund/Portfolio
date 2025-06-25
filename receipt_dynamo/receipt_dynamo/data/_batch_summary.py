@@ -12,10 +12,8 @@ and GSI lookups by status.
 """
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities.batch_summary import (
-    BatchSummary,
-    itemToBatchSummary,
-)
+from receipt_dynamo.entities.batch_summary import (BatchSummary,
+                                                   itemToBatchSummary)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

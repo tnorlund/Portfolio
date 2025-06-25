@@ -1,16 +1,15 @@
-from typing import Dict, List, Optional, Tuple, Union
 import logging
-import traceback
 import re
-from ..models.receipt import Receipt, ReceiptWord, ReceiptSection, ReceiptLine
+import traceback
+from typing import Dict, List, Optional, Tuple, Union
+
+from ..data.gpt import (gpt_request_field_labeling,
+                        gpt_request_line_item_analysis,
+                        gpt_request_structure_analysis)
 from ..data.places_api import BatchPlacesProcessor
-from ..data.gpt import (
-    gpt_request_structure_analysis,
-    gpt_request_field_labeling,
-    gpt_request_line_item_analysis,
-)
-from ..models.structure import StructureAnalysis
 from ..models.label import LabelAnalysis
+from ..models.receipt import Receipt, ReceiptLine, ReceiptSection, ReceiptWord
+from ..models.structure import StructureAnalysis
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

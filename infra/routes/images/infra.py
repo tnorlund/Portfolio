@@ -3,10 +3,9 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, FileArchive
-
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer
+from pulumi import AssetArchive, FileArchive
 
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
 ROUTE_NAME = os.path.basename(os.path.dirname(__file__))

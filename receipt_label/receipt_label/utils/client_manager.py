@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from openai import OpenAI
-from pinecone import Pinecone
-from pinecone import Index
+from pinecone import Index, Pinecone
+
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
@@ -80,7 +80,8 @@ class ClientManager:
                 table_name=self.config.dynamo_table,
                 user_id=self.config.user_id,
                 track_to_dynamo=True,
-                track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower() == "true",
+                track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
+                == "true",
             )
         return self._usage_tracker
 
@@ -89,13 +90,13 @@ class ClientManager:
         """Get or create OpenAI client with optional usage tracking."""
         if self._openai_client is None:
             client = OpenAI(api_key=self.config.openai_api_key)
-            
+
             # Wrap with usage tracking if enabled
             if self.config.track_usage and self.usage_tracker:
                 client = AIUsageTracker.create_wrapped_openai_client(
                     client, self.usage_tracker
                 )
-            
+
             self._openai_client = client
         return self._openai_client
 
@@ -117,17 +118,15 @@ class ClientManager:
             Tuple of (dynamo_client, openai_client, pinecone_index)
         """
         return self.dynamo, self.openai, self.pinecone
-    
+
     def set_tracking_context(
         self,
         job_id: Optional[str] = None,
         batch_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ):
         """Set context for usage tracking."""
         if self.usage_tracker:
             self.usage_tracker.set_context(
-                job_id=job_id,
-                batch_id=batch_id,
-                user_id=user_id
+                job_id=job_id, batch_id=batch_id, user_id=user_id
             )

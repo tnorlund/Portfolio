@@ -6,20 +6,14 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.receipt import Receipt, itemToReceipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    ReceiptLetter,
-    itemToReceiptLetter,
-)
+from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
+                                                    itemToReceiptLetter)
 from receipt_dynamo.entities.receipt_line import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord, itemToReceiptWord
-from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
-    itemToReceiptWordLabel,
-)
-from receipt_dynamo.entities.receipt_word_tag import (
-    ReceiptWordTag,
-    itemToReceiptWordTag,
-)
+from receipt_dynamo.entities.receipt_word_label import (ReceiptWordLabel,
+                                                        itemToReceiptWordLabel)
+from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
+                                                      itemToReceiptWordTag)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

@@ -6,17 +6,12 @@ import re
 from typing import Optional
 
 from rapidfuzz.fuzz import ratio
-from receipt_dynamo.entities import (  # type: ignore
-    ReceiptMetadata,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
 
+from receipt_dynamo.entities import (ReceiptMetadata,  # type: ignore
+                                     ReceiptWord, ReceiptWordLabel)
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import (
-    normalize_text,
-    pinecone_id_from_label,
-)
+from receipt_label.label_validation.utils import (normalize_text,
+                                                  pinecone_id_from_label)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 

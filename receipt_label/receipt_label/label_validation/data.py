@@ -6,7 +6,6 @@ from typing import Literal, Optional
 
 from receipt_dynamo.constants import ValidationStatus  # type: ignore
 from receipt_dynamo.entities import ReceiptWordLabel  # type: ignore
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -62,7 +61,7 @@ def get_unique_merchants_and_data(
 
 
 def _separate_valid_and_invalid_labels(
-    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]]
+    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]],
 ) -> tuple[
     list[tuple[LabelValidationResult, ReceiptWordLabel]],
     list[tuple[LabelValidationResult, ReceiptWordLabel]],
@@ -79,7 +78,7 @@ def _separate_valid_and_invalid_labels(
 
 
 def _group_labels_by_pinecone_id(
-    labels: list[tuple[LabelValidationResult, ReceiptWordLabel]]
+    labels: list[tuple[LabelValidationResult, ReceiptWordLabel]],
 ) -> dict[str, list[ReceiptWordLabel]]:
     """Group labels by their Pinecone ID."""
     grouped = {}

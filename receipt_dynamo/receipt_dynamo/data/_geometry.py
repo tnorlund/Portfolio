@@ -518,7 +518,7 @@ def _intersection_point_for_direction(
 
 
 def compute_hull_centroid(
-    hull_vertices: List[Tuple[float, float]]
+    hull_vertices: List[Tuple[float, float]],
 ) -> Tuple[float, float]:
     """
     Compute the centroid (geometric center) of a polygon defined by its convex hull vertices.
@@ -635,7 +635,7 @@ def convex_hull(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
 
 
 def min_area_rect(
-    points: List[Tuple[float, float]]
+    points: List[Tuple[float, float]],
 ) -> Tuple[Tuple[float, float], Tuple[float, float], float]:
     """
     Compute the minimum-area bounding rectangle of a set of 2D points.

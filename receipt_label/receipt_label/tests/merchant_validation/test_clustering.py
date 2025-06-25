@@ -1,8 +1,8 @@
 """Unit tests for merchant metadata clustering."""
 
 # Set up test environment before imports
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_helpers import setup_test_environment
@@ -15,6 +15,7 @@ from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_dynamo.entities import ReceiptMetadata
 
 

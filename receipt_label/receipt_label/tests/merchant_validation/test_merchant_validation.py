@@ -2,14 +2,15 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 from unittest.mock import Mock
+from uuid import uuid4
 
 # Set dummy environment variable before any imports
 os.environ["DYNAMO_TABLE_NAME"] = "test-table"
 
 # third‑party
 import pytest
+
 from receipt_dynamo.entities import ReceiptMetadata
 
 # Mock get_clients before importing modules that use it
@@ -28,9 +29,9 @@ def mock_get_clients():
 # Patch get_clients before importing modules that use it
 clients.get_clients = mock_get_clients
 
+import receipt_label.merchant_validation.google_places as gp
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
-import receipt_label.merchant_validation.google_places as gp
 
 
 # Fixtures
@@ -276,6 +277,7 @@ class DummyWord:
 def test_extract_candidate_merchant_fields():
     # Create mock ReceiptWord objects instead of DummyWord
     from unittest.mock import Mock
+
     from receipt_dynamo.entities import ReceiptWord
 
     words = []
@@ -631,6 +633,7 @@ def test_is_valid_google_match_no_types_with_fragment():
 # extract_candidate_merchant_fields: ignore words without data
 def test_extract_candidate_merchant_fields_ignores_empty():
     from unittest.mock import Mock
+
     from receipt_dynamo.entities import ReceiptWord
 
     # Create a mock ReceiptWord with no labels

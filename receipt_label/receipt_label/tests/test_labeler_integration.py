@@ -6,12 +6,8 @@ import pytest
 
 from receipt_label.core.labeler import LabelingResult, ReceiptLabeler
 from receipt_label.models.label import LabelAnalysis
-from receipt_label.models.line_item import (
-    LineItem,
-    LineItemAnalysis,
-    Price,
-    Quantity,
-)
+from receipt_label.models.line_item import (LineItem, LineItemAnalysis, Price,
+                                            Quantity)
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 
@@ -617,8 +613,8 @@ def test_label_receipt_concurrent_processing(mocker):
     This test ensures thread safety when multiple receipts are processed
     simultaneously.
     """
-    import threading
     import concurrent.futures
+    import threading
 
     # Create test receipts
     def create_test_receipt(receipt_id: str):

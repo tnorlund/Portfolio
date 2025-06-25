@@ -5,16 +5,10 @@ from typing import Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from receipt_dynamo.entities import (
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptMetadata,
-    ReceiptWord,
-    ReceiptWordLabel,
-    ReceiptWordTag,
-)
 
+from receipt_dynamo.entities import (Receipt, ReceiptLetter, ReceiptLine,
+                                     ReceiptMetadata, ReceiptWord,
+                                     ReceiptWordLabel, ReceiptWordTag)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 

@@ -3,15 +3,12 @@ from datetime import datetime
 import pytest
 
 from receipt_label.models.receipt import ReceiptLine
-from receipt_label.utils.validation import (
-    validate_address,
-    validate_amounts,
-    validate_business_name,
-    validate_datetime,
-    validate_phone_number,
-    validate_receipt_data,
-    validate_receipt_format,
-)
+from receipt_label.utils.validation import (validate_address, validate_amounts,
+                                            validate_business_name,
+                                            validate_datetime,
+                                            validate_phone_number,
+                                            validate_receipt_data,
+                                            validate_receipt_format)
 
 
 @pytest.mark.unit

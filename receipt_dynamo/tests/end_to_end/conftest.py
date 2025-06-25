@@ -6,8 +6,9 @@ Do not run these tests in CI or automated environments without proper setup.
 """
 
 import os
-import pytest
 import sys
+
+import pytest
 
 
 def pytest_configure(config):

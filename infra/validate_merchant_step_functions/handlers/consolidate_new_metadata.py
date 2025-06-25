@@ -3,12 +3,11 @@
 from typing import Any, Dict, List, Optional
 
 import botocore.exceptions
+
 from receipt_dynamo.entities import ReceiptMetadata
-from receipt_label.merchant_validation import (
-    normalize_address,
-    query_records_by_place_id,
-    update_items_with_canonical,
-)
+from receipt_label.merchant_validation import (normalize_address,
+                                               query_records_by_place_id,
+                                               update_items_with_canonical)
 from receipt_label.utils import get_clients
 
 from .common import setup_logger

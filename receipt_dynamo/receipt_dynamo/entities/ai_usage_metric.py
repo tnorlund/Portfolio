@@ -1,6 +1,7 @@
 """
 AI Usage Metric entity for tracking costs and usage of AI services.
 """
+
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -12,7 +13,7 @@ from .util import DocumentEntity, from_dynamodb_value, to_dynamodb_value
 class AIUsageMetric(DocumentEntity):
     """
     Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google Places).
-    
+
     Uses:
     - PK: "AI_USAGE#{service}#{model}"
     - SK: "USAGE#{timestamp}#{request_id}"
@@ -21,7 +22,7 @@ class AIUsageMetric(DocumentEntity):
     - GSI2PK: "AI_USAGE_COST"
     - GSI2SK: "COST#{date}#{service}"
     """
-    
+
     def __init__(
         self,
         service: str,  # "openai", "anthropic", "google_places"
@@ -47,19 +48,21 @@ class AIUsageMetric(DocumentEntity):
         self.operation = operation
         self.timestamp = timestamp
         self.request_id = request_id or str(uuid.uuid4())
-        
+
         # Token usage
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.total_tokens = total_tokens or (
-            (input_tokens or 0) + (output_tokens or 0) if input_tokens or output_tokens else None
+            (input_tokens or 0) + (output_tokens or 0)
+            if input_tokens or output_tokens
+            else None
         )
-        
+
         # Metrics
         self.api_calls = api_calls
         self.cost_usd = cost_usd
         self.latency_ms = latency_ms
-        
+
         # Context
         self.user_id = user_id
         self.job_id = job_id
@@ -67,36 +70,36 @@ class AIUsageMetric(DocumentEntity):
         self.github_pr = github_pr
         self.error = error
         self.metadata = metadata or {}
-        
+
         # Computed fields
         self.date = timestamp.strftime("%Y-%m-%d")
         self.month = timestamp.strftime("%Y-%m")
         self.hour = timestamp.strftime("%Y-%m-%d-%H")
-    
+
     @property
     def pk(self) -> str:
         return f"AI_USAGE#{self.service}#{self.model}"
-    
+
     @property
     def sk(self) -> str:
         return f"USAGE#{self.timestamp.isoformat()}#{self.request_id}"
-    
+
     @property
     def gsi1pk(self) -> str:
         return f"AI_USAGE#{self.service}"
-    
+
     @property
     def gsi1sk(self) -> str:
         return f"DATE#{self.date}"
-    
+
     @property
     def gsi2pk(self) -> str:
         return "AI_USAGE_COST"
-    
+
     @property
     def gsi2sk(self) -> str:
         return f"COST#{self.date}#{self.service}"
-    
+
     @property
     def gsi3pk(self) -> Optional[str]:
         if self.job_id:
@@ -104,22 +107,26 @@ class AIUsageMetric(DocumentEntity):
         elif self.batch_id:
             return f"BATCH#{self.batch_id}"
         return None
-    
+
     @property
     def gsi3sk(self) -> Optional[str]:
         if self.job_id or self.batch_id:
             return f"AI_USAGE#{self.timestamp.isoformat()}"
         return None
-    
+
     @property
     def item_type(self) -> str:
         return "AIUsageMetric"
-    
+
     def __repr__(self) -> str:
-        tokens_str = f"{self.total_tokens} tokens" if self.total_tokens else "unknown tokens"
-        cost_str = f"${self.cost_usd:.4f}" if self.cost_usd is not None else "unknown cost"
+        tokens_str = (
+            f"{self.total_tokens} tokens" if self.total_tokens else "unknown tokens"
+        )
+        cost_str = (
+            f"${self.cost_usd:.4f}" if self.cost_usd is not None else "unknown cost"
+        )
         return f"<AIUsageMetric {self.service}/{self.model} {self.operation} {tokens_str} {cost_str}>"
-    
+
     def to_dynamodb_item(self) -> Dict:
         """Convert to DynamoDB item format."""
         item = {
@@ -140,12 +147,12 @@ class AIUsageMetric(DocumentEntity):
             "month": {"S": self.month},
             "hour": {"S": self.hour},
         }
-        
+
         # Optional fields
         if self.gsi3pk and self.gsi3sk:
             item["GSI3PK"] = {"S": self.gsi3pk}
             item["GSI3SK"] = {"S": self.gsi3sk}
-        
+
         if self.input_tokens is not None:
             item["inputTokens"] = {"N": str(self.input_tokens)}
         if self.output_tokens is not None:
@@ -156,7 +163,7 @@ class AIUsageMetric(DocumentEntity):
             item["costUSD"] = {"N": str(Decimal(str(self.cost_usd)))}
         if self.latency_ms is not None:
             item["latencyMs"] = {"N": str(self.latency_ms)}
-        
+
         if self.user_id:
             item["userId"] = {"S": self.user_id}
         if self.job_id:
@@ -169,9 +176,9 @@ class AIUsageMetric(DocumentEntity):
             item["error"] = {"S": self.error}
         if self.metadata:
             item["metadata"] = to_dynamodb_value(self.metadata)
-        
+
         return item
-    
+
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
         """Create instance from DynamoDB item."""
@@ -181,9 +188,15 @@ class AIUsageMetric(DocumentEntity):
             operation=item["operation"]["S"],
             timestamp=datetime.fromisoformat(item["timestamp"]["S"]),
             request_id=item["requestId"]["S"],
-            input_tokens=int(item["inputTokens"]["N"]) if "inputTokens" in item else None,
-            output_tokens=int(item["outputTokens"]["N"]) if "outputTokens" in item else None,
-            total_tokens=int(item["totalTokens"]["N"]) if "totalTokens" in item else None,
+            input_tokens=(
+                int(item["inputTokens"]["N"]) if "inputTokens" in item else None
+            ),
+            output_tokens=(
+                int(item["outputTokens"]["N"]) if "outputTokens" in item else None
+            ),
+            total_tokens=(
+                int(item["totalTokens"]["N"]) if "totalTokens" in item else None
+            ),
             api_calls=int(item["apiCalls"]["N"]),
             cost_usd=float(item["costUSD"]["N"]) if "costUSD" in item else None,
             latency_ms=int(item["latencyMs"]["N"]) if "latencyMs" in item else None,
@@ -192,16 +205,18 @@ class AIUsageMetric(DocumentEntity):
             batch_id=item.get("batchId", {}).get("S"),
             github_pr=int(item["githubPR"]["N"]) if "githubPR" in item else None,
             error=item.get("error", {}).get("S"),
-            metadata=from_dynamodb_value(item["metadata"]) if "metadata" in item else {},
+            metadata=(
+                from_dynamodb_value(item["metadata"]) if "metadata" in item else {}
+            ),
         )
-    
+
     @classmethod
     def query_by_service_date(
         cls,
         dynamo_client,
         service: str,
         start_date: str,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
     ) -> List["AIUsageMetric"]:
         """Query usage metrics by service and date range."""
         key_condition = f"GSI1PK = :pk AND GSI1SK BETWEEN :start AND :end"
@@ -210,36 +225,32 @@ class AIUsageMetric(DocumentEntity):
             ":start": {"S": f"DATE#{start_date}"},
             ":end": {"S": f"DATE#{end_date}" if end_date else f"DATE#{start_date}"},
         }
-        
+
         response = dynamo_client.query(
             TableName=dynamo_client.table_name,
             IndexName="GSI1",
             KeyConditionExpression=key_condition,
             ExpressionAttributeValues=expression_values,
         )
-        
+
         return [cls.from_dynamodb_item(item) for item in response.get("Items", [])]
-    
+
     @classmethod
-    def get_total_cost_by_date(
-        cls,
-        dynamo_client,
-        date: str
-    ) -> Dict[str, float]:
+    def get_total_cost_by_date(cls, dynamo_client, date: str) -> Dict[str, float]:
         """Get total cost for all services on a specific date."""
         key_condition = "GSI2PK = :pk AND begins_with(GSI2SK, :date)"
         expression_values = {
             ":pk": {"S": "AI_USAGE_COST"},
             ":date": {"S": f"COST#{date}"},
         }
-        
+
         response = dynamo_client.query(
             TableName=dynamo_client.table_name,
             IndexName="GSI2",
             KeyConditionExpression=key_condition,
             ExpressionAttributeValues=expression_values,
         )
-        
+
         costs_by_service = {}
         for item in response.get("Items", []):
             metric = cls.from_dynamodb_item(item)
@@ -247,5 +258,5 @@ class AIUsageMetric(DocumentEntity):
                 if metric.service not in costs_by_service:
                     costs_by_service[metric.service] = 0.0
                 costs_by_service[metric.service] += metric.cost_usd
-        
+
         return costs_by_service

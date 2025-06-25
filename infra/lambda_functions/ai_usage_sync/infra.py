@@ -2,16 +2,16 @@
 Infrastructure for AI usage sync Lambda function.
 This function runs periodically to pull usage data from AI service providers.
 """
+
 import json
 import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, FileArchive
-
 # Import dependencies
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer
+from pulumi import AssetArchive, FileArchive
 
 # Reference the directory containing handler
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")

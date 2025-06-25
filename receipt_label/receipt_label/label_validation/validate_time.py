@@ -5,11 +5,8 @@
 import re
 from typing import Optional
 
-from receipt_dynamo.entities import (  # type: ignore
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-
+from receipt_dynamo.entities import (ReceiptWord,  # type: ignore
+                                     ReceiptWordLabel)
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager

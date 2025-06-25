@@ -1,8 +1,8 @@
 """Unit tests for merchant metadata builders."""
 
 # Set up test environment before imports
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_helpers import setup_test_environment
@@ -16,8 +16,7 @@ import pytest
 
 from receipt_label.merchant_validation.metadata_builder import (
     build_receipt_metadata_from_result,
-    build_receipt_metadata_from_result_no_match,
-)
+    build_receipt_metadata_from_result_no_match)
 
 
 @pytest.mark.unit
