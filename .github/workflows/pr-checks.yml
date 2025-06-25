@@ -87,6 +87,8 @@ jobs:
           
           # Install package with test dependencies for receipt_label
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label depends on receipt_dynamo (cross-package dependency)
+            pip install -e "../receipt_dynamo"
             pip install -e ".[test]"
           else
             pip install -e .
