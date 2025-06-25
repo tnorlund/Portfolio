@@ -7,21 +7,21 @@ This module provides utilities for seamless integration with AWS infrastructure:
 - Instance registry integration
 """
 
-import os
-import sys
-import signal
 import json
-import time
 import logging
-import subprocess
+import os
+import signal
 import socket
+import subprocess
+import sys
+import time
 import uuid
-import requests
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import boto3
+import requests
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -553,10 +553,10 @@ class TrainingEnvironment:
         if result and self.enable_coordination:
             try:
                 # Import here to avoid circular imports
+                from receipt_trainer.utils.cluster import ClusterManager
                 from receipt_trainer.utils.coordinator import (
                     InstanceCoordinator,
                 )
-                from receipt_trainer.utils.cluster import ClusterManager
 
                 # Initialize coordinator
                 self.instance_coordinator = InstanceCoordinator(

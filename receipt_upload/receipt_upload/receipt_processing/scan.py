@@ -6,23 +6,13 @@ from pathlib import Path
 from PIL import Image as PIL_Image
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (
-    Image,
-    OCRJob,
-    OCRRoutingDecision,
-    Receipt,
-)
-
+from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     join_overlapping_clusters,
     reorder_box_points,
 )
-from receipt_upload.geometry import (
-    box_points,
-    invert_affine,
-    min_area_rect,
-)
+from receipt_upload.geometry import box_points, invert_affine, min_area_rect
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.utils import (
     calculate_sha256_from_bytes,

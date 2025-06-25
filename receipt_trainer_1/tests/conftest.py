@@ -1,12 +1,13 @@
 """Shared test configuration and fixtures."""
 
-import os
-import pytest
-import logging
-import tempfile
 import json
+import logging
+import os
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -172,8 +173,9 @@ def mock_sroie_data(temp_dir):
 @pytest.fixture
 def trainer(mock_env_vars):
     """Create a ReceiptTrainer instance with mocked dependencies."""
-    from receipt_trainer import ReceiptTrainer
     from unittest.mock import patch
+
+    from receipt_trainer import ReceiptTrainer
 
     with patch("wandb.init"), patch(
         "torch.cuda.is_available", return_value=False

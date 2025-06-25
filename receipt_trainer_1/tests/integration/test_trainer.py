@@ -1,12 +1,12 @@
 """Integration tests for the ReceiptTrainer class."""
 
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 import wandb
 from datasets import Dataset, DatasetDict
-
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
 
 
 @pytest.fixture
@@ -101,7 +101,9 @@ def trainer(mock_env_vars, mocker):
         "receipt_trainer.utils.aws.get_dynamo_table", return_value="mock-table"
     )
 
-    return ReceiptTrainer(wandb_project="test-project", model_name="test/model")
+    return ReceiptTrainer(
+        wandb_project="test-project", model_name="test/model"
+    )
 
 
 @pytest.mark.integration
@@ -115,7 +117,9 @@ def test_trainer_initialization(trainer):
 
 
 @pytest.mark.integration
-def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocker):
+def test_data_loading_pipeline(
+    trainer, mock_dynamo_data, mock_sroie_data, mocker
+):
     """Test the complete data loading pipeline with mocked data sources."""
     # Setup mocks
     mock_client = mocker.Mock()

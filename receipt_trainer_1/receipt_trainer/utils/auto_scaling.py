@@ -7,17 +7,16 @@ This module provides functionality to:
 4. Implement cost optimization strategies
 """
 
-import os
-import time
+import base64
 import json
 import logging
+import os
 import threading
-import base64
-from typing import Dict, List, Optional, Any, Tuple, Set
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
-
 from receipt_trainer.utils.infrastructure import EC2Metadata, InstanceRegistry
 
 logger = logging.getLogger(__name__)

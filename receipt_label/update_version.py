@@ -13,7 +13,9 @@ with open(version_file, "r") as f:
     version_content = f.read()
 
 # Extract version using regex
-version_match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', version_content)
+version_match = re.search(
+    r'__version__\s*=\s*["\']([^"\']+)["\']', version_content
+)
 if not version_match:
     raise RuntimeError(f"Unable to find version string in {version_file}")
 version = version_match.group(1)

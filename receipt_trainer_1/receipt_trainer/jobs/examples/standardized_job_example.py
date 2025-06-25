@@ -11,25 +11,23 @@ Usage:
     python -m receipt_trainer.jobs.examples.standardized_job_example --mode=debug
 """
 
-import os
-import time
 import argparse
 import logging
+import os
 import random
+import time
 import uuid
-from typing import Dict, Any
+from typing import Any, Dict
 
 import boto3
-
 from receipt_dynamo.data._pulumi import load_env
 from receipt_trainer.jobs import (
     Job,
-    JobStatus,
     JobPriority,
+    JobStatus,
     ProcessingMode,
     create_job_processor,
 )
-
 
 # Configure logging
 logging.basicConfig(
