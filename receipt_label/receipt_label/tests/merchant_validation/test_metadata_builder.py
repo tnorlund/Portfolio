@@ -1,10 +1,12 @@
 """Unit tests for merchant metadata builders."""
 
 # Set up test environment before imports
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_helpers import setup_test_environment
+
 setup_test_environment()
 
 from unittest.mock import MagicMock, patch
@@ -14,8 +16,7 @@ import pytest
 
 from receipt_label.merchant_validation.metadata_builder import (
     build_receipt_metadata_from_result,
-    build_receipt_metadata_from_result_no_match,
-)
+    build_receipt_metadata_from_result_no_match)
 
 
 @pytest.mark.unit
@@ -30,9 +31,7 @@ def test_build_receipt_metadata_from_result_basic():
         "types": ["store"],
     }
 
-    metadata = build_receipt_metadata_from_result(
-        image_id, 1, google_place, {}
-    )
+    metadata = build_receipt_metadata_from_result(image_id, 1, google_place, {})
 
     assert metadata.image_id == image_id
     assert metadata.receipt_id == 1
@@ -60,9 +59,7 @@ def test_build_receipt_metadata_from_result_with_gpt():
     }
     gpt_result = {"phone_number": "555-5678", "matched_fields": ["phone"]}
 
-    metadata = build_receipt_metadata_from_result(
-        image_id, 2, google_place, gpt_result
-    )
+    metadata = build_receipt_metadata_from_result(image_id, 2, google_place, gpt_result)
 
     assert metadata.phone_number == "555-5678"
     assert metadata.matched_fields == ["phone"]
@@ -107,19 +104,14 @@ def test_build_receipt_metadata_from_result_no_match_with_gpt():
         "matched_fields": ["name", "phone"],
     }
 
-    metadata = build_receipt_metadata_from_result_no_match(
-        4, image_id, gpt_result
-    )
+    metadata = build_receipt_metadata_from_result_no_match(4, image_id, gpt_result)
 
     assert metadata.merchant_name == "G Shop"
     assert metadata.address == "321 Other Ave"
     assert metadata.phone_number == "555-0000"
     assert metadata.matched_fields == ["name", "phone"]
     assert metadata.validated_by == "INFERENCE"
-    assert (
-        metadata.reasoning
-        == "No valid Google Places match; used GPT inference"
-    )
+    assert metadata.reasoning == "No valid Google Places match; used GPT inference"
     assert metadata.timestamp.tzinfo is not None
 
 
@@ -134,9 +126,7 @@ def test_build_receipt_metadata_from_result_none_gpt_result():
         "types": ["restaurant"],
     }
 
-    metadata = build_receipt_metadata_from_result(
-        image_id, 1, google_place, None
-    )
+    metadata = build_receipt_metadata_from_result(image_id, 1, google_place, None)
 
     assert metadata.phone_number == ""
     assert metadata.matched_fields == []
@@ -151,11 +141,9 @@ def test_build_receipt_metadata_from_result_missing_google_fields():
         "place_id": "pid",
         # Missing name, address, phone, types
     }
-    
-    metadata = build_receipt_metadata_from_result(
-        image_id, 1, google_place, None
-    )
-    
+
+    metadata = build_receipt_metadata_from_result(image_id, 1, google_place, None)
+
     assert metadata.merchant_name == ""
     assert metadata.address == ""
     assert metadata.phone_number == ""
@@ -171,11 +159,9 @@ def test_build_receipt_metadata_from_result_empty_types_list():
         "name": "Shop",
         "types": [],  # Empty types list
     }
-    
-    metadata = build_receipt_metadata_from_result(
-        image_id, 1, google_place, None
-    )
-    
+
+    metadata = build_receipt_metadata_from_result(image_id, 1, google_place, None)
+
     assert metadata.merchant_category == ""
 
 
@@ -188,13 +174,17 @@ def test_build_receipt_metadata_from_result_realistic_google_types():
         "name": "Whole Foods Market",
         "formatted_address": "123 Market St, San Francisco, CA 94103, USA",
         "formatted_phone_number": "+1 415-555-0123",
-        "types": ["grocery_or_supermarket", "food", "store", "establishment", "point_of_interest"],
+        "types": [
+            "grocery_or_supermarket",
+            "food",
+            "store",
+            "establishment",
+            "point_of_interest",
+        ],
     }
-    
-    metadata = build_receipt_metadata_from_result(
-        image_id, 1, google_place, None
-    )
-    
+
+    metadata = build_receipt_metadata_from_result(image_id, 1, google_place, None)
+
     assert metadata.merchant_category == "grocery_or_supermarket"
     assert metadata.place_id == "ChIJrTLr-GyuEmsRBfy61i59si0"
 
@@ -212,11 +202,11 @@ def test_build_receipt_metadata_from_result_gpt_missing_matched_fields():
         "phone_number": "555-5678",
         # Missing matched_fields key
     }
-    
-    metadata = build_receipt_metadata_from_result(
-        image_id, 2, google_place, gpt_result
-    )
-    
+
+    metadata = build_receipt_metadata_from_result(image_id, 2, google_place, gpt_result)
+
     assert metadata.phone_number == "555-5678"
     assert metadata.matched_fields == []
-    assert metadata.validated_by == "TEXT_SEARCH"  # No matched_fields means no GPT validation
+    assert (
+        metadata.validated_by == "TEXT_SEARCH"
+    )  # No matched_fields means no GPT validation

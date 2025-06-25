@@ -2,9 +2,8 @@
 
 from typing import Any, Dict
 
-from receipt_label.merchant_validation import (
-    list_receipts_for_merchant_validation,
-)
+from receipt_label.merchant_validation import \
+    list_receipts_for_merchant_validation
 
 from .common import setup_logger
 

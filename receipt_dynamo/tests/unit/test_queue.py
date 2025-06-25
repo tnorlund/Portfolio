@@ -42,28 +42,18 @@ def test_queue_init_valid(example_queue):
 @pytest.mark.unit
 def test_queue_init_invalid_queue_name():
     """Queue constructor raises a ValueError with an invalid queue_name."""
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
-        Queue(
-            queue_name="", description="Test queue", created_at=datetime.now()
-        )
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
+        Queue(queue_name="", description="Test queue", created_at=datetime.now())
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         Queue(
             queue_name=None,
             description="Test queue",
             created_at=datetime.now(),
         )
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
-        Queue(
-            queue_name=123, description="Test queue", created_at=datetime.now()
-        )
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
+        Queue(queue_name=123, description="Test queue", created_at=datetime.now())
 
 
 @pytest.mark.unit
