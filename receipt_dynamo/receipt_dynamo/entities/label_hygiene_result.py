@@ -37,9 +37,7 @@ class LabelHygieneResult:
             raise ValueError("gpt_agreed must be a boolean")
         self.gpt_agreed = gpt_agreed
 
-        if source_batch_id is not None and not isinstance(
-            source_batch_id, str
-        ):
+        if source_batch_id is not None and not isinstance(source_batch_id, str):
             raise ValueError("source_batch_id must be a string or None")
         self.source_batch_id = source_batch_id
 
@@ -52,9 +50,7 @@ class LabelHygieneResult:
         self.image_id = image_id  # Store image_id
 
         if not isinstance(receipt_id, int):
-            raise ValueError(
-                "receipt_id must be an integer"
-            )  # Validate receipt_id
+            raise ValueError("receipt_id must be an integer")  # Validate receipt_id
         self.receipt_id = receipt_id  # Store receipt_id
 
         if not isinstance(timestamp, datetime):
@@ -91,12 +87,8 @@ class LabelHygieneResult:
             "gpt_agreed": {"BOOL": self.gpt_agreed},
             "source_batch_id": {"S": self.source_batch_id or ""},
             "example_ids": {"SS": self.example_ids},
-            "image_id": {
-                "S": self.image_id
-            },  # Include image_id in serialization
-            "receipt_id": {
-                "N": self.receipt_id
-            },  # Include receipt_id in serialization
+            "image_id": {"S": self.image_id},  # Include image_id in serialization
+            "receipt_id": {"N": self.receipt_id},  # Include receipt_id in serialization
             "timestamp": {"S": self.timestamp.isoformat()},
         }
 
@@ -142,8 +134,7 @@ class LabelHygieneResult:
             and self.gpt_agreed == other.gpt_agreed
             and self.source_batch_id == other.source_batch_id
             and self.example_ids == other.example_ids
-            and self.image_id
-            == other.image_id  # Include image_id in equality check
+            and self.image_id == other.image_id  # Include image_id in equality check
             and self.receipt_id
             == other.receipt_id  # Include receipt_id in equality check
             and self.timestamp == other.timestamp
@@ -214,6 +205,4 @@ def itemToLabelHygieneResult(item: dict) -> LabelHygieneResult:
             receipt_id,  # Pass receipt_id to constructor
         )
     except Exception as e:
-        raise ValueError(
-            f"Error converting item to LabelHygieneResult: {e}"
-        ) from e
+        raise ValueError(f"Error converting item to LabelHygieneResult: {e}") from e

@@ -1,7 +1,6 @@
 import pulumi
 import pulumi_aws as aws
 from routes.ai_usage.infra import ai_usage_lambda
-
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda
@@ -89,9 +88,7 @@ route_random_image_details = aws.apigatewayv2.Route(
     "random_image_details_route",
     api_id=api.id,
     route_key="GET /random_image_details",
-    target=integration_random_image_details.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_random_image_details.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,

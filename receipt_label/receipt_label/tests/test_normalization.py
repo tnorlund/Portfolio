@@ -1,12 +1,8 @@
 import pytest
 
 from receipt_label.merchant_validation.utils.normalization import (
-    format_canonical_merchant_name,
-    normalize_address,
-    normalize_phone,
-    normalize_text,
-    preprocess_for_comparison,
-)
+    format_canonical_merchant_name, normalize_address, normalize_phone,
+    normalize_text, preprocess_for_comparison)
 
 
 @pytest.mark.unit
@@ -29,23 +25,15 @@ class TestNormalizeAddress:
 
     def test_normalize_address_units(self):
         """Test unit abbreviation expansion."""
-        assert (
-            normalize_address("123 Main St. Apt. 5")
-            == "123 main street apartment 5"
-        )
+        assert normalize_address("123 Main St. Apt. 5") == "123 main street apartment 5"
         assert normalize_address("456 Oak Ste. 100") == "456 oak suite 100"
         assert normalize_address("789 Elm Fl. 3") == "789 elm floor 3"
 
     def test_normalize_address_special_chars(self):
         """Test special character handling."""
-        assert (
-            normalize_address("123 Main St., Suite #5")
-            == "123 main street suite 5"
-        )
+        assert normalize_address("123 Main St., Suite #5") == "123 main street suite 5"
         assert normalize_address("456 Oak-Avenue") == "456 oak avenue"
-        assert (
-            normalize_address("789 Elm (Building A)") == "789 elm building a"
-        )
+        assert normalize_address("789 Elm (Building A)") == "789 elm building a"
 
     def test_normalize_address_whitespace(self):
         """Test whitespace normalization."""
@@ -121,10 +109,7 @@ class TestNormalizeText:
         """Test special character removal."""
         assert normalize_text("Hello@World!") == "hello world"
         assert normalize_text("Price: $19.99") == "price 19 99"
-        assert (
-            normalize_text("Email: test@example.com")
-            == "email test example com"
-        )
+        assert normalize_text("Email: test@example.com") == "email test example com"
         assert normalize_text("100% quality") == "100 quality"
 
     def test_normalize_text_whitespace(self):
@@ -159,17 +144,13 @@ class TestPreprocessForComparison:
 
     def test_preprocess_whitespace(self):
         """Test whitespace normalization."""
-        assert (
-            preprocess_for_comparison("multiple   spaces") == "multiple spaces"
-        )
+        assert preprocess_for_comparison("multiple   spaces") == "multiple spaces"
         assert preprocess_for_comparison("\ttabs\there\t") == "tabs here"
         assert preprocess_for_comparison("new\nlines") == "new lines"
 
     def test_preprocess_preserves_special_chars(self):
         """Test that special characters are preserved (unlike normalize_text)."""
-        assert (
-            preprocess_for_comparison("test@example.com") == "test@example.com"
-        )
+        assert preprocess_for_comparison("test@example.com") == "test@example.com"
         assert preprocess_for_comparison("$19.99") == "$19.99"
         assert preprocess_for_comparison("100%") == "100%"
 
@@ -219,10 +200,7 @@ class TestFormatCanonicalMerchantName:
         assert format_canonical_merchant_name("a - b - c") == "A B C"
         # Test title case edge cases
         assert format_canonical_merchant_name("ABC STORE") == "Abc Store"
-        assert (
-            format_canonical_merchant_name("mcdonald's usa")
-            == "Mcdonald's Usa"
-        )
+        assert format_canonical_merchant_name("mcdonald's usa") == "Mcdonald's Usa"
 
 
 @pytest.mark.unit
@@ -241,8 +219,7 @@ class TestNormalizationIntegration:
             == "456 southwest oak boulevard suite 200"
         )
         assert (
-            normalize_address("789 E. 1st Ave. Fl. 3")
-            == "789 east 1st avenue floor 3"
+            normalize_address("789 E. 1st Ave. Fl. 3") == "789 east 1st avenue floor 3"
         )
 
         # Edge cases from real data
@@ -263,10 +240,7 @@ class TestNormalizationIntegration:
 
     def test_merchant_name_common_chains(self):
         """Test formatting common merchant names."""
-        assert (
-            format_canonical_merchant_name("STARBUCKS COFFEE")
-            == "Starbucks Coffee"
-        )
+        assert format_canonical_merchant_name("STARBUCKS COFFEE") == "Starbucks Coffee"
         assert (
             format_canonical_merchant_name("walmart supercenter")
             == "Walmart Supercenter"

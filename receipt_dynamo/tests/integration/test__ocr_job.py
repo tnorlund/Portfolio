@@ -41,9 +41,7 @@ def test_addOCRJob_success(
     client.addOCRJob(sample_ocr_job)
 
     # Assert
-    retrieved_job = client.getOCRJob(
-        sample_ocr_job.image_id, sample_ocr_job.job_id
-    )
+    retrieved_job = client.getOCRJob(sample_ocr_job.image_id, sample_ocr_job.job_id)
     assert retrieved_job == sample_ocr_job
 
 
