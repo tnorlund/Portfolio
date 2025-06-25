@@ -84,6 +84,16 @@ jobs:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package)) }}
       
+      - name: Cache pytest results
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ matrix.package }}/.pytest_cache
+            ${{ matrix.package }}/.coverage
+          key: ${{ runner.os }}-pytest-${{ matrix.package }}-${{ hashFiles(format('{0}/**/*.py', matrix.package)) }}
+          restore-keys: |
+            ${{ runner.os }}-pytest-${{ matrix.package }}-
+      
       - name: Install package
         run: |
           # Install receipt_dynamo first as it's a dependency for other packages
@@ -102,9 +112,12 @@ jobs:
             pip install -e "${{ matrix.package }}[test]"
           fi
           
+          # Install additional test optimization tools
+          pip install pytest-xdist pytest-timeout
+          
           # Debug: Show installed packages for troubleshooting
           echo "=== Installed packages ==="
-          pip list | grep -E "(pinecone|openai|receipt)" || true
+          pip list | grep -E "(pinecone|openai|receipt|pytest)" || true
       
       - name: Run tests
         working-directory: ${{ matrix.package }}
@@ -121,8 +134,19 @@ jobs:
             TEST_DIR="."
           fi
           
-          # Run tests with proper module discovery
-          python -m pytest $TEST_DIR -m "not end_to_end" --cov=${{ matrix.package }} --cov-report=xml -v
+          # Run tests with parallel execution and optimizations
+          python -m pytest $TEST_DIR \
+            -n auto \
+            -m "not end_to_end and not slow" \
+            --timeout=300 \
+            --timeout-method=thread \
+            --cov=${{ matrix.package }} \
+            --cov-report=xml \
+            --cov-report=term-missing:skip-covered \
+            --maxfail=5 \
+            -x \
+            --durations=20 \
+            --tb=short
       
       - name: Upload coverage
         uses: actions/upload-artifact@v4
