@@ -321,7 +321,7 @@ jobs:
   deploy:
     name: Deploy with Pulumi
     needs: [fast-checks]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && always()
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -419,8 +419,10 @@ jobs:
     steps:
       - name: Check all jobs
         run: |
-          if [[ "${{ needs.fast-checks.result }}" != "success" ]]; then
-            echo "Fast checks failed"
+          if [[ "${{ needs.fast-checks.result }}" != "success" ||
+                "${{ needs.test-python.result }}" != "success" ||
+                "${{ needs.test-typescript.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
             exit 1
           fi
           echo "All CI checks passed!"
