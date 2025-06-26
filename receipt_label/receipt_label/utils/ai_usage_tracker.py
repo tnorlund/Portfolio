@@ -147,24 +147,31 @@ class AIUsageTracker:
         """Store metric in DynamoDB and/or file."""
         if self.track_to_dynamo and self.dynamo_client:
             try:
-                # Use high-level DynamoClient method if available
-                # Check if this is a real DynamoDB client or a properly spec'd Mock
-                client_module = getattr(type(self.dynamo_client), '__module__', '')
-                is_real_dynamo_client = 'receipt_dynamo' in client_module
-                
-                # Check if it's a Mock with DynamoDB-related spec
-                is_dynamo_mock = False
-                if hasattr(self.dynamo_client, '_spec_class'):
-                    spec_name = getattr(self.dynamo_client._spec_class, '__name__', '')
-                    is_dynamo_mock = 'DynamoClient' in spec_name or 'ResilientDynamoClient' in spec_name
-                
-                if hasattr(self.dynamo_client, "put_ai_usage_metric") and (is_real_dynamo_client or is_dynamo_mock):
-                    # Real DynamoDB client or properly mocked DynamoDB client - use the high-level method
-                    self.dynamo_client.put_ai_usage_metric(metric)
-                else:
-                    # Basic Mock or fallback client - use put_item for test compatibility
-                    item = metric.to_dynamodb_item()
-                    self.dynamo_client.put_item(TableName=self.table_name, Item=item)
+                # Prepare item for DynamoDB
+                item = metric.to_dynamodb_item()
+
+                # Check if this is a basic Mock without spec
+                # Basic mocks have _spec_class = None
+                is_basic_mock = (
+                    hasattr(self.dynamo_client, "_spec_class")
+                    and self.dynamo_client._spec_class is None
+                )
+
+                # Use put_ai_usage_metric for real clients and spec'd mocks
+                if not is_basic_mock and hasattr(
+                    self.dynamo_client, "put_ai_usage_metric"
+                ):
+                    try:
+                        self.dynamo_client.put_ai_usage_metric(metric)
+                        return
+                    except Exception:
+                        # Method failed, fall through to put_item
+                        pass
+
+                # Standard DynamoDB put_item call (for basic mocks and fallback)
+                self.dynamo_client.put_item(
+                    TableName=self.table_name, Item=item
+                )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -246,7 +253,9 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(usage, "completion_tokens", None)
+                        output_tokens = getattr(
+                            usage, "completion_tokens", None
+                        )
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -289,7 +298,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_embedding(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """

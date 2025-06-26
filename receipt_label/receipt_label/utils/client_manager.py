@@ -98,6 +98,7 @@ class ClientManager:
                 test_client = None
 
                 # Detect test environments by table name patterns
+                # Only match explicit test patterns, not any table containing "test"
                 test_table_patterns = [
                     "test-table",
                     "integration-test-table",
@@ -112,7 +113,9 @@ class ClientManager:
                         for pattern in test_table_patterns
                     )
                     or self.config.dynamo_table.lower().endswith("-test")
-                    or "test" in self.config.dynamo_table.lower()
+                    or self.config.dynamo_table.lower().startswith("test-")
+                    or self.config.dynamo_table.lower() == "test"
+                    # Removed: "test" in table_name - too broad, matches "contest-results"
                 )
 
                 if is_test_env:
