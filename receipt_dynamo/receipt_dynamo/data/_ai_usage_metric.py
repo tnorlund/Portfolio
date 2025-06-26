@@ -18,7 +18,7 @@ class _AIUsageMetric:
             metric: The AI usage metric to store
         """
         item = metric.to_dynamodb_item()
-        self.put_item(Item=item)
+        self.put_item(TableName=self.table_name, Item=item)
 
     def batch_put_ai_usage_metrics(
         self, metrics: List[AIUsageMetric]
@@ -80,14 +80,24 @@ class _AIUsageMetric:
         Returns:
             List of metric items from DynamoDB
         """
-        key_condition = "pk = :pk"
-        expression_values = {":pk": {"S": f"AI_USAGE#{date}"}}
-
+        # Query using GSI1 to get metrics by date
+        key_condition = "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk"
+        expression_values = {
+            ":gsi1pk": {"S": f"AI_USAGE#{service}" if service else "AI_USAGE"},
+            ":gsi1sk": {"S": f"DATE#{date}"}
+        }
+        
         if service:
-            key_condition += " AND begins_with(sk, :sk)"
-            expression_values[":sk"] = {"S": f"{service}#"}
+            # If service specified, use GSI1 with exact service match
+            pass
+        else:
+            # If no service, we need to scan or use a different approach
+            # For now, require service parameter
+            raise ValueError("Service parameter is required for date-based queries")
 
         response = self.query(
+            TableName=self.table_name,
+            IndexName="GSI1",  # Query the GSI for date-based access
             KeyConditionExpression=key_condition,
             ExpressionAttributeValues=expression_values,
             Limit=limit,
@@ -96,24 +106,25 @@ class _AIUsageMetric:
         return response.get("Items", [])
 
     def get_ai_usage_metric(
-        self, date: str, timestamp: str, service: str, model: str
+        self, service: str, model: str, timestamp: str, request_id: str
     ) -> Optional[Dict[str, Any]]:
         """
         Get a specific AI usage metric.
 
         Args:
-            date: Date string in YYYY-MM-DD format
-            timestamp: ISO format timestamp
             service: Service name (e.g., "openai", "anthropic")
             model: Model name (e.g., "gpt-4", "claude-3")
+            timestamp: ISO format timestamp
+            request_id: Unique request identifier
 
         Returns:
             The metric item if found, None otherwise
         """
         response = self.get_item(
+            TableName=self.table_name,
             Key={
-                "pk": {"S": f"AI_USAGE#{date}"},
-                "sk": {"S": f"{service}#{model}#{timestamp}"},
+                "PK": {"S": f"AI_USAGE#{service}#{model}"},
+                "SK": {"S": f"USAGE#{timestamp}#{request_id}"},
             }
         )
 
