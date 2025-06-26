@@ -89,8 +89,13 @@ class AIUsageTracker:
         self.current_job_id: Optional[str] = None
         self.current_batch_id: Optional[str] = None
         self.github_pr: Optional[int] = None
+        
+        # Context manager support
+        self.current_context: Dict[str, Any] = {}
+        self.pending_metrics: list[AIUsageMetric] = []
+        self.batch_mode: bool = False
 
-    def set_context(
+    def set_tracking_context(
         self,
         job_id: Optional[str] = None,
         batch_id: Optional[str] = None,
@@ -106,6 +111,31 @@ class AIUsageTracker:
             self.github_pr = github_pr
         if user_id is not None:
             self.user_id = user_id
+    
+    def set_context(self, context: Dict[str, Any]) -> None:
+        """Set the current tracking context for the context manager pattern."""
+        self.current_context = context
+        # Extract standard fields if present
+        if 'job_id' in context:
+            self.current_job_id = context['job_id']
+        if 'batch_id' in context:
+            self.current_batch_id = context['batch_id']
+        if 'github_pr' in context:
+            self.github_pr = context['github_pr']
+    
+    def add_context_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Add additional metadata to the current context."""
+        self.current_context.update(metadata)
+    
+    def set_batch_mode(self, enabled: bool) -> None:
+        """Enable or disable batch pricing mode."""
+        self.batch_mode = enabled
+    
+    def flush_metrics(self) -> None:
+        """Flush any pending metrics to storage."""
+        for metric in self.pending_metrics:
+            self._store_metric(metric)
+        self.pending_metrics.clear()
 
     def _store_metric(self, metric: AIUsageMetric) -> None:
         """Store metric in DynamoDB and/or file."""
@@ -142,11 +172,15 @@ class AIUsageTracker:
                 print(f"Failed to log metric to file: {e}")
 
     def _create_base_metadata(self) -> Dict[str, Any]:
-        """Create base metadata including environment auto-tags."""
+        """Create base metadata including environment auto-tags and context."""
         metadata = {}
 
         # Add environment auto-tags
         metadata.update(self.environment_config.auto_tag)
+        
+        # Add current context metadata
+        if self.current_context:
+            metadata.update(self.current_context)
 
         return metadata
 
@@ -196,7 +230,7 @@ class AIUsageTracker:
                             model=model,
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
-                            is_batch=kwargs.get("is_batch", False),
+                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
