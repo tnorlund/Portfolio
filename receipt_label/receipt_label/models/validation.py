@@ -7,8 +7,11 @@ from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 # Import the ReceiptValidationSummary class
-from receipt_dynamo import (ReceiptValidationCategory, ReceiptValidationResult,
-                            ReceiptValidationSummary)
+from receipt_dynamo import (
+    ReceiptValidationCategory,
+    ReceiptValidationResult,
+    ReceiptValidationSummary,
+)
 
 from .metadata import MetadataMixin
 
@@ -89,7 +92,9 @@ class FieldValidation:
         warning_count = sum(
             1 for r in self.results if r.type == ValidationResultType.WARNING
         )
-        info_count = sum(1 for r in self.results if r.type == ValidationResultType.INFO)
+        info_count = sum(
+            1 for r in self.results if r.type == ValidationResultType.INFO
+        )
         success_count = sum(
             1 for r in self.results if r.type == ValidationResultType.SUCCESS
         )
@@ -189,7 +194,9 @@ class ValidationAnalysis(MetadataMixin):
 
     overall_status: ValidationStatus = ValidationStatus.VALID
     overall_reasoning: str = ""
-    validation_timestamp: datetime = dataclass_field(default_factory=datetime.now)
+    validation_timestamp: datetime = dataclass_field(
+        default_factory=datetime.now
+    )
     prompt_template: Optional[str] = None
     response_template: Optional[str] = None
     metadata: Dict = dataclass_field(default_factory=dict)
@@ -217,26 +224,42 @@ class ValidationAnalysis(MetadataMixin):
             "address_verification": len(self.address_verification.results),
             "phone_validation": len(self.phone_validation.results),
             "hours_verification": len(self.hours_verification.results),
-            "cross_field_consistency": len(self.cross_field_consistency.results),
+            "cross_field_consistency": len(
+                self.cross_field_consistency.results
+            ),
             "line_item_validation": len(self.line_item_validation.results),
         }
         self.add_processing_metric("validation_counts", field_counts)
 
         result_types = {
             "error": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.ERROR)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.ERROR
+                )
                 for v in self._get_field_validations()
             ),
             "warning": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.WARNING)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.WARNING
+                )
                 for v in self._get_field_validations()
             ),
             "info": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.INFO)
+                sum(
+                    1 for r in v.results if r.type == ValidationResultType.INFO
+                )
                 for v in self._get_field_validations()
             ),
             "success": sum(
-                sum(1 for r in v.results if r.type == ValidationResultType.SUCCESS)
+                sum(
+                    1
+                    for r in v.results
+                    if r.type == ValidationResultType.SUCCESS
+                )
                 for v in self._get_field_validations()
             ),
         }
@@ -274,11 +297,18 @@ class ValidationAnalysis(MetadataMixin):
             self.line_item_validation,
         ]
 
-        if any(v.status == ValidationStatus.INVALID for v in field_validations):
+        if any(
+            v.status == ValidationStatus.INVALID for v in field_validations
+        ):
             self.overall_status = ValidationStatus.INVALID
-        elif any(v.status == ValidationStatus.NEEDS_REVIEW for v in field_validations):
+        elif any(
+            v.status == ValidationStatus.NEEDS_REVIEW
+            for v in field_validations
+        ):
             self.overall_status = ValidationStatus.NEEDS_REVIEW
-        elif all(v.status == ValidationStatus.INCOMPLETE for v in field_validations):
+        elif all(
+            v.status == ValidationStatus.INCOMPLETE for v in field_validations
+        ):
             self.overall_status = ValidationStatus.INCOMPLETE
         else:
             self.overall_status = ValidationStatus.VALID
@@ -319,19 +349,24 @@ class ValidationAnalysis(MetadataMixin):
         reasoning = f"Receipt validation determined the receipt is {status_text[self.overall_status]}"
 
         if error_count or warning_count:
-            reasoning += f" with {error_count} errors and {warning_count} warnings"
+            reasoning += (
+                f" with {error_count} errors and {warning_count} warnings"
+            )
 
         # Add field-specific reasoning for problem areas
         problem_fields = [
             v
             for v in active_validations
-            if v.status in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]
+            if v.status
+            in [ValidationStatus.INVALID, ValidationStatus.NEEDS_REVIEW]
         ]
         if problem_fields:
             field_problems = [
                 f"{v.field_category}: {v.reasoning}" for v in problem_fields
             ]
-            reasoning += f". Problem areas include: {'; '.join(field_problems[:3])}"
+            reasoning += (
+                f". Problem areas include: {'; '.join(field_problems[:3])}"
+            )
             if len(field_problems) > 3:
                 reasoning += f" and {len(field_problems) - 3} more"
 
@@ -433,7 +468,9 @@ class ValidationAnalysis(MetadataMixin):
                             else None
                         ),
                         "actual_value": (
-                            str(r.actual_value) if r.actual_value is not None else None
+                            str(r.actual_value)
+                            if r.actual_value is not None
+                            else None
                         ),
                         "metadata": r.metadata,
                     }
@@ -530,7 +567,9 @@ class ValidationAnalysis(MetadataMixin):
         timestamp_updated = None
         if self.timestamp_updated:
             if isinstance(self.timestamp_updated, str):
-                timestamp_updated = datetime.fromisoformat(self.timestamp_updated)
+                timestamp_updated = datetime.fromisoformat(
+                    self.timestamp_updated
+                )
             else:
                 timestamp_updated = self.timestamp_updated
 
@@ -666,7 +705,9 @@ class ValidationAnalysis(MetadataMixin):
             ("line_item_validation", self.line_item_validation),
         ]:
             # Convert each validation result in this field
-            for result_index, validation_result in enumerate(field_validation.results):
+            for result_index, validation_result in enumerate(
+                field_validation.results
+            ):
                 # Create the ReceiptValidationResult instance
                 result_item = ReceiptValidationResult(
                     receipt_id=self.receipt_id,
@@ -727,7 +768,9 @@ class ValidationAnalysis(MetadataMixin):
                 for result_data in category_data.get("results", []):
                     results.append(
                         ValidationResult(
-                            type=result_data.get("type", ValidationResultType.INFO),
+                            type=result_data.get(
+                                "type", ValidationResultType.INFO
+                            ),
                             message=result_data.get("message", ""),
                             reasoning=result_data.get("reasoning", ""),
                             field=result_data.get("field"),
@@ -835,7 +878,9 @@ class ValidationAnalysis(MetadataMixin):
                     field=result.field,
                     expected_value=result.expected_value,
                     actual_value=result.actual_value,
-                    metadata=(result.metadata if hasattr(result, "metadata") else {}),
+                    metadata=(
+                        result.metadata if hasattr(result, "metadata") else {}
+                    ),
                 )
                 validation_results.append(validation_result)
 
