@@ -93,8 +93,15 @@ class ClientManager:
 
             # Override with resilient tracker if configured
             if self.config.use_resilient_tracker:
+                # In tests, we need to pass the mock client to avoid creating real DynamoDB connections
+                # In production, pass None to let ResilientAIUsageTracker create its own ResilientDynamoClient
+                test_client = None
+                if self.config.dynamo_table in ["test-table", "integration-test-table"]:
+                    # We're in a test environment, use the mock client
+                    test_client = self.dynamo
+                
                 self._usage_tracker = ResilientAIUsageTracker(
-                    dynamo_client=None,  # Let ResilientAIUsageTracker create its own ResilientDynamoClient
+                    dynamo_client=test_client,
                     table_name=self.config.dynamo_table,
                     user_id=self.config.user_id,
                     track_to_dynamo=True,
