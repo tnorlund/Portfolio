@@ -6,9 +6,10 @@ This module provides functions for calculating NER-specific metrics, including:
 - Span-based metrics for multi-token entities
 """
 
-from typing import Dict, List, Set, Tuple, Any, Optional
-import numpy as np
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import numpy as np
 from sklearn.metrics import (
     classification_report,
     f1_score,

@@ -6,7 +6,6 @@ from datetime import datetime
 from logging import Formatter, StreamHandler
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob

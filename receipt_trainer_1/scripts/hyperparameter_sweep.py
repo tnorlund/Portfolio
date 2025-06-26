@@ -5,23 +5,22 @@ This script submits multiple training jobs with different hyperparameter combina
 to the SQS queue, allowing the auto-scaling system to handle the processing.
 """
 
-import os
-import sys
-import json
-import uuid
-import time
-import logging
 import argparse
 import itertools
-from typing import Dict, Any, List
+import json
+import logging
+import os
+import sys
+import time
+import uuid
+from typing import Any, Dict, List
 
 import boto3
-
 from receipt_trainer.jobs.job import Job, JobPriority, JobStatus
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
 from receipt_trainer.utils.pulumi import (
-    get_auto_scaling_config,
     create_auto_scaling_manager,
+    get_auto_scaling_config,
 )
 
 # Set up logging

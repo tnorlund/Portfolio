@@ -1,7 +1,6 @@
 """Test boundary calculations with hardcoded values to ensure Python/TypeScript equivalence."""
 
 import pytest
-
 from receipt_upload.geometry import compute_receipt_box_from_boundaries
 
 

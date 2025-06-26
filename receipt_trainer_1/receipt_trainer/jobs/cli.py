@@ -5,41 +5,42 @@ Command-line interface for managing ML training job queues.
 import argparse
 import json
 import logging
-import sys
-import uuid
-import time
 import os
-from typing import Dict, Any, Optional, List, Tuple
-from tabulate import tabulate
-import yaml
+import sys
+import time
+import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 # Import service layer from receipt_dynamo
-from receipt_dynamo import JobService, QueueService, InstanceService
+from receipt_dynamo import InstanceService, JobService, QueueService
+from receipt_dynamo.entities.instance import Instance
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
-from receipt_dynamo.entities.instance import Instance
+from receipt_trainer.jobs.submit import submit_job_from_config_file
+from receipt_trainer.jobs.worker import process_training_jobs
+from receipt_trainer.utils.infrastructure import TrainingEnvironment
+from tabulate import tabulate
+
+from .aws import (
+    create_queue_with_dlq,
+    delete_queue,
+    get_queue_url,
+    purge_queue,
+)
+from .config import (
+    DEFAULT_REGION,
+    DYNAMODB_TABLE,
+    JOB_PRIORITY_MEDIUM,
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_PENDING,
+)
 
 # Local imports
 from .job import JobPriority
 from .job_definition import LayoutLMJobDefinition
-from .config import (
-    DYNAMODB_TABLE,
-    DEFAULT_REGION,
-    JOB_STATUS_PENDING,
-    JOB_STATUS_CANCELLED,
-    JOB_PRIORITY_MEDIUM,
-)
-from .aws import (
-    create_queue_with_dlq,
-    get_queue_url,
-    delete_queue,
-    purge_queue,
-)
-from receipt_trainer.jobs.worker import process_training_jobs
-from receipt_trainer.jobs.submit import submit_job_from_config_file
-from receipt_trainer.utils.infrastructure import TrainingEnvironment
-
 
 # Configure logging
 logging.basicConfig(
@@ -1231,8 +1232,9 @@ def _get_job_service(args):
 def _add_dependency(args):
     """Add a dependency between jobs."""
     try:
-        from receipt_dynamo.entities.job_dependency import JobDependency
         from datetime import datetime
+
+        from receipt_dynamo.entities.job_dependency import JobDependency
 
         # Get job service
         job_service = _get_job_service(args)
