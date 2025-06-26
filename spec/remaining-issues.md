@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the remaining minor issues identified during the BugBot remediation effort. Most critical issues have been resolved, but one minor issue remains.
+This document tracks the remaining minor issues identified during the BugBot remediation effort. All critical issues have been resolved.
 
 ## Outstanding Issues
 
@@ -61,6 +61,7 @@ if not dynamo_table:
 5. **Test Environment Pollution** - Specific pattern matching prevents false positives ✅
 6. **Dead Code** - All query methods are functional ✅
 7. **Client Detection Logic** - Probe-based detection without private attributes ✅
+8. **Environment Variable Conflicts** - Standardized with backward compatibility ✅
 
 ## Summary
 
