@@ -2,6 +2,40 @@
 
 A Python package for labeling and validating receipt data using GPT and Pinecone.
 
+## Package Responsibilities
+
+**IMPORTANT**: This package handles business logic and AI integrations. It must NOT contain DynamoDB-specific code.
+
+### What belongs in receipt_label:
+- ✅ Receipt labeling and analysis logic
+- ✅ AI service integrations (OpenAI, Anthropic)
+- ✅ Pinecone vector database operations
+- ✅ Google Places API integration
+- ✅ Label validation and correction logic
+
+### What does NOT belong here:
+- ❌ Direct DynamoDB operations (use receipt_dynamo interfaces)
+- ❌ DynamoDB retry logic or resilience patterns (use ResilientDynamoClient from receipt_dynamo)
+- ❌ DynamoDB batch processing logic (use receipt_dynamo's batch methods)
+- ❌ OCR text extraction (belongs in receipt_ocr)
+
+### Example: Proper DynamoDB Usage
+```python
+# ✅ CORRECT: Use receipt_dynamo's high-level interfaces
+from receipt_dynamo import ResilientDynamoClient
+
+client = ResilientDynamoClient(table_name="my-table")
+client.put_ai_usage_metric(metric)  # Let receipt_dynamo handle resilience
+
+# ❌ WRONG: Don't implement DynamoDB logic here
+def put_with_retry(item):
+    for attempt in range(3):  # This belongs in receipt_dynamo!
+        try:
+            dynamo.put_item(...)
+        except:
+            time.sleep(2 ** attempt)
+```
+
 ## Embedding Strategy
 
 For each receipt word, we generate two embeddings to capture both semantic and spatial context:

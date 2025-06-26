@@ -195,6 +195,90 @@ git push
 # IGNORE IT - those aren't your responsibility
 ```
 
+# Package Architecture and Boundaries
+
+## CRITICAL: Maintain Strict Package Separation
+
+**IMPORTANT**: This project follows a strict separation of concerns between packages. Each package has a specific responsibility and MUST NOT contain logic that belongs in another package.
+
+### Package Responsibilities
+
+1. **receipt_dynamo** - DynamoDB Data Layer
+   - ALL DynamoDB-specific logic (queries, writes, batch operations)
+   - ALL resilience patterns for DynamoDB (circuit breakers, retries, batching)
+   - Entity definitions and DynamoDB item conversions
+   - DynamoDB client implementations
+   - DO NOT: Import from receipt_label or implement business logic
+
+2. **receipt_label** - Business Logic Layer
+   - Receipt labeling and analysis logic
+   - AI service integrations (OpenAI, Anthropic) for labeling
+   - Places API integration for location data
+   - Uses receipt_dynamo as a data layer through high-level interfaces
+   - DO NOT: Implement DynamoDB operations directly
+
+3. **receipt_ocr** - OCR Processing Layer
+   - OCR text extraction logic
+   - Image processing
+   - Text detection algorithms
+   - DO NOT: Implement database operations or labeling logic
+
+### Examples of Violations to Avoid
+
+❌ **WRONG**: Implementing DynamoDB retry logic in receipt_label
+```python
+# receipt_label/utils/some_tracker.py
+def put_with_retry(self, item):
+    for attempt in range(3):
+        try:
+            self.dynamo_client.put_item(...)  # DynamoDB logic in wrong package!
+        except:
+            time.sleep(2 ** attempt)
+```
+
+✅ **CORRECT**: Use high-level interfaces from receipt_dynamo
+```python
+# receipt_label/utils/some_tracker.py
+def store(self, item):
+    self.dynamo_client.put_ai_usage_metric(item)  # Delegates to receipt_dynamo
+```
+
+❌ **WRONG**: Creating resilient DynamoDB patterns in receipt_label
+```python
+# receipt_label/utils/resilient_tracker.py
+class ResilientTracker:
+    def __init__(self):
+        self.circuit_breaker = CircuitBreaker()  # Should be in receipt_dynamo!
+```
+
+✅ **CORRECT**: Import resilient implementations from receipt_dynamo
+```python
+# receipt_label/utils/resilient_tracker.py
+from receipt_dynamo import ResilientDynamoClient
+
+class ResilientTracker:
+    def __init__(self):
+        self.dynamo_client = ResilientDynamoClient()  # Use receipt_dynamo's implementation
+```
+
+### Checking for Violations
+
+Before implementing any feature:
+1. Ask: "Which package owns this responsibility?"
+2. If it's database/DynamoDB related → receipt_dynamo
+3. If it's labeling/analysis related → receipt_label
+4. If it's OCR/image processing → receipt_ocr
+5. Never mix responsibilities between packages
+
+### Code Review Checklist
+
+When reviewing code, check for:
+- [ ] No direct DynamoDB operations in receipt_label
+- [ ] No business logic in receipt_dynamo
+- [ ] All resilience patterns for DynamoDB are in receipt_dynamo
+- [ ] receipt_label only uses high-level interfaces from receipt_dynamo
+- [ ] No circular dependencies between packages
+
 # Boto3 Type Safety
 
 **IMPORTANT**: This project uses boto3 type stubs for improved developer experience without runtime overhead.
@@ -226,4 +310,75 @@ When adding boto3 clients for new AWS services:
 3. Add type annotations to client variables: `client: ServiceClient = boto3.client("service")`
 
 This approach provides type safety during development while maintaining fast runtime performance.
+
+# Performance Testing Guidelines
+
+## CRITICAL: Environment-Dependent Performance Tests
+
+**IMPORTANT**: Performance tests with hardcoded thresholds WILL fail in different environments. CI environments (GitHub Actions) are significantly less performant than local development machines.
+
+### The Problem
+
+Performance tests that pass locally often fail in CI because:
+- CI runners have limited CPU and memory resources
+- Network latency varies between environments  
+- Shared infrastructure causes unpredictable performance
+- Background processes affect timing measurements
+
+### Example Issue
+
+```python
+# ❌ WRONG: Hardcoded performance threshold
+expected_throughput_ratio = 0.10  # Expects 10% throughput
+assert late_throughput > early_throughput * expected_throughput_ratio
+```
+
+This test might pass locally (powerful development machine) but fail in CI (constrained GitHub Actions runner).
+
+### Solution: Environment-Aware Thresholds
+
+```python
+# ✅ CORRECT: Environment-aware thresholds
+# IMPORTANT: These thresholds are environment-dependent
+# CI environments are less performant than local development machines
+# Values tuned for GitHub Actions CI environment performance
+expected_throughput_ratio = (
+    0.03 if config.use_resilient_tracker else 0.01  # CI-tuned values
+)
+```
+
+### Best Practices
+
+1. **Always document performance thresholds**:
+   - Explain why specific values were chosen
+   - Note which environment they were tuned for
+   - Add comments about environment dependencies
+
+2. **Tune thresholds for CI environment**:
+   - Use the lowest-performance environment as baseline
+   - Test thoroughly in CI before merging
+   - Consider using environment detection for different thresholds
+
+3. **Avoid absolute performance measurements**:
+   - Use relative improvements instead of absolute values
+   - Focus on "better than baseline" rather than specific numbers
+   - Test resilience patterns, not raw performance
+
+4. **Alternative approaches**:
+   - Mock time-dependent operations
+   - Use deterministic test scenarios
+   - Focus on functional correctness over performance
+
+### Code Review Checklist
+
+When reviewing performance tests:
+- [ ] Are performance thresholds documented and justified?
+- [ ] Have thresholds been tested in CI environment?
+- [ ] Are tests measuring relative improvement, not absolute performance?
+- [ ] Do tests focus on resilience patterns rather than raw speed?
+- [ ] Are environment dependencies clearly documented?
+
+### Historical Context
+
+This documentation was added after issue #130 where performance tests expected 10% throughput under stress but CI achieved only ~3%. The tests were updated to use CI-tuned thresholds (3%) to prevent spurious failures while maintaining the functional verification of resilience patterns.
 EOF < /dev/null

@@ -23,9 +23,9 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
@@ -71,7 +71,14 @@ def mock_dynamo_with_data():
         client._stored_items.append(kwargs["Item"])
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
+    def store_metric(metric):
+        """Store AIUsageMetric for new resilient client interface."""
+        item = metric.to_dynamodb_item()
+        client._stored_items.append(item)
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
     client.put_item = MagicMock(side_effect=store_item)
+    client.put_ai_usage_metric = MagicMock(side_effect=store_metric)
 
     # Mock query responses
     def query_handler(**kwargs):
@@ -660,6 +667,9 @@ class TestAIUsageSystemIntegration:
         # Track DynamoDB failures
         dynamo_failures = {"count": 0}
         original_put_item = mock_dynamo_with_data.put_item
+        original_put_ai_usage_metric = (
+            mock_dynamo_with_data.put_ai_usage_metric
+        )
 
         def failing_put_item(**kwargs):
             dynamo_failures["count"] += 1
@@ -667,8 +677,17 @@ class TestAIUsageSystemIntegration:
                 raise Exception("DynamoDB write throttled")
             return original_put_item(**kwargs)
 
+        def failing_put_ai_usage_metric(metric):
+            dynamo_failures["count"] += 1
+            if dynamo_failures["count"] % 4 == 0:  # Every 4th write fails
+                raise Exception("DynamoDB write throttled")
+            return original_put_ai_usage_metric(metric)
+
         mock_dynamo_with_data.put_item = MagicMock(
             side_effect=failing_put_item
+        )
+        mock_dynamo_with_data.put_ai_usage_metric = MagicMock(
+            side_effect=failing_put_ai_usage_metric
         )
 
         # Create successful API responses
