@@ -25,6 +25,7 @@ from typing import List
 
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -261,7 +262,11 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
         target_word = next(
-            (w for w in words if w.line_id == line_id and w.word_id == word_id),
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
             None,
         )
         if target_word is None:
@@ -282,10 +287,14 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         #    "unvalidated" if none VALID,
         #    "auto_suggested" if ANY PENDING and none VALID,
         #    "validated" if at least one VALID
-        if any(lbl.validation_status == ValidationStatus.VALID.value for lbl in labels):
+        if any(
+            lbl.validation_status == ValidationStatus.VALID.value
+            for lbl in labels
+        ):
             label_status = "validated"
         elif any(
-            lbl.validation_status == ValidationStatus.PENDING.value for lbl in labels
+            lbl.validation_status == ValidationStatus.PENDING.value
+            for lbl in labels
         ):
             label_status = "auto_suggested"
         else:
@@ -300,7 +309,9 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         if auto_suggestions:
             # assume the last‑added pending label is the one your LLM just
             # suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
+                -1
+            ]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -335,8 +346,9 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         height = target_word.bounding_box["height"]
         confidence = target_word.confidence
         # Import locally to avoid circular import
-        from receipt_label.embedding.word.submit import \
-            _format_word_context_embedding_input  # pylint: disable=import-outside-toplevel
+        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
+            _format_word_context_embedding_input,
+        )
 
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)
@@ -406,7 +418,9 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         try:
             if client_manager is None:
                 client_manager = get_client_manager()
-            response = client_manager.pinecone.upsert(vectors=chunk, namespace="words")
+            response = client_manager.pinecone.upsert(
+                vectors=chunk, namespace="words"
+            )
             upserted_count += response.get("upserted_count", 0)
         except Exception as e:
             print(f"Failed to upsert chunk to Pinecone: {e}")
@@ -445,7 +459,11 @@ def write_embedding_results_to_dynamo(
         # Find the ReceiptWord object to get text
         words = descriptions[image_id][receipt_id]["words"]
         target_word = next(
-            (w for w in words if w.line_id == line_id and w.word_id == word_id),
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
             None,
         )
         if target_word is None:

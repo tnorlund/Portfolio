@@ -99,11 +99,17 @@ def extract_best_partial_match(
     text_results = []
 
     for result in partial_results:
-        if result.get("function") == "search_by_phone" and result.get("result"):
+        if result.get("function") == "search_by_phone" and result.get(
+            "result"
+        ):
             phone_results.append(result["result"])
-        elif result.get("function") == "search_by_address" and result.get("result"):
+        elif result.get("function") == "search_by_address" and result.get(
+            "result"
+        ):
             address_results.append(result["result"])
-        elif result.get("function") == "search_by_text" and result.get("result"):
+        elif result.get("function") == "search_by_text" and result.get(
+            "result"
+        ):
             text_results.append(result["result"])
 
     # Check phone results first (most reliable)

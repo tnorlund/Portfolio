@@ -11,7 +11,6 @@ from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
@@ -38,7 +37,8 @@ class ClientConfig:
             pinecone_api_key=os.environ["PINECONE_API_KEY"],
             pinecone_index_name=os.environ["PINECONE_INDEX_NAME"],
             pinecone_host=os.environ["PINECONE_HOST"],
-            track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower() == "true",
+            track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
+            == "true",
             user_id=os.environ.get("USER_ID"),
         )
 

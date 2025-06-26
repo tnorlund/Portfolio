@@ -55,7 +55,9 @@ class MetadataMixin:
 
         self.metadata["processing_metrics"][name] = value
 
-    def set_source_info(self, model: str, version: str = None, **kwargs) -> None:
+    def set_source_info(
+        self, model: str, version: Optional[str] = None, **kwargs: Any
+    ) -> None:
         """
         Set information about the source that generated this analysis.
 
@@ -76,7 +78,7 @@ class MetadataMixin:
         for key, value in kwargs.items():
             self.metadata["source_info"][key] = value
 
-    def add_history_event(self, action: str, details: Dict = None) -> None:
+    def add_history_event(self, action: str, details: Optional[Dict[Any, Any]] = None) -> None:
         """
         Add an event to the processing history.
 
@@ -101,7 +103,7 @@ class MetadataMixin:
         # Update the timestamp_updated field
         self.timestamp_updated = event["timestamp"]
 
-    def update_version(self, new_version: str, reason: str = None) -> None:
+    def update_version(self, new_version: str, reason: Optional[str] = None) -> None:
         """
         Update the version of this analysis.
 
