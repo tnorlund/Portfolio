@@ -193,18 +193,23 @@ class ResilientAIUsageTracker(AIUsageTracker):
     ) -> None:
         """Write batch to DynamoDB with retry logic."""
         last_exception: Optional[Exception] = None
+        remaining_items = (
+            items.copy()
+        )  # Track items that still need to be written
 
         for attempt in range(self.max_retry_attempts):
             try:
-                if len(items) == 1:
-                    # Single item write
-                    self.dynamo_client.put_item(
-                        TableName=self.table_name, Item=items[0]
-                    )
+                if len(remaining_items) == 1:
+                    # Single item write - DynamoClient handles table name internally
+                    self.dynamo_client.put_item(Item=remaining_items[0])
+                    remaining_items = []  # All items processed
                 else:
+                    # Process remaining items in batches
+                    items_to_retry = []
+
                     # Batch write (max 25 items per DynamoDB batch)
-                    for i in range(0, len(items), 25):
-                        batch = items[i : i + 25]
+                    for i in range(0, len(remaining_items), 25):
+                        batch = remaining_items[i : i + 25]
                         request_items = {
                             self.table_name: [
                                 {"PutRequest": {"Item": item}}
@@ -216,15 +221,27 @@ class ResilientAIUsageTracker(AIUsageTracker):
                             RequestItems=request_items
                         )
 
-                        # Handle unprocessed items
+                        # Handle unprocessed items - only retry these specific items
                         unprocessed = response.get("UnprocessedItems", {})
-                        if unprocessed:
-                            # This will trigger a retry
-                            raise Exception(
-                                f"Unprocessed items: {len(unprocessed)}"
-                            )
+                        if unprocessed and self.table_name in unprocessed:
+                            unprocessed_requests = unprocessed[self.table_name]
+                            # Extract the items from the unprocessed requests
+                            for request in unprocessed_requests:
+                                if "PutRequest" in request:
+                                    items_to_retry.append(
+                                        request["PutRequest"]["Item"]
+                                    )
 
-                # Success - return without error
+                    # Update remaining items for next retry
+                    remaining_items = items_to_retry
+
+                    if remaining_items:
+                        # Report the actual number of unprocessed items
+                        raise Exception(
+                            f"Failed to write {len(remaining_items)} items to DynamoDB"
+                        )
+
+                # Success - all items written
                 return
 
             except Exception as e:
@@ -237,7 +254,13 @@ class ResilientAIUsageTracker(AIUsageTracker):
                     time.sleep(delay)
 
         # All attempts exhausted
-        raise last_exception or Exception("Failed to write to DynamoDB")
+        if remaining_items:
+            raise Exception(
+                f"Failed to write {len(remaining_items)} items after {self.max_retry_attempts} attempts. "
+                f"Last error: {last_exception}"
+            )
+        else:
+            raise last_exception or Exception("Failed to write to DynamoDB")
 
     def _batch_write_to_dynamo(self, items: List[Dict[str, Any]]) -> None:
         """Callback for batch queue to write items."""
