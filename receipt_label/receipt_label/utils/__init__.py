@@ -9,6 +9,9 @@ from .address import (
     parse_address,
 )
 from .ai_usage_tracker import AIUsageTracker
+from .ai_usage_tracker_resilient import ResilientAIUsageTracker
+from .batch_queue import BatchQueue
+from .circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from .client_manager import ClientConfig, ClientManager
 from .clients import get_client_manager, get_clients
 from .cost_calculator import AICostCalculator
@@ -21,6 +24,7 @@ from .date import (
     is_valid_time,
     parse_datetime,
 )
+from .retry_with_backoff import RetryManager, retry_with_backoff
 from .validation import (
     validate_address,
     validate_amounts,
@@ -61,6 +65,13 @@ __all__ = [
     # AI cost tracking
     "AICostCalculator",
     "AIUsageTracker",
+    "ResilientAIUsageTracker",
+    # Resilience utilities
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+    "BatchQueue",
+    "retry_with_backoff",
+    "RetryManager",
 ]
 
 

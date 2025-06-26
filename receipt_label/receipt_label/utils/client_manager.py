@@ -11,10 +11,10 @@ from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
+from .ai_usage_tracker_resilient import ResilientAIUsageTracker
 
 
 @dataclass
@@ -28,6 +28,7 @@ class ClientConfig:
     pinecone_host: str
     track_usage: bool = True
     user_id: Optional[str] = None
+    use_resilient_tracker: bool = True
 
     @classmethod
     def from_env(cls) -> "ClientConfig":
@@ -41,6 +42,10 @@ class ClientConfig:
             track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
             == "true",
             user_id=os.environ.get("USER_ID"),
+            use_resilient_tracker=os.environ.get(
+                "USE_RESILIENT_TRACKER", "true"
+            ).lower()
+            == "true",
         )
 
 
@@ -76,14 +81,47 @@ class ClientManager:
     def usage_tracker(self) -> Optional[AIUsageTracker]:
         """Get or create usage tracker."""
         if self.config.track_usage and self._usage_tracker is None:
-            self._usage_tracker = AIUsageTracker(
-                dynamo_client=self.dynamo,
-                table_name=self.config.dynamo_table,
-                user_id=self.config.user_id,
-                track_to_dynamo=True,
-                track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
-                == "true",
+            track_to_file = (
+                os.environ.get("TRACK_TO_FILE", "false").lower() == "true"
             )
+
+            if self.config.use_resilient_tracker:
+                self._usage_tracker = ResilientAIUsageTracker(
+                    dynamo_client=self.dynamo,
+                    table_name=self.config.dynamo_table,
+                    user_id=self.config.user_id,
+                    track_to_dynamo=True,
+                    track_to_file=track_to_file,
+                    # Resilience configuration
+                    circuit_breaker_threshold=int(
+                        os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
+                    ),
+                    circuit_breaker_timeout=float(
+                        os.environ.get("CIRCUIT_BREAKER_TIMEOUT", "30.0")
+                    ),
+                    max_retry_attempts=int(
+                        os.environ.get("MAX_RETRY_ATTEMPTS", "3")
+                    ),
+                    retry_base_delay=float(
+                        os.environ.get("RETRY_BASE_DELAY", "1.0")
+                    ),
+                    batch_size=int(os.environ.get("BATCH_SIZE", "25")),
+                    batch_flush_interval=float(
+                        os.environ.get("BATCH_FLUSH_INTERVAL", "5.0")
+                    ),
+                    enable_batch_processing=os.environ.get(
+                        "ENABLE_BATCH_PROCESSING", "true"
+                    ).lower()
+                    == "true",
+                )
+            else:
+                self._usage_tracker = AIUsageTracker(
+                    dynamo_client=self.dynamo,
+                    table_name=self.config.dynamo_table,
+                    user_id=self.config.user_id,
+                    track_to_dynamo=True,
+                    track_to_file=track_to_file,
+                )
         return self._usage_tracker
 
     @property
