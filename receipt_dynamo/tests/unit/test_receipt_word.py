@@ -1,6 +1,6 @@
 import pytest
 
-from receipt_dynamo import ReceiptWord, itemToReceiptWord
+from receipt_dynamo import ReceiptWord, item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 
 
@@ -29,9 +29,7 @@ def test_receipt_word_init_valid(
 ):
     """Test that a ReceiptWord with valid arguments initializes correctly."""
     assert example_receipt_word.receipt_id == 1
-    assert example_receipt_word.image_id == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_word.image_id == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert example_receipt_word.line_id == 3
     assert example_receipt_word.word_id == 4
     assert example_receipt_word.text == "Test"
@@ -657,9 +655,7 @@ def test_receipt_word_iter(example_receipt_word):
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
-    assert receipt_word_dict["image_id"] == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert receipt_word_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert receipt_word_dict["line_id"] == 3
     assert receipt_word_dict["word_id"] == 4
     assert receipt_word_dict["text"] == "Test"
@@ -713,17 +709,14 @@ def test_receipt_word_distance_and_angle(example_receipt_word):
 @pytest.mark.unit
 def test_item_to_receipt_word_round_trip(example_receipt_word):
     """Test that converting an item to ReceiptWord and back is consistent."""
-    assert (
-        itemToReceiptWord(example_receipt_word.to_item())
-        == example_receipt_word
-    )
+    assert item_to_receipt_word(example_receipt_word.to_item()) == example_receipt_word
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
-        itemToReceiptWord({})
+        item_to_receipt_word({})
     with pytest.raises(
         ValueError,
         match="^Error converting item to ReceiptWord",
     ):
-        itemToReceiptWord(
+        item_to_receipt_word(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},

@@ -1,8 +1,16 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptWord, itemToReceiptWord
+from receipt_dynamo import ReceiptWord, item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -15,31 +23,30 @@ class _ReceiptWord(DynamoClientProtocol):
 
     Methods
     -------
-    addReceiptWord(word: ReceiptWord)
+    add_receipt_word(word: ReceiptWord)
         Adds a single ReceiptWord.
-    addReceiptWords(words: list[ReceiptWord])
+    add_receipt_words(words: list[ReceiptWord])
         Adds multiple ReceiptWords.
-    updateReceiptWord(word: ReceiptWord)
+    update_receipt_word(word: ReceiptWord)
         Updates a ReceiptWord.
-    deleteReceiptWord(receipt_id: int, image_id: str, line_id: int, word_id: int)
+    delete_receipt_word(receipt_id: int, image_id: str, line_id: int, word_id: int)
         Deletes a single ReceiptWord by IDs.
-    deleteReceiptWords(words: list[ReceiptWord])
+    delete_receipt_words(words: list[ReceiptWord])
         Deletes multiple ReceiptWords.
-    deleteReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int)
+    delete_receipt_words_from_line(receipt_id: int, image_id: str, line_id: int)
         Deletes all ReceiptWords from a given line within a receipt/image.
-    getReceiptWord(receipt_id: int, image_id: str, line_id: int, word_id: int) -> ReceiptWord
+    get_receipt_word(receipt_id: int, image_id: str, line_id: int, word_id: int) -> ReceiptWord
         Retrieves a single ReceiptWord by IDs.
-    listReceiptWords() -> list[ReceiptWord]
+    list_receipt_words() -> list[ReceiptWord]
         Returns all ReceiptWords from the table.
-    listReceiptWordsByEmbeddingStatus(embedding_status: EmbeddingStatus) -> list[ReceiptWord]
+    list_receipt_words_by_embedding_status(embedding_status: EmbeddingStatus) -> list[ReceiptWord]
         Returns all ReceiptWords from the table with a given embedding status.
-    listReceiptWordsFromLine(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
+    list_receipt_words_from_line(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
-    listReceiptWordsFromReceipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
-        Returns all ReceiptWords that match the given receipt/image IDs.
-    """
+    list_receipt_words_from_receipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
+        Returns all ReceiptWords that match the given receiptadd_receipt_word  """
 
-    def addReceiptWord(self, word: ReceiptWord):
+    def add_receipt_word(self, word: ReceiptWord):
         """Adds a single ReceiptWord to DynamoDB."""
         if word is None:
             raise ValueError("word parameter is required and cannot be None.")
@@ -57,22 +64,21 @@ class _ReceiptWord(DynamoClientProtocol):
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} already exists"
+                    "ReceiptWord with ID {word.word_id} already exists"
                 )
             elif error_code == "ResourceNotFoundException":
-                raise Exception("Could not add ReceiptWords to DynamoDB: ")
+                raise DynamoDBError("Could not add ReceiptWords to DynamoDB: ") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded")
+                raise DynamoDBThroughputError("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error")
+                raise DynamoDBServerError("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid")
+                raise DynamoDBValidationError("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied")
+                raise DynamoDBAccessError("Access denied") from e
             else:
-                raise Exception("Could not add ReceiptWords to DynamoDB: ")
-
-    def addReceiptWords(self, words: list[ReceiptWord]):
+                raise DynamoDBError("Could not add ReceiptWords to DynamoDB: {e}") from e
+    def add_receipt_words(self, words: list[ReceiptWord]):
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
         if words is None:
             raise ValueError("words parameter is required and cannot be None.")
@@ -100,21 +106,21 @@ class _ReceiptWord(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("already exists")
+                raise ValueError("already exists") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception("Could not add receipt word to DynamoDB")
+                raise DynamoDBError("Could not add receipt word to DynamoDB") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded")
+                raise DynamoDBThroughputError("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error")
+                raise DynamoDBServerError("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid")
+                raise DynamoDBValidationError("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied")
+                raise DynamoDBAccessError("Access denied") from e
             else:
-                raise Exception("Could not add receipt word to DynamoDB")
+                raise DynamoDBError("Could not add receipt word to DynamoDB: {e}") from e
 
-    def updateReceiptWord(self, word: ReceiptWord):
+    def update_receipt_word(self, word: ReceiptWord):
         """Updates an existing ReceiptWord in DynamoDB."""
         try:
             self._client.put_item(
@@ -128,14 +134,12 @@ class _ReceiptWord(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} does not exist"
+                    "ReceiptWord with ID {word.word_id} does not exist"
                 )
             else:
-                raise Exception(
-                    f"Could not update ReceiptWord in the database: {e}"
-                )
+                raise DynamoDBError("Could not update ReceiptWord in the database: {e}") from e
 
-    def updateReceiptWords(self, words: list[ReceiptWord]):
+    def update_receipt_words(self, words: list[ReceiptWord]):
         """Updates multiple existing ReceiptWords in DynamoDB."""
         if words is None:
             raise ValueError("words parameter is required and cannot be None.")
@@ -162,33 +166,19 @@ class _ReceiptWord(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more ReceiptWords do not exist")
+                    raise ValueError("One or more ReceiptWords do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception("Provisioned throughput exceeded")
-                elif error_code == "InternalServerError":
-                    raise Exception("Internal server error")
-                elif error_code == "ValidationException":
-                    raise Exception(
-                        "One or more parameters given were invalid"
-                    )
-                elif error_code == "AccessDeniedException":
-                    raise Exception("Access denied")
-                else:
-                    raise ValueError(
-                        f"Could not update ReceiptWords in the database: {e}"
-                    )
+                    raise DynamoDBThroughputError("Provisioned throughput exceeded") from e
 
-    def deleteReceiptWord(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int
-    ):
+    def delete_receipt_word(self, word: ReceiptWord):
         """Deletes a single ReceiptWord by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
                     },
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -198,11 +188,11 @@ class _ReceiptWord(DynamoClientProtocol):
                 e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"
             ):
-                raise ValueError(f"ReceiptWord with ID {word_id} not found")
+                raise ValueError("ReceiptWord with ID {word_id} not found") from e
             else:
-                raise
+                raise ValueError("Could not delete ReceiptWord from the database")
 
-    def deleteReceiptWords(self, words: list[ReceiptWord]):
+    def delete_receipt_words(self, words: list[ReceiptWord]):
         """Deletes multiple ReceiptWords in batch."""
         try:
             for i in range(0, len(words), CHUNK_SIZE):
@@ -221,17 +211,13 @@ class _ReceiptWord(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
-                f"Could not delete ReceiptWords from the database: {e}"
-            )
-
-    def deleteReceiptWordsFromLine(
+                "Could not delete ReceiptWords from the database: {e}"
+      def delete_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ):
         """Deletes all ReceiptWords from a given line within a receipt/image."""
-        words = self.listReceiptWordsFromLine(receipt_id, image_id, line_id)
-        self.deleteReceiptWords(words)
-
-    def getReceiptWord(
+        words = self.list_receipt_words_from_line(receipt_id, image_id, line_id)
+        self.deleteReceiptWorget_receipt_word def get_receipt_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
@@ -239,17 +225,15 @@ class _ReceiptWord(DynamoClientProtocol):
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
                     },
                 },
             )
-            return itemToReceiptWord(response["Item"])
+            return item_to_receipt_word(response["Item"])
         except KeyError:
-            raise ValueError(f"ReceiptWord with ID {word_id} not found")
-
-    def getReceiptWordsByIndices(
+            raise ValueError("ReceiptWord with ID {word_id} not foundget_receipt_words_by_indicesceiptWordsByIndices(
         self, indices: list[tuple[str, int, int, int]]
     ) -> list[ReceiptWord]:
         """Retrieves multiple ReceiptWords by their indices."""
@@ -284,28 +268,26 @@ class _ReceiptWord(DynamoClientProtocol):
 
         keys = [
             {
-                "PK": {"S": f"IMAGE#{index[0]}"},
+                "PK": {"S": "IMAGE#{index[0]}"},
                 "SK": {
-                    "S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}"
+                    "S": "RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}"
                 },
             }
             for index in indices
         ]
-        return self.getReceiptWordsByKeys(keys)
-
-    def getReceiptWordsByKeys(self, keys: list[dict]) -> list[ReceiptWord]:
+        return self.getReceiptWordsByKget_receipt_words_by_keystReceiptWordsByKeys(self, keys: list[dict]) -> list[ReceiptWord]:
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("Keys must contain 'PK' and 'SK'")
+                raise ValueError("Keys must contain 'PK' and 'SK'") from e
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise ValueError("PK must start with 'IMAGE#'") from e
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'")
+                raise ValueError("SK must start with 'RECEIPT#'") from e
             if not key["SK"]["S"].split("#")[2] == "LINE":
-                raise ValueError("SK must contain 'LINE'")
+                raise ValueError("SK must contain 'LINE'") from e
             if not key["SK"]["S"].split("#")[4] == "WORD":
-                raise ValueError("SK must contain 'WORD'")
+                raise ValueError("SK must contain 'WORD'") from e
         results = []
 
         try:
@@ -341,14 +323,12 @@ class _ReceiptWord(DynamoClientProtocol):
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
 
-            return [itemToReceiptWord(result) for result in results]
+            return [item_to_receipt_word(result) for result in results]
 
         except ClientError as e:
             raise ValueError(
-                f"Could not get ReceiptWords from the database: {e}"
-            )
-
-    def listReceiptWords(
+                "Could not get ReceiptWords from the database: {e}"
+      list_receipt_words list_receipt_words(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords from the table."""
@@ -374,7 +354,7 @@ class _ReceiptWord(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             receipt_words.extend(
-                [itemToReceiptWord(item) for item in response["Items"]]
+                [item_to_receipt_word(item) for item in response["Items"]]
             )
 
             if limit is None:
@@ -385,7 +365,7 @@ class _ReceiptWord(DynamoClientProtocol):
                     ]
                     response = self._client.query(**query_params)
                     receipt_words.extend(
-                        [itemToReceiptWord(item) for item in response["Items"]]
+                        [item_to_receipt_word(item) for item in response["Items"]]
                     )
                 last_evaluated_key = None
             else:
@@ -395,21 +375,17 @@ class _ReceiptWord(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipt words from DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError("Could not list receipt words from DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
+                    "One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError("Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt words: {e}") from e
-
-    def listReceiptWordsFromLine(
+                raise OperationError("Error listing receipt words: {e}") from elist_receipt_words_from_linesFromLine(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given receipt/image/line IDs."""
@@ -420,14 +396,14 @@ class _ReceiptWord(DynamoClientProtocol):
                 KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":pk_val": {"S": "IMAGE#{image_id}"},
                     ":sk_val": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                     },
                 },
             )
             receipt_words.extend(
-                [itemToReceiptWord(item) for item in response["Items"]]
+                [item_to_receipt_word(item) for item in response["Items"]]
             )
 
             while "LastEvaluatedKey" in response:
@@ -436,23 +412,23 @@ class _ReceiptWord(DynamoClientProtocol):
                     KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                        ":pk_val": {"S": "IMAGE#{image_id}"},
                         ":sk_val": {
-                            "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                            "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 receipt_words.extend(
-                    [itemToReceiptWord(item) for item in response["Items"]]
+                    [item_to_receipt_word(item) for item in response["Items"]]
                 )
             return receipt_words
         except ClientError as e:
             raise ValueError(
-                f"Could not list ReceiptWords from the database: {e}"
+                "Could not list ReceiptWords from the database: {e}"
             )
 
-    def listReceiptWordsFromReceipt(
+   list_receipt_words_from_receiptceipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given receipt/image IDs.
@@ -488,10 +464,10 @@ class _ReceiptWord(DynamoClientProtocol):
                 "KeyConditionExpression": "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end",
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                    ":sk_end": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
+                    ":pk_val": {"S": "IMAGE#{image_id}"},
+                    ":sk_start": {"S": "RECEIPT#{receipt_id:05d}#LINE#"},
+                    ":sk_endf": {
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\ufff"
                     },
                 },
             }
@@ -500,7 +476,7 @@ class _ReceiptWord(DynamoClientProtocol):
             response = self._client.query(**query_params)
             receipt_words.extend(
                 [
-                    itemToReceiptWord(item)
+                    item_to_receipt_word(item)
                     for item in response["Items"]
                     if "#WORD#" in item["SK"]["S"]
                     and not item["SK"]["S"].endswith("#TAG#")
@@ -516,7 +492,7 @@ class _ReceiptWord(DynamoClientProtocol):
                 response = self._client.query(**query_params)
                 receipt_words.extend(
                     [
-                        itemToReceiptWord(item)
+                        item_to_receipt_word(item)
                         for item in response["Items"]
                         if "#WORD#" in item["SK"]["S"]
                         and not item["SK"]["S"].endswith("#TAG#")
@@ -529,21 +505,18 @@ class _ReceiptWord(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipt words from DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError("Could not list receipt words from DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
+                    "One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError("Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing receipt words: {e}") from e
-
-    def listReceiptWordsByEmbeddingStatus(
+                raise OperationError("Error listing receipt words: {e}") from e
+    def list_receipt_words_by_embedding_status(
         self, embedding_status: EmbeddingStatus
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given embedding status."""
@@ -561,7 +534,7 @@ class _ReceiptWord(DynamoClientProtocol):
         valid_values = [s.value for s in EmbeddingStatus]
         if status_str not in valid_values:
             raise ValueError(
-                f"embedding_status must be one of: {', '.join(valid_values)}; Got: {status_str}"
+                "embedding_status must be one of: {', '.join(valid_values)}; Got: {status_str}"
             )
         try:
             # Query the GSI1 index on embedding status
@@ -571,12 +544,12 @@ class _ReceiptWord(DynamoClientProtocol):
                 KeyConditionExpression="#gsi1pk = :status",
                 ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
                 ExpressionAttributeValues={
-                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    ":status": {"S": "EMBEDDING_STATUS#{status_str}"}
                 },
             )
             # First page
             for item in response.get("Items", []):
-                receipt_words.append(itemToReceiptWord(item))
+                receipt_words.append(item_to_receipt_word(item))
             # Handle pagination
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -585,14 +558,14 @@ class _ReceiptWord(DynamoClientProtocol):
                     KeyConditionExpression="#gsi1pk = :status",
                     ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
                     ExpressionAttributeValues={
-                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                        ":status": {"S": "EMBEDDING_STATUS#{status_str}"}
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 for item in response.get("Items", []):
-                    receipt_words.append(itemToReceiptWord(item))
+                    receipt_words.append(item_to_receipt_word(item))
             return receipt_words
         except ClientError as e:
             raise ValueError(
-                f"Could not list receipt words by embedding status: {e}"
+                "Could not list receipt words by embedding status: {e}"
             ) from e

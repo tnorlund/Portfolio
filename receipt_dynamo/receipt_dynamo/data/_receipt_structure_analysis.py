@@ -4,9 +4,17 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
     ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
+    item_to_receipt_structure_analysis,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -16,37 +24,37 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
     Methods
     -------
-    addReceiptStructureAnalysis(analysis: ReceiptStructureAnalysis)
+    add_receipt_structure_analysis(analysis: ReceiptStructureAnalysis)
         Adds a ReceiptStructureAnalysis to DynamoDB.
-    addReceiptStructureAnalyses(analyses: list[ReceiptStructureAnalysis])
+    add_receipt_structure_analyses(analyses: list[ReceiptStructureAnalysis])
         Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
-    updateReceiptStructureAnalysis(analysis: ReceiptStructureAnalysis)
+    update_receipt_structure_analysis(analysis: ReceiptStructureAnalysis)
         Updates an existing ReceiptStructureAnalysis in the database.
-    updateReceiptStructureAnalyses(analyses: list[ReceiptStructureAnalysis])
+    update_receipt_structure_analyses(analyses: list[ReceiptStructureAnalysis])
         Updates multiple ReceiptStructureAnalyses in the database.
-    deleteReceiptStructureAnalysis(analysis: ReceiptStructureAnalysis)
+    delete_receipt_structure_analysis(analysis: ReceiptStructureAnalysis)
         Deletes a single ReceiptStructureAnalysis by IDs.
-    deleteReceiptStructureAnalyses(analyses: list[ReceiptStructureAnalysis])
+    delete_receipt_structure_analyses(analyses: list[ReceiptStructureAnalysis])
         Deletes multiple ReceiptStructureAnalyses in batch.
-    getReceiptStructureAnalysis(
+    get_receipt_structure_analysis(
         receipt_id: int,
         image_id: str,
         version: Optional[str] = None
     ) -> ReceiptStructureAnalysis:
         Retrieves a single ReceiptStructureAnalysis by IDs.
-    listReceiptStructureAnalyses(
+    list_receipt_structure_analyses(
         limit: int = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptStructureAnalysis], dict | None]:
         Returns ReceiptStructureAnalyses and the last evaluated key.
-    listReceiptStructureAnalysesFromReceipt(
+    list_receipt_structure_analyses_from_receipt(
         receipt_id: int,
         image_id: str
     ) -> list[ReceiptStructureAnalysis]:
         Returns all ReceiptStructureAnalyses for a given receipt.
     """
 
-    def addReceiptStructureAnalysis(self, analysis: ReceiptStructureAnalysis):
+    def add_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
         """Adds a ReceiptStructureAnalysis to DynamoDB.
 
         Args:
@@ -74,28 +82,20 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} already exists"
+                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not add receipt structure analysis to DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not add receipt structure analysis to DynamoDB"
-                ) from e
-
-    def addReceiptStructureAnalyses(
+                raise DynamoDBError("Could not add receipt structure analysis to Dyndef add_receipt_structure_analyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
@@ -137,35 +137,23 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
-                    raise Exception(
-                        "Failed to process all items after multiple retries"
-                    )
+                    raise DynamoDBError("Failed to process all items after multiple retries")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not add receipt structure analyses to DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not add receipt structure analyses to DynamoDB: Table not found")
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error adding receipt structure analyses"
-                ) from e
+                raise OperationError("Error adding receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not add receipt structure analyses to DynamoDB"
-                ) from e
-
-    def updateReceiptStructureAnalysis(
+                raise DynamoDBError("Could not add receipt structure analyses to Dynamoupdate_receipt_structure_analysisiptStructureAnalysis(
         self, analysis: ReceiptStructureAnalysis
     ):
         """Updates an existing ReceiptStructureAnalysis in the database.
@@ -195,28 +183,20 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
+                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not add receipt structure analysis to DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not update receipt structure analysis in the database"
-                ) from e
-
-    def updateReceiptStructureAnalyses(
+                raise DynamoDBError("Could not update receipt structure analysis in the database"update_receipt_structure_analysesStructureAnalyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Updates multiple ReceiptStructureAnalyses in the database.
@@ -258,23 +238,17 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
-                    raise Exception(
-                        "Failed to process all items after multiple retries"
-                    )
+                    raise DynamoDBError("Failed to process all items after multiple retries")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not update receipt structure analyses in DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not update receipt structure analyses in DynamoDB: Table not found")
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error updating receipt structure analyses"
-                ) from e
+                raise OperationError("Error updating receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
                 # Extract and log more detailed error information
                 error_message = e.response.get("Error", {}).get(
@@ -288,35 +262,29 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     duplicate_keys = []
 
                     for i, a in enumerate(analyses):
-                        key_str = f"PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
+                        key_str = "PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                         if key_str in keys_seen:
                             duplicate_keys.append(
-                                f"Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
+                                "Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
                             )
                         else:
                             keys_seen[key_str] = i
 
                     if duplicate_keys:
-                        detailed_error = f"Validation error with duplicate keys: {error_message}\nDuplicate keys: {duplicate_keys}"
+                        detailed_error = "Validation error with duplicate keys: {error_message}\nDuplicate keys: {duplicate_keys}"
                     else:
-                        detailed_error = f"Validation error possibly with duplicate keys: {error_message}"
+                        detailed_error = "Validation error possibly with duplicate keys: {error_message}"
                 else:
-                    detailed_error = f"Validation error: {error_message}"
+                    detailed_error = "Validation error: {error_message}"
 
                 print(
-                    f"Error in updateReceiptStructureAnalyses: {detailed_error}"
+                    "Error in update_receipt_structure_analyses: {detailed_error}"
                 )
-                raise Exception(
-                    f"One or more parameters given were invalid: {detailed_error}"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid: {detailed_error}")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not update receipt structure analyses in DynamoDB"
-                ) from e
-
-    def deleteReceiptStructureAnalysis(
+                raise DynamoDBError("Could not update receipt structure analyses in DynamoDB") fdelete_receipt_structure_analysisuctureAnalysis(
         self, analysis: ReceiptStructureAnalysis
     ):
         """Deletes a single ReceiptStructureAnalysis by IDs.
@@ -340,9 +308,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{analysis.image_id}"},
+                    "PK": {"S": "IMAGE#{analysis.image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
+                        "S": "RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                     },
                 },
             )
@@ -350,28 +318,20 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
+                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not add receipt structure analysis to DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not delete receipt structure analysis from the database"
-                ) from e
-
-    def deleteReceiptStructureAnalyses(
+                raise DynamoDBError("Could not delete receipt structure analysis from the database") fromdelete_receipt_structure_analysesureAnalyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Deletes multiple ReceiptStructureAnalyses in batch.
@@ -402,9 +362,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     {
                         "DeleteRequest": {
                             "Key": {
-                                "PK": {"S": f"IMAGE#{a.image_id}"},
+                                "PK": {"S": "IMAGE#{a.image_id}"},
                                 "SK": {
-                                    "S": f"RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
+                                    "S": "RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                                 },
                             }
                         }
@@ -423,35 +383,24 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
-                    raise Exception(
-                        "Failed to process all items after multiple retries"
-                    )
+                    raise DynamoDBError("Failed to process all items after multiple retries")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not delete receipt structure analyses from DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not delete receipt structure analyses from DynamoDB: Table not found")
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error deleting receipt structure analyses"
-                ) from e
+                raise OperationError("Error deleting receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not delete receipt structure analyses from DynamoDB"
-                ) from e
-
-    def getReceiptStructureAnalysis(
+                raise DynamoDBError("Could not delete receipt structure analyses from DynamoDB")
+get_receipt_structure_analysisAnalysis(
         self,
         receipt_id: int,
         image_id: str,
@@ -473,15 +422,15 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
+                "image_id must be a string, got {type(image_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(
-                f"version must be a string or None, got {type(version).__name__}"
+                "version must be a string or None, got {type(version).__name__}"
             )
 
         try:
@@ -495,9 +444,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 response = self._client.get_item(
                     TableName=self.table_name,
                     Key={
-                        "PK": {"S": f"IMAGE#{image_id}"},
+                        "PK": {"S": "IMAGE#{image_id}"},
                         "SK": {
-                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}"
+                            "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}"
                         },
                     },
                 )
@@ -506,7 +455,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     raise ValueError(
                         f"No ReceiptStructureAnalysis found for receipt {receipt_id}, image {image_id}, and version {version}"
                     )
-                return itemToReceiptStructureAnalysis(item)
+                return item_to_receipt_structure_analysis(item)
             else:
                 # If no version is provided, query for all analyses and return the first one
                 query_params = {
@@ -517,9 +466,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                         "#sk": "SK",
                     },
                     "ExpressionAttributeValues": {
-                        ":pk": {"S": f"IMAGE#{image_id}"},
+                        ":pk": {"S": "IMAGE#{image_id}"},
                         ":sk_prefix": {
-                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
+                            "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
                         },
                     },
                     "Limit": 1,  # We only need one result
@@ -530,32 +479,25 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
                 if not items:
                     raise ValueError(
-                        f"Receipt Structure Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
+                        "Receipt Structure Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
                     )
 
-                return itemToReceiptStructureAnalysis(items[0])
+                return item_to_receipt_structure_analysis(items[0])
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not get receipt structure analysis from DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not get receipt structure analysis from DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not get receipt structure analysis from the database"
-                ) from e
-
-    def listReceiptStructureAnalyses(
+                raise DynamoDBError("Could not get receipt structure analysis from the database")
+   list_receipt_structure_analyseslyses(
         self,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict[str, Any]] = None,
@@ -598,7 +540,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             response = self._client.query(**query_params)
             structure_analyses.extend(
                 [
-                    itemToReceiptStructureAnalysis(item)
+                    item_to_receipt_structure_analysis(item)
                     for item in response["Items"]
                 ]
             )
@@ -612,7 +554,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     response = self._client.query(**query_params)
                     structure_analyses.extend(
                         [
-                            itemToReceiptStructureAnalysis(item)
+                            item_to_receipt_structure_analysis(item)
                             for item in response["Items"]
                         ]
                     )
@@ -624,25 +566,18 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not list receipt structure analyses from DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not list receipt structure analyses from DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not list receipt structure analyses from the database"
-                ) from e
-
-    def listReceiptStructureAnalysesFromReceipt(
+                raise DynamoDBError("Could not list receipt structure analyses from the database")
+    def list_receipt_structure_analyses_from_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptStructureAnalysis]:
         """Returns all ReceiptStructureAnalyses for a given receipt.
@@ -657,14 +592,14 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         Raises:
             ValueError: If the receipt_id or image_id are invalid.
             Exception: If the ReceiptStructureAnalyses cannot be retrieved from DynamoDB.
-        """
+
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
+                "image_id must be a string, got {type(image_id).__name__}"
             )
 
         try:
@@ -681,16 +616,16 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "#sk": "SK",
                 },
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":pk": {"S": "IMAGE#{image_id}"},
                     ":sk_prefix": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
+                        "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
                     },
                 },
             }
 
             response = self._client.query(**query_params)
             analyses = [
-                itemToReceiptStructureAnalysis(item)
+                item_to_receipt_structure_analysis(item)
                 for item in response["Items"]
             ]
 
@@ -702,7 +637,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 response = self._client.query(**query_params)
                 analyses.extend(
                     [
-                        itemToReceiptStructureAnalysis(item)
+                        item_to_receipt_structure_analysis(item)
                         for item in response["Items"]
                     ]
                 )
@@ -711,20 +646,14 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    "Could not list receipt structure analyses from DynamoDB: Table not found"
-                ) from e
+                raise DynamoDBError("Could not list receipt structure analyses from DynamoDB: Table not found")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception("Provisioned throughput exceeded") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
-                raise Exception("Internal server error") from e
+                raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise DynamoDBValidationError("One or more parameters given were invalid")
             elif error_code == "AccessDeniedException":
-                raise Exception("Access denied") from e
+                raise DynamoDBAccessError("Access denied")
             else:
-                raise Exception(
-                    "Could not list receipt structure analyses for the receipt"
-                ) from e
+                raise DynamoDBError("Could not list receipt structure analyses for the receipt")

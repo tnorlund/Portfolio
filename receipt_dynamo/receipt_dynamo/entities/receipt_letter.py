@@ -169,12 +169,8 @@ class ReceiptLetter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
@@ -419,7 +415,7 @@ class ReceiptLetter:
         self.angle_degrees = angle_radians * 180.0 / pi
 
 
-def itemToReceiptLetter(item: dict) -> ReceiptLetter:
+def item_to_receipt_letter(item: dict) -> ReceiptLetter:
     """
     Converts a DynamoDB item to a ReceiptLetter object.
 
@@ -461,12 +457,10 @@ def itemToReceiptLetter(item: dict) -> ReceiptLetter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

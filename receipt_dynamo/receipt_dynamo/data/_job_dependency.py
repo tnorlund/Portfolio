@@ -5,7 +5,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
-    itemToJobDependency,
+    item_to_job_dependency,
 )
 
 
@@ -16,7 +16,7 @@ class _JobDependency(DynamoClientProtocol):
     This class offers methods to add, get, list, and delete job dependencies.
     """
 
-    def addJobDependency(self, job_dependency: JobDependency):
+    def add_job_dependency(self, job_dependency: JobDependency):
         """Adds a job dependency to the DynamoDB table.
 
         Args:
@@ -40,16 +40,13 @@ class _JobDependency(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} already exists"
                 )
             raise
 
-    def getJobDependency(
+    def get_job_dependency(
         self, dependent_job_id: str, dependency_job_id: str
     ) -> JobDependency:
         """Gets a job dependency from the DynamoDB table.
@@ -66,9 +63,9 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise ValueError("dependent_job_id cannot be None") from e
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise ValueError("dependency_job_id cannot be None") from e
 
         response = self._client.get_item(
             TableName=self.table_name,
@@ -84,9 +81,9 @@ class _JobDependency(DynamoClientProtocol):
                 f"Dependency between {dependent_job_id} and {dependency_job_id} not found"
             )
 
-        return itemToJobDependency(item)
+        return item_to_job_dependency(item)
 
-    def listDependencies(
+    def list_dependencies(
         self,
         dependent_job_id: str,
         limit: Optional[int] = None,
@@ -108,7 +105,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise ValueError("dependent_job_id cannot be None") from e
 
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
@@ -135,13 +132,13 @@ class _JobDependency(DynamoClientProtocol):
 
         # Process results
         job_dependencies = [
-            itemToJobDependency(item) for item in response.get("Items", [])
+            item_to_job_dependency(item) for item in response.get("Items", [])
         ]
         last_evaluated_key = response.get("LastEvaluatedKey")
 
         return job_dependencies, last_evaluated_key
 
-    def listDependents(
+    def list_dependents(
         self,
         dependency_job_id: str,
         limit: Optional[int] = None,
@@ -163,13 +160,11 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise ValueError("dependency_job_id cannot be None") from e
 
         # Prepare index query parameters
         index_name = "GSI2"
-        key_condition_expression = (
-            "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
-        )
+        key_condition_expression = "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
         expression_attribute_values = {
             ":pk": {"S": "DEPENDENCY"},
             ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
@@ -194,13 +189,13 @@ class _JobDependency(DynamoClientProtocol):
 
         # Process results
         job_dependencies = [
-            itemToJobDependency(item) for item in response.get("Items", [])
+            item_to_job_dependency(item) for item in response.get("Items", [])
         ]
         last_evaluated_key = response.get("LastEvaluatedKey")
 
         return job_dependencies, last_evaluated_key
 
-    def deleteJobDependency(self, job_dependency: JobDependency):
+    def delete_job_dependency(self, job_dependency: JobDependency):
         """Deletes a job dependency from the DynamoDB table.
 
         Args:
@@ -211,7 +206,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_dependency is None:
-            raise ValueError("job_dependency cannot be None")
+            raise ValueError("job_dependency cannot be None") from e
         if not isinstance(job_dependency, JobDependency):
             raise ValueError(
                 f"job_dependency must be a JobDependency instance, got {type(job_dependency)}"
@@ -222,23 +217,18 @@ class _JobDependency(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"JOB#{job_dependency.dependent_job_id}"},
-                    "SK": {
-                        "S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"
-                    },
+                    "SK": {"S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"},
                 },
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} not found"
                 )
             raise
 
-    def deleteAllDependencies(self, dependent_job_id: str):
+    def delete_all_dependencies(self, dependent_job_id: str):
         """Deletes all dependencies for a specific job.
 
         Args:
@@ -249,10 +239,10 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise ValueError("dependent_job_id cannot be None") from e
 
         # First, get all dependencies for the job
-        dependencies, _ = self.listDependencies(dependent_job_id)
+        dependencies, _ = self.list_dependencies(dependent_job_id)
 
         # If there are no dependencies, we're done
         if not dependencies:
@@ -269,9 +259,7 @@ class _JobDependency(DynamoClientProtocol):
                         "DeleteRequest": {
                             "Key": {
                                 "PK": {"S": f"JOB#{dep.dependent_job_id}"},
-                                "SK": {
-                                    "S": f"DEPENDS_ON#{dep.dependency_job_id}"
-                                },
+                                "SK": {"S": f"DEPENDS_ON#{dep.dependency_job_id}"},
                             }
                         }
                     }
@@ -279,9 +267,7 @@ class _JobDependency(DynamoClientProtocol):
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -290,9 +276,7 @@ class _JobDependency(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:

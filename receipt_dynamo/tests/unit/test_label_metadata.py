@@ -5,7 +5,7 @@ import pytest
 from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.label_metadata import (
     LabelMetadata,
-    itemToLabelMetadata,
+    item_to_label_metadata,
 )
 
 
@@ -79,7 +79,7 @@ def test_label_metadata_valid(example_label_metadata):
 
 def test_label_metadata_roundtrip(example_label_metadata):
     item = example_label_metadata.to_item()
-    restored = itemToLabelMetadata(item)
+    restored = item_to_label_metadata(item)
     assert restored.label == example_label_metadata.label
     assert restored.status == example_label_metadata.status
     assert restored.aliases == example_label_metadata.aliases
@@ -100,10 +100,8 @@ def test_label_metadata_deserialization_invalid_date_format():
         "schema_version": {"N": "1"},
         "last_updated": {"S": "not-a-date"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to LabelMetadata"
-    ):
-        itemToLabelMetadata(item)
+    with pytest.raises(ValueError, match="Error converting item to LabelMetadata"):
+        item_to_label_metadata(item)
 
 
 def test_label_metadata_missing_keys_in_itemToLabelMetadata():
@@ -113,7 +111,7 @@ def test_label_metadata_missing_keys_in_itemToLabelMetadata():
         # missing required keys like status, aliases
     }
     with pytest.raises(ValueError, match="missing keys"):
-        itemToLabelMetadata(item)
+        item_to_label_metadata(item)
 
 
 # Representation Tests

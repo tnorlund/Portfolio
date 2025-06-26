@@ -1,8 +1,8 @@
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.queue_job import QueueJob, itemToQueueJob
-from receipt_dynamo.entities.rwl_queue import Queue, itemToQueue
+from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
+from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
@@ -22,9 +22,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
         raise ValueError("LastEvaluatedKey must contain PK and SK")
 
     # Check if the values are in the correct format
-    if not all(
-        isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]
-    ):
+    if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
         raise ValueError(
             "LastEvaluatedKey values must be in DynamoDB format with 'S' attribute"
         )
@@ -33,7 +31,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 class _Queue(DynamoClientProtocol):
     """Queue-related operations for the DynamoDB client."""
 
-    def addQueue(self, queue: Queue) -> None:
+    def add_queue(self, queue: Queue) -> None:
         """Adds a queue to the DynamoDB table.
 
         Args:
@@ -61,17 +59,14 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(f"Queue {queue.queue_name} already exists")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Queue {queue.queue_name} already exists") from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
                 raise
 
-    def addQueues(self, queues: list[Queue]) -> None:
+    def add_queues(self, queues: list[Queue]) -> None:
         """Adds multiple queues to the DynamoDB table.
 
         Args:
@@ -82,7 +77,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queues is None:
-            raise ValueError("queues cannot be None")
+            raise ValueError("queues cannot be None") from e
 
         if not isinstance(queues, list):
             raise ValueError("queues must be a list")
@@ -100,39 +95,29 @@ class _Queue(DynamoClientProtocol):
             # Prepare the batch request
             request_items = {
                 self.table_name: [
-                    {"PutRequest": {"Item": queue.to_item()}}
-                    for queue in queues
+                    {"PutRequest": {"Item": queue.to_item()}} for queue in queues
                 ]
             }
 
             # Execute the batch write and handle unprocessed items
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Check for unprocessed items and retry them
             unprocessed_items = response.get("UnprocessedItems", {})
 
-            while unprocessed_items and unprocessed_items.get(
-                self.table_name, []
-            ):
+            while unprocessed_items and unprocessed_items.get(self.table_name, []):
                 # Wait a moment before retrying
                 import time
 
                 time.sleep(0.5)
 
                 # Retry the unprocessed items
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
         except ClientError as e:
             # Handle different types of ClientError
-            if (
-                e.response["Error"]["Code"]
-                == "ProvisionedThroughputExceededException"
-            ):
+            if e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
                 raise ClientError(
                     e.response,
                     "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff",
@@ -159,7 +144,7 @@ class _Queue(DynamoClientProtocol):
                     f"Error batch writing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
                 )
 
-    def updateQueue(self, queue: Queue) -> None:
+    def update_queue(self, queue: Queue) -> None:
         """Updates a queue in the DynamoDB table.
 
         Args:
@@ -170,7 +155,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue is None:
-            raise ValueError("queue cannot be None")
+            raise ValueError("queue cannot be None") from e
 
         if not isinstance(queue, Queue):
             raise ValueError("queue must be an instance of Queue")
@@ -187,17 +172,14 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(f"Queue {queue.queue_name} does not exist")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Queue {queue.queue_name} does not exist") from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
                 raise
 
-    def deleteQueue(self, queue: Queue) -> None:
+    def delete_queue(self, queue: Queue) -> None:
         """Deletes a queue from the DynamoDB table.
 
         Args:
@@ -208,7 +190,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue is None:
-            raise ValueError("queue cannot be None")
+            raise ValueError("queue cannot be None") from e
 
         if not isinstance(queue, Queue):
             raise ValueError("queue must be an instance of Queue")
@@ -222,17 +204,14 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(f"Queue {queue.queue_name} does not exist")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Queue {queue.queue_name} does not exist") from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
                 raise
 
-    def getQueue(self, queue_name: str) -> Queue:
+    def get_queue(self, queue_name: str) -> Queue:
         """Gets a queue from the DynamoDB table.
 
         Args:
@@ -246,7 +225,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty")
+            raise ValueError("queue_name cannot be empty") from e
 
         try:
             # Get the item from the DynamoDB table
@@ -257,10 +236,10 @@ class _Queue(DynamoClientProtocol):
 
             # Check if the item exists
             if "Item" not in response:
-                raise ValueError(f"Queue {queue_name} not found")
+                raise ValueError(f"Queue {queue_name} not found") from e
 
             # Convert the DynamoDB item to a Queue object
-            return itemToQueue(response["Item"])
+            return item_to_queue(response["Item"])
 
         except ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -277,7 +256,7 @@ class _Queue(DynamoClientProtocol):
                 # Re-raise other types of ClientError
                 raise
 
-    def listQueues(
+    def list_queues(
         self, limit: int = None, lastEvaluatedKey: dict = None
     ) -> tuple[list[Queue], dict]:
         """Lists all queues in the DynamoDB table.
@@ -316,7 +295,7 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to Queue objects
-            queues = [itemToQueue(item) for item in response.get("Items", [])]
+            queues = [item_to_queue(item) for item in response.get("Items", [])]
 
             # Return the queues and the LastEvaluatedKey for pagination
             return queues, response.get("LastEvaluatedKey")
@@ -335,7 +314,7 @@ class _Queue(DynamoClientProtocol):
                     f"Error listing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
                 )
 
-    def addJobToQueue(self, queue_job: QueueJob) -> None:
+    def add_job_to_queue(self, queue_job: QueueJob) -> None:
         """Adds a job to a queue in the DynamoDB table.
 
         Args:
@@ -346,7 +325,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue_job is None:
-            raise ValueError("queue_job cannot be None")
+            raise ValueError("queue_job cannot be None") from e
 
         if not isinstance(queue_job, QueueJob):
             raise ValueError("queue_job must be an instance of QueueJob")
@@ -364,15 +343,12 @@ class _Queue(DynamoClientProtocol):
             )
 
             # Update the job count for the queue
-            queue = self.getQueue(queue_job.queue_name)
+            queue = self.get_queue(queue_job.queue_name)
             queue.job_count += 1
-            self.updateQueue(queue)
+            self.update_queue(queue)
 
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job {queue_job.job_id} is already in queue {queue_job.queue_name}"
                 )
@@ -381,7 +357,7 @@ class _Queue(DynamoClientProtocol):
                 # issues
                 raise
 
-    def removeJobFromQueue(self, queue_job: QueueJob) -> None:
+    def remove_job_from_queue(self, queue_job: QueueJob) -> None:
         """Removes a job from a queue in the DynamoDB table.
 
         Args:
@@ -392,7 +368,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue_job is None:
-            raise ValueError("queue_job cannot be None")
+            raise ValueError("queue_job cannot be None") from e
 
         if not isinstance(queue_job, QueueJob):
             raise ValueError("queue_job must be an instance of QueueJob")
@@ -407,17 +383,14 @@ class _Queue(DynamoClientProtocol):
             )
 
             # Update the job count for the queue
-            queue = self.getQueue(queue_job.queue_name)
+            queue = self.get_queue(queue_job.queue_name)
             queue.job_count = max(
                 0, queue.job_count - 1
             )  # Ensure job_count doesn't go below 0
-            self.updateQueue(queue)
+            self.update_queue(queue)
 
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job {queue_job.job_id} is not in queue {queue_job.queue_name}"
                 )
@@ -426,7 +399,7 @@ class _Queue(DynamoClientProtocol):
                 # issues
                 raise
 
-    def listJobsInQueue(
+    def list_jobs_in_queue(
         self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None
     ) -> tuple[list[QueueJob], dict]:
         """Lists all jobs in a queue in the DynamoDB table.
@@ -444,11 +417,11 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty")
+            raise ValueError("queue_name cannot be empty") from e
 
         # Check if the queue exists
         try:
-            self.getQueue(queue_name)
+            self.get_queue(queue_name)
         except ValueError as e:
             raise e
 
@@ -477,9 +450,7 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [
-                itemToQueueJob(item) for item in response.get("Items", [])
-            ]
+            queue_jobs = [item_to_queue_job(item) for item in response.get("Items", [])]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")
@@ -498,7 +469,7 @@ class _Queue(DynamoClientProtocol):
                     f"Error listing jobs in queue: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
                 )
 
-    def findQueuesForJob(
+    def find_queues_for_job(
         self, job_id: str, limit: int = None, lastEvaluatedKey: dict = None
     ) -> tuple[list[QueueJob], dict]:
         """Finds all queues that contain a specific job.
@@ -516,7 +487,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not job_id:
-            raise ValueError("job_id cannot be empty")
+            raise ValueError("job_id cannot be empty") from e
 
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
@@ -544,9 +515,7 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [
-                itemToQueueJob(item) for item in response.get("Items", [])
-            ]
+            queue_jobs = [item_to_queue_job(item) for item in response.get("Items", [])]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")
