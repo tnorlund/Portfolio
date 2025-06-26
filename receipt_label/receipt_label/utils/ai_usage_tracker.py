@@ -148,15 +148,21 @@ class AIUsageTracker:
         if self.track_to_dynamo and self.dynamo_client:
             try:
                 # Use high-level DynamoClient method if available
-                # Check if this is a real DynamoDB client (from receipt_dynamo) or a Mock
+                # Check if this is a real DynamoDB client or a properly spec'd Mock
                 client_module = getattr(type(self.dynamo_client), '__module__', '')
                 is_real_dynamo_client = 'receipt_dynamo' in client_module
                 
-                if hasattr(self.dynamo_client, "put_ai_usage_metric") and is_real_dynamo_client:
-                    # Real DynamoDB client - use the high-level method
+                # Check if it's a Mock with DynamoDB-related spec
+                is_dynamo_mock = False
+                if hasattr(self.dynamo_client, '_spec_class'):
+                    spec_name = getattr(self.dynamo_client._spec_class, '__name__', '')
+                    is_dynamo_mock = 'DynamoClient' in spec_name or 'ResilientDynamoClient' in spec_name
+                
+                if hasattr(self.dynamo_client, "put_ai_usage_metric") and (is_real_dynamo_client or is_dynamo_mock):
+                    # Real DynamoDB client or properly mocked DynamoDB client - use the high-level method
                     self.dynamo_client.put_ai_usage_metric(metric)
                 else:
-                    # Mock or fallback client - use put_item for test compatibility
+                    # Basic Mock or fallback client - use put_item for test compatibility
                     item = metric.to_dynamodb_item()
                     self.dynamo_client.put_item(TableName=self.table_name, Item=item)
             except Exception as e:
