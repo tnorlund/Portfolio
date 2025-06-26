@@ -2,6 +2,7 @@
 AI Usage Tracker - Decorator and middleware for tracking AI service usage and costs.
 """
 
+import inspect
 import json
 import os
 import time
@@ -21,6 +22,36 @@ from .environment_config import (
     Environment,
     EnvironmentConfig,
 )
+
+
+def _supports_put_ai_usage_metric(obj: Any) -> bool:
+    """
+    Return True **only** when the object really provides a callable
+    `put_ai_usage_metric`, i.e. when it is implemented on the class or
+    has been explicitly set on the instance.
+    
+    Works for:
+      - real DynamoClient instances
+      - MagicMock(spec=DynamoClient)
+    
+    Returns False for:
+      - plain Mock() / MagicMock() without spec
+      - any object where the attribute is missing
+    """
+    # First try getattr_static for real objects
+    try:
+        attr = inspect.getattr_static(obj, "put_ai_usage_metric")
+        if callable(attr):
+            return True
+    except AttributeError:
+        pass
+
+    # For spec'd mocks, check if they have _spec_class and the method is in spec
+    if hasattr(obj, '_spec_class') and obj._spec_class is not None:
+        # This is a spec'd mock, check if the method is in the spec
+        return hasattr(obj._spec_class, 'put_ai_usage_metric')
+    
+    return False
 
 
 class AIUsageTracker:
@@ -147,23 +178,13 @@ class AIUsageTracker:
         """Store metric in DynamoDB and/or file."""
         if self.track_to_dynamo and self.dynamo_client:
             try:
-                # Prepare item for DynamoDB
                 item = metric.to_dynamodb_item()
 
-                # Check if this is a basic Mock without spec
-                # Basic mocks have _spec_class = None
-                is_basic_mock = (
-                    hasattr(self.dynamo_client, "_spec_class")
-                    and self.dynamo_client._spec_class is None
-                )
-
-                # Use put_ai_usage_metric for real clients and spec'd mocks
-                if not is_basic_mock and hasattr(
-                    self.dynamo_client, "put_ai_usage_metric"
-                ):
+                if _supports_put_ai_usage_metric(self.dynamo_client):
+                    # Real client or spec'd MagicMock → high-level method
                     self.dynamo_client.put_ai_usage_metric(metric)
                 else:
-                    # Standard DynamoDB put_item call (for basic mocks)
+                    # Basic Mock or minimalist stub → vanilla put_item path
                     self.dynamo_client.put_item(
                         TableName=self.table_name, Item=item
                     )
