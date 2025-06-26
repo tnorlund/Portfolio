@@ -9,10 +9,13 @@ from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.environment_config import Environment, EnvironmentConfig
+from receipt_label.utils.environment_config import (
+    Environment,
+    EnvironmentConfig,
+)
 
 
 class TestAIUsageTrackerEnvironmentIntegration:
@@ -26,7 +29,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 table_name="AIUsageMetrics", validate_table_environment=False
             )
 
-            assert tracker.environment_config.environment == Environment.STAGING
+            assert (
+                tracker.environment_config.environment == Environment.STAGING
+            )
             assert tracker.table_name == "AIUsageMetrics"  # Used as-is
             assert not tracker.environment_config.require_context
 
@@ -36,8 +41,12 @@ class TestAIUsageTrackerEnvironmentIntegration:
             # When table_name is None, auto-generate with environment suffix
             tracker = AIUsageTracker.create_for_environment()
 
-            assert tracker.environment_config.environment == Environment.STAGING
-            assert tracker.table_name == "AIUsageMetrics-staging"  # Auto-generated
+            assert (
+                tracker.environment_config.environment == Environment.STAGING
+            )
+            assert (
+                tracker.table_name == "AIUsageMetrics-staging"
+            )  # Auto-generated
             assert not tracker.environment_config.require_context
 
     def test_tracker_creation_with_explicit_environment(self):
@@ -54,14 +63,16 @@ class TestAIUsageTrackerEnvironmentIntegration:
         """Test that tracker validates environment isolation on creation."""
         # This should work - staging environment with staging table
         tracker = AIUsageTracker(
-            table_name="AIUsageMetrics-staging", environment=Environment.STAGING
+            table_name="AIUsageMetrics-staging",
+            environment=Environment.STAGING,
         )
         assert tracker.table_name == "AIUsageMetrics-staging"
 
         # This should fail - production environment with staging table
         with pytest.raises(ValueError, match="does not match environment"):
             AIUsageTracker(
-                table_name="AIUsageMetrics-staging", environment=Environment.PRODUCTION
+                table_name="AIUsageMetrics-staging",
+                environment=Environment.PRODUCTION,
             )
 
     def test_production_table_name_no_suffix(self):
@@ -74,7 +85,8 @@ class TestAIUsageTrackerEnvironmentIntegration:
     def test_non_production_table_name_with_auto_generation(self):
         """Test that non-production environments add table suffix when auto-generating."""
         tracker = AIUsageTracker(
-            environment=Environment.DEVELOPMENT, table_name=None  # Will auto-generate
+            environment=Environment.DEVELOPMENT,
+            table_name=None,  # Will auto-generate
         )
         assert tracker.table_name == "AIUsageMetrics-development"
 
@@ -192,7 +204,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
         import json
         import tempfile
 
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".jsonl") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w+", delete=False, suffix=".jsonl"
+        ) as f:
             log_file = f.name
 
         try:
@@ -242,13 +256,15 @@ class TestAIUsageTrackerEnvironmentErrorHandling:
         # Production environment should not accept staging table
         with pytest.raises(ValueError, match="does not match environment"):
             AIUsageTracker(
-                table_name="AIUsageMetrics-staging", environment=Environment.PRODUCTION
+                table_name="AIUsageMetrics-staging",
+                environment=Environment.PRODUCTION,
             )
 
         # Staging environment should not accept development table
         with pytest.raises(ValueError, match="does not match environment"):
             AIUsageTracker(
-                table_name="AIUsageMetrics-development", environment=Environment.STAGING
+                table_name="AIUsageMetrics-development",
+                environment=Environment.STAGING,
             )
 
     def test_production_require_context_behavior(self):
@@ -276,7 +292,10 @@ class TestMetricEnvironmentIntegration:
 
     def test_metric_creation_without_environment_field(self):
         """Test creating metrics without environment field (environment stored in metadata)."""
-        metadata = {"environment": "production", "service": "receipt-processing"}
+        metadata = {
+            "environment": "production",
+            "service": "receipt-processing",
+        }
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
@@ -309,7 +328,9 @@ class TestMetricEnvironmentIntegration:
         metadata_map = item["metadata"]["M"]
         assert metadata_map["environment"]["S"] == "staging"
 
-    def test_metric_dynamodb_deserialization_with_environment_in_metadata(self):
+    def test_metric_dynamodb_deserialization_with_environment_in_metadata(
+        self,
+    ):
         """Test that environment field is properly deserialized from DynamoDB metadata."""
         # Create a DynamoDB item with environment in metadata
         metadata = {"environment": "staging", "service": "receipt-processing"}
@@ -330,7 +351,12 @@ class TestMetricEnvironmentIntegration:
             "date": {"S": "2023-01-01"},
             "month": {"S": "2023-01"},
             "hour": {"S": "2023-01-01-00"},
-            "metadata": {"M": {"environment": {"S": "staging"}, "service": {"S": "receipt-processing"}}},
+            "metadata": {
+                "M": {
+                    "environment": {"S": "staging"},
+                    "service": {"S": "receipt-processing"},
+                }
+            },
             "inputTokens": {"N": "100"},
             "outputTokens": {"N": "50"},
             "costUSD": {"N": "0.001"},
@@ -364,10 +390,17 @@ class TestTrackerFactoryMethods:
 
     def test_create_for_environment_with_auto_detection(self):
         """Test create_for_environment with auto-detection."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
-            tracker = AIUsageTracker.create_for_environment(table_name="AIUsageMetrics")
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "production"}, clear=False
+        ):
+            tracker = AIUsageTracker.create_for_environment(
+                table_name="AIUsageMetrics"
+            )
 
-            assert tracker.environment_config.environment == Environment.PRODUCTION
+            assert (
+                tracker.environment_config.environment
+                == Environment.PRODUCTION
+            )
             assert tracker.table_name == "AIUsageMetrics"
 
     def test_create_for_environment_with_explicit_environment(self):

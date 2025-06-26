@@ -12,19 +12,17 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from freezegun import freeze_time
 from openai import OpenAI
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
     create_test_tracking_context,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.mark.unit
@@ -59,7 +57,9 @@ class TestAIUsageTrackerInitialization:
         tracker = AIUsageTracker()
 
         assert tracker.dynamo_client is None
-        assert tracker.table_name == "AIUsageMetrics-development"  # Auto-generated with environment suffix
+        assert (
+            tracker.table_name == "AIUsageMetrics-development"
+        )  # Auto-generated with environment suffix
         assert tracker.user_id == "default"
         assert (
             tracker.track_to_dynamo is False
@@ -77,7 +77,9 @@ class TestAIUsageTrackerInitialization:
             },
         ):
             tracker = AIUsageTracker()
-            assert tracker.table_name == "env-table-development"  # Environment suffix added
+            assert (
+                tracker.table_name == "env-table-development"
+            )  # Environment suffix added
             assert tracker.user_id == "env-user"
 
     def test_track_to_dynamo_requires_client(self):
@@ -265,7 +267,7 @@ class TestAIUsageTrackerStorage:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
+                validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file,
@@ -1410,7 +1412,7 @@ class TestBackendFallback:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
+                validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file,

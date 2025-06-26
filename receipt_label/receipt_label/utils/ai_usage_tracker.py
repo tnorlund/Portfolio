@@ -315,7 +315,8 @@ class AIUsageTracker:
                         cost_usd = AICostCalculator.calculate_openai_cost(
                             model=model,
                             total_tokens=total_tokens,
-                            is_batch=kwargs.get("is_batch", False),
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
