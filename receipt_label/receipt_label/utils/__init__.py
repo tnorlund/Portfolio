@@ -2,11 +2,6 @@
 
 import importlib.metadata
 
-# Import resilience patterns from receipt_dynamo (moved from receipt_label)
-from receipt_dynamo.utils.batch_queue import BatchQueue
-from receipt_dynamo.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
-from receipt_dynamo.utils.retry_with_backoff import RetryManager, retry_with_backoff
-
 from .address import (
     compare_addresses,
     format_address,
@@ -68,12 +63,6 @@ __all__ = [
     "AICostCalculator",
     "AIUsageTracker",
     "ResilientAIUsageTracker",
-    # Resilience utilities
-    "CircuitBreaker",
-    "CircuitBreakerOpenError",
-    "BatchQueue",
-    "retry_with_backoff",
-    "RetryManager",
 ]
 
 
