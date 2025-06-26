@@ -15,16 +15,18 @@ help:
 	@echo "  make clean           - Clean up temporary files"
 
 format:
+	@echo "Installing latest formatters to match CI..."
+	pip install --upgrade black isort
 	@echo "Running Black formatter..."
-	black receipt_dynamo receipt_label infra
+	black .
 	@echo "Running isort..."
-	isort receipt_dynamo receipt_label infra
+	isort .
 
 lint-format:
 	@echo "Checking Black formatting..."
-	black --check receipt_dynamo receipt_label infra
+	black --check .
 	@echo "Checking import sorting..."
-	isort --check-only receipt_dynamo receipt_label infra
+	isort --check-only .
 
 lint-types:
 	@echo "Running mypy type checking..."

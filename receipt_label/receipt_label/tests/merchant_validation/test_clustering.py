@@ -15,6 +15,7 @@ from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_dynamo.entities import ReceiptMetadata
 
 
@@ -98,9 +99,7 @@ def test_cluster_by_metadata_groups_similar_records() -> None:
     cluster_sets = {frozenset(cluster_ids) for cluster_ids in result}
     expected_sets = {frozenset([1, 2, 3]), frozenset([4, 5])}
 
-    assert (
-        cluster_sets == expected_sets
-    ), f"Unexpected clustering result: {result}"
+    assert cluster_sets == expected_sets, f"Unexpected clustering result: {result}"
     assert len(clusters) == 2, f"Expected 2 clusters but got {len(clusters)}"
 
 
@@ -122,26 +121,16 @@ def test_cluster_single_record() -> None:
 def test_cluster_no_similarity() -> None:
     """Records with no similarity should form separate clusters."""
     records = [
-        _build_metadata(
-            1, name="McDonalds", address="100 A St", phone="111-111-1111"
-        ),
-        _build_metadata(
-            2, name="Pizza Hut", address="200 B St", phone="222-222-2222"
-        ),
-        _build_metadata(
-            3, name="Subway", address="300 C St", phone="333-333-3333"
-        ),
+        _build_metadata(1, name="McDonalds", address="100 A St", phone="111-111-1111"),
+        _build_metadata(2, name="Pizza Hut", address="200 B St", phone="222-222-2222"),
+        _build_metadata(3, name="Subway", address="300 C St", phone="333-333-3333"),
     ]
 
     clusters = cluster_by_metadata(records)
 
-    assert (
-        len(clusters) == 3
-    ), "Each dissimilar record should form its own cluster"
+    assert len(clusters) == 3, "Each dissimilar record should form its own cluster"
     for cluster in clusters:
-        assert (
-            len(cluster) == 1
-        ), "Each cluster should contain exactly one record"
+        assert len(cluster) == 1, "Each cluster should contain exactly one record"
 
 
 def test_cluster_by_place_id_takes_precedence() -> None:
@@ -165,9 +154,7 @@ def test_cluster_by_place_id_takes_precedence() -> None:
 
     clusters = cluster_by_metadata(records)
 
-    assert (
-        len(clusters) == 1
-    ), "Records with same place_id should cluster together"
+    assert len(clusters) == 1, "Records with same place_id should cluster together"
     assert len(clusters[0]) == 2, "Both records should be in the same cluster"
 
 
@@ -188,9 +175,7 @@ def test_cluster_partial_similarity() -> None:
             phone="555-9999",  # Different phone
         ),
         # This should be separate - completely different
-        _build_metadata(
-            3, name="Target", address="5678 Broadway", phone="555-5678"
-        ),
+        _build_metadata(3, name="Target", address="5678 Broadway", phone="555-5678"),
     ]
 
     clusters = cluster_by_metadata(records)
@@ -200,9 +185,7 @@ def test_cluster_partial_similarity() -> None:
     walmart_cluster = next(c for c in result if 1 in c)
     target_cluster = next(c for c in result if 3 in c)
 
-    assert (
-        2 in walmart_cluster
-    ), "Similar Walmart records should cluster together"
+    assert 2 in walmart_cluster, "Similar Walmart records should cluster together"
     assert (
         walmart_cluster != target_cluster
     ), "Walmart and Target should be in different clusters"
@@ -229,9 +212,7 @@ def test_cluster_with_missing_fields() -> None:
             4, name="Costa Coffee", address="", phone="555-5678"  # No address
         ),
         # Different merchant entirely
-        _build_metadata(
-            5, name="Dunkin", address="789 Oak St", phone="555-9999"
-        ),
+        _build_metadata(5, name="Dunkin", address="789 Oak St", phone="555-9999"),
     ]
 
     clusters = cluster_by_metadata(records)
@@ -247,9 +228,7 @@ def test_cluster_with_missing_fields() -> None:
     ), "Starbucks records should cluster based on name and address"
 
     # Costa records should cluster (same name + same phone)
-    assert (
-        4 in costa_cluster
-    ), "Costa records should cluster based on name and phone"
+    assert 4 in costa_cluster, "Costa records should cluster based on name and phone"
 
     # Different merchants should be in different clusters
     assert 5 not in starbucks_cluster and 5 not in costa_cluster
@@ -266,9 +245,7 @@ def test_cluster_phone_number_variations() -> None:
 
     clusters = cluster_by_metadata(records)
 
-    assert (
-        len(clusters) == 1
-    ), "All phone number variations should cluster together"
+    assert len(clusters) == 1, "All phone number variations should cluster together"
     assert len(clusters[0]) == 4, "All records should be in the same cluster"
 
 
@@ -278,9 +255,7 @@ def test_cluster_address_variations() -> None:
         _build_metadata(1, name="Target", address="123 Main Street"),
         _build_metadata(2, name="Target", address="123 Main St"),
         _build_metadata(3, name="Target", address="123 Main St."),
-        _build_metadata(
-            4, name="Target", address="123 MAIN STREET"
-        ),  # Case variation
+        _build_metadata(4, name="Target", address="123 MAIN STREET"),  # Case variation
     ]
 
     clusters = cluster_by_metadata(records)
@@ -351,17 +326,13 @@ def test_cluster_large_dataset_performance() -> None:
     ]
 
     for i, (name, addr, phone) in enumerate(distinct_merchants):
-        records.append(
-            _build_metadata(16 + i, name=name, address=addr, phone=phone)
-        )
+        records.append(_build_metadata(16 + i, name=name, address=addr, phone=phone))
 
     # Total: 20 records that should form 8 clusters
     clusters = cluster_by_metadata(records)
 
     # Should have 8 clusters: 3 groups + 5 singles
-    assert (
-        7 <= len(clusters) <= 9
-    ), f"Expected ~8 clusters but got {len(clusters)}"
+    assert 7 <= len(clusters) <= 9, f"Expected ~8 clusters but got {len(clusters)}"
 
     # Verify all records are accounted for
     all_ids = []
@@ -373,7 +344,5 @@ def test_cluster_large_dataset_performance() -> None:
     # Verify the three main groups clustered correctly
     cluster_sizes = sorted([len(c) for c in clusters], reverse=True)
     assert cluster_sizes[0] == 5, "Largest cluster should have 5 records"
-    assert (
-        cluster_sizes[1] == 5
-    ), "Second largest cluster should have 5 records"
+    assert cluster_sizes[1] == 5, "Second largest cluster should have 5 records"
     assert cluster_sizes[2] == 5, "Third largest cluster should have 5 records"

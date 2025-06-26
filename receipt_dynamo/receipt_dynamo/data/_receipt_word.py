@@ -44,9 +44,7 @@ class _ReceiptWord(DynamoClientProtocol):
         if word is None:
             raise ValueError("word parameter is required and cannot be None.")
         if not isinstance(word, ReceiptWord):
-            raise ValueError(
-                "word must be an instance of the ReceiptWord class."
-            )
+            raise ValueError("word must be an instance of the ReceiptWord class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -56,9 +54,7 @@ class _ReceiptWord(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} already exists"
-                )
+                raise ValueError(f"ReceiptWord with ID {word.word_id} already exists")
             elif error_code == "ResourceNotFoundException":
                 raise Exception("Could not add ReceiptWords to DynamoDB: ")
             elif error_code == "ProvisionedThroughputExceededException":
@@ -79,23 +75,17 @@ class _ReceiptWord(DynamoClientProtocol):
         if not isinstance(words, list):
             raise ValueError("words must be a list of ReceiptWord instances.")
         if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError(
-                "All words must be instances of the ReceiptWord class."
-            )
+            raise ValueError("All words must be instances of the ReceiptWord class.")
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": w.to_item()}} for w in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": w.to_item()}} for w in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -123,17 +113,10 @@ class _ReceiptWord(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} does not exist"
-                )
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"ReceiptWord with ID {word.word_id} does not exist")
             else:
-                raise Exception(
-                    f"Could not update ReceiptWord in the database: {e}"
-                )
+                raise Exception(f"Could not update ReceiptWord in the database: {e}")
 
     def updateReceiptWords(self, words: list[ReceiptWord]):
         """Updates multiple existing ReceiptWords in DynamoDB."""
@@ -142,9 +125,7 @@ class _ReceiptWord(DynamoClientProtocol):
         if not isinstance(words, list):
             raise ValueError("words must be a list of ReceiptWord instances.")
         if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError(
-                "All words must be instances of the ReceiptWord class."
-            )
+            raise ValueError("All words must be instances of the ReceiptWord class.")
         for i in range(0, len(words), 25):
             chunk = words[i : i + 25]
             transact_items = [
@@ -168,9 +149,7 @@ class _ReceiptWord(DynamoClientProtocol):
                 elif error_code == "InternalServerError":
                     raise Exception("Internal server error")
                 elif error_code == "ValidationException":
-                    raise Exception(
-                        "One or more parameters given were invalid"
-                    )
+                    raise Exception("One or more parameters given were invalid")
                 elif error_code == "AccessDeniedException":
                     raise Exception("Access denied")
                 else:
@@ -194,10 +173,7 @@ class _ReceiptWord(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"ReceiptWord with ID {word_id} not found")
             else:
                 raise
@@ -207,26 +183,18 @@ class _ReceiptWord(DynamoClientProtocol):
         try:
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": w.key()}} for w in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": w.key()}} for w in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                f"Could not delete ReceiptWords from the database: {e}"
-            )
+            raise ValueError(f"Could not delete ReceiptWords from the database: {e}")
 
-    def deleteReceiptWordsFromLine(
-        self, receipt_id: int, image_id: str, line_id: int
-    ):
+    def deleteReceiptWordsFromLine(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes all ReceiptWords from a given line within a receipt/image."""
         words = self.listReceiptWordsFromLine(receipt_id, image_id, line_id)
         self.deleteReceiptWords(words)
@@ -254,18 +222,14 @@ class _ReceiptWord(DynamoClientProtocol):
     ) -> list[ReceiptWord]:
         """Retrieves multiple ReceiptWords by their indices."""
         if indices is None:
-            raise ValueError(
-                "indices parameter is required and cannot be None."
-            )
+            raise ValueError("indices parameter is required and cannot be None.")
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):
             raise ValueError("indices must be a list of tuples.")
         for index in indices:
             if len(index) != 4:
-                raise ValueError(
-                    "indices must be a list of tuples with 4 elements."
-                )
+                raise ValueError("indices must be a list of tuples with 4 elements.")
             if not isinstance(index[0], str):
                 raise ValueError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
@@ -332,21 +296,15 @@ class _ReceiptWord(DynamoClientProtocol):
                 # Retry unprocessed keys if any
                 unprocessed = response.get("UnprocessedKeys", {})
                 while unprocessed.get(self.table_name, {}).get("Keys"):
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
+                    response = self._client.batch_get_item(RequestItems=unprocessed)
+                    batch_items = response["Responses"].get(self.table_name, [])
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
 
             return [itemToReceiptWord(result) for result in results]
 
         except ClientError as e:
-            raise ValueError(
-                f"Could not get ReceiptWords from the database: {e}"
-            )
+            raise ValueError(f"Could not get ReceiptWords from the database: {e}")
 
     def listReceiptWords(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -354,9 +312,7 @@ class _ReceiptWord(DynamoClientProtocol):
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         receipt_words = []
@@ -380,9 +336,7 @@ class _ReceiptWord(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the receipt words.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     receipt_words.extend(
                         [itemToReceiptWord(item) for item in response["Items"]]
@@ -448,9 +402,7 @@ class _ReceiptWord(DynamoClientProtocol):
                 )
             return receipt_words
         except ClientError as e:
-            raise ValueError(
-                f"Could not list ReceiptWords from the database: {e}"
-            )
+            raise ValueError(f"Could not list ReceiptWords from the database: {e}")
 
     def listReceiptWordsFromReceipt(
         self, image_id: str, receipt_id: int
@@ -468,13 +420,9 @@ class _ReceiptWord(DynamoClientProtocol):
             ValueError: If the parameters are invalid or if there's an error querying DynamoDB
         """
         if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
+            raise ValueError("image_id parameter is required and cannot be None.")
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
+            raise ValueError("receipt_id parameter is required and cannot be None.")
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string.")
         if not isinstance(receipt_id, int):
@@ -510,9 +458,7 @@ class _ReceiptWord(DynamoClientProtocol):
 
             # Handle pagination
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 response = self._client.query(**query_params)
                 receipt_words.extend(
                     [

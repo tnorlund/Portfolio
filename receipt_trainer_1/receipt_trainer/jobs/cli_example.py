@@ -13,10 +13,11 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+from tabulate import tabulate
+
 from receipt_dynamo import InstanceService, JobService, QueueService
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
-from tabulate import tabulate
 
 # Configure logging
 logging.basicConfig(
@@ -35,36 +36,22 @@ DYNAMODB_TABLE = "receipt-processing"
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
-    parser = argparse.ArgumentParser(
-        description="ML Training Job Management CLI"
-    )
-    subparsers = parser.add_subparsers(
-        dest="command", help="Command to execute"
-    )
+    parser = argparse.ArgumentParser(description="ML Training Job Management CLI")
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # List jobs command
     list_parser = subparsers.add_parser("list-jobs", help="List all jobs")
-    list_parser.add_argument(
-        "--limit", type=int, help="Maximum number of jobs to list"
-    )
+    list_parser.add_argument("--limit", type=int, help="Maximum number of jobs to list")
     list_parser.add_argument("--status", help="Filter jobs by status")
-    list_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    list_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     # Job details command
-    details_parser = subparsers.add_parser(
-        "job-details", help="Get details for a job"
-    )
+    details_parser = subparsers.add_parser("job-details", help="Get details for a job")
     details_parser.add_argument("job_id", help="ID of the job")
-    details_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    details_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     # Submit job command
-    submit_parser = subparsers.add_parser(
-        "submit-job", help="Submit a new job"
-    )
+    submit_parser = subparsers.add_parser("submit-job", help="Submit a new job")
     submit_parser.add_argument("name", help="Name of the job")
     submit_parser.add_argument("description", help="Description of the job")
     submit_parser.add_argument(
@@ -77,41 +64,27 @@ def create_parser() -> argparse.ArgumentParser:
         default="medium",
         help="Job priority (low, medium, high, critical)",
     )
-    submit_parser.add_argument(
-        "--user", required=True, help="User submitting the job"
-    )
+    submit_parser.add_argument("--user", required=True, help="User submitting the job")
     submit_parser.add_argument("--tags", help="Tags in JSON format")
-    submit_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    submit_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     # Cancel job command
     cancel_parser = subparsers.add_parser("cancel-job", help="Cancel a job")
     cancel_parser.add_argument("job_id", help="ID of the job to cancel")
-    cancel_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    cancel_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     # Job logs command
     logs_parser = subparsers.add_parser("job-logs", help="Get logs for a job")
     logs_parser.add_argument("job_id", help="ID of the job")
-    logs_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    logs_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     # List instances command
-    instances_parser = subparsers.add_parser(
-        "list-instances", help="List instances"
-    )
-    instances_parser.add_argument(
-        "--status", help="Filter instances by status"
-    )
+    instances_parser = subparsers.add_parser("list-instances", help="List instances")
+    instances_parser.add_argument("--status", help="Filter instances by status")
     instances_parser.add_argument(
         "--limit", type=int, help="Maximum number of instances to list"
     )
-    instances_parser.add_argument(
-        "--region", default="us-east-1", help="AWS region"
-    )
+    instances_parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     return parser
 
@@ -196,9 +169,7 @@ def handle_job_details(args: argparse.Namespace) -> None:
         print("\nConfiguration:")
         config_str = json.dumps(job.job_config, indent=2)
         if len(config_str) > 500:
-            print(
-                f"{config_str[:500]}...\n(truncated, use --full-config to see all)"
-            )
+            print(f"{config_str[:500]}...\n(truncated, use --full-config to see all)")
         else:
             print(config_str)
 
@@ -351,9 +322,7 @@ def handle_job_logs(args: argparse.Namespace) -> None:
 def handle_list_instances(args: argparse.Namespace) -> None:
     """Handle the list-instances command using the service layer."""
     # Create the instance service
-    instance_service = InstanceService(
-        table_name=DYNAMODB_TABLE, region=args.region
-    )
+    instance_service = InstanceService(table_name=DYNAMODB_TABLE, region=args.region)
 
     # List instances
     if args.status:

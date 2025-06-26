@@ -13,13 +13,10 @@ from unittest.mock import Mock, patch
 import pytest
 from freezegun import freeze_time
 
+from receipt_label.tests.utils.ai_usage_helpers import (
+    create_mock_anthropic_response, create_mock_openai_response)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
-
-from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_anthropic_response,
-    create_mock_openai_response,
-)
 
 
 @pytest.mark.unit
@@ -45,9 +42,7 @@ class TestConcurrentTracking:
         # Run multiple threads
         threads = []
         for i in range(10):
-            thread = threading.Thread(
-                target=set_and_check_context, args=(f"job-{i}",)
-            )
+            thread = threading.Thread(target=set_and_check_context, args=(f"job-{i}",))
             threads.append(thread)
             thread.start()
 
@@ -85,9 +80,7 @@ class TestConcurrentTracking:
 
             # Use ThreadPoolExecutor for concurrent calls
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [
-                    executor.submit(concurrent_call, i) for i in range(10)
-                ]
+                futures = [executor.submit(concurrent_call, i) for i in range(10)]
                 for future in futures:
                     future.result()
 
@@ -563,7 +556,7 @@ class TestAdvancedIntegration:
 
         # Both decorators should track independently
         assert mock_dynamo.put_item.call_count == 2
-        
+
         # Check that both services were tracked
         calls = mock_dynamo.put_item.call_args_list
         services = [call.kwargs["Item"]["service"]["S"] for call in calls]

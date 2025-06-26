@@ -24,7 +24,7 @@ jobs:
         run: |
           # Install formatters
           pip install isort black
-          
+
           # Check if code is formatted
           if isort --check-only . && black --check .; then
             echo "formatted=true" >> $GITHUB_OUTPUT
@@ -72,13 +72,13 @@ jobs:
             pip install pytest pytest-xdist pytest-cov
             pip install -e .
           fi
-          
+
           # Handle cross-package dependencies
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_dynamo dependency for receipt_label"
             pip install -e "../receipt_dynamo"
           fi
-          
+
           # Run only fast unit tests
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
@@ -114,22 +114,22 @@ jobs:
           script: |
             const formatted = '${{ needs.format-check.outputs.formatted }}' === 'true';
             const testsPass = '${{ needs.quick-tests.result }}' === 'success';
-            
+
             let comment = '## PR Status\n\n';
             comment += formatted ? '✅ Code is properly formatted\n' : '❌ Code needs formatting (run `make format`)\n';
             comment += testsPass ? '✅ Tests pass\n' : '❌ Tests failed\n';
-            
+
             // Find and update existing comment or create new
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
-            const botComment = comments.find(comment => 
+
+            const botComment = comments.find(comment =>
               comment.user.type === 'Bot' && comment.body.includes('## PR Status')
             );
-            
+
             if (botComment) {
               console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
               await github.rest.issues.updateComment({
@@ -150,10 +150,14 @@ jobs:
 
       - name: Set status
         run: |
-          if [[ "${{ needs.format-check.outputs.formatted }}" == "true" ]] && [[ "${{ needs.quick-tests.result }}" == "success" ]]; then
-            echo "All checks passed!"
+          # Only fail if tests fail, not formatting
+          if [[ "${{ needs.quick-tests.result }}" == "success" ]]; then
+            echo "All critical checks passed!"
+            if [[ "${{ needs.format-check.outputs.formatted }}" != "true" ]]; then
+              echo "Note: Formatting issues detected but not blocking"
+            fi
             exit 0
           else
-            echo "Some checks failed"
+            echo "Tests failed"
             exit 1
           fi

@@ -9,10 +9,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-
-from receipt_label.tests.utils.ai_usage_helpers import create_mock_openai_response
+from receipt_label.tests.utils.ai_usage_helpers import \
+    create_mock_openai_response
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
 @pytest.mark.performance
@@ -52,9 +52,11 @@ class TestPerformanceBaseline:
         # The baseline function is extremely fast, so even small overhead appears large
         overhead_ratio = decorated_time / baseline_time
         assert overhead_ratio < 10000.0, f"Overhead ratio: {overhead_ratio}"
-        
+
         # More meaningful test: absolute time should still be reasonable
-        assert decorated_time < 1.0, f"Decorated function took {decorated_time}s for {iterations} calls"
+        assert (
+            decorated_time < 1.0
+        ), f"Decorated function took {decorated_time}s for {iterations} calls"
 
     def test_metric_creation_performance(self):
         """Test performance of metric creation and storage."""
@@ -387,8 +389,9 @@ class TestMemoryEfficiency:
 
     def test_memory_usage_stability(self):
         """Test that memory usage remains stable during extended operation."""
-        import psutil
         import gc
+
+        import psutil
 
         process = psutil.Process()
         initial_memory = process.memory_info().rss
@@ -411,13 +414,13 @@ class TestMemoryEfficiency:
         for batch in range(10):
             for _ in range(100):
                 memory_test_call()
-            
+
             # Force garbage collection
             gc.collect()
-            
+
             current_memory = process.memory_info().rss
             memory_growth = current_memory - initial_memory
-            
+
             # Memory growth should be reasonable (< 50MB)
             assert memory_growth < 50 * 1024 * 1024, (
                 f"Memory grew by {memory_growth / 1024 / 1024:.1f}MB "
@@ -497,11 +500,11 @@ class TestScalabilityLimits:
         """Test handling of extreme burst loads."""
         # Use faster mock for this test
         mock_dynamo = Mock()
-        
+
         # Faster put_item implementation
         def fast_put_item(**kwargs):
             pass
-        
+
         mock_dynamo.put_item = fast_put_item
 
         tracker = AIUsageTracker(
@@ -559,15 +562,15 @@ class TestScalabilityLimits:
         """Test graceful degradation under extreme stress."""
         # Simulate stressed conditions
         mock_dynamo = Mock()
-        
+
         failure_count = 0
-        
+
         def stressed_put_item(**kwargs):
             nonlocal failure_count
             failure_count += 1
             if failure_count % 3 == 0:  # Fail 1/3 of the time
                 raise Exception("Simulated stress failure")
-        
+
         mock_dynamo.put_item = stressed_put_item
 
         tracker = AIUsageTracker(

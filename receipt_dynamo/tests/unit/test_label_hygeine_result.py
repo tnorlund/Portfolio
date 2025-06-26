@@ -1,10 +1,9 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.label_hygiene_result import (
-    LabelHygieneResult,
-    itemToLabelHygieneResult,
-)
+    LabelHygieneResult, itemToLabelHygieneResult)
 
 # === FIXTURE ===
 
@@ -117,9 +116,7 @@ def test_label_hygiene_result_malformed_pk_raises():
         "receipt_id": {"N": "101"},
         "timestamp": {"S": datetime.now().isoformat()},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to LabelHygieneResult"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to LabelHygieneResult"):
         itemToLabelHygieneResult(item)
 
 
