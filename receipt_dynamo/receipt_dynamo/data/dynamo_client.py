@@ -5,6 +5,7 @@ import boto3
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
+from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
@@ -97,6 +98,7 @@ class DynamoClient(
     _OCRJob,
     _ReceiptSection,
     _OCRRoutingDecision,
+    _AIUsageMetric,
 ):
     """A class used to represent a DynamoDB client."""
 
