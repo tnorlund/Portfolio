@@ -7,11 +7,11 @@ This example demonstrates:
 3. How to start and monitor auto-scaling
 """
 
+import argparse
+import logging
 import os
 import sys
 import time
-import argparse
-import logging
 
 from receipt_trainer.utils.pulumi import create_auto_scaling_manager
 

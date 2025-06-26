@@ -98,7 +98,9 @@ def build_receipt_metadata_from_result_no_match(
     if gpt_result:
         reasoning = "No valid Google Places match; used GPT inference"
     else:
-        reasoning = "No valid Google Places match and no GPT inference was performed"
+        reasoning = (
+            "No valid Google Places match and no GPT inference was performed"
+        )
 
     # Use empty placeholders for place_id and category
     place_id = ""

@@ -1,9 +1,10 @@
 """Fixtures for end-to-end tests."""
 
 import os
+from typing import Any, Dict
+
 import boto3
 import pytest
-from typing import Dict, Any
 from receipt_trainer.utils.pulumi import get_auto_scaling_config
 
 

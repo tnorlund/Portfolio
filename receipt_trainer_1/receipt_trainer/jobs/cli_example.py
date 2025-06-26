@@ -9,14 +9,14 @@ import argparse
 import json
 import logging
 import sys
-import uuid
 import time
-from typing import Dict, Any, Optional, List, Tuple
-from tabulate import tabulate
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import JobService, QueueService, InstanceService
+from receipt_dynamo import InstanceService, JobService, QueueService
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
+from tabulate import tabulate
 
 # Configure logging
 logging.basicConfig(
@@ -35,46 +35,84 @@ DYNAMODB_TABLE = "receipt-processing"
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
-    parser = argparse.ArgumentParser(description="ML Training Job Management CLI")
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
+    parser = argparse.ArgumentParser(
+        description="ML Training Job Management CLI"
+    )
+    subparsers = parser.add_subparsers(
+        dest="command", help="Command to execute"
+    )
+
     # List jobs command
     list_parser = subparsers.add_parser("list-jobs", help="List all jobs")
-    list_parser.add_argument("--limit", type=int, help="Maximum number of jobs to list")
+    list_parser.add_argument(
+        "--limit", type=int, help="Maximum number of jobs to list"
+    )
     list_parser.add_argument("--status", help="Filter jobs by status")
-    list_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    list_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     # Job details command
-    details_parser = subparsers.add_parser("job-details", help="Get details for a job")
+    details_parser = subparsers.add_parser(
+        "job-details", help="Get details for a job"
+    )
     details_parser.add_argument("job_id", help="ID of the job")
-    details_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    details_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     # Submit job command
-    submit_parser = subparsers.add_parser("submit-job", help="Submit a new job")
+    submit_parser = subparsers.add_parser(
+        "submit-job", help="Submit a new job"
+    )
     submit_parser.add_argument("name", help="Name of the job")
     submit_parser.add_argument("description", help="Description of the job")
-    submit_parser.add_argument("--config", required=True, help="Job configuration JSON string or file path")
-    submit_parser.add_argument("--priority", default="medium", help="Job priority (low, medium, high, critical)")
-    submit_parser.add_argument("--user", required=True, help="User submitting the job")
+    submit_parser.add_argument(
+        "--config",
+        required=True,
+        help="Job configuration JSON string or file path",
+    )
+    submit_parser.add_argument(
+        "--priority",
+        default="medium",
+        help="Job priority (low, medium, high, critical)",
+    )
+    submit_parser.add_argument(
+        "--user", required=True, help="User submitting the job"
+    )
     submit_parser.add_argument("--tags", help="Tags in JSON format")
-    submit_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    submit_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     # Cancel job command
     cancel_parser = subparsers.add_parser("cancel-job", help="Cancel a job")
     cancel_parser.add_argument("job_id", help="ID of the job to cancel")
-    cancel_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    cancel_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     # Job logs command
     logs_parser = subparsers.add_parser("job-logs", help="Get logs for a job")
     logs_parser.add_argument("job_id", help="ID of the job")
-    logs_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    logs_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     # List instances command
-    instances_parser = subparsers.add_parser("list-instances", help="List instances")
-    instances_parser.add_argument("--status", help="Filter instances by status")
-    instances_parser.add_argument("--limit", type=int, help="Maximum number of instances to list")
-    instances_parser.add_argument("--region", default="us-east-1", help="AWS region")
-    
+    instances_parser = subparsers.add_parser(
+        "list-instances", help="List instances"
+    )
+    instances_parser.add_argument(
+        "--status", help="Filter instances by status"
+    )
+    instances_parser.add_argument(
+        "--limit", type=int, help="Maximum number of instances to list"
+    )
+    instances_parser.add_argument(
+        "--region", default="us-east-1", help="AWS region"
+    )
+
     return parser
 
 
@@ -82,37 +120,51 @@ def handle_list_jobs(args: argparse.Namespace) -> None:
     """Handle the list-jobs command using the service layer."""
     # Create the job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+
     # List jobs
     if args.status:
         jobs, _ = job_service.list_jobs_by_status(args.status, args.limit)
     else:
         jobs, _ = job_service.list_jobs(args.limit)
-    
+
     if not jobs:
         print("No jobs found")
         return
-    
+
     # Prepare table data
     table_data = []
     for job in jobs:
         # Get the latest status
         job_statuses = job_service.get_job_status_history(job.job_id)
         latest_status = job_statuses[0].status if job_statuses else "unknown"
-        
+
         # Add to table data
-        table_data.append([
-            job.job_id,
-            job.name,
-            job.description[:30] + "..." if len(job.description) > 30 else job.description,
-            latest_status,
-            job.priority,
-            job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            job.created_by,
-        ])
-    
+        table_data.append(
+            [
+                job.job_id,
+                job.name,
+                (
+                    job.description[:30] + "..."
+                    if len(job.description) > 30
+                    else job.description
+                ),
+                latest_status,
+                job.priority,
+                job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                job.created_by,
+            ]
+        )
+
     # Print table
-    headers = ["Job ID", "Name", "Description", "Status", "Priority", "Created At", "Created By"]
+    headers = [
+        "Job ID",
+        "Name",
+        "Description",
+        "Status",
+        "Priority",
+        "Created At",
+        "Created By",
+    ]
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
@@ -120,11 +172,11 @@ def handle_job_details(args: argparse.Namespace) -> None:
     """Handle the job-details command using the service layer."""
     # Create the job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+
     try:
         # Get job and its status history
         job, statuses = job_service.get_job_with_status(args.job_id)
-        
+
         # Print job details
         print(f"Job Details for {job.job_id}:")
         print(f"  Name: {job.name}")
@@ -132,44 +184,58 @@ def handle_job_details(args: argparse.Namespace) -> None:
         print(f"  Created: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"  Created By: {job.created_by}")
         print(f"  Priority: {job.priority}")
-        
+
         # Print status history
         print("\nStatus History:")
         for status in statuses:
-            print(f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')}: {status.status} - {status.message}")
-        
+            print(
+                f"  {status.timestamp.strftime('%Y-%m-%d %H:%M:%S')}: {status.status} - {status.message}"
+            )
+
         # Print config summary (truncated for large configs)
         print("\nConfiguration:")
         config_str = json.dumps(job.job_config, indent=2)
         if len(config_str) > 500:
-            print(f"{config_str[:500]}...\n(truncated, use --full-config to see all)")
+            print(
+                f"{config_str[:500]}...\n(truncated, use --full-config to see all)"
+            )
         else:
             print(config_str)
-        
+
         # Get logs
         logs = job_service.get_job_logs(args.job_id)
         if logs:
             print("\nLogs:")
             for log in logs[:10]:  # Show only the 10 most recent logs
-                print(f"  {log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}")
+                print(
+                    f"  {log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}"
+                )
             if len(logs) > 10:
                 print(f"  ... and {len(logs) - 10} more logs")
-        
+
         # Get metrics
         metrics = job_service.get_job_metrics(args.job_id)
         if metrics:
             print("\nMetrics:")
             metrics_table = []
             for metric in metrics[:10]:  # Show only the 10 most recent metrics
-                metrics_table.append([
-                    metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                    metric.metric_name,
-                    metric.metric_value,
-                ])
-            print(tabulate(metrics_table, headers=["Timestamp", "Metric", "Value"], tablefmt="simple"))
+                metrics_table.append(
+                    [
+                        metric.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        metric.metric_name,
+                        metric.metric_value,
+                    ]
+                )
+            print(
+                tabulate(
+                    metrics_table,
+                    headers=["Timestamp", "Metric", "Value"],
+                    tablefmt="simple",
+                )
+            )
             if len(metrics) > 10:
                 print(f"  ... and {len(metrics) - 10} more metrics")
-        
+
     except Exception as e:
         print(f"Error: {str(e)}")
 
@@ -178,7 +244,7 @@ def handle_submit_job(args: argparse.Namespace) -> None:
     """Handle the submit-job command using the service layer."""
     # Create the job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+
     # Parse job config
     if args.config.startswith("{"):
         # Config is a JSON string
@@ -195,7 +261,7 @@ def handle_submit_job(args: argparse.Namespace) -> None:
         except (json.JSONDecodeError, FileNotFoundError) as e:
             print(f"Error reading configuration file: {str(e)}")
             return
-    
+
     # Parse tags
     tags = {}
     if args.tags:
@@ -204,10 +270,10 @@ def handle_submit_job(args: argparse.Namespace) -> None:
         except json.JSONDecodeError as e:
             print(f"Error parsing tags: {str(e)}")
             return
-    
+
     # Generate job ID
     job_id = str(uuid.uuid4())
-    
+
     try:
         # Create the job
         job = job_service.create_job(
@@ -220,18 +286,18 @@ def handle_submit_job(args: argparse.Namespace) -> None:
             job_config=job_config,
             tags=tags,
         )
-        
+
         # Add initial status
         job_service.add_job_status(
             job_id=job_id,
             status="pending",
             message="Job created",
         )
-        
+
         print(f"Job submitted successfully!")
         print(f"Job ID: {job_id}")
         print(f"Status: pending")
-        
+
     except Exception as e:
         print(f"Error submitting job: {str(e)}")
 
@@ -240,20 +306,20 @@ def handle_cancel_job(args: argparse.Namespace) -> None:
     """Handle the cancel-job command using the service layer."""
     # Create the job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+
     try:
         # Get the job
         job = job_service.get_job(args.job_id)
-        
+
         # Add cancelled status
         job_service.add_job_status(
             job_id=job.job_id,
             status="cancelled",
             message="Job cancelled by user",
         )
-        
+
         print(f"Job {job.job_id} has been cancelled")
-        
+
     except Exception as e:
         print(f"Error cancelling job: {str(e)}")
 
@@ -262,20 +328,22 @@ def handle_job_logs(args: argparse.Namespace) -> None:
     """Handle the job-logs command using the service layer."""
     # Create the job service
     job_service = JobService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+
     try:
         # Get the logs
         logs = job_service.get_job_logs(args.job_id)
-        
+
         if not logs:
             print(f"No logs found for job {args.job_id}")
             return
-        
+
         # Print logs
         print(f"Logs for job {args.job_id}:")
         for log in logs:
-            print(f"{log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}")
-        
+            print(
+                f"{log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} [{log.log_level}] {log.message}"
+            )
+
     except Exception as e:
         print(f"Error retrieving logs: {str(e)}")
 
@@ -283,35 +351,50 @@ def handle_job_logs(args: argparse.Namespace) -> None:
 def handle_list_instances(args: argparse.Namespace) -> None:
     """Handle the list-instances command using the service layer."""
     # Create the instance service
-    instance_service = InstanceService(table_name=DYNAMODB_TABLE, region=args.region)
-    
+    instance_service = InstanceService(
+        table_name=DYNAMODB_TABLE, region=args.region
+    )
+
     # List instances
     if args.status:
-        instances, _ = instance_service.list_instances_by_status(args.status, args.limit)
+        instances, _ = instance_service.list_instances_by_status(
+            args.status, args.limit
+        )
     else:
         instances, _ = instance_service.list_instances(args.limit)
-    
+
     if not instances:
         print("No instances found")
         return
-    
+
     # Prepare table data
     table_data = []
     for instance in instances:
         # Add to table data
-        table_data.append([
-            instance.instance_id,
-            instance.instance_type,
-            instance.status,
-            instance.region,
-            instance.availability_zone,
-            instance.hostname,
-            instance.ip_address,
-            instance.last_seen.strftime("%Y-%m-%d %H:%M:%S"),
-        ])
-    
+        table_data.append(
+            [
+                instance.instance_id,
+                instance.instance_type,
+                instance.status,
+                instance.region,
+                instance.availability_zone,
+                instance.hostname,
+                instance.ip_address,
+                instance.last_seen.strftime("%Y-%m-%d %H:%M:%S"),
+            ]
+        )
+
     # Print table
-    headers = ["Instance ID", "Type", "Status", "Region", "AZ", "Hostname", "IP", "Last Seen"]
+    headers = [
+        "Instance ID",
+        "Type",
+        "Status",
+        "Region",
+        "AZ",
+        "Hostname",
+        "IP",
+        "Last Seen",
+    ]
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
@@ -319,11 +402,11 @@ def main() -> None:
     """Main entry point for the CLI."""
     parser = create_parser()
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return
-    
+
     # Route to the appropriate handler
     if args.command == "list-jobs":
         handle_list_jobs(args)
@@ -342,4 +425,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main() 
+    main()

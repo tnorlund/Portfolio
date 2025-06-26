@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, itemToOCRJob
 
@@ -164,7 +163,9 @@ def test_ocr_job_invalid_created_at():
 
 @pytest.mark.unit
 def test_ocr_job_invalid_updated_at():
-    with pytest.raises(ValueError, match="updated_at must be a datetime or None"):
+    with pytest.raises(
+        ValueError, match="updated_at must be a datetime or None"
+    ):
         OCRJob(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",

@@ -24,7 +24,6 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptLine
 from receipt_label.utils import get_client_manager
@@ -42,7 +41,9 @@ def list_receipt_lines_with_no_embeddings(
     """Fetch all ReceiptLine items with embedding_status == NONE."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(EmbeddingStatus.NONE)
+    return client_manager.dynamo.listReceiptLinesByEmbeddingStatus(
+        EmbeddingStatus.NONE
+    )
 
 
 def chunk_into_line_embedding_batches(
@@ -112,7 +113,9 @@ def serialize_receipt_lines(
             ndjson_lines = [json.dumps(dict(line)) for line in lines]
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
-            filepath = Path(f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson")
+            filepath = Path(
+                f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson"
+            )
             with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
@@ -169,7 +172,9 @@ def query_receipt_lines(
     """Query the ReceiptLines from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(image_id, receipt_id)
+    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(
+        image_id, receipt_id
+    )
     return lines
 
 
@@ -188,10 +193,14 @@ def upload_to_openai(
     """Upload the NDJSON file to OpenAI."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.openai.files.create(file=filepath.open("rb"), purpose="batch")
+    return client_manager.openai.files.create(
+        file=filepath.open("rb"), purpose="batch"
+    )
 
 
-def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
+def submit_openai_batch(
+    file_id: str, client_manager: ClientManager = None
+) -> Batch:
     """Submit a batch embedding job to OpenAI using the uploaded file."""
     if client_manager is None:
         client_manager = get_client_manager()

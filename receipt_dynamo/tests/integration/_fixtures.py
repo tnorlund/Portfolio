@@ -2,10 +2,19 @@ import json
 import os
 
 import pytest
-
-from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
-                            ReceiptLine, ReceiptWord, ReceiptWordLabel,
-                            ReceiptWordTag, Word, WordTag)
+from receipt_dynamo import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+    ReceiptWordTag,
+    Word,
+    WordTag,
+)
 
 CURRENT_DIR = os.path.dirname(__file__)
 
@@ -33,27 +42,40 @@ def sample_gpt_receipt_1():
             ReceiptWordTag(**word_tag_dict)
             for word_tag_dict in data["receipt_word_tags"]
         ],
-        [ReceiptLetter(**letter_dict) for letter_dict in data["receipt_letters"]],
+        [
+            ReceiptLetter(**letter_dict)
+            for letter_dict in data["receipt_letters"]
+        ],
         {
             "store_name": {
                 "value": "VONS",
-                "word_centroids": [{"x": 0.5512062150516704, "y": 0.9408981712656039}],
+                "word_centroids": [
+                    {"x": 0.5512062150516704, "y": 0.9408981712656039}
+                ],
             },
             "date": {
                 "value": "03/19/24",
-                "word_centroids": [{"x": 0.5496056665785586, "y": 0.48408131950268973}],
+                "word_centroids": [
+                    {"x": 0.5496056665785586, "y": 0.48408131950268973}
+                ],
             },
             "time": {
                 "value": "13:29",
-                "word_centroids": [{"x": 0.7058637366289461, "y": 0.48047478008137867}],
+                "word_centroids": [
+                    {"x": 0.7058637366289461, "y": 0.48047478008137867}
+                ],
             },
             "phone_number": {
                 "value": "877-276-9637",
-                "word_centroids": [{"x": 0.261267280794621, "y": 0.01903172766152822}],
+                "word_centroids": [
+                    {"x": 0.261267280794621, "y": 0.01903172766152822}
+                ],
             },
             "total_amount": {
                 "value": 3.6,
-                "word_centroids": [{"x": 0.7717564238292309, "y": 0.2714470647540924}],
+                "word_centroids": [
+                    {"x": 0.7717564238292309, "y": 0.2714470647540924}
+                ],
             },
             "items": [
                 {

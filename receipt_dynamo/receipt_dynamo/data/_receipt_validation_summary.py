@@ -1,7 +1,8 @@
 from botocore.exceptions import ClientError
-
-from receipt_dynamo import (ReceiptValidationSummary,
-                            itemToReceiptValidationSummary)
+from receipt_dynamo import (
+    ReceiptValidationSummary,
+    itemToReceiptValidationSummary,
+)
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -52,7 +53,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             Exception: If the summary cannot be added to DynamoDB.
         """
         if summary is None:
-            raise ValueError("summary parameter is required and cannot be None.")
+            raise ValueError(
+                "summary parameter is required and cannot be None."
+            )
         if not isinstance(summary, ReceiptValidationSummary):
             raise ValueError(
                 "summary must be an instance of the ReceiptValidationSummary class."
@@ -88,7 +91,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                     f"Could not add receipt validation summary to DynamoDB: {e}"
                 ) from e
 
-    def updateReceiptValidationSummary(self, summary: ReceiptValidationSummary):
+    def updateReceiptValidationSummary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Updates an existing ReceiptValidationSummary in the database.
 
         Args:
@@ -99,7 +104,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             Exception: If the summary cannot be updated in DynamoDB.
         """
         if summary is None:
-            raise ValueError("summary parameter is required and cannot be None.")
+            raise ValueError(
+                "summary parameter is required and cannot be None."
+            )
         if not isinstance(summary, ReceiptValidationSummary):
             raise ValueError(
                 "summary must be an instance of the ReceiptValidationSummary class."
@@ -144,11 +151,14 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             Exception: If the summaries cannot be updated in DynamoDB.
         """
         if summaries is None:
-            raise ValueError("summaries parameter is required and cannot be None.")
+            raise ValueError(
+                "summaries parameter is required and cannot be None."
+            )
         if not isinstance(summaries, list):
             raise ValueError("summaries must be a list.")
         if not all(
-            isinstance(summary, ReceiptValidationSummary) for summary in summaries
+            isinstance(summary, ReceiptValidationSummary)
+            for summary in summaries
         ):
             raise ValueError(
                 "All summaries must be instances of the ReceiptValidationSummary class."
@@ -176,7 +186,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                             "One or more ReceiptValidationSummaries do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -190,7 +202,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                         f"Could not update ReceiptValidationSummaries in the database: {e}"
                     ) from e
 
-    def deleteReceiptValidationSummary(self, summary: ReceiptValidationSummary):
+    def deleteReceiptValidationSummary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Deletes a ReceiptValidationSummary from DynamoDB.
 
         Args:
@@ -201,7 +215,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             Exception: If the summary cannot be deleted from DynamoDB.
         """
         if summary is None:
-            raise ValueError("summary parameter is required and cannot be None.")
+            raise ValueError(
+                "summary parameter is required and cannot be None."
+            )
         if not isinstance(summary, ReceiptValidationSummary):
             raise ValueError(
                 "summary must be an instance of the ReceiptValidationSummary class."
@@ -251,11 +267,15 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             ReceiptValidationSummary | None: The retrieved receipt validation summary or None if not found.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
 
         try:
@@ -263,7 +283,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"
+                    },
                 },
             )
             if "Item" in response:
@@ -275,7 +297,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             if error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "ValidationException":
-                raise Exception("One or more parameters given were invalid") from e
+                raise Exception(
+                    "One or more parameters given were invalid"
+                ) from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "AccessDeniedException":
@@ -304,7 +328,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_summaries = []
@@ -339,7 +365,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the validation summaries
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_summaries.extend(
                         [
@@ -396,14 +424,18 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                                                                the last evaluated key (or None if no more results).
         """
         if status is None:
-            raise ValueError("status parameter is required and cannot be None.")
+            raise ValueError(
+                "status parameter is required and cannot be None."
+            )
         if not isinstance(status, str):
             raise ValueError("status must be a string.")
         if not status:
             raise ValueError("status must not be empty.")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_summaries = []
@@ -426,13 +458,18 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             validation_summaries.extend(
-                [itemToReceiptValidationSummary(item) for item in response["Items"]]
+                [
+                    itemToReceiptValidationSummary(item)
+                    for item in response["Items"]
+                ]
             )
 
             if limit is None:
                 # Paginate through all the validation summaries
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_summaries.extend(
                         [

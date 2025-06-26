@@ -3,7 +3,6 @@ from typing import Literal
 import boto3
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import DynamoClient, Word
 
 correct_word_params = {
@@ -140,7 +139,9 @@ def test_word_get(dynamodb_table: Literal["MyMockedTable"]):
     client.addWord(word)
 
     # Act
-    retrieved_word = client.getWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
+    retrieved_word = client.getWord(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3
+    )
 
     # Assert
     assert retrieved_word == word
@@ -239,7 +240,9 @@ def test_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
     words = sorted(words, key=lambda x: x.word_id)
 
     # Act
-    response = client.listWordsFromLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)
+    response = client.listWordsFromLine(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2
+    )
 
     # Assert
     assert words == response
@@ -305,7 +308,8 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
     word = Word(**correct_word_params)
     with pytest.raises(
         ValueError,
-        match="All items in the words list must be instances of the Word " "class.",
+        match="All items in the words list must be instances of the Word "
+        "class.",
     ):
         client.updateWords([word, "not-a-word"])  # type: ignore
 
@@ -367,7 +371,9 @@ def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_internal_server_error(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_internal_server_error(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises an Exception when the InternalServerError
     error is raised.
@@ -393,7 +399,9 @@ def test_updateWords_raises_clienterror_internal_server_error(dynamodb_table, mo
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_validation_exception(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_validation_exception(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises an Exception when the ValidationException
     error is raised.
@@ -413,7 +421,9 @@ def test_updateWords_raises_clienterror_validation_exception(dynamodb_table, moc
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.updateWords([word])
     mock_transact.assert_called_once()
 

@@ -3,8 +3,10 @@ import os
 
 import pulumi
 import pulumi_aws as aws
+
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
+
 # Import the Lambda Layer from the lambda_layer module
 from lambda_layer import dynamo_layer
 from pulumi import AssetArchive, FileArchive
@@ -104,7 +106,9 @@ label_count_cache_updater_lambda = aws.lambda_.Function(
 # CloudWatch log group for the Lambda function
 log_group = aws.cloudwatch.LogGroup(
     f"{FUNCTION_NAME}_lambda_log_group",
-    name=pulumi.Output.concat("/aws/lambda/", label_count_cache_updater_lambda.name),
+    name=pulumi.Output.concat(
+        "/aws/lambda/", label_count_cache_updater_lambda.name
+    ),
     retention_in_days=30,
 )
 
@@ -132,5 +136,7 @@ lambda_permission = aws.lambda_.Permission(
 )
 
 # Export the Lambda function ARN
-pulumi.export(f"{FUNCTION_NAME}_lambda_arn", label_count_cache_updater_lambda.arn)
+pulumi.export(
+    f"{FUNCTION_NAME}_lambda_arn", label_count_cache_updater_lambda.arn
+)
 pulumi.export(f"{FUNCTION_NAME}_schedule_arn", cache_update_schedule.arn)

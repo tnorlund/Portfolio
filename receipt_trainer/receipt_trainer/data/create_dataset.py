@@ -1,6 +1,7 @@
 import os
+
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import ReceiptWordLabel, ReceiptWord, Receipt
+from receipt_dynamo.entities import Receipt, ReceiptWord, ReceiptWordLabel
 from receipt_label.constants import CORE_LABELS
 
 DYNAMO_TABLE_NAME = os.getenv("DYNAMO_TABLE_NAME")

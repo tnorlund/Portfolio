@@ -1,6 +1,5 @@
 # test_word_tag.py
 import pytest
-
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 
 
@@ -103,7 +102,9 @@ def test_word_tag_init_invalid_tag():
             long_tag,
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(ValueError, match="tag must not start with an underscore"):
+    with pytest.raises(
+        ValueError, match="tag must not start with an underscore"
+    ):
         WordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -120,7 +121,9 @@ def test_word_tag_init_invalid_timestamp_added():
         ValueError,
         match="timestamp_added must be datetime, str, got",
     ):
-        WordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890)
+        WordTag(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, "example", 1234567890
+        )
 
 
 @pytest.mark.unit

@@ -4,11 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 from PIL import Image as PIL_Image
 from receipt_dynamo.entities import Line
-
-from receipt_upload.geometry import (
-    box_points,
-    min_area_rect,
-)
+from receipt_upload.geometry import box_points, min_area_rect
 
 
 def dbscan_lines(

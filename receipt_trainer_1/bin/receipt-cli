@@ -5,6 +5,7 @@ This provides a simpler interface than running the module directly.
 """
 
 import sys
+
 from receipt_trainer.jobs.cli import main
 
 if __name__ == "__main__":

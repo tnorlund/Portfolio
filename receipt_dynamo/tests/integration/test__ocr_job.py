@@ -3,7 +3,6 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
@@ -41,7 +40,9 @@ def test_addOCRJob_success(
     client.addOCRJob(sample_ocr_job)
 
     # Assert
-    retrieved_job = client.getOCRJob(sample_ocr_job.image_id, sample_ocr_job.job_id)
+    retrieved_job = client.getOCRJob(
+        sample_ocr_job.image_id, sample_ocr_job.job_id
+    )
     assert retrieved_job == sample_ocr_job
 
 

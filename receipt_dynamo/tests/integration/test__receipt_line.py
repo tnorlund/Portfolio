@@ -1,7 +1,6 @@
 from typing import Literal
 
 import pytest
-
 from receipt_dynamo import DynamoClient, ReceiptLine
 
 

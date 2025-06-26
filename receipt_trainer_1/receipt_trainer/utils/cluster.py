@@ -1,11 +1,11 @@
 """Cluster management for coordinated machine learning tasks."""
 
-import os
-import time
 import json
 import logging
+import os
 import threading
-from typing import Dict, List, Optional, Any, Set, Callable
+import time
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from receipt_trainer.utils.coordinator import InstanceCoordinator
 from receipt_trainer.utils.infrastructure import EC2Metadata, InstanceRegistry

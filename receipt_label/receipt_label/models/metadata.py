@@ -55,7 +55,9 @@ class MetadataMixin:
 
         self.metadata["processing_metrics"][name] = value
 
-    def set_source_info(self, model: str, version: str = None, **kwargs) -> None:
+    def set_source_info(
+        self, model: str, version: str = None, **kwargs
+    ) -> None:
         """
         Set information about the source that generated this analysis.
 
