@@ -53,8 +53,10 @@ class AIUsageTracker:
             validate_table_environment: Whether to validate table name matches environment
         """
         # Environment configuration
-        self.environment_config = environment_config or AIUsageEnvironmentConfig.get_config(environment)
-        
+        self.environment_config = (
+            environment_config or AIUsageEnvironmentConfig.get_config(environment)
+        )
+
         # Set up table name - if table_name is provided, use it as-is
         # If not provided, construct it from base name with environment suffix
         if table_name:
@@ -62,20 +64,21 @@ class AIUsageTracker:
         else:
             base_table_name = os.environ.get("DYNAMODB_TABLE_NAME", "AIUsageMetrics")
             self.table_name = AIUsageEnvironmentConfig.get_table_name(
-                base_table_name, 
-                self.environment_config.environment
+                base_table_name, self.environment_config.environment
             )
-        
+
         # Optionally validate environment isolation
-        if validate_table_environment and not AIUsageEnvironmentConfig.validate_environment_isolation(
-            self.table_name, 
-            self.environment_config.environment
+        if (
+            validate_table_environment
+            and not AIUsageEnvironmentConfig.validate_environment_isolation(
+                self.table_name, self.environment_config.environment
+            )
         ):
             raise ValueError(
                 f"Table name '{self.table_name}' does not match environment "
                 f"'{self.environment_config.environment.value}' isolation requirements"
             )
-        
+
         self.dynamo_client = dynamo_client
         self.user_id = user_id or os.environ.get("USER_ID", "default")
         self.track_to_dynamo = track_to_dynamo and dynamo_client is not None
@@ -109,9 +112,7 @@ class AIUsageTracker:
         if self.track_to_dynamo and self.dynamo_client:
             try:
                 item = metric.to_dynamodb_item()
-                self.dynamo_client.put_item(
-                    TableName=self.table_name, Item=item
-                )
+                self.dynamo_client.put_item(TableName=self.table_name, Item=item)
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -139,19 +140,17 @@ class AIUsageTracker:
                     f.write(json.dumps(log_entry) + "\n")
             except Exception as e:
                 print(f"Failed to log metric to file: {e}")
-    
+
     def _create_base_metadata(self) -> Dict[str, Any]:
         """Create base metadata including environment auto-tags."""
         metadata = {}
-        
+
         # Add environment auto-tags
         metadata.update(self.environment_config.auto_tag)
-        
+
         return metadata
 
-    def track_openai_completion(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -189,9 +188,7 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(
-                            usage, "completion_tokens", None
-                        )
+                        output_tokens = getattr(usage, "completion_tokens", None)
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -204,11 +201,13 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
-                metadata.update({
-                    "function": func.__name__,
-                    "temperature": kwargs.get("temperature"),
-                    "max_tokens": kwargs.get("max_tokens"),
-                })
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "temperature": kwargs.get("temperature"),
+                        "max_tokens": kwargs.get("max_tokens"),
+                    }
+                )
 
                 # Create and store metric
                 metric = AIUsageMetric(
@@ -232,9 +231,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -275,14 +272,14 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
-                metadata.update({
-                    "function": func.__name__,
-                    "input_count": (
-                        len(kwargs.get("input", []))
-                        if "input" in kwargs
-                        else None
-                    ),
-                })
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "input_count": (
+                            len(kwargs.get("input", [])) if "input" in kwargs else None
+                        ),
+                    }
+                )
 
                 # Create and store metric
                 metric = AIUsageMetric(
@@ -345,10 +342,12 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
-                metadata.update({
-                    "function": func.__name__,
-                    "max_tokens": kwargs.get("max_tokens"),
-                })
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "max_tokens": kwargs.get("max_tokens"),
+                    }
+                )
 
                 # Create and store metric
                 metric = AIUsageMetric(
@@ -401,9 +400,11 @@ class AIUsageTracker:
 
                     # Create base metadata with environment auto-tags
                     metadata = self._create_base_metadata()
-                    metadata.update({
-                        "function": func.__name__,
-                    })
+                    metadata.update(
+                        {
+                            "function": func.__name__,
+                        }
+                    )
 
                     # Create and store metric
                     metric = AIUsageMetric(
@@ -448,10 +449,12 @@ class AIUsageTracker:
 
         # Create base metadata with environment auto-tags
         metadata = self._create_base_metadata()
-        metadata.update({
-            "pr_number": pr_number,
-            "workflow": "claude-review",
-        })
+        metadata.update(
+            {
+                "pr_number": pr_number,
+                "workflow": "claude-review",
+            }
+        )
 
         metric = AIUsageMetric(
             service="anthropic",
@@ -482,9 +485,9 @@ class AIUsageTracker:
     ) -> "AIUsageTracker":
         """
         Create an AIUsageTracker with automatic environment detection and configuration.
-        
+
         This is the recommended factory method for creating trackers.
-        
+
         Args:
             dynamo_client: DynamoDB client for storing metrics
             table_name: DynamoDB table name (if None, will auto-generate with environment suffix)
@@ -493,7 +496,7 @@ class AIUsageTracker:
             track_to_file: Whether to log metrics to a file (for local dev)
             environment: Specific environment to use (if None, will auto-detect)
             validate_table_environment: Whether to validate table name matches environment
-        
+
         Returns:
             AIUsageTracker: Configured tracker for the environment
         """

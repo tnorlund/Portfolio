@@ -3,13 +3,14 @@ Tests for environment-based configuration system.
 """
 
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from receipt_label.utils.environment_config import (
+    AIUsageEnvironmentConfig,
     Environment,
     EnvironmentConfig,
-    AIUsageEnvironmentConfig,
 )
 
 
@@ -80,7 +81,7 @@ class TestEnvironmentDetection:
             "AWS_EXECUTION_ENV",
             "PULUMI_STACK_NAME",
         ]
-        
+
         with patch.dict(os.environ, {}, clear=True):
             env = AIUsageEnvironmentConfig.detect_environment()
             assert env == Environment.DEVELOPMENT
@@ -98,7 +99,7 @@ class TestEnvironmentConfig:
     def test_production_config(self):
         """Test production environment configuration."""
         config = AIUsageEnvironmentConfig.get_config(Environment.PRODUCTION)
-        
+
         assert config.environment == Environment.PRODUCTION
         assert config.table_suffix == ""
         assert config.require_context is True
@@ -108,7 +109,7 @@ class TestEnvironmentConfig:
     def test_staging_config(self):
         """Test staging environment configuration."""
         config = AIUsageEnvironmentConfig.get_config(Environment.STAGING)
-        
+
         assert config.environment == Environment.STAGING
         assert config.table_suffix == "-staging"
         assert config.require_context is False
@@ -129,12 +130,12 @@ class TestEnvironmentConfig:
             clear=False,
         ):
             config = AIUsageEnvironmentConfig.get_config(Environment.CICD)
-            
+
             assert config.environment == Environment.CICD
             assert config.table_suffix == "-cicd"
             assert config.require_context is False
             assert config.is_cicd is True
-            
+
             # Check CI-specific auto-tags
             assert config.auto_tag["ci_run_id"] == "12345"
             assert config.auto_tag["ci_workflow"] == "test"
@@ -152,11 +153,11 @@ class TestEnvironmentConfig:
             clear=False,
         ):
             config = AIUsageEnvironmentConfig.get_config(Environment.DEVELOPMENT)
-            
+
             assert config.environment == Environment.DEVELOPMENT
             assert config.table_suffix == "-development"
             assert config.require_context is False
-            
+
             # Check development-specific auto-tags
             assert config.auto_tag["developer"] == "developer"
             assert config.auto_tag["machine"] == "dev-machine"
@@ -173,7 +174,7 @@ class TestEnvironmentConfig:
             clear=False,
         ):
             config = AIUsageEnvironmentConfig.get_config(Environment.PRODUCTION)
-            
+
             assert config.auto_tag["environment"] == "production"
             assert config.auto_tag["service"] == "receipt-processing"
             assert config.auto_tag["version"] == "1.2.3"
@@ -184,7 +185,7 @@ class TestEnvironmentConfig:
         # Ensure environment variables are not set
         with patch.dict(os.environ, {}, clear=True):
             config = AIUsageEnvironmentConfig.get_config(Environment.CICD)
-            
+
             # CI-specific tags should not be present if environment variables are None
             assert "ci_run_id" not in config.auto_tag
             assert "ci_workflow" not in config.auto_tag
@@ -303,7 +304,7 @@ class TestEnvironmentConfigDataclass:
             require_context=True,
             auto_tag={"env": "prod"},
         )
-        
+
         assert config.table_name_suffix == ""
         assert config.is_production is True
         assert config.is_cicd is False
@@ -314,7 +315,7 @@ class TestEnvironmentConfigDataclass:
             require_context=False,
             auto_tag={"env": "staging"},
         )
-        
+
         assert config_staging.table_name_suffix == "-staging"
         assert config_staging.is_production is False
         assert config_staging.is_cicd is False
@@ -325,7 +326,7 @@ class TestEnvironmentConfigDataclass:
             require_context=False,
             auto_tag={"env": "cicd"},
         )
-        
+
         assert config_cicd.table_name_suffix == "-cicd"
         assert config_cicd.is_production is False
         assert config_cicd.is_cicd is True
