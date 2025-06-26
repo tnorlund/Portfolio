@@ -8,7 +8,7 @@
 
 > **MerchantCountsResponse** = `object`[]
 
-Defined in: [types/api.ts:22](https://github.com/tnorlund/Portfolio/blob/bac315084684e4753a2edc863386776ede317139/portfolio/types/api.ts#L22)
+Defined in: [types/api.ts:22](https://github.com/tnorlund/Portfolio/blob/a8a17077d8edab9d2ff44a01ebf1c1a86853a01a/portfolio/types/api.ts#L22)
 
 ## Index Signature
 
