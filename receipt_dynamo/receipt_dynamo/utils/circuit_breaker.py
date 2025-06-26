@@ -128,6 +128,8 @@ class CircuitBreaker:
             "consecutive_successes": self.consecutive_successes,
             "last_failure_time": self.last_failure_time,
             "time_since_failure": (
-                time.time() - self.last_failure_time if self.last_failure_time else None
+                time.time() - self.last_failure_time
+                if self.last_failure_time
+                else None
             ),
         }
