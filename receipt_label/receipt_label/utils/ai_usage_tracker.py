@@ -7,13 +7,12 @@ import os
 import time
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Union, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
@@ -109,7 +108,9 @@ class AIUsageTracker:
             except Exception as e:
                 print(f"Failed to log metric to file: {e}")
 
-    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_completion(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -185,7 +186,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_embedding(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -250,7 +253,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_anthropic_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_anthropic_completion(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking Anthropic Claude API calls.
         """
@@ -310,7 +315,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_google_places(self, operation: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def track_google_places(
+        self, operation: str
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """
         Decorator for tracking Google Places API calls.
 

@@ -2,13 +2,12 @@
 
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
@@ -201,34 +200,34 @@ class MockServiceFactory:
             Mock OpenAI client with proper spec and structure
         """
         client = MagicMock(spec=OpenAI)
-        
+
         # Set up chat completions
         chat_mock = MagicMock()
         completions_mock = MagicMock()
-        
+
         if completion_response is None:
             completion_response = create_mock_openai_response()
-        
+
         completions_mock.create.return_value = completion_response
         chat_mock.completions = completions_mock
         client.chat = chat_mock
-        
+
         # Set up embeddings
         embeddings_mock = MagicMock()
-        
+
         if embedding_response is None:
             embedding_response = create_mock_embedding_response()
-        
+
         embeddings_mock.create.return_value = embedding_response
         client.embeddings = embeddings_mock
-        
+
         # Add client attributes
         client.api_key = "test-key"
         client.organization = "test-org"
         client.base_url = "https://api.openai.com/v1"
         client.timeout = 30.0
         client.max_retries = 2
-        
+
         return client
 
     @staticmethod
@@ -242,20 +241,20 @@ class MockServiceFactory:
             Mock Anthropic client with proper spec and structure
         """
         client = MagicMock()
-        
+
         # Set up messages completion
         messages_mock = MagicMock()
-        
+
         if response is None:
             response = create_mock_anthropic_response()
-        
+
         messages_mock.create.return_value = response
         client.messages = messages_mock
-        
+
         # Add client attributes
         client.api_key = "test-key"
         client.base_url = "https://api.anthropic.com"
-        
+
         return client
 
     @staticmethod
@@ -285,9 +284,15 @@ class MockServiceFactory:
                     "geometry": {
                         "location": {"lat": 37.7749, "lng": -122.4194},
                         "viewport": {
-                            "northeast": {"lat": 37.7762487, "lng": -122.4180757},
-                            "southwest": {"lat": 37.7735487, "lng": -122.4207757}
-                        }
+                            "northeast": {
+                                "lat": 37.7762487,
+                                "lng": -122.4180757,
+                            },
+                            "southwest": {
+                                "lat": 37.7735487,
+                                "lng": -122.4207757,
+                            },
+                        },
                     },
                     "types": ["restaurant", "food", "establishment"],
                     "rating": 4.2,
@@ -301,16 +306,16 @@ class MockServiceFactory:
                             "Thursday: 11:00 AM – 10:00 PM",
                             "Friday: 11:00 AM – 11:00 PM",
                             "Saturday: 11:00 AM – 11:00 PM",
-                            "Sunday: 11:00 AM – 9:00 PM"
-                        ]
+                            "Sunday: 11:00 AM – 9:00 PM",
+                        ],
                     },
                     "photos": [
                         {
                             "height": 3024,
                             "width": 4032,
-                            "photo_reference": "test_photo_reference"
+                            "photo_reference": "test_photo_reference",
                         }
-                    ]
+                    ],
                 },
                 "status": status,
             }
@@ -336,20 +341,20 @@ class MockServiceFactory:
         """
         client = MagicMock()
         client.table_name = "test-table"
-        
+
         if put_response is None:
             put_response = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-        
+
         if query_response is None:
             query_response = {"Items": [], "Count": 0, "ScannedCount": 0}
-        
+
         client.put_item.return_value = put_response
         client.query.return_value = query_response
         client.batch_write_item.return_value = {
             "UnprocessedItems": {},
-            "ResponseMetadata": {"HTTPStatusCode": 200}
+            "ResponseMetadata": {"HTTPStatusCode": 200},
         }
-        
+
         return client
 
 
@@ -371,16 +376,18 @@ def create_mock_embedding_response(
     response = MagicMock(spec=CreateEmbeddingResponse)
     response.model = model
     response.usage = Mock(total_tokens=total_tokens)
-    
+
     # Create mock embeddings data
     embeddings = []
     for i in range(embeddings_count):
         embedding = Mock()
-        embedding.embedding = [0.1 * j for j in range(1536)]  # Standard embedding size
+        embedding.embedding = [
+            0.1 * j for j in range(1536)
+        ]  # Standard embedding size
         embedding.index = i
         embeddings.append(embedding)
-    
+
     response.data = embeddings
     response.object = "list"
-    
+
     return response
