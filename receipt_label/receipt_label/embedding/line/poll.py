@@ -29,6 +29,7 @@ from receipt_dynamo.entities import (
     EmbeddingBatchResult,
     ReceiptSection,
 )
+
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -269,9 +270,9 @@ def upsert_line_embeddings_to_pinecone(
 
         # Format the line context to extract prev/next lines
         # Import locally to avoid circular import
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+        from receipt_label.submit_line_embedding_batch.submit_line_batch import (  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
             _format_line_context_embedding_input,
-        )  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
+        )
 
         embedding_input = _format_line_context_embedding_input(
             target_line, lines
