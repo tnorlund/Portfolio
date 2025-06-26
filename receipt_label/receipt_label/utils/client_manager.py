@@ -96,18 +96,40 @@ class ClientManager:
                 # In tests, we need to pass the mock client to avoid creating real DynamoDB connections
                 # In production, pass None to let ResilientAIUsageTracker create its own ResilientDynamoClient
                 test_client = None
-                if self.config.dynamo_table in ["test-table", "integration-test-table"]:
+
+                # Detect test environments by table name patterns
+                test_table_patterns = [
+                    "test-table",
+                    "integration-test-table",
+                    "perf-test-table",
+                    "stress-test-table",
+                    "resilient-test-table",
+                    "TestTable",
+                ]
+                is_test_env = (
+                    any(
+                        pattern in self.config.dynamo_table
+                        for pattern in test_table_patterns
+                    )
+                    or self.config.dynamo_table.lower().endswith("-test")
+                    or "test" in self.config.dynamo_table.lower()
+                )
+
+                if is_test_env:
                     # We're in a test environment, use the mock client
                     test_client = self.dynamo
-                
+
                 self._usage_tracker = ResilientAIUsageTracker(
                     dynamo_client=test_client,
                     table_name=self.config.dynamo_table,
                     user_id=self.config.user_id,
                     track_to_dynamo=True,
-                    track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
+                    track_to_file=os.environ.get(
+                        "TRACK_TO_FILE", "false"
+                    ).lower()
                     == "true",
-                    validate_table_environment=test_client is None,  # Only validate in production
+                    validate_table_environment=test_client
+                    is None,  # Only validate in production
                     # Resilience configuration
                     circuit_breaker_threshold=int(
                         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
