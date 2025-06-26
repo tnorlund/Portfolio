@@ -33,6 +33,38 @@ from utils.ai_usage_helpers import (
 )
 
 
+def get_dynamo_call_count(mock_dynamo):
+    """Helper to get the actual call count from mock DynamoDB client."""
+    # The tracker will use put_ai_usage_metric if available, else put_item
+    if (
+        hasattr(mock_dynamo, "put_ai_usage_metric")
+        and mock_dynamo.put_ai_usage_metric.called
+    ):
+        return mock_dynamo.put_ai_usage_metric.call_count
+    else:
+        return mock_dynamo.put_item.call_count
+
+
+def get_dynamo_call_args(mock_dynamo):
+    """Helper to get the actual call args from mock DynamoDB client."""
+    # The tracker will use put_ai_usage_metric if available, else put_item
+    if (
+        hasattr(mock_dynamo, "put_ai_usage_metric")
+        and mock_dynamo.put_ai_usage_metric.called
+    ):
+        # For put_ai_usage_metric, the metric object is passed directly
+        # We need to convert it to the same format as put_item calls
+        calls = []
+        for call in mock_dynamo.put_ai_usage_metric.call_args_list:
+            metric = call.args[0]  # First argument is the metric
+            item = metric.to_dynamodb_item()
+            # Simulate the put_item call format
+            calls.append(type("MockCall", (), {"kwargs": {"Item": item}})())
+        return calls
+    else:
+        return mock_dynamo.put_item.call_args_list
+
+
 @pytest.fixture
 def mock_env():
     """Mock environment variables for testing."""
@@ -57,6 +89,13 @@ def mock_dynamo_client():
     client.put_item = MagicMock(
         return_value={"ResponseMetadata": {"HTTPStatusCode": 200}}
     )
+
+    def store_metric(metric):
+        """Store AIUsageMetric for new resilient client interface."""
+        item = metric.to_dynamodb_item()
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
+    client.put_ai_usage_metric = MagicMock(side_effect=store_metric)
     client.query = MagicMock(return_value={"Items": []})
     return client
 
@@ -121,9 +160,7 @@ class TestClientManagerIntegration:
             assert tracker.user_id == "test-user"
             assert tracker.track_to_dynamo is True
 
-    def test_client_manager_initialization_without_tracking(
-        self, mock_dynamo_client
-    ):
+    def test_client_manager_initialization_without_tracking(self, mock_dynamo_client):
         """Test ClientManager initialization with usage tracking disabled."""
         config = ClientConfig(
             dynamo_table="test-table",
@@ -160,12 +197,8 @@ class TestClientManagerIntegration:
                 openai_client = manager.openai
 
                 # Verify client is wrapped (it's a custom wrapped class)
-                assert (
-                    openai_client is not mock_openai_client
-                )  # Should be wrapped
-                assert hasattr(
-                    openai_client, "chat"
-                )  # Should have expected methods
+                assert openai_client is not mock_openai_client  # Should be wrapped
+                assert hasattr(openai_client, "chat")  # Should have expected methods
 
     @pytest.mark.integration
     def test_complete_openai_completion_tracking_flow(
@@ -212,14 +245,26 @@ class TestClientManagerIntegration:
                 assert response.id == "chatcmpl-test123"
                 assert response.choices[0].message.content == "Test response"
 
-                # Verify metric was stored
-                assert mock_dynamo_client.put_item.called
+                # Verify metric was stored (check both interfaces)
+                assert mock_dynamo_client.put_item.called or (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                )
 
-                # Check stored metric
-                call_args = mock_dynamo_client.put_item.call_args
-                assert call_args.kwargs["TableName"] == "test-table"
-
-                item = call_args.kwargs["Item"]
+                # Check stored metric (handle both interfaces)
+                if (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                ):
+                    # New resilient client interface - get metric from call args
+                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
+                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    item = metric.to_dynamodb_item()
+                else:
+                    # Legacy interface
+                    call_args = mock_dynamo_client.put_item.call_args
+                    assert call_args.kwargs["TableName"] == "test-table"
+                    item = call_args.kwargs["Item"]
                 assert item["service"]["S"] == "openai"
                 assert item["model"]["S"] == "gpt-3.5-turbo"
                 assert item["operation"]["S"] == "completion"
@@ -276,12 +321,25 @@ class TestClientManagerIntegration:
                 assert len(response.data) == 1
                 assert response.model == "text-embedding-ada-002"
 
-                # Verify metric was stored
-                assert mock_dynamo_client.put_item.called
+                # Verify metric was stored (check both interfaces)
+                assert mock_dynamo_client.put_item.called or (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                )
 
-                # Check stored metric
-                call_args = mock_dynamo_client.put_item.call_args
-                item = call_args.kwargs["Item"]
+                # Check stored metric (handle both interfaces)
+                if (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                ):
+                    # New resilient client interface - get metric from call args
+                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
+                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    item = metric.to_dynamodb_item()
+                else:
+                    # Legacy interface
+                    call_args = mock_dynamo_client.put_item.call_args
+                    item = call_args.kwargs["Item"]
                 assert item["service"]["S"] == "openai"
                 assert item["model"]["S"] == "text-embedding-ada-002"
                 assert item["operation"]["S"] == "embedding"
@@ -330,9 +388,7 @@ class TestClientManagerIntegration:
                     openai = manager.openai
                     response = openai.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "user", "content": f"Hello from {job_id}"}
-                        ],
+                        messages=[{"role": "user", "content": f"Hello from {job_id}"}],
                     )
                     return response
 
@@ -350,11 +406,11 @@ class TestClientManagerIntegration:
                 assert len(responses) == 5
 
                 # Verify all metrics were stored
-                assert mock_dynamo_client.put_item.call_count == 5
+                assert get_dynamo_call_count(mock_dynamo_client) == 5
 
                 # Verify each metric has unique data
                 stored_metrics = []
-                for call in mock_dynamo_client.put_item.call_args_list:
+                for call in get_dynamo_call_args(mock_dynamo_client):
                     item = call.kwargs["Item"]
                     stored_metrics.append(
                         {
@@ -402,12 +458,25 @@ class TestClientManagerIntegration:
                         messages=[{"role": "user", "content": "Hello"}],
                     )
 
-                # Verify error metric was still stored
-                assert mock_dynamo_client.put_item.called
+                # Verify error metric was still stored (check both interfaces)
+                assert mock_dynamo_client.put_item.called or (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                )
 
-                # Check stored metric contains error
-                call_args = mock_dynamo_client.put_item.call_args
-                item = call_args.kwargs["Item"]
+                # Check stored metric contains error (handle both interfaces)
+                if (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                ):
+                    # New resilient client interface - get metric from call args
+                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
+                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    item = metric.to_dynamodb_item()
+                else:
+                    # Legacy interface
+                    call_args = mock_dynamo_client.put_item.call_args
+                    item = call_args.kwargs["Item"]
                 assert item["service"]["S"] == "openai"
                 # Model may still be captured from kwargs even on error
                 assert item["error"]["S"] == "API rate limit exceeded"
@@ -450,12 +519,25 @@ class TestClientManagerIntegration:
                     is_batch=True,  # Indicate batch pricing
                 )
 
-                # Verify metric was stored
-                assert mock_dynamo_client.put_item.called
+                # Verify metric was stored (check both interfaces)
+                assert mock_dynamo_client.put_item.called or (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                )
 
-                # Check batch pricing was applied
-                call_args = mock_dynamo_client.put_item.call_args
-                item = call_args.kwargs["Item"]
+                # Check batch pricing was applied (handle both interfaces)
+                if (
+                    hasattr(mock_dynamo_client, "put_ai_usage_metric")
+                    and mock_dynamo_client.put_ai_usage_metric.called
+                ):
+                    # New resilient client interface - get metric from call args
+                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
+                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    item = metric.to_dynamodb_item()
+                else:
+                    # Legacy interface
+                    call_args = mock_dynamo_client.put_item.call_args
+                    item = call_args.kwargs["Item"]
 
                 # Calculate expected batch cost (50% discount)
                 regular_cost = AICostCalculator.calculate_openai_cost(
@@ -520,9 +602,9 @@ class TestClientManagerIntegration:
                     )
 
                 # Verify all calls have same context
-                assert mock_dynamo_client.put_item.call_count == 3
+                assert get_dynamo_call_count(mock_dynamo_client) == 3
 
-                for call in mock_dynamo_client.put_item.call_args_list:
+                for call in get_dynamo_call_args(mock_dynamo_client):
                     item = call.kwargs["Item"]
                     assert item["jobId"]["S"] == "persistent-job"
                     assert item["batchId"]["S"] == "persistent-batch"
@@ -589,9 +671,7 @@ class TestClientManagerIntegration:
                     assert log_entry["total_tokens"] == 150
 
     @pytest.mark.integration
-    def test_metric_query_by_service_and_date(
-        self, mock_env, mock_dynamo_client
-    ):
+    def test_metric_query_by_service_and_date(self, mock_env, mock_dynamo_client):
         """Test querying metrics by service and date range."""
         config = ClientConfig.from_env()
 

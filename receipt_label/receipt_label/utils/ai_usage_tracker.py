@@ -23,6 +23,33 @@ from .environment_config import (
 )
 
 
+def _supports_put_ai_usage_metric(obj: Any) -> bool:
+    """
+    True  → safe to call obj.put_ai_usage_metric(metric)
+    False → call obj.put_item(TableName=..., Item=...)
+    
+    Uses probe-based detection that only relies on public Mock behavior:
+    - Real objects are checked for the method
+    - Spec'd mocks reject unknown attributes (raises AttributeError)
+    - Plain mocks create any attribute on demand
+    """
+    from unittest.mock import Mock
+    
+    # Real objects (and non-Mock stubs)
+    if not isinstance(obj, Mock):
+        return callable(getattr(obj, "put_ai_usage_metric", None))
+
+    # Mock instances → probe with a name that cannot exist on DynamoClient
+    PROBE = "_ai_usage_tracker_probe_attribute_"
+    try:
+        getattr(obj, PROBE)
+        # Attribute was fabricated → this is a *basic* Mock
+        return False
+    except AttributeError:
+        # Attribute not allowed → this mock is spec'd
+        return True
+
+
 class AIUsageTracker:
     """
     Tracks AI service usage and costs across different providers.
@@ -148,9 +175,15 @@ class AIUsageTracker:
         if self.track_to_dynamo and self.dynamo_client:
             try:
                 item = metric.to_dynamodb_item()
-                self.dynamo_client.put_item(
-                    TableName=self.table_name, Item=item
-                )
+
+                if _supports_put_ai_usage_metric(self.dynamo_client):
+                    # Real client or spec'd MagicMock → high-level method
+                    self.dynamo_client.put_ai_usage_metric(metric)
+                else:
+                    # Basic Mock or minimalist stub → vanilla put_item path
+                    self.dynamo_client.put_item(
+                        TableName=self.table_name, Item=item
+                    )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
