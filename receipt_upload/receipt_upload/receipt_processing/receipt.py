@@ -11,6 +11,7 @@ from receipt_dynamo.entities import (
     ReceiptLine,
     ReceiptWord,
 )
+
 from receipt_upload.ocr import process_ocr_dict_as_receipt
 from receipt_upload.utils import download_file_from_s3
 
