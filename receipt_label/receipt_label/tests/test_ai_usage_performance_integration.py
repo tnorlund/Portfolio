@@ -27,7 +27,7 @@ from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from tests.utils.ai_usage_helpers import create_mock_openai_response
+from tests.utils.ai_usage_helpers import create_mock_openai_response, MockServiceFactory
 
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
@@ -614,9 +614,8 @@ class TestAIUsagePerformanceIntegration:
 
         mock_dynamo.put_item = MagicMock(side_effect=stressed_put_item)
 
-        mock_openai = MagicMock(spec=OpenAI)
-        mock_openai.chat.completions.create.return_value = (
-            create_mock_openai_response()
+        mock_openai = MockServiceFactory.create_openai_client(
+            completion_response=create_mock_openai_response()
         )
 
         with patch(

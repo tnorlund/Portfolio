@@ -5,9 +5,9 @@ AI Usage Tracker - Decorator and middleware for tracking AI service usage and co
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, Type
 
 import boto3
 from openai import OpenAI
@@ -27,13 +27,13 @@ class AIUsageTracker:
 
     def __init__(
         self,
-        dynamo_client=None,
+        dynamo_client: Optional[Any] = None,
         table_name: Optional[str] = None,
         user_id: Optional[str] = None,
         track_to_dynamo: bool = True,
         track_to_file: bool = False,
         log_file: str = "/tmp/ai_usage.jsonl",
-    ):
+    ) -> None:
         """
         Initialize the AI usage tracker.
 
@@ -63,7 +63,7 @@ class AIUsageTracker:
         batch_id: Optional[str] = None,
         github_pr: Optional[int] = None,
         user_id: Optional[str] = None,
-    ):
+    ) -> None:
         """Set context for tracking metrics."""
         if job_id is not None:
             self.current_job_id = job_id
@@ -74,7 +74,7 @@ class AIUsageTracker:
         if user_id is not None:
             self.user_id = user_id
 
-    def _store_metric(self, metric: AIUsageMetric):
+    def _store_metric(self, metric: AIUsageMetric) -> None:
         """Store metric in DynamoDB and/or file."""
         if self.track_to_dynamo and self.dynamo_client:
             try:
@@ -109,7 +109,7 @@ class AIUsageTracker:
             except Exception as e:
                 print(f"Failed to log metric to file: {e}")
 
-    def track_openai_completion(self, func: Callable) -> Callable:
+    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -165,7 +165,7 @@ class AIUsageTracker:
                     service="openai",
                     model=model,
                     operation="completion",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     total_tokens=total_tokens,
@@ -185,7 +185,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(self, func: Callable) -> Callable:
+    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -229,7 +229,7 @@ class AIUsageTracker:
                     service="openai",
                     model=model,
                     operation="embedding",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     total_tokens=total_tokens,
                     cost_usd=cost_usd,
                     latency_ms=int((time.time() - start_time) * 1000),
@@ -250,7 +250,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_anthropic_completion(self, func: Callable) -> Callable:
+    def track_anthropic_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking Anthropic Claude API calls.
         """
@@ -292,7 +292,7 @@ class AIUsageTracker:
                     service="anthropic",
                     model=model,
                     operation="completion",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     cost_usd=cost_usd,
@@ -310,7 +310,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_google_places(self, operation: str):
+    def track_google_places(self, operation: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """
         Decorator for tracking Google Places API calls.
 
@@ -318,7 +318,7 @@ class AIUsageTracker:
             operation: The type of Places API operation
         """
 
-        def decorator(func: Callable) -> Callable:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             @wraps(func)
             def wrapper(*args, **kwargs):
                 start_time = time.time()
@@ -341,7 +341,7 @@ class AIUsageTracker:
                         service="google_places",
                         model="places_api",
                         operation=operation,
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         api_calls=1,
                         cost_usd=cost_usd,
                         latency_ms=int((time.time() - start_time) * 1000),
@@ -363,7 +363,7 @@ class AIUsageTracker:
         pr_number: int,
         model: str = "claude-3-opus",
         estimated_tokens: int = 5000,
-    ):
+    ) -> None:
         """
         Track Claude usage in GitHub Actions for PR reviews.
         This is called from GitHub Actions workflows.
@@ -382,7 +382,7 @@ class AIUsageTracker:
             service="anthropic",
             model=model,
             operation="code_review",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             input_tokens=input_estimate,
             output_tokens=output_estimate,
             total_tokens=estimated_tokens,
