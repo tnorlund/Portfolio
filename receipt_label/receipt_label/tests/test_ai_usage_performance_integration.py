@@ -21,18 +21,20 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.client_manager import ClientConfig, ClientManager
-from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     MockServiceFactory,
     create_mock_openai_response,
 )
+
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.client_manager import ClientConfig, ClientManager
+from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.fixture
@@ -77,9 +79,7 @@ def mock_high_performance_dynamo():
     def fast_query(**kwargs):
         with client._storage_lock:
             # Simple in-memory query simulation
-            return {
-                "Items": client._stored_items[:100]
-            }  # Limit for performance
+            return {"Items": client._stored_items[:100]}  # Limit for performance
 
     client.query = MagicMock(side_effect=fast_query)
 
@@ -270,23 +270,16 @@ class TestAIUsagePerformanceIntegration:
                 # Analyze results
                 total_requests = num_workers * requests_per_worker
                 overall_throughput = total_requests / total_elapsed
-                avg_worker_latency = statistics.mean(
-                    r["avg_latency"] for r in results
-                )
+                avg_worker_latency = statistics.mean(r["avg_latency"] for r in results)
                 max_worker_latency = max(r["max_latency"] for r in results)
 
                 # Performance assertions
-                assert (
-                    overall_throughput > 200
-                )  # Higher throughput with concurrency
+                assert overall_throughput > 200  # Higher throughput with concurrency
                 assert avg_worker_latency < 20  # Reasonable latency under load
                 assert max_worker_latency < 100  # No extreme outliers
 
                 # Verify data integrity
-                assert (
-                    len(mock_high_performance_dynamo._stored_items)
-                    == total_requests
-                )
+                assert len(mock_high_performance_dynamo._stored_items) == total_requests
 
                 # Check job isolation
                 for worker_id in range(num_workers):
@@ -415,9 +408,7 @@ class TestAIUsagePerformanceIntegration:
                 ),
             )
 
-        mock_openai.chat.completions.create.side_effect = (
-            variable_latency_response
-        )
+        mock_openai.chat.completions.create.side_effect = variable_latency_response
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
@@ -454,9 +445,7 @@ class TestAIUsagePerformanceIntegration:
                                 }
                             ],
                         )
-                        latencies.append(
-                            (time.perf_counter() - req_start) * 1000
-                        )
+                        latencies.append((time.perf_counter() - req_start) * 1000)
 
                         if i < count - 1:
                             time.sleep(delay)
@@ -478,9 +467,7 @@ class TestAIUsagePerformanceIntegration:
                 assert (
                     burst_metrics["throughput"] > 50
                 )  # Handle at least 50 req/s during burst
-                assert (
-                    burst_metrics["p99_latency"] < 100
-                )  # Maintain reasonable latency
+                assert burst_metrics["p99_latency"] < 100  # Maintain reasonable latency
 
                 # System should recover after burst
                 steady_after = phase_metrics["steady"]
@@ -521,9 +508,7 @@ class TestAIUsagePerformanceIntegration:
                         "totalTokens": {"N": str(100 + i)},
                         "costUSD": {"N": str(0.0001 * (100 + i))},
                     }
-                    mock_high_performance_dynamo._stored_items.append(
-                        metric_item
-                    )
+                    mock_high_performance_dynamo._stored_items.append(metric_item)
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
@@ -662,9 +647,7 @@ class TestAIUsagePerformanceIntegration:
                             "window": window_num,
                             "success_rate": success_rate,
                             "throughput": window_size / window_duration,
-                            "avg_latency": window_duration
-                            / window_size
-                            * 1000,
+                            "avg_latency": window_duration / window_size * 1000,
                         }
                     )
 
@@ -676,9 +659,7 @@ class TestAIUsagePerformanceIntegration:
                 early_success = statistics.mean(
                     w["success_rate"] for w in early_windows
                 )
-                late_success = statistics.mean(
-                    w["success_rate"] for w in late_windows
-                )
+                late_success = statistics.mean(w["success_rate"] for w in late_windows)
 
                 assert early_success > 0.95  # Nearly perfect when not stressed
                 assert late_success > 0.70  # Still functional under stress
@@ -687,17 +668,14 @@ class TestAIUsagePerformanceIntegration:
                 early_throughput = statistics.mean(
                     w["throughput"] for w in early_windows
                 )
-                late_throughput = statistics.mean(
-                    w["throughput"] for w in late_windows
-                )
+                late_throughput = statistics.mean(w["throughput"] for w in late_windows)
 
                 # With resilient tracker, we should maintain at least 10% throughput
                 expected_throughput_ratio = (
                     0.10 if config.use_resilient_tracker else 0.03
                 )
                 assert (
-                    late_throughput
-                    > early_throughput * expected_throughput_ratio
+                    late_throughput > early_throughput * expected_throughput_ratio
                 )  # Resilient tracker should maintain better throughput under stress
 
     def test_resilient_tracker_maintains_throughput(self, performance_env):
@@ -705,9 +683,7 @@ class TestAIUsagePerformanceIntegration:
         # Force use of resilient tracker
         os.environ["USE_RESILIENT_TRACKER"] = "true"
         os.environ["CIRCUIT_BREAKER_THRESHOLD"] = "5"
-        os.environ["CIRCUIT_BREAKER_TIMEOUT"] = (
-            "2.0"  # Short timeout for testing
-        )
+        os.environ["CIRCUIT_BREAKER_TIMEOUT"] = "2.0"  # Short timeout for testing
         os.environ["MAX_RETRY_ATTEMPTS"] = "3"
         os.environ["RETRY_BASE_DELAY"] = "0.1"  # Short delay for testing
         os.environ["BATCH_SIZE"] = "10"
@@ -717,8 +693,16 @@ class TestAIUsagePerformanceIntegration:
         assert config.use_resilient_tracker is True
 
         # Mock components with failure scenarios
-        mock_dynamo = MagicMock(spec=DynamoClient)
+        from receipt_dynamo import ResilientDynamoClient
+
+        mock_dynamo = MagicMock(spec=ResilientDynamoClient)
         mock_dynamo.table_name = "resilient-test-table"
+
+        # Add resilient features to mock
+        mock_dynamo.circuit_state = "closed"
+        mock_dynamo.failure_count = 0
+        mock_dynamo.enable_batch_processing = True
+        mock_dynamo.metric_queue = []
 
         # Track actual DynamoDB calls
         dynamo_calls = {"put_item": 0, "batch_write_item": 0}
@@ -746,119 +730,117 @@ class TestAIUsagePerformanceIntegration:
             return {"UnprocessedItems": {}}
 
         mock_dynamo.put_item = MagicMock(side_effect=tracked_put_item)
-        mock_dynamo.batch_write_item = MagicMock(
-            side_effect=tracked_batch_write
-        )
+        mock_dynamo.batch_write_item = MagicMock(side_effect=tracked_batch_write)
 
         mock_openai = MockServiceFactory.create_openai_client(
             completion_response=create_mock_openai_response()
         )
 
         with patch(
-            "receipt_label.utils.client_manager.DynamoClient",
+            "receipt_label.utils.ai_usage_tracker_resilient.ResilientDynamoClient",
             return_value=mock_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
+                "receipt_label.utils.client_manager.DynamoClient",
+                return_value=mock_dynamo,
             ):
-                manager = ClientManager(config)
-                openai_client = manager.openai
+                with patch(
+                    "receipt_label.utils.client_manager.OpenAI",
+                    return_value=mock_openai,
+                ):
+                    manager = ClientManager(config)
+                    openai_client = manager.openai
 
-                # Track success/failure over time
-                results = []
-                start_time = time.perf_counter()
+                    # Track success/failure over time
+                    results = []
+                    start_time = time.perf_counter()
 
-                # Run 500 requests
-                for i in range(500):
-                    request_start = time.perf_counter()
-                    try:
-                        openai_client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {"role": "user", "content": f"Test {i}"}
-                            ],
-                        )
-                        # Exclude the OpenAI mock latency from throughput measurement
-                        # We only care about tracker overhead
-                        request_end = time.perf_counter()
-                        results.append(
-                            {
-                                "success": True,
-                                "time": request_end,
-                                "tracker_time": request_end
-                                - request_start
-                                - 0.001,  # Subtract mock latency
-                            }
-                        )
-                    except Exception as e:
-                        request_end = time.perf_counter()
-                        results.append(
-                            {
-                                "success": False,
-                                "time": request_end,
-                                "tracker_time": request_end - request_start,
-                            }
-                        )
+                    # Run 500 requests
+                    for i in range(500):
+                        request_start = time.perf_counter()
+                        try:
+                            openai_client.chat.completions.create(
+                                model="gpt-3.5-turbo",
+                                messages=[{"role": "user", "content": f"Test {i}"}],
+                            )
+                            # Exclude the OpenAI mock latency from throughput measurement
+                            # We only care about tracker overhead
+                            request_end = time.perf_counter()
+                            results.append(
+                                {
+                                    "success": True,
+                                    "time": request_end,
+                                    "tracker_time": request_end
+                                    - request_start
+                                    - 0.001,  # Subtract mock latency
+                                }
+                            )
+                        except Exception as e:
+                            request_end = time.perf_counter()
+                            results.append(
+                                {
+                                    "success": False,
+                                    "time": request_end,
+                                    "tracker_time": request_end - request_start,
+                                }
+                            )
 
-                total_time = time.perf_counter() - start_time
+                    total_time = time.perf_counter() - start_time
 
-                # Calculate metrics
-                successful_requests = sum(1 for r in results if r["success"])
-                success_rate = successful_requests / len(results)
-                throughput = len(results) / total_time
+                    # Calculate metrics
+                    successful_requests = sum(1 for r in results if r["success"])
+                    success_rate = successful_requests / len(results)
+                    throughput = len(results) / total_time
 
-                # Verify resilience features worked
-                tracker = manager.usage_tracker
-                if hasattr(tracker, "get_stats"):
-                    stats = tracker.get_stats()
-                    print(f"Tracker stats: {stats}")
+                    # Verify resilience features worked
+                    tracker = manager.usage_tracker
+                    if hasattr(tracker, "get_stats"):
+                        stats = tracker.get_stats()
+                        print(f"Tracker stats: {stats}")
 
-                    # Should have used batch processing
-                    assert stats.get("batch_queue") is not None
+                        # Should have used batch processing
+                        assert stats.get("batch_queue") is not None
 
-                    # Circuit breaker should have helped
-                    cb_state = stats.get("circuit_breaker_state", {})
-                    assert cb_state.get("state") in [
-                        "closed",
-                        "half_open",
-                        "open",
-                    ]
+                        # Circuit breaker should have helped
+                        cb_state = stats.get("circuit_breaker_state", {})
+                        assert cb_state.get("state") in [
+                            "closed",
+                            "half_open",
+                            "open",
+                        ]
 
-                # Should maintain high success rate
-                assert (
-                    success_rate > 0.85
-                ), f"Success rate too low: {success_rate:.2%}"
+                    # Should maintain high success rate
+                    assert (
+                        success_rate > 0.85
+                    ), f"Success rate too low: {success_rate:.2%}"
 
-                # Calculate throughput degradation
-                # First 100 requests (baseline)
-                early_results = results[:100]
-                early_time = (
-                    early_results[-1]["time"] - early_results[0]["time"]
-                )
-                early_throughput = 100 / early_time
+                    # Calculate throughput degradation
+                    # First 100 requests (baseline)
+                    early_results = results[:100]
+                    early_time = early_results[-1]["time"] - early_results[0]["time"]
+                    early_throughput = 100 / early_time
 
-                # Last 100 requests (under stress)
-                late_results = results[-100:]
-                late_time = late_results[-1]["time"] - late_results[0]["time"]
-                late_throughput = 100 / late_time
+                    # Last 100 requests (under stress)
+                    late_results = results[-100:]
+                    late_time = late_results[-1]["time"] - late_results[0]["time"]
+                    late_throughput = 100 / late_time
 
-                throughput_ratio = late_throughput / early_throughput
+                    throughput_ratio = late_throughput / early_throughput
 
-                # Should maintain at least 10% of original throughput
-                assert throughput_ratio > 0.10, (
-                    f"Throughput degraded too much: {throughput_ratio:.2%} "
-                    f"(early: {early_throughput:.1f} req/s, late: {late_throughput:.1f} req/s)"
-                )
+                    # Should maintain at least 10% of original throughput
+                    assert throughput_ratio > 0.10, (
+                        f"Throughput degraded too much: {throughput_ratio:.2%} "
+                        f"(early: {early_throughput:.1f} req/s, late: {late_throughput:.1f} req/s)"
+                    )
 
-                # Verify batch processing reduced DynamoDB calls
-                total_dynamo_calls = (
-                    dynamo_calls["put_item"] + dynamo_calls["batch_write_item"]
-                )
-                calls_per_request = total_dynamo_calls / len(results)
+                    # Verify batch processing reduced DynamoDB calls
+                    total_dynamo_calls = (
+                        dynamo_calls["put_item"] + dynamo_calls["batch_write_item"]
+                    )
+                    calls_per_request = total_dynamo_calls / len(results)
 
-                # With batching, should have fewer than 1 DynamoDB call per request
-                assert calls_per_request < 0.5, (
-                    f"Too many DynamoDB calls: {calls_per_request:.2f} per request "
-                    f"(put_item: {dynamo_calls['put_item']}, batch: {dynamo_calls['batch_write_item']})"
-                )
+                    # With batching, should have fewer than 1 DynamoDB call per request
+                    assert calls_per_request < 0.5, (
+                        f"Too many DynamoDB calls: {calls_per_request:.2f} per request "
+                        f"(put_item: {dynamo_calls['put_item']}, batch: {dynamo_calls['batch_write_item']})"
+                    )

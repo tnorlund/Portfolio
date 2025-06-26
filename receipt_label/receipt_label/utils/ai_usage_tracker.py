@@ -78,10 +78,13 @@ class AIUsageTracker:
         """Store metric in DynamoDB and/or file."""
         if self.track_to_dynamo and self.dynamo_client:
             try:
-                item = metric.to_dynamodb_item()
-                self.dynamo_client.put_item(
-                    TableName=self.table_name, Item=item
-                )
+                # Use high-level DynamoClient method
+                if hasattr(self.dynamo_client, "put_ai_usage_metric"):
+                    self.dynamo_client.put_ai_usage_metric(metric)
+                else:
+                    # Fallback for compatibility
+                    item = metric.to_dynamodb_item()
+                    self.dynamo_client.put_item(TableName=self.table_name, Item=item)
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -109,9 +112,7 @@ class AIUsageTracker:
             except Exception as e:
                 print(f"Failed to log metric to file: {e}")
 
-    def track_openai_completion(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -149,9 +150,7 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(
-                            usage, "completion_tokens", None
-                        )
+                        output_tokens = getattr(usage, "completion_tokens", None)
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -187,9 +186,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -244,9 +241,7 @@ class AIUsageTracker:
                     metadata={
                         "function": func.__name__,
                         "input_count": (
-                            len(kwargs.get("input", []))
-                            if "input" in kwargs
-                            else None
+                            len(kwargs.get("input", [])) if "input" in kwargs else None
                         ),
                     },
                 )
