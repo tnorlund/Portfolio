@@ -1,30 +1,30 @@
 """Worker module for processing training jobs from SQS queue."""
 
-import os
-import time
+import argparse
 import json
 import logging
-import traceback
-import argparse
+import os
 import threading
-from typing import Dict, Any, Optional, List, Callable, Union
+import time
+import traceback
 import uuid
+from typing import Any, Callable, Dict, List, Optional, Union
 
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
+from receipt_dynamo.services.job_service import JobService
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
 from receipt_trainer.jobs import (
     Job,
     JobQueue,
     JobQueueConfig,
     JobRetryStrategy,
 )
+from receipt_trainer.utils.checkpoint import CheckpointManager
 from receipt_trainer.utils.infrastructure import (
-    TrainingEnvironment,
+    EC2Metadata,
     EFSManager,
     SpotInstanceHandler,
-    EC2Metadata,
+    TrainingEnvironment,
 )
-from receipt_trainer.utils.checkpoint import CheckpointManager
-from receipt_dynamo.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 

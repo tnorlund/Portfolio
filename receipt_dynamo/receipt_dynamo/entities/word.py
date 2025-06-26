@@ -2,12 +2,16 @@
 from math import atan2, cos, degrees, pi, radians, sin
 from typing import Generator, Tuple
 
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_type,
-                                          assert_valid_bounding_box,
-                                          assert_valid_point,
-                                          assert_valid_uuid, format_type_error,
-                                          shear_point)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_type,
+    assert_valid_bounding_box,
+    assert_valid_point,
+    assert_valid_uuid,
+    format_type_error,
+    shear_point,
+)
 
 
 class Word:
@@ -139,7 +143,9 @@ class Word:
         """
         return {
             "GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
+            "GSI2SK": {
+                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
         }
 
     def to_item(self) -> dict:
@@ -157,8 +163,12 @@ class Word:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -637,7 +647,9 @@ class Word:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -836,7 +848,11 @@ class Word:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                (tuple(self.extracted_data.items()) if self.extracted_data else None),
+                (
+                    tuple(self.extracted_data.items())
+                    if self.extracted_data
+                    else None
+                ),
             )
         )
 
@@ -882,10 +898,12 @@ def itemToWord(item: dict) -> Word:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

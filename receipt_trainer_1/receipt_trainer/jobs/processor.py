@@ -10,15 +10,14 @@ import enum
 import logging
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import boto3
 from botocore.exceptions import ClientError
-
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.services.job_service import JobService
 from receipt_trainer.jobs.job import Job, JobStatus
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
-from receipt_dynamo.services.job_service import JobService
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
 class ProcessingMode(enum.Enum):

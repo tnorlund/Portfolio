@@ -59,7 +59,9 @@ class IntegrationFakePineconeIndex:
         # Return consistently high scores to pass validation thresholds
         base_score = 0.90  # High enough for all validation thresholds
         matches = [
-            SimpleNamespace(id=f"match_{i}", score=base_score - (i * 0.02), metadata={})
+            SimpleNamespace(
+                id=f"match_{i}", score=base_score - (i * 0.02), metadata={}
+            )
             for i in range(min(3, top_k))
         ]
         return SimpleNamespace(matches=matches)
@@ -99,15 +101,20 @@ class TestValidationFunctionIntegration:
     def test_receipt_validation_workflow(self, mocker):
         """Test a complete receipt validation workflow."""
         # Import all validation functions
-        from receipt_label.label_validation.validate_address import \
-            validate_address
-        from receipt_label.label_validation.validate_currency import \
-            validate_currency
+        from receipt_label.label_validation.validate_address import (
+            validate_address,
+        )
+        from receipt_label.label_validation.validate_currency import (
+            validate_currency,
+        )
         from receipt_label.label_validation.validate_date import validate_date
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_google, validate_merchant_name_pinecone)
-        from receipt_label.label_validation.validate_phone_number import \
-            validate_phone_number
+            validate_merchant_name_google,
+            validate_merchant_name_pinecone,
+        )
+        from receipt_label.label_validation.validate_phone_number import (
+            validate_phone_number,
+        )
         from receipt_label.label_validation.validate_time import validate_time
 
         # Create a shared mock client manager
@@ -162,7 +169,9 @@ class TestValidationFunctionIntegration:
                     word_id=5,
                     label="ADDRESS",
                 ),
-                metadata=SimpleNamespace(canonical_address="123 main street suite 100"),
+                metadata=SimpleNamespace(
+                    canonical_address="123 main street suite 100"
+                ),
             ),
             "phone": SimpleNamespace(
                 word=SimpleNamespace(text="(555) 123-4567"),
@@ -274,8 +283,9 @@ class TestValidationFunctionIntegration:
 
     def test_validation_order_independence(self, mocker):
         """Test that validation order doesn't affect results."""
-        from receipt_label.label_validation.validate_currency import \
-            validate_currency
+        from receipt_label.label_validation.validate_currency import (
+            validate_currency,
+        )
         from receipt_label.label_validation.validate_date import validate_date
 
         # Create separate fake indexes
@@ -337,11 +347,13 @@ class TestValidationFunctionIntegration:
 
     def test_validation_with_mixed_quality_data(self, mocker):
         """Test validation with a mix of valid and invalid data."""
-        from receipt_label.label_validation.validate_currency import \
-            validate_currency
+        from receipt_label.label_validation.validate_currency import (
+            validate_currency,
+        )
         from receipt_label.label_validation.validate_date import validate_date
-        from receipt_label.label_validation.validate_phone_number import \
-            validate_phone_number
+        from receipt_label.label_validation.validate_phone_number import (
+            validate_phone_number,
+        )
 
         fake_index = IntegrationFakePineconeIndex()
         # Currency mock setup
@@ -441,10 +453,12 @@ class TestValidationFunctionIntegration:
 
     def test_validation_error_propagation(self, mocker):
         """Test how errors in one validation affect others."""
-        from receipt_label.label_validation.validate_address import \
-            validate_address
-        from receipt_label.label_validation.validate_merchant_name import \
-            validate_merchant_name_pinecone
+        from receipt_label.label_validation.validate_address import (
+            validate_address,
+        )
+        from receipt_label.label_validation.validate_merchant_name import (
+            validate_merchant_name_pinecone,
+        )
 
         # Create a fake index that fails after first use
         class FailingIndex(IntegrationFakePineconeIndex):
@@ -509,12 +523,15 @@ class TestValidationFunctionIntegration:
         )
 
         with pytest.raises(ConnectionError):
-            validate_merchant_name_pinecone(merchant_word, merchant_label, "Starbucks")
+            validate_merchant_name_pinecone(
+                merchant_word, merchant_label, "Starbucks"
+            )
 
     def test_batch_validation_performance(self, mocker):
         """Test performance characteristics of batch validation."""
-        from receipt_label.label_validation.validate_currency import \
-            validate_currency
+        from receipt_label.label_validation.validate_currency import (
+            validate_currency,
+        )
 
         fake_index = IntegrationFakePineconeIndex()
         # Currency mock setup
@@ -626,8 +643,12 @@ class TestValidationFunctionIntegration:
         ]
 
         for test_case in test_cases:
-            date_result = validate_date(test_case["date"], test_case["date_label"])
-            time_result = validate_time(test_case["time"], test_case["time_label"])
+            date_result = validate_date(
+                test_case["date"], test_case["date_label"]
+            )
+            time_result = validate_time(
+                test_case["time"], test_case["time_label"]
+            )
 
             # Both should be valid for valid datetime pairs
             assert date_result.is_consistent
@@ -638,8 +659,9 @@ class TestValidationFunctionIntegration:
 
     def test_validation_state_isolation(self, mocker):
         """Test that validations don't affect each other's state."""
-        from receipt_label.label_validation.validate_merchant_name import \
-            validate_merchant_name_pinecone
+        from receipt_label.label_validation.validate_merchant_name import (
+            validate_merchant_name_pinecone,
+        )
 
         # Create separate indexes for each test
         fake_index1 = IntegrationFakePineconeIndex()

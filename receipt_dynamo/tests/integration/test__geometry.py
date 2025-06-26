@@ -2,12 +2,19 @@
 from math import isclose, pi, sqrt
 
 import pytest
-
 from receipt_dynamo.data._geometry import (
-    box_points, compute_hull_centroid, compute_receipt_box_from_skewed_extents,
-    convex_hull, find_hull_extents_relative_to_centroid,
-    find_perspective_coeffs, invert_affine, invert_warp, min_area_rect,
-    pad_corners_opposite, solve_8x8_system)
+    box_points,
+    compute_hull_centroid,
+    compute_receipt_box_from_skewed_extents,
+    convex_hull,
+    find_hull_extents_relative_to_centroid,
+    find_perspective_coeffs,
+    invert_affine,
+    invert_warp,
+    min_area_rect,
+    pad_corners_opposite,
+    solve_8x8_system,
+)
 
 
 def multiply_perspective(m1, m2):
@@ -65,7 +72,9 @@ def test_invert_warp_identity():
     identity = [1, 0, 0, 0, 1, 0, 0, 0]
     inv = invert_warp(*identity)  # unpack => (1, 0, 0, 0, 1, 0, 0, 0)
     # Should still be the identity warp
-    assert inv == identity, f"Inverse of identity should be identity, got {inv}"
+    assert (
+        inv == identity
+    ), f"Inverse of identity should be identity, got {inv}"
 
 
 @pytest.mark.unit
@@ -525,7 +534,9 @@ def test_find_hull_extents_relative_to_centroid_single_point():
     in any direction => all directions yield None.
     """
     hull_pts = [(5, 5)]
-    results = find_hull_extents_relative_to_centroid(hull_pts, 5, 5, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, 5, 5, rotation_deg=0
+    )
     assert results["left"] is None
     assert results["right"] is None
     assert results["top"] is None
@@ -541,7 +552,9 @@ def test_find_hull_extents_relative_to_centroid_square_no_rotation():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=0)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=0
+    )
     assert results["left"] == (0, 5)
     assert results["right"] == (10, 5)
     assert results["top"] == (5, 0)
@@ -556,7 +569,9 @@ def test_find_hull_extents_relative_to_centroid_square_rotation_degrees():
     """
     hull_pts = [(0, 0), (10, 0), (10, 10), (0, 10)]
     cx, cy = 5, 5
-    results = find_hull_extents_relative_to_centroid(hull_pts, cx, cy, rotation_deg=45)
+    results = find_hull_extents_relative_to_centroid(
+        hull_pts, cx, cy, rotation_deg=45
+    )
     # We expect each intersection to be roughly sqrt(50) ~ 7.071 units away
     # from the center if it's a perfect diagonal. We'll check approximate
     # locations.
