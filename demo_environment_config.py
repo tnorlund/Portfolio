@@ -11,9 +11,14 @@ This script demonstrates the key features implemented for issue #119:
 
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/Users/tnorlund/GitHub/example-issue-119")
-sys.path.insert(0, "/Users/tnorlund/GitHub/example-issue-119/receipt_label")
+# Get the directory of this script
+script_dir = Path(__file__).parent.absolute()
+
+# Add the project root and receipt_label to the Python path
+sys.path.insert(0, str(script_dir))
+sys.path.insert(0, str(script_dir / "receipt_label"))
 
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import AIUsageEnvironmentConfig, Environment
