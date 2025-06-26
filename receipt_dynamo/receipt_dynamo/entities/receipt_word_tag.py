@@ -1,12 +1,8 @@
 from datetime import datetime
 from typing import Any, Generator, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import (
-    _repr_str,
-    assert_type,
-    assert_valid_uuid,
-    format_type_error,
-)
+from receipt_dynamo.entities.util import (_repr_str, assert_type,
+                                          assert_valid_uuid, format_type_error)
 
 
 class ReceiptWordTag:
