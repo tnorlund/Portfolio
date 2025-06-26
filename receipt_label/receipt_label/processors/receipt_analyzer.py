@@ -3,9 +3,11 @@ import re
 import traceback
 from typing import Dict, List, Optional, Tuple, Union
 
-from ..data.gpt import (gpt_request_field_labeling,
-                        gpt_request_line_item_analysis,
-                        gpt_request_structure_analysis)
+from ..data.gpt import (
+    gpt_request_field_labeling,
+    gpt_request_line_item_analysis,
+    gpt_request_structure_analysis,
+)
 from ..data.places_api import BatchPlacesProcessor
 from ..models.label import LabelAnalysis
 from ..models.receipt import Receipt, ReceiptLine, ReceiptSection, ReceiptWord
@@ -67,7 +69,9 @@ class ReceiptAnalyzer:
                     f"Expected receipt_words to be list, got {type(receipt_words)}"
                 )
 
-            if places_api_data is not None and not isinstance(places_api_data, dict):
+            if places_api_data is not None and not isinstance(
+                places_api_data, dict
+            ):
                 raise TypeError(
                     f"Expected places_api_data to be dict or None, got {type(places_api_data)}"
                 )
@@ -169,9 +173,13 @@ class ReceiptAnalyzer:
                 structure_analysis, query, raw_response = result
                 logger.info("Successfully unpacked structure analysis result")
             except ValueError as e:
-                logger.error(f"Error unpacking structure analysis result: {str(e)}")
+                logger.error(
+                    f"Error unpacking structure analysis result: {str(e)}"
+                )
                 if result is not None:
-                    logger.error(f"Result type: {type(result)}, content: {result}")
+                    logger.error(
+                        f"Result type: {type(result)}, content: {result}"
+                    )
                 else:
                     logger.error("Result is None")
                 raise
@@ -185,7 +193,9 @@ class ReceiptAnalyzer:
                 reasoning_fields = [
                     k for k in structure_analysis if "reasoning" in k.lower()
                 ]
-                logger.info(f"Structure analysis reasoning fields: {reasoning_fields}")
+                logger.info(
+                    f"Structure analysis reasoning fields: {reasoning_fields}"
+                )
             # Convert the dictionary to a StructureAnalysis object
             structure_analysis_obj = StructureAnalysis.from_gpt_response(
                 structure_analysis
@@ -251,15 +261,21 @@ class ReceiptAnalyzer:
                 field_analysis, query, raw_response = result
                 logger.info("Successfully unpacked field labeling result")
             except ValueError as e:
-                logger.error(f"Error unpacking field labeling result: {str(e)}")
-                logger.error("Result type: %s, content: %s", type(result), result)
+                logger.error(
+                    f"Error unpacking field labeling result: {str(e)}"
+                )
+                logger.error(
+                    "Result type: %s, content: %s", type(result), result
+                )
                 raise
             except Exception as e:
                 logger.error("Other error in field labeling: %s", str(e))
                 raise
 
             logger.debug("Field labeling completed")
-            logger.debug("Field analysis result type: %s", type(field_analysis))
+            logger.debug(
+                "Field analysis result type: %s", type(field_analysis)
+            )
             logger.debug(
                 f"Number of labels generated: {len(field_analysis.get('labels', []))}"
             )
@@ -270,14 +286,18 @@ class ReceiptAnalyzer:
                 for label in field_analysis.get("labels", []):
                     if "reasoning" in label:
                         reasoning_fields.append(label["label"])
-                logger.info("Field labels with reasoning: %s", reasoning_fields)
+                logger.info(
+                    "Field labels with reasoning: %s", reasoning_fields
+                )
 
                 logger.debug(
                     f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}"
                 )
 
             # Convert the dictionary to a LabelAnalysis object
-            field_analysis_obj = LabelAnalysis.from_gpt_response(field_analysis)
+            field_analysis_obj = LabelAnalysis.from_gpt_response(
+                field_analysis
+            )
 
             # Set receipt and image IDs which are required for DynamoDB storage
             field_analysis_obj.set_receipt_info(
@@ -352,8 +372,12 @@ class ReceiptAnalyzer:
                 line_item_analysis, query, raw_response = result
                 logger.info("Successfully unpacked line item analysis result")
             except ValueError as e:
-                logger.error(f"Error unpacking line item analysis result: {str(e)}")
-                logger.error("Result type: %s, content: %s", type(result), result)
+                logger.error(
+                    f"Error unpacking line item analysis result: {str(e)}"
+                )
+                logger.error(
+                    "Result type: %s, content: %s", type(result), result
+                )
                 raise
             except Exception as e:
                 logger.error("Other error in line item analysis: %s", str(e))
@@ -366,7 +390,9 @@ class ReceiptAnalyzer:
                 reasoning_fields = [
                     k for k in line_item_analysis if "reasoning" in k.lower()
                 ]
-                logger.info(f"Line item analysis reasoning fields: {reasoning_fields}")
+                logger.info(
+                    f"Line item analysis reasoning fields: {reasoning_fields}"
+                )
 
                 if "items" in line_item_analysis:
                     for i, item in enumerate(line_item_analysis["items"]):
