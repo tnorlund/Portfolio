@@ -3,9 +3,9 @@
 This module provides easy access to Pulumi stack outputs for configuring AWS resources.
 """
 
-import os
 import logging
-from typing import Dict, Any, Optional
+import os
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_trainer.utils.auto_scaling import (

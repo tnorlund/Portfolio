@@ -6,7 +6,7 @@ ensuring consistency between CLI and processing components.
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 # DynamoDB table name
 DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "receipt-processing")
@@ -42,14 +42,15 @@ JOB_PRIORITY_MEDIUM = "medium"
 JOB_PRIORITY_HIGH = "high"
 JOB_PRIORITY_CRITICAL = "critical"
 
+
 # Function to get configuration with overrides
 def get_config(overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Get configuration values with optional overrides.
-    
+
     Args:
         overrides: Dictionary of override values
-        
+
     Returns:
         Dictionary of configuration values
     """
@@ -63,8 +64,8 @@ def get_config(overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "max_retries": DEFAULT_MAX_RETRIES,
         "retry_delay": DEFAULT_RETRY_DELAY,
     }
-    
+
     if overrides:
         config.update(overrides)
-        
-    return config 
+
+    return config

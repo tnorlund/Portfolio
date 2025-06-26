@@ -2,8 +2,11 @@ from datetime import datetime
 from typing import Any, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus, SectionType
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_valid_uuid)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_uuid,
+)
 
 
 class ReceiptSection:
@@ -49,7 +52,9 @@ class ReceiptSection:
         elif isinstance(section_type, str):
             section_type_value = section_type
         else:
-            raise ValueError("section_type must be a string or SectionType enum")
+            raise ValueError(
+                "section_type must be a string or SectionType enum"
+            )
         valid_section_types = [t.value for t in SectionType]
         if section_type_value not in valid_section_types:
             raise ValueError(
@@ -77,7 +82,9 @@ class ReceiptSection:
         """Generate the primary key for the receipt section."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#SECTION#{self.section_type}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#SECTION#{self.section_type}"
+            },
         }
 
     def to_item(self) -> dict:
@@ -86,7 +93,9 @@ class ReceiptSection:
             **self.key(),
             "TYPE": {"S": "RECEIPT_SECTION"},
             "section_type": {"S": self.section_type},
-            "line_ids": {"L": [{"N": str(line_id)} for line_id in self.line_ids]},
+            "line_ids": {
+                "L": [{"N": str(line_id)} for line_id in self.line_ids]
+            },
             "created_at": {"S": self.created_at.isoformat()},
         }
 

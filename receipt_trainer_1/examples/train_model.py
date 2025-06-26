@@ -1,22 +1,24 @@
 # receipt_trainer/examples/train_model.py
 """Example script demonstrating how to use the Receipt Trainer package with spot instance handling."""
 
-import os
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
-from receipt_trainer.utils.aws import get_dynamo_table
-from transformers import TrainerCallback
-import numpy as np
-from sklearn.metrics import (
-    confusion_matrix,
-    precision_recall_fscore_support,
-    accuracy_score,
-)
-import seaborn as sns
-import matplotlib.pyplot as plt
 import argparse
+import os
+import tempfile
 import traceback
 import uuid
-import tempfile
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
+from receipt_trainer.utils.aws import get_dynamo_table
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    precision_recall_fscore_support,
+)
+
+from transformers import TrainerCallback
 
 
 class MetricsCallback(TrainerCallback):

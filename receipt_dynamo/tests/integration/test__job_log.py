@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.entities.job_log import JobLog
 
 
@@ -44,7 +43,9 @@ def multiple_job_logs():
             source="test_component",
             exception=None,
         )
-        for i, level in enumerate(["INFO", "WARNING", "ERROR", "INFO", "DEBUG"])
+        for i, level in enumerate(
+            ["INFO", "WARNING", "ERROR", "INFO", "DEBUG"]
+        )
     ]
 
 
@@ -79,7 +80,9 @@ def test_addJobLog_raises_value_error_job_not_instance(job_log_dynamo):
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_conditional_check_failed(job_log_dynamo, sample_job_log):
+def test_addJobLog_raises_conditional_check_failed(
+    job_log_dynamo, sample_job_log
+):
     """
     Test that addJobLog raises ValueError when trying to add a duplicate job
     log.
@@ -93,7 +96,9 @@ def test_addJobLog_raises_conditional_check_failed(job_log_dynamo, sample_job_lo
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_resource_not_found(job_log_dynamo, sample_job_log, mocker):
+def test_addJobLog_raises_resource_not_found(
+    job_log_dynamo, sample_job_log, mocker
+):
     """
     Test that addJobLog handles ResourceNotFoundException properly.
     """
@@ -112,7 +117,9 @@ def test_addJobLog_raises_resource_not_found(job_log_dynamo, sample_job_log, moc
     # Attempt to add the job log
     with pytest.raises(ClientError) as excinfo:
         job_log_dynamo.addJobLog(sample_job_log)
-    assert excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    assert (
+        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    )
 
 
 @pytest.mark.integration
@@ -217,10 +224,16 @@ def test_listJobLogs_success(job_log_dynamo, multiple_job_logs):
     for log in multiple_job_logs:
         # Find the corresponding log in the returned list
         matching_log = next(
-            (log_item for log_item in logs if log_item.timestamp == log.timestamp),
+            (
+                log_item
+                for log_item in logs
+                if log_item.timestamp == log.timestamp
+            ),
             None,
         )
-        assert matching_log is not None, f"Log with timestamp {log.timestamp} not found"
+        assert (
+            matching_log is not None
+        ), f"Log with timestamp {log.timestamp} not found"
         assert matching_log == log
 
 
@@ -304,7 +317,9 @@ def test_deleteJobLog_raises_value_error_log_not_instance(job_log_dynamo):
 
 
 @pytest.mark.integration
-def test_deleteJobLog_raises_conditional_check_failed(job_log_dynamo, sample_job_log):
+def test_deleteJobLog_raises_conditional_check_failed(
+    job_log_dynamo, sample_job_log
+):
     """
     Test that deleteJobLog raises ValueError when the job log does not exist.
     """
@@ -341,4 +356,6 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
     job_id = str(uuid.uuid4())
     with pytest.raises(ClientError) as excinfo:
         job_log_dynamo.listJobLogs(job_id=job_id)
-    assert excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    assert (
+        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    )

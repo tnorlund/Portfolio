@@ -1,18 +1,16 @@
 import json
-import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from PIL import Image as PIL_Image
 
 import boto3
+import pytest
 from moto import mock_aws
-
+from PIL import Image as PIL_Image
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import OCRStatus, OCRJobType, ImageType
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
 from receipt_upload.ocr import process_ocr_dict_as_image
-
 
 # Bar receipt image dimensions (portrait orientation)
 PHONE_WIDTH = 3024

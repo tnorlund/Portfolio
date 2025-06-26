@@ -8,26 +8,26 @@ This test will:
 4. Verify the job completes successfully
 """
 
+import json
+import logging
 import os
 import time
-import json
 import uuid
-import logging
-import pytest
-import boto3
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
+import boto3
+import pytest
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_trainer.config import DataConfig, TrainingConfig
 from receipt_trainer.jobs.job import Job, JobPriority, JobStatus
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
 from receipt_trainer.jobs.submit import submit_training_job
-from receipt_trainer.utils.pulumi import (
-    get_auto_scaling_config,
-    create_auto_scaling_manager,
-)
 from receipt_trainer.utils.auto_scaling import AutoScalingManager
-from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data._pulumi import load_env
+from receipt_trainer.utils.pulumi import (
+    create_auto_scaling_manager,
+    get_auto_scaling_config,
+)
 
 # from receipt_dynamo.services.job_service import JobService
 # from receipt_dynamo.services.instance_service import InstanceService

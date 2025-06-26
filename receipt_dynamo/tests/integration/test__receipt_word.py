@@ -2,7 +2,6 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
-
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 
@@ -246,7 +245,9 @@ def test_addReceiptWords_with_unprocessed_items_retries(
     # First response has unprocessed items
     first_response = {
         "UnprocessedItems": {
-            dynamodb_table: [{"PutRequest": {"Item": sample_receipt_word.to_item()}}]
+            dynamodb_table: [
+                {"PutRequest": {"Item": sample_receipt_word.to_item()}}
+            ]
         }
     }
     # Second response has no unprocessed items
@@ -540,7 +541,9 @@ def test_list_receipt_words_by_embedding_status(
     )
     client.addReceiptWord(word_pending)
     # Act
-    found_words = client.listReceiptWordsByEmbeddingStatus(EmbeddingStatus.NONE)
+    found_words = client.listReceiptWordsByEmbeddingStatus(
+        EmbeddingStatus.NONE
+    )
 
     # Assert
     assert len(found_words) == 1

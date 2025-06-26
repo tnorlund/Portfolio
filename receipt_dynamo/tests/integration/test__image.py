@@ -4,7 +4,6 @@ from uuid import uuid4
 import boto3
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision, ReceiptMetadata
@@ -83,7 +82,9 @@ def test_addImage_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_addImage_raises_provisioned_throughput(dynamodb_table, example_image, mocker):
+def test_addImage_raises_provisioned_throughput(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises an Exception with a message indicating that the
     provisioned throughput was exceeded when the DynamoDB put_item call
@@ -113,7 +114,9 @@ def test_addImage_raises_provisioned_throughput(dynamodb_table, example_image, m
 
 
 @pytest.mark.integration
-def test_addImage_raises_internal_server_error(dynamodb_table, example_image, mocker):
+def test_addImage_raises_internal_server_error(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises an Exception with a message indicating that an
     internal server error occurred, when the DynamoDB put_item call returns an
@@ -144,7 +147,9 @@ def test_addImage_raises_internal_server_error(dynamodb_table, example_image, mo
 
 
 @pytest.mark.integration
-def test_addImage_raises_unknown_exception(dynamodb_table, example_image, mocker):
+def test_addImage_raises_unknown_exception(
+    dynamodb_table, example_image, mocker
+):
     """
     Tests that addImage raises a generic Exception with a message indicating
     an error putting the image, when the DynamoDB put_item call returns a
@@ -358,7 +363,9 @@ def test_image_get_details(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_image_get_details_multiple_receipt_metadatas(dynamodb_table, example_image):
+def test_image_get_details_multiple_receipt_metadatas(
+    dynamodb_table, example_image
+):
     """Test that image details correctly handles multiple receipt metadatas."""
     client = DynamoClient(dynamodb_table)
     image = example_image
@@ -564,7 +571,9 @@ def test_updateImages_success(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_none(dynamodb_table, example_image):
+def test_updateImages_raises_value_error_images_none(
+    dynamodb_table, example_image
+):
     """
     Tests that updateImages raises ValueError when the images parameter is
     None.
@@ -577,7 +586,9 @@ def test_updateImages_raises_value_error_images_none(dynamodb_table, example_ima
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_not_list(dynamodb_table, example_image):
+def test_updateImages_raises_value_error_images_not_list(
+    dynamodb_table, example_image
+):
     """
     Tests that updateImages raises ValueError when the images parameter is not
     a list.
@@ -598,7 +609,10 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
-        match=("All items in the images list must be instances of the " "Image class."),
+        match=(
+            "All items in the images list must be instances of the "
+            "Image class."
+        ),
     ):
         client.updateImages([example_image, "not-an-image"])  # type: ignore
 
@@ -706,7 +720,9 @@ def test_updateImages_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        Exception, match="One or more parameters given were invalid"
+    ):
         client.updateImages([example_image])
     mock_transact.assert_called_once()
 
@@ -739,7 +755,9 @@ def test_updateImages_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_client_error(dynamodb_table, example_image, mocker):
+def test_updateImages_raises_client_error(
+    dynamodb_table, example_image, mocker
+):
     """
     Simulate any error (ResourceNotFound, etc.) in transact_write_items.
     """
@@ -785,7 +803,9 @@ def test_listImagesByType_invalid_type(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_listImagesByType_with_pagination(dynamodb_table, example_image, mocker):
+def test_listImagesByType_with_pagination(
+    dynamodb_table, example_image, mocker
+):
     client = DynamoClient(dynamodb_table)
 
     first_page = {

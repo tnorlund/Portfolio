@@ -1,21 +1,22 @@
 """Integration tests for the ReceiptTrainer class."""
 
+import json
 import os
-import pytest
 from pathlib import Path
+
+import pytest
+import torch
 import wandb
 from datasets import Dataset, DatasetDict
-import json
-import torch
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
+
 from transformers import (
+    LayoutLMConfig,
     LayoutLMForTokenClassification,
     LayoutLMTokenizerFast,
-    TrainingArguments,
     Trainer,
-    LayoutLMConfig,
+    TrainingArguments,
 )
-
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
 
 
 @pytest.fixture
@@ -116,7 +117,8 @@ def trainer(mock_env_vars, monkeypatch, mocker):
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("torch.backends.mps.is_available", lambda: False)
     monkeypatch.setattr(
-        "receipt_trainer.utils.aws.get_dynamo_table", lambda *args: "mock-table"
+        "receipt_trainer.utils.aws.get_dynamo_table",
+        lambda *args: "mock-table",
     )
 
     return ReceiptTrainer(
@@ -135,7 +137,9 @@ def test_trainer_initialization(trainer):
 
 
 @pytest.mark.integration
-def test_data_loading_pipeline(trainer, mock_dynamo_data, mock_sroie_data, mocker):
+def test_data_loading_pipeline(
+    trainer, mock_dynamo_data, mock_sroie_data, mocker
+):
     """Test the complete data loading pipeline with mocked data sources."""
     # Setup mocks
     mock_client = mocker.Mock()
@@ -383,7 +387,9 @@ def mock_model(mocker):
     return model
 
 
-def test_configure_training(trainer, mock_dataset, mock_tokenizer, tmp_path, mocker):
+def test_configure_training(
+    trainer, mock_dataset, mock_tokenizer, tmp_path, mocker
+):
     """Test configure_training method."""
     trainer.dataset = mock_dataset
     trainer.tokenizer = mock_tokenizer
@@ -414,7 +420,10 @@ def test_configure_training(trainer, mock_dataset, mock_tokenizer, tmp_path, moc
     # Verify training arguments
     assert isinstance(trainer.training_args, TrainingArguments)
     assert trainer.training_args.output_dir == output_dir
-    assert trainer.training_args.num_train_epochs == trainer.training_config.num_epochs
+    assert (
+        trainer.training_args.num_train_epochs
+        == trainer.training_config.num_epochs
+    )
 
 
 def make_dummy_layoutlm_model(num_labels=3):
@@ -462,7 +471,9 @@ def test_save_model(trainer, mock_model, mock_tokenizer, tmp_path, mocker):
     # Mock AutoModel and AutoTokenizer
     mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
     mock_auto_model.return_value = mocker.Mock()
-    mock_auto_tokenizer = mocker.patch("transformers.AutoTokenizer.from_pretrained")
+    mock_auto_tokenizer = mocker.patch(
+        "transformers.AutoTokenizer.from_pretrained"
+    )
     mock_auto_tokenizer.return_value = mocker.Mock()
 
     # Test successful save
@@ -518,7 +529,9 @@ def test_save_model_errors(trainer, tmp_path, mocker):
 
     # Mock AutoModel and AutoTokenizer for validation
     mock_auto_model = mocker.patch("transformers.AutoModel.from_pretrained")
-    mock_auto_tokenizer = mocker.patch("transformers.AutoTokenizer.from_pretrained")
+    mock_auto_tokenizer = mocker.patch(
+        "transformers.AutoTokenizer.from_pretrained"
+    )
 
     # Make validation fail by raising an exception
     mock_auto_model.side_effect = Exception("Model validation failed")

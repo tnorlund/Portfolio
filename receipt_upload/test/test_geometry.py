@@ -2,7 +2,6 @@ import json
 import pathlib
 
 import pytest
-
 from receipt_upload.geometry import (
     compute_edge,
     compute_final_receipt_tilt,

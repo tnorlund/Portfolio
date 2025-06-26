@@ -116,12 +116,14 @@ def test_bar_receipt_boundaries() -> None:
     all_word_corners = []
     for word in cluster_words:
         # Match TypeScript test: manually flip Y for normalized coordinates
-        all_word_corners.extend([
-            (word.top_left["x"], 1 - word.top_left["y"]),
-            (word.top_right["x"], 1 - word.top_right["y"]),
-            (word.bottom_right["x"], 1 - word.bottom_right["y"]),
-            (word.bottom_left["x"], 1 - word.bottom_left["y"]),
-        ])
+        all_word_corners.extend(
+            [
+                (word.top_left["x"], 1 - word.top_left["y"]),
+                (word.top_right["x"], 1 - word.top_right["y"]),
+                (word.bottom_right["x"], 1 - word.bottom_right["y"]),
+                (word.bottom_left["x"], 1 - word.bottom_left["y"]),
+            ]
+        )
 
     hull = convex_hull(all_word_corners)
     centroid = compute_hull_centroid(hull)
@@ -161,7 +163,7 @@ def test_bar_receipt_boundaries() -> None:
         boundaries["right"],
         centroid,
     )
-    
+
     # Print the boundary values for comparison with TypeScript
     print("\nPython Boundary Values:")
     print(f"Top boundary: {boundaries['top']}")
@@ -169,25 +171,25 @@ def test_bar_receipt_boundaries() -> None:
     print(f"Left boundary: {boundaries['left']}")
     print(f"Right boundary: {boundaries['right']}")
     print(f"Centroid: {centroid}")
-    
+
     # Verify boundaries are created correctly
     assert "top" in boundaries
     assert "bottom" in boundaries
     assert "left" in boundaries
     assert "right" in boundaries
-    
+
     # Verify the box computation works
     assert len(box) == 4, "Expected 4 corners"
-    
+
     # Store boundaries for equivalence testing
     # These values should match the TypeScript implementation
     expected_boundaries = {
         "top": boundaries["top"],
         "bottom": boundaries["bottom"],
         "left": boundaries["left"],
-        "right": boundaries["right"]
+        "right": boundaries["right"],
     }
-    
+
     # Test with the compute_receipt_box_from_boundaries function
     test_box = compute_receipt_box_from_boundaries(
         expected_boundaries["top"],
@@ -196,5 +198,5 @@ def test_bar_receipt_boundaries() -> None:
         expected_boundaries["right"],
         centroid,
     )
-    
+
     assert len(test_box) == 4, "Boundary computation should produce 4 corners"

@@ -7,16 +7,15 @@ This script allows you to:
 3. Manually adjust the number of instances
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
 import time
-import json
-import argparse
-import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import boto3
-
 from receipt_trainer.utils.auto_scaling import (
     AutoScalingManager,
     generate_training_worker_user_data,

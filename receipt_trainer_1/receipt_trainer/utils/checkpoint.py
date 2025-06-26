@@ -1,16 +1,16 @@
-import os
+import datetime
 import glob
 import json
-import time
-import shutil
 import logging
-import filelock
-import datetime
-from typing import Dict, List, Optional, Any, Tuple
+import os
+import shutil
+import time
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.services.job_service import JobService
+import filelock
 from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
+from receipt_dynamo.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 

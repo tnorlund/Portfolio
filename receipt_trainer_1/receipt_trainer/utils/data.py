@@ -1,8 +1,8 @@
 """Data processing utilities for Receipt Trainer."""
 
-from typing import Dict, Any, List, Tuple, Optional
 import logging
 import random
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

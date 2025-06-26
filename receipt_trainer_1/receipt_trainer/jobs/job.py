@@ -2,12 +2,12 @@
 Job class for ML training job definition.
 """
 
-import json
-import uuid
-import enum
-import time
 import dataclasses
-from typing import Dict, Any, Optional, List, Union
+import enum
+import json
+import time
+import uuid
+from typing import Any, Dict, List, Optional, Union
 
 
 class JobStatus(enum.Enum):
