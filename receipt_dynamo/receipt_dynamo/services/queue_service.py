@@ -61,13 +61,10 @@ class QueueService:
             ValueError: When a queue with the same ID already exists
         """
         queue = Queue(
-            queue_id=queue_id,
-            name=name,
-            description=description,
+            queue_name=queue_id,  # Using queue_id as queue_name since Queue expects queue_name
+            description=description or "",
             created_at=datetime.now(),
-            created_by=created_by,
-            metadata=metadata or {},
-            tags=tags or {},
+            # TODO: Add max_concurrent_jobs and priority as needed
         )
 
         self.dynamo_client.addQueue(queue)
@@ -174,12 +171,11 @@ class QueueService:
             ValueError: When the job is already in the queue
         """
         queue_job = QueueJob(
-            queue_id=queue_id,
+            queue_name=queue_id,  # Using queue_id as queue_name since QueueJob expects queue_name
             job_id=job_id,
-            added_at=datetime.now(),
+            enqueued_at=datetime.now(),
             priority=priority,
-            status="pending",
-            metadata=metadata or {},
+            # TODO: Set position based on queue position logic if needed
         )
 
         self.dynamo_client.addQueueJob(queue_job)

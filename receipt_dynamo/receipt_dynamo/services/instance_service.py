@@ -69,15 +69,13 @@ class InstanceService:
         instance = Instance(
             instance_id=instance_id,
             instance_type=instance_type,
-            region=region,
-            availability_zone=availability_zone,
-            hostname=hostname,
-            ip_address=ip_address,
+            gpu_count=0,  # TODO: Get actual GPU count based on instance type
             status=status,
-            first_seen=datetime.now(),
-            last_seen=datetime.now(),
-            metadata=metadata or {},
-            tags=tags or {},
+            launched_at=datetime.now(),  # TODO: Get actual launch time
+            ip_address=ip_address,
+            availability_zone=availability_zone,
+            is_spot=False,  # TODO: Determine if this is a spot instance
+            health_status="healthy",  # TODO: Get actual health status
         )
 
         self.dynamo_client.addInstance(instance)
@@ -280,7 +278,7 @@ class InstanceService:
             job_id=job_id,
             assigned_at=datetime.now(),
             status="assigned",
-            metadata=metadata or {},
+            # resource_utilization is optional, defaults to None
         )
 
         self.dynamo_client.addInstanceJob(instance_job)
