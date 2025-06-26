@@ -17,12 +17,11 @@ from freezegun import freeze_time
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from tests.utils.ai_usage_helpers import (create_mock_anthropic_response,
+                                          create_mock_openai_response)
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
-from tests.utils.ai_usage_helpers import (
-    create_mock_anthropic_response,
-    create_mock_openai_response,
-)
 
 
 @pytest.mark.unit
@@ -42,17 +41,13 @@ class TestConcurrentTracking:
 
         def set_and_check_context(job_id):
             tracker.set_context(job_id=job_id)
-            time.sleep(
-                0.01
-            )  # Small delay to increase chance of race conditions
+            time.sleep(0.01)  # Small delay to increase chance of race conditions
             results.append(tracker.current_job_id)
 
         # Run multiple threads
         threads = []
         for i in range(10):
-            thread = threading.Thread(
-                target=set_and_check_context, args=(f"job-{i}",)
-            )
+            thread = threading.Thread(target=set_and_check_context, args=(f"job-{i}",))
             threads.append(thread)
             thread.start()
 
@@ -90,9 +85,7 @@ class TestConcurrentTracking:
 
             # Use ThreadPoolExecutor for concurrent calls
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [
-                    executor.submit(concurrent_call, i) for i in range(10)
-                ]
+                futures = [executor.submit(concurrent_call, i) for i in range(10)]
                 for future in futures:
                     future.result()
 
