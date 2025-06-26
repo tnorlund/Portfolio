@@ -38,7 +38,10 @@ class TestAIUsageMetric:
             batch_id="test-batch-456",
             github_pr=42,
             error=None,
-            metadata={"custom_field": "value", "nested": {"key": "nested_value"}},
+            metadata={
+                "custom_field": "value",
+                "nested": {"key": "nested_value"},
+            },
         )
 
         assert metric.service == "openai"
@@ -82,13 +85,18 @@ class TestAIUsageMetric:
         assert metric.request_id is not None  # auto-generated UUID
         assert metric.api_calls == 1  # default value
         assert metric.metadata == {}  # default empty dict
-        assert metric.total_tokens is None  # computed from input/output when available
+        assert (
+            metric.total_tokens is None
+        )  # computed from input/output when available
 
     def test_service_name_normalized(self):
         """Test that service names are normalized to lowercase."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="OPENAI", model="gpt-4", operation="completion", timestamp=timestamp
+            service="OPENAI",
+            model="gpt-4",
+            operation="completion",
+            timestamp=timestamp,
         )
 
         assert metric.service == "openai"
@@ -126,7 +134,10 @@ class TestAIUsageMetric:
         """Test that request_id is auto-generated if not provided."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="openai", model="gpt-4", operation="completion", timestamp=timestamp
+            service="openai",
+            model="gpt-4",
+            operation="completion",
+            timestamp=timestamp,
         )
 
         assert metric.request_id is not None
@@ -206,7 +217,10 @@ class TestAIUsageMetric:
         """Test that GSI3 properties are None without job_id or batch_id."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="openai", model="gpt-4", operation="completion", timestamp=timestamp
+            service="openai",
+            model="gpt-4",
+            operation="completion",
+            timestamp=timestamp,
         )
 
         assert metric.gsi3pk is None
@@ -216,7 +230,10 @@ class TestAIUsageMetric:
         """Test that item_type property returns correct value."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="openai", model="gpt-4", operation="completion", timestamp=timestamp
+            service="openai",
+            model="gpt-4",
+            operation="completion",
+            timestamp=timestamp,
         )
 
         assert metric.item_type == "AIUsageMetric"
@@ -367,7 +384,10 @@ class TestAIUsageMetric:
             "githubPR": {"N": "42"},
             "error": {"S": "timeout"},
             "metadata": {
-                "M": {"key": {"S": "value"}, "nested": {"M": {"inner": {"S": "data"}}}}
+                "M": {
+                    "key": {"S": "value"},
+                    "nested": {"M": {"inner": {"S": "data"}}},
+                }
             },
         }
 
@@ -376,7 +396,9 @@ class TestAIUsageMetric:
         assert metric.service == "openai"
         assert metric.model == "gpt-4"
         assert metric.operation == "completion"
-        assert metric.timestamp == datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        assert metric.timestamp == datetime(
+            2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc
+        )
         assert metric.request_id == "test-123"
         assert metric.input_tokens == 100
         assert metric.output_tokens == 50
@@ -414,7 +436,9 @@ class TestAIUsageMetric:
         assert metric.service == "anthropic"
         assert metric.model == "claude-3-opus"
         assert metric.operation == "completion"
-        assert metric.timestamp == datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        assert metric.timestamp == datetime(
+            2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc
+        )
         assert metric.request_id == "test-456"
         assert metric.api_calls == 1
 
@@ -447,7 +471,11 @@ class TestAIUsageMetric:
             metadata={
                 "place_id": "ChIJtest123",
                 "query": "restaurant",
-                "complex": {"list": [1, 2, "three"], "bool": True, "null": None},
+                "complex": {
+                    "list": [1, 2, "three"],
+                    "bool": True,
+                    "null": None,
+                },
             },
         )
 
@@ -530,7 +558,12 @@ class TestAIUsageMetric:
             "null_field": None,
             "list_field": ["item1", 2, True, None, {"nested": "value"}],
             "nested_dict": {
-                "level2": {"level3": {"deep_value": "found_me", "deep_list": [1, 2, 3]}}
+                "level2": {
+                    "level3": {
+                        "deep_value": "found_me",
+                        "deep_list": [1, 2, 3],
+                    }
+                }
             },
             "mixed_list": [
                 {"type": "dict_in_list", "value": 1},
@@ -555,10 +588,14 @@ class TestAIUsageMetric:
         # Verify complex metadata is preserved
         assert restored_metric.metadata == complex_metadata
         assert (
-            restored_metric.metadata["nested_dict"]["level2"]["level3"]["deep_value"]
+            restored_metric.metadata["nested_dict"]["level2"]["level3"][
+                "deep_value"
+            ]
             == "found_me"
         )
-        assert restored_metric.metadata["mixed_list"][0]["type"] == "dict_in_list"
+        assert (
+            restored_metric.metadata["mixed_list"][0]["type"] == "dict_in_list"
+        )
         assert restored_metric.metadata["mixed_list"][1][2] == "in"
 
     def test_error_handling_in_metadata_serialization(self):
@@ -590,7 +627,9 @@ class TestAIUsageMetric:
         item = metric.to_dynamodb_item()
         restored_metric = AIUsageMetric.from_dynamodb_item(item)
 
-        assert restored_metric.metadata["custom_object"] == "CustomObject(test)"
+        assert (
+            restored_metric.metadata["custom_object"] == "CustomObject(test)"
+        )
         assert restored_metric.metadata["normal_field"] == "works_fine"
 
     def test_edge_cases_and_validation(self):
@@ -671,7 +710,10 @@ class TestAIUsageMetric:
         # Test with UTC timestamp
         utc_time = datetime.now(timezone.utc)
         metric_utc = AIUsageMetric(
-            service="openai", model="gpt-4", operation="completion", timestamp=utc_time
+            service="openai",
+            model="gpt-4",
+            operation="completion",
+            timestamp=utc_time,
         )
 
         item_utc = metric_utc.to_dynamodb_item()
@@ -687,7 +729,10 @@ class TestAIUsageMetric:
         tz_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=tz_offset)
 
         metric_tz = AIUsageMetric(
-            service="openai", model="gpt-4", operation="completion", timestamp=tz_time
+            service="openai",
+            model="gpt-4",
+            operation="completion",
+            timestamp=tz_time,
         )
 
         # Serialize and deserialize
@@ -803,13 +848,18 @@ class TestAIUsageMetric:
         query_with_token["ExclusiveStartKey"] = mock_last_evaluated_key
 
         assert "ExclusiveStartKey" in query_with_token
-        assert query_with_token["ExclusiveStartKey"]["PK"]["S"].startswith("AI_USAGE#")
+        assert query_with_token["ExclusiveStartKey"]["PK"]["S"].startswith(
+            "AI_USAGE#"
+        )
 
     def test_dynamodb_value_conversion_edge_cases(self):
         """Test DynamoDB value conversion edge cases."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="test", model="test-model", operation="test", timestamp=timestamp
+            service="test",
+            model="test-model",
+            operation="test",
+            timestamp=timestamp,
         )
 
         # Test various data types in metadata
@@ -827,7 +877,9 @@ class TestAIUsageMetric:
             "list_mixed": ["string", 123, True, None],
             "empty_list": [],
             "empty_dict": {},
-            "nested_structure": {"level1": {"level2": [1, 2, {"level3": "value"}]}},
+            "nested_structure": {
+                "level1": {"level2": [1, 2, {"level3": "value"}]}
+            },
         }
 
         # Test conversion to DynamoDB format
@@ -842,7 +894,10 @@ class TestAIUsageMetric:
         """Test conversion of unsupported types falls back to string."""
         timestamp = datetime.now(timezone.utc)
         metric = AIUsageMetric(
-            service="test", model="test-model", operation="test", timestamp=timestamp
+            service="test",
+            model="test-model",
+            operation="test",
+            timestamp=timestamp,
         )
 
         # Test with a custom object
@@ -1088,7 +1143,9 @@ class TestAIUsageMetric:
                 costs_by_operation[metric.operation] = 0.0
             costs_by_operation[metric.operation] += metric.cost_usd
 
-        assert costs_by_operation["completion"] == sum(m.cost_usd for m in metrics)
+        assert costs_by_operation["completion"] == sum(
+            m.cost_usd for m in metrics
+        )
 
         # Test aggregation by date
         costs_by_date = {}
@@ -1112,7 +1169,9 @@ class TestAIUsageMetric:
             timestamp=timestamp,
             metadata={
                 "retention_days": 90,
-                "expires_at": int((timestamp + timedelta(days=90)).timestamp()),
+                "expires_at": int(
+                    (timestamp + timedelta(days=90)).timestamp()
+                ),
             },
         )
 
@@ -1167,7 +1226,11 @@ class TestAIUsageMetric:
             operation="completion",
             timestamp=timestamp,
             error="rate_limit_exceeded",
-            metadata={"error_code": "429", "retry_count": 3, "final_success": False},
+            metadata={
+                "error_code": "429",
+                "retry_count": 3,
+                "final_success": False,
+            },
         )
 
         # Verify monitoring data is captured
