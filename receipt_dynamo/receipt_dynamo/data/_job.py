@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_status import JobStatus
+from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -366,9 +366,7 @@ class _Job(DynamoClientProtocol):
             if "Items" in status_response:
                 # Convert DynamoDB items to JobStatus objects
                 for item in status_response["Items"]:
-                    # This would need the proper itemToJobStatus function
-                    # For now, just return empty list to fix the pylint error
-                    pass
+                    statuses.append(itemToJobStatus(item))
 
             return job, statuses
 
