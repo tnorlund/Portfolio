@@ -1,5 +1,5 @@
 # flake8: noqa
-from math import atan2, cos, degrees, hypot, radians, sin, sqrt
+from math import atan2, cos, degrees, hypot, isfinite, radians, sin, sqrt
 from typing import Dict, List, Optional, Tuple
 
 
@@ -620,10 +620,10 @@ def compute_hull_centroid(
 
     if n == 0:
         return (0.0, 0.0)
-    elif n == 1:
+    if n == 1:
         # Single point
         return (hull_vertices[0][0], hull_vertices[0][1])
-    elif n == 2:
+    if n == 2:
         # Midpoint of the two points
         x0, y0 = hull_vertices[0]
         x1, y1 = hull_vertices[1]
@@ -803,11 +803,11 @@ def theil_sen(pts: List[Tuple[float, float]]) -> Dict[str, float]:
         return {"slope": 0.0, "intercept": pts[0][1] if pts else 0.0}
 
     slopes: List[float] = []
-    for i in range(len(pts)):
+    for i, pt_i in enumerate(pts):
         for j in range(i + 1, len(pts)):
-            if pts[i][1] == pts[j][1]:
+            if pt_i[1] == pts[j][1]:
                 continue
-            slopes.append((pts[j][0] - pts[i][0]) / (pts[j][1] - pts[i][1]))
+            slopes.append((pts[j][0] - pt_i[0]) / (pts[j][1] - pt_i[1]))
 
     if not slopes:
         return {"slope": 0.0, "intercept": pts[0][1]}
@@ -1322,8 +1322,6 @@ def compute_receipt_box_from_boundaries(
             return (0.0, 0.0)
 
         return (x, y)
-
-    from math import isfinite
 
     top_left = find_intersection(top_boundary, left_boundary)
     top_right = find_intersection(top_boundary, right_boundary)

@@ -302,8 +302,7 @@ def join_overlapping_clusters(
 
     # Step 4: Compare every pair of clusters and merge if they overlap
     all_ids = list(cluster_bboxes.keys())
-    for i in range(len(all_ids)):
-        cid_a = all_ids[i]
+    for i, cid_a in enumerate(all_ids):
         for j in range(i + 1, len(all_ids)):
             cid_b = all_ids[j]
             if boxes_overlap(
