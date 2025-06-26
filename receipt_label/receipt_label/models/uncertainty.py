@@ -17,9 +17,7 @@ def ensure_decimal(value: Any) -> Decimal:
             clean_value = value.replace("$", "").replace(",", "").strip()
             return Decimal(clean_value)
         except InvalidOperation as e:
-            raise ValueError(
-                f"Could not convert '{value}' to Decimal: {str(e)}"
-            )
+            raise ValueError(f"Could not convert '{value}' to Decimal: {str(e)}")
     raise ValueError(f"Cannot convert type {type(value)} to Decimal")
 
 
@@ -44,9 +42,7 @@ class MultipleAmountsUncertainty:
             )
 
         if not isinstance(self.amounts, list):
-            raise ValueError(
-                f"amounts must be a list, got {type(self.amounts)}"
-            )
+            raise ValueError(f"amounts must be a list, got {type(self.amounts)}")
         try:
             self.amounts = ensure_decimal_list(self.amounts)
         except ValueError as e:

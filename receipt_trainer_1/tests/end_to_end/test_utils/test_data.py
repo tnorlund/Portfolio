@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_trainer.utils.data import process_receipt_details
@@ -78,14 +79,8 @@ def test_get_auto_scaling_config():
         "s3_bucket",
     ]
 
-    present_optional_fields = [
-        field for field in optional_fields if field in config
-    ]
-    assert (
-        len(present_optional_fields) > 0
-    ), "No optional fields found in config"
+    present_optional_fields = [field for field in optional_fields if field in config]
+    assert len(present_optional_fields) > 0, "No optional fields found in config"
 
     # Print the fields that are available for debugging
-    print(
-        f"Available configuration fields: {', '.join(sorted(config.keys()))}"
-    )
+    print(f"Available configuration fields: {', '.join(sorted(config.keys()))}")

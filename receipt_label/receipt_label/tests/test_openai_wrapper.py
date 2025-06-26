@@ -10,12 +10,9 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-
 from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_openai_response,
-    create_test_tracking_context,
-)
+    create_mock_openai_response, create_test_tracking_context)
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
 @pytest.mark.unit
@@ -441,7 +438,7 @@ class TestWrappedEmbeddings:
         call_args = mock_dynamo.put_item.call_args
         item = call_args.kwargs["Item"]
         metadata_map = item["metadata"]["M"]
-        
+
         # Single string should still be counted
         assert "input_count" in metadata_map
 
@@ -566,10 +563,12 @@ class TestWrapperEdgeCases:
     def test_wrapper_with_none_tracker(self):
         """Test that wrapper handles None tracker gracefully."""
         mock_client = Mock(spec=OpenAI)
-        
+
         # This should work but raise error when trying to use tracking
         try:
-            wrapped_client = AIUsageTracker.create_wrapped_openai_client(mock_client, None)
+            wrapped_client = AIUsageTracker.create_wrapped_openai_client(
+                mock_client, None
+            )
             # The error might come when accessing attributes that need the tracker
             assert wrapped_client is not None
         except (AttributeError, TypeError):

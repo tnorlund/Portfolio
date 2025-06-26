@@ -11,18 +11,12 @@ import pytest
 
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
-    compute_final_receipt_tilt,
-    compute_hull_centroid,
-    compute_receipt_box_from_boundaries,
-    convex_hull,
-    create_boundary_line_from_points,
-    create_boundary_line_from_theil_sen,
+    compute_final_receipt_tilt, compute_hull_centroid,
+    compute_receipt_box_from_boundaries, convex_hull,
+    create_boundary_line_from_points, create_boundary_line_from_theil_sen,
     create_horizontal_boundary_line_from_points,
-    find_hull_extremes_along_angle,
-    find_line_edges_at_secondary_extremes,
-    refine_hull_extremes_with_hull_edge_alignment,
-    theil_sen,
-)
+    find_hull_extremes_along_angle, find_line_edges_at_secondary_extremes,
+    refine_hull_extremes_with_hull_edge_alignment, theil_sen)
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.route_images import classify_image_layout
 
@@ -181,9 +175,7 @@ class TestBarReceiptBoundaries:
         lines, words, letters = process_ocr_dict_as_image(raw_data, image_id)
 
         # Process clustering and hull
-        avg_diag = sum(l.calculate_diagonal_length() for l in lines) / len(
-            lines
-        )
+        avg_diag = sum(l.calculate_diagonal_length() for l in lines) / len(lines)
         clusters = dbscan_lines(lines, eps=avg_diag * 2, min_samples=10)
         cluster_lines = [c for cid, c in clusters.items() if cid != -1][0]
         line_ids = [l.line_id for l in cluster_lines]
@@ -205,9 +197,7 @@ class TestBarReceiptBoundaries:
         centroid = compute_hull_centroid(hull)
 
         # Get edges
-        avg_angle = sum(l.angle_degrees for l in cluster_lines) / len(
-            cluster_lines
-        )
+        avg_angle = sum(l.angle_degrees for l in cluster_lines) / len(cluster_lines)
         final_angle = compute_final_receipt_tilt(
             cluster_lines, hull, centroid, avg_angle
         )
@@ -230,9 +220,7 @@ class TestBarReceiptBoundaries:
 
         # Verify boundaries are created
         boundaries = {
-            "top": create_boundary_line_from_theil_sen(
-                theil_sen(edges["topEdge"])
-            ),
+            "top": create_boundary_line_from_theil_sen(theil_sen(edges["topEdge"])),
             "bottom": create_horizontal_boundary_line_from_points(
                 edges["bottomEdge"]  # Use horizontal function for bottom
             ),
@@ -255,7 +243,7 @@ class TestBarReceiptBoundaries:
 
 
 def create_boundary_line_from_theil_sen_fixed(
-    theil_result: Dict[str, float]
+    theil_result: Dict[str, float],
 ) -> Dict[str, float]:
     """Fixed version of create_boundary_line_from_theil_sen.
 
@@ -291,9 +279,7 @@ class TestProposedFix:
         """Test the fixed interpretation of Theil-Sen results."""
         # Horizontal line case
         horizontal_result = {"slope": 0.0, "intercept": 0.180233}
-        fixed_boundary = create_boundary_line_from_theil_sen_fixed(
-            horizontal_result
-        )
+        fixed_boundary = create_boundary_line_from_theil_sen_fixed(horizontal_result)
 
         assert fixed_boundary["isVertical"] == False
         assert fixed_boundary.get("isInverted", False) == False
@@ -302,9 +288,7 @@ class TestProposedFix:
 
         # Near-vertical line case
         vertical_result = {"slope": -61.333, "intercept": 57.547}
-        fixed_boundary = create_boundary_line_from_theil_sen_fixed(
-            vertical_result
-        )
+        fixed_boundary = create_boundary_line_from_theil_sen_fixed(vertical_result)
 
         assert fixed_boundary["isVertical"] == False
         assert fixed_boundary["isInverted"] == True

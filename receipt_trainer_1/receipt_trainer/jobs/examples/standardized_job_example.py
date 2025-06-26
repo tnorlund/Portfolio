@@ -20,14 +20,10 @@ import uuid
 from typing import Any, Dict
 
 import boto3
+
 from receipt_dynamo.data._pulumi import load_env
-from receipt_trainer.jobs import (
-    Job,
-    JobPriority,
-    JobStatus,
-    ProcessingMode,
-    create_job_processor,
-)
+from receipt_trainer.jobs import (Job, JobPriority, JobStatus, ProcessingMode,
+                                  create_job_processor)
 
 # Configure logging
 logging.basicConfig(
@@ -59,9 +55,7 @@ def queue_url(env: str) -> str:
     """
     env_vars = load_env(env)
     if not env_vars or "job_queue_url" not in env_vars:
-        raise ValueError(
-            f"Job queue URL not found in Pulumi {env} stack outputs"
-        )
+        raise ValueError(f"Job queue URL not found in Pulumi {env} stack outputs")
     return env_vars["job_queue_url"]
 
 
@@ -200,9 +194,7 @@ def job_handler(job: Job) -> bool:
 
     # Simulate processing time
     processing_time = random.uniform(1, 3)
-    logger.info(
-        f"Job {job.job_id} will take {processing_time:.2f} seconds to process"
-    )
+    logger.info(f"Job {job.job_id} will take {processing_time:.2f} seconds to process")
     time.sleep(processing_time)
 
     # Determine if the job succeeds or fails
@@ -312,9 +304,7 @@ def run_example(env: str, mode_str: str, use_test_queue=False, num_jobs=5):
         logger.info("Final job statuses:")
         for job_id in job_ids:
             status = processor.get_job_status(job_id)
-            logger.info(
-                f"Job {job_id}: {status.value if status else 'unknown'}"
-            )
+            logger.info(f"Job {job_id}: {status.value if status else 'unknown'}")
 
         logger.info(
             f"Job processing example completed in {env} environment with {mode.value} mode"

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptLetter
 
 # -------------------------------------------------------------------
@@ -205,9 +206,7 @@ def test_addReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_with_large_batch(
-    dynamodb_table, sample_receipt_letter
-):
+def test_addReceiptLetters_with_large_batch(dynamodb_table, sample_receipt_letter):
     """Test that addReceiptLetters handles batches larger than 25 items."""
     client = DynamoClient(dynamodb_table)
 
@@ -257,9 +256,7 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
     # First response has unprocessed items
     first_response = {
         "UnprocessedItems": {
-            dynamodb_table: [
-                {"PutRequest": {"Item": sample_receipt_letter.to_item()}}
-            ]
+            dynamodb_table: [{"PutRequest": {"Item": sample_receipt_letter.to_item()}}]
         }
     }
     # Second response has no unprocessed items
@@ -492,11 +489,7 @@ def test_updateReceiptLetter_client_errors(
     )
 
     with pytest.raises(
-        (
-            Exception
-            if error_code != "ConditionalCheckFailedException"
-            else ValueError
-        ),
+        (Exception if error_code != "ConditionalCheckFailedException" else ValueError),
         match=expected_error,
     ):
         client.updateReceiptLetter(sample_receipt_letter)
@@ -558,9 +551,7 @@ def test_updateReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLetters_with_large_batch(
-    dynamodb_table, sample_receipt_letter
-):
+def test_updateReceiptLetters_with_large_batch(dynamodb_table, sample_receipt_letter):
     """Test that updateReceiptLetters handles batches larger than 25 items."""
     client = DynamoClient(dynamodb_table)
 
@@ -999,9 +990,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
     # First response has unprocessed items
     first_response = {
         "UnprocessedItems": {
-            dynamodb_table: [
-                {"DeleteRequest": {"Key": sample_receipt_letter.key()}}
-            ]
+            dynamodb_table: [{"DeleteRequest": {"Key": sample_receipt_letter.key()}}]
         }
     }
     # Second response has no unprocessed items
@@ -1417,9 +1406,7 @@ def test_listReceiptLetters_with_limit(
 
     # Assert
     assert len(returned_letters) == 2
-    assert (
-        last_key is not None
-    )  # Should have a last evaluated key for pagination
+    assert last_key is not None  # Should have a last evaluated key for pagination
     for lt in returned_letters:
         assert lt in letters
 
@@ -1490,9 +1477,7 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
             "Items": [
                 {
                     "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                    },
+                    "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "A"},
                     "bounding_box": {
@@ -1503,16 +1488,10 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
                             "height": {"N": "0.05"},
                         }
                     },
-                    "top_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}
-                    },
+                    "top_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.25"}}},
                     "top_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}
-                    },
+                    "bottom_right": {"M": {"x": {"N": "0.15"}, "y": {"N": "0.2"}}},
+                    "bottom_left": {"M": {"x": {"N": "0.1"}, "y": {"N": "0.2"}}},
                     "angle_degrees": {"N": "0.0"},
                     "angle_radians": {"N": "0.0"},
                     "confidence": {"N": "0.98"},
@@ -1524,9 +1503,7 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
             "Items": [
                 {
                     "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"
-                    },
+                    "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00002"},
                     "TYPE": {"S": "RECEIPT_LETTER"},
                     "text": {"S": "B"},
                     "bounding_box": {
@@ -1537,16 +1514,10 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
                             "height": {"N": "0.05"},
                         }
                     },
-                    "top_right": {
-                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}
-                    },
+                    "top_right": {"M": {"x": {"N": "0.25"}, "y": {"N": "0.25"}}},
                     "top_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.25"}}},
-                    "bottom_right": {
-                        "M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}
-                    },
-                    "bottom_left": {
-                        "M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}
-                    },
+                    "bottom_right": {"M": {"x": {"N": "0.25"}, "y": {"N": "0.2"}}},
+                    "bottom_left": {"M": {"x": {"N": "0.2"}, "y": {"N": "0.2"}}},
                     "angle_degrees": {"N": "0.0"},
                     "angle_radians": {"N": "0.0"},
                     "confidence": {"N": "0.98"},
@@ -1752,9 +1723,7 @@ def test_listReceiptLetters_pagination_errors(
         "Items": [
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {
-                    "S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"
-                },
+                "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001"},
                 "TYPE": {"S": "RECEIPT_LETTER"},
                 "text": {"S": "A"},
                 "bounding_box": {

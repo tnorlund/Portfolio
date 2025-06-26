@@ -60,9 +60,7 @@ class JobMetric:
         elif isinstance(timestamp, str):
             self.timestamp = timestamp
         else:
-            raise ValueError(
-                format_type_error("timestamp", timestamp, (datetime, str))
-            )
+            raise ValueError(format_type_error("timestamp", timestamp, (datetime, str)))
 
         if not isinstance(value, (float, int, dict)):
             try:
@@ -175,9 +173,7 @@ class JobMetric:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -275,9 +271,7 @@ class JobMetric:
         """
         # Convert value to string if it's a dict since dicts aren't hashable
         value_for_hash = (
-            json.dumps(self.value)
-            if isinstance(self.value, dict)
-            else self.value
+            json.dumps(self.value) if isinstance(self.value, dict) else self.value
         )
 
         return hash(
