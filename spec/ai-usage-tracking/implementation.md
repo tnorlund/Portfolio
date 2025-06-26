@@ -29,7 +29,7 @@ class AIUsageConfig:
     @staticmethod
     def get_config():
         env = os.getenv('ENVIRONMENT', 'development')
-        
+
         return {
             'environment': env,
             'table_suffix': f"-{env}" if env != 'production' else '',
@@ -64,7 +64,7 @@ def ai_usage_context(operation_type, **kwargs):
         'start_time': datetime.utcnow(),
         **kwargs
     }
-    
+
     try:
         tracker.set_context(context)
         yield tracker
@@ -83,18 +83,18 @@ class AIUsageTracker:
         self.environment = environment or self.config['environment']
         self.storage_backend = storage_backend or self._get_storage_backend()
         self.current_context = {}
-        
+
     def _get_storage_backend(self):
         table_name = f"ai-usage-metrics{self.config['table_suffix']}"
         return DynamoStorageBackend(table_name)
-    
+
     def set_context(self, context):
         """Set the current tracking context"""
         self.current_context = {
             **self._get_base_context(),
             **context
         }
-    
+
     def _get_base_context(self):
         """Get automatic context based on environment"""
         base = {
@@ -102,10 +102,10 @@ class AIUsageTracker:
             'timestamp': datetime.utcnow().isoformat(),
             **self.config['auto_tag']['common']
         }
-        
+
         if self.environment == 'cicd':
             base.update(self.config['auto_tag']['cicd'])
-            
+
         return base
 ```
 
@@ -177,14 +177,14 @@ budgets:
     staging: 20.00
     cicd: 50.00
     development: 10.00
-  
+
   alerts:
     thresholds:
       - percent: 80
         severity: warning
       - percent: 95
         severity: critical
-    
+
     channels:
       - type: slack
         webhook: ${SLACK_WEBHOOK_URL}
@@ -199,17 +199,17 @@ budgets:
 class CostMonitor:
     def __init__(self, config_path='config/budgets.yaml'):
         self.config = load_yaml(config_path)
-        
+
     async def check_all_environments(self):
         for env, budget in self.config['budgets']['daily'].items():
             await self.check_environment_budget(env, budget)
-    
+
     async def check_environment_budget(self, environment, daily_budget):
         today_cost = await AIUsageMetric.get_daily_cost(
             date=datetime.utcnow().date(),
             environment=environment
         )
-        
+
         for threshold in self.config['alerts']['thresholds']:
             if today_cost > (daily_budget * threshold['percent'] / 100):
                 await self.send_alert(
@@ -271,20 +271,20 @@ from collections import defaultdict
 @click.option('--format', type=click.Choice(['console', 'json', 'html']), default='console')
 def generate_dashboard(days, environment, format):
     """Generate AI usage dashboard"""
-    
+
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
-    
+
     # Get metrics
     metrics = AIUsageMetric.query_by_date_range(
         start_date=start_date,
         end_date=end_date,
         environment=None if environment == 'all' else environment
     )
-    
+
     # Generate report
     report = generate_report(metrics)
-    
+
     # Output in requested format
     if format == 'console':
         print_console_report(report)
@@ -318,35 +318,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      
+
       - name: Generate Usage Report
         run: |
           python -m scripts.generate_usage_report \
             --environment cicd \
             --days ${{ github.event.inputs.days || '1' }} \
             --output reports/
-      
+
       - name: Check Budget
         run: |
           python -m scripts.check_budget \
             --environment cicd \
             --fail-on-exceeded
-      
+
       - name: Upload Report
         uses: actions/upload-artifact@v3
         with:
           name: ai-usage-report-${{ github.run_id }}
           path: reports/
-      
+
       - name: Post to Slack
         if: always()
         env:
@@ -369,7 +369,7 @@ import os
 class TestEnvironmentIsolation:
     def test_metrics_isolated_by_environment(self):
         """Ensure metrics don't cross environments"""
-        
+
         # Track in CICD
         with patch.dict(os.environ, {'ENVIRONMENT': 'cicd'}):
             tracker = AIUsageTracker()
@@ -378,7 +378,7 @@ class TestEnvironmentIsolation:
                 input_tokens=100,
                 output_tokens=50
             )
-        
+
         # Track in production
         with patch.dict(os.environ, {'ENVIRONMENT': 'production'}):
             tracker = AIUsageTracker()
@@ -387,19 +387,19 @@ class TestEnvironmentIsolation:
                 input_tokens=200,
                 output_tokens=100
             )
-        
+
         # Verify isolation
         cicd_metrics = AIUsageMetric.query_by_environment('cicd')
         prod_metrics = AIUsageMetric.query_by_environment('production')
-        
+
         assert len(cicd_metrics) == 1
         assert len(prod_metrics) == 1
         assert cicd_metrics[0].environment == 'cicd'
         assert prod_metrics[0].environment == 'production'
-    
+
     def test_context_manager_tracks_all_operations(self):
         """Test context manager captures all operations"""
-        
+
         with ai_usage_context(
             operation_type='test_operation',
             test_id='123'
@@ -408,7 +408,7 @@ class TestEnvironmentIsolation:
             tracker.track_openai_completion(...)
             tracker.track_anthropic_completion(...)
             tracker.track_google_places_search(...)
-        
+
         # Verify all operations have consistent context
         metrics = AIUsageMetric.query_by_context({'test_id': '123'})
         assert len(metrics) == 3
@@ -421,11 +421,11 @@ class TestEnvironmentIsolation:
 @pytest.mark.integration
 async def test_budget_alert_triggered():
     """Test that budget alerts are triggered correctly"""
-    
+
     # Set a low budget for testing
     monitor = CostMonitor()
     monitor.config['budgets']['daily']['test'] = 1.00
-    
+
     # Track usage that exceeds budget
     with ai_usage_context(operation_type='test') as tracker:
         for _ in range(10):
@@ -434,7 +434,7 @@ async def test_budget_alert_triggered():
                 input_tokens=1000,
                 output_tokens=1000
             )
-    
+
     # Check that alert was triggered
     alerts = await monitor.check_environment_budget('test', 1.00)
     assert len(alerts) > 0
@@ -453,7 +453,7 @@ async def test_budget_alert_triggered():
    ```python
    # Old
    tracker = AIUsageTracker()
-   
+
    # New
    tracker = AIUsageTracker(environment=os.getenv('ENVIRONMENT'))
    ```
@@ -462,7 +462,7 @@ async def test_budget_alert_triggered():
    ```python
    # Old
    result = tracker.track_openai_completion(...)
-   
+
    # New
    with ai_usage_context(operation_type='your_operation') as tracker:
        result = tracker.track_openai_completion(...)

@@ -19,29 +19,29 @@ This week focuses on adding retrieval-augmented labeling to the existing `Receip
 # In receipt_label/core/labeler.py
 
 def _get_similar_receipts(
-    self, 
-    receipt: Receipt, 
+    self,
+    receipt: Receipt,
     receipt_words: List[ReceiptWord],
     max_results: int = 5
 ) -> List[Dict]:
     """Retrieve similar receipts from Pinecone for context.
-    
+
     Args:
         receipt: Current receipt being processed
         receipt_words: Words from the receipt
         max_results: Maximum number of similar receipts to retrieve
-        
+
     Returns:
         List of similar receipt metadata including labels and merchant info
     """
     if not hasattr(self, 'client_manager') or not self.client_manager.pinecone:
         return []
-    
+
     try:
         # Create embedding from receipt text
         receipt_text = " ".join([word.text for word in receipt_words])
         embedding = self._create_receipt_embedding(receipt_text)
-        
+
         # Query Pinecone
         results = self.client_manager.pinecone.query(
             vector=embedding,
@@ -52,7 +52,7 @@ def _get_similar_receipts(
                 "has_validated_labels": True
             }
         )
-        
+
         # Extract relevant metadata
         similar_receipts = []
         for match in results.matches:
@@ -65,9 +65,9 @@ def _get_similar_receipts(
                     'date': match.metadata.get('date'),
                     'score': match.score
                 })
-        
+
         return similar_receipts
-        
+
     except Exception as e:
         logger.warning(f"Failed to retrieve similar receipts: {str(e)}")
         return []
@@ -88,34 +88,34 @@ def label_receipt(
     enable_retrieval: bool = True,  # New parameter
 ) -> LabelingResult:
     """Label a receipt using various processors.
-    
+
     Args:
         ... existing args ...
         enable_retrieval: Whether to retrieve similar receipts for context
     """
     # ... existing code ...
-    
+
     # Get Places API data if enabled
     places_data = None
     if enable_places_api:
         start_time = time.time()
         places_data = self._get_places_data(receipt_words)
         execution_times["places_api"] = time.time() - start_time
-    
+
     # NEW: Get similar receipts if enabled
     similar_receipts = []
     if enable_retrieval:
         start_time = time.time()
         similar_receipts = self._get_similar_receipts(receipt, receipt_words)
         execution_times["retrieval"] = time.time() - start_time
-        
+
         # Add to places_data for backward compatibility
         if places_data is None:
             places_data = {}
         places_data['similar_receipts'] = similar_receipts
-        
+
         logger.info(f"Retrieved {len(similar_receipts)} similar receipts")
-    
+
     # Continue with existing analysis...
 ```
 
@@ -132,11 +132,11 @@ def gpt_request_structure_analysis(
     gpt_api_key: str,
 ) -> Tuple[Dict, str, str]:
     """Request structure analysis from GPT.
-    
+
     Now includes similar receipts in context for better analysis.
     """
     # ... existing prompt construction ...
-    
+
     # Add similar receipts to prompt if available
     if places_api_data and 'similar_receipts' in places_api_data:
         similar_receipts = places_api_data['similar_receipts']
@@ -147,9 +147,9 @@ def gpt_request_structure_analysis(
                 prompt += f"Total: {sr['total']}, "
                 prompt += f"Date: {sr['date']}, "
                 prompt += f"Similarity: {sr['score']:.2f}\n"
-            
+
             prompt += "\nUse these similar receipts as context for better analysis.\n"
-    
+
     # ... rest of function ...
 ```
 
@@ -168,16 +168,16 @@ def __init__(
     client_manager: Optional[ClientManager] = None,  # NEW
 ):
     """Initialize the receipt labeler.
-    
+
     Args:
         ... existing args ...
         client_manager: Optional ClientManager for accessing external services
     """
     # ... existing initialization ...
-    
+
     # Store client manager for retrieval
     self.client_manager = client_manager
-    
+
     # If client manager provided, use its clients
     if client_manager:
         self.gpt_api_key = client_manager.config.openai_api_key
@@ -208,11 +208,11 @@ def test_get_similar_receipts(mocker):
             )
         ]
     )
-    
+
     # Test retrieval
     labeler = ReceiptLabeler(client_manager=mock_client_manager)
     similar = labeler._get_similar_receipts(receipt, receipt_words)
-    
+
     assert len(similar) == 1
     assert similar[0]['merchant_name'] == 'Whole Foods'
     assert similar[0]['score'] == 0.95
@@ -228,7 +228,7 @@ def test_label_receipt_with_retrieval():
         gpt_api_key="test-key",
         client_manager=mock_client_manager
     )
-    
+
     # Label receipt with retrieval
     result = labeler.label_receipt(
         receipt=test_receipt,
@@ -236,7 +236,7 @@ def test_label_receipt_with_retrieval():
         receipt_lines=test_lines,
         enable_retrieval=True
     )
-    
+
     # Verify retrieval was called
     assert 'retrieval' in result.metadata['execution_times']
     assert result.metadata.get('similar_receipts_count', 0) > 0
