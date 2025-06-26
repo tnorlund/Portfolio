@@ -1,12 +1,11 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
-    itemToReceiptWordLabel,
-)
+from receipt_dynamo.entities.receipt_word_label import (ReceiptWordLabel,
+                                                        itemToReceiptWordLabel)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
