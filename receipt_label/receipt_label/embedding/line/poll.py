@@ -24,8 +24,11 @@ import re
 from typing import List
 
 from receipt_dynamo.constants import BatchType, EmbeddingStatus
-from receipt_dynamo.entities import (BatchSummary, EmbeddingBatchResult,
-                                     ReceiptSection)
+from receipt_dynamo.entities import (
+    BatchSummary,
+    EmbeddingBatchResult,
+    ReceiptSection,
+)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -204,11 +207,15 @@ def _get_unique_receipt_and_image_ids(
     )
 
 
-def _get_section_by_line_id(sections: list[ReceiptSection], line_id: int) -> str | None:
+def _get_section_by_line_id(
+    sections: list[ReceiptSection], line_id: int
+) -> str | None:
     """
     Get the section for a given line id.
     """
-    return next((s.section_type for s in sections if line_id in s.line_ids), None)
+    return next(
+        (s.section_type for s in sections if line_id in s.line_ids), None
+    )
 
 
 def upsert_line_embeddings_to_pinecone(
@@ -262,10 +269,13 @@ def upsert_line_embeddings_to_pinecone(
 
         # Format the line context to extract prev/next lines
         # Import locally to avoid circular import
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import \
-            _format_line_context_embedding_input  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
+        from receipt_label.submit_line_embedding_batch.submit_line_batch import (  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
+            _format_line_context_embedding_input,
+        )
 
-        embedding_input = _format_line_context_embedding_input(target_line, lines)
+        embedding_input = _format_line_context_embedding_input(
+            target_line, lines
+        )
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
 
         # Merchant name handling - same as word embeddings
@@ -317,7 +327,9 @@ def upsert_line_embeddings_to_pinecone(
         try:
             if client_manager is None:
                 client_manager = get_client_manager()
-            response = client_manager.pinecone.upsert(vectors=chunk, namespace="lines")
+            response = client_manager.pinecone.upsert(
+                vectors=chunk, namespace="lines"
+            )
             upserted_count += response.get("upserted_count", 0)
         except Exception as e:
             print(f"Failed to upsert chunk to Pinecone: {e}")

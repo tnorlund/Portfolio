@@ -32,10 +32,12 @@ from receipt_label.utils.cost_calculator import AICostCalculator
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../tests"))
 
-from utils.ai_usage_helpers import (create_mock_anthropic_response,
-                                    create_mock_google_places_response,
-                                    create_mock_openai_response,
-                                    create_test_tracking_context)
+from utils.ai_usage_helpers import (
+    create_mock_anthropic_response,
+    create_mock_google_places_response,
+    create_mock_openai_response,
+    create_test_tracking_context,
+)
 
 
 @pytest.fixture
@@ -144,7 +146,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
 
@@ -156,7 +159,9 @@ class TestAIUsageSystemIntegration:
                 openai_client = manager.openai
                 openai_response = openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": "Analyze this receipt"}],
+                    messages=[
+                        {"role": "user", "content": "Analyze this receipt"}
+                    ],
                 )
 
                 # Make Anthropic call (would need anthropic wrapper in real implementation)
@@ -218,7 +223,11 @@ class TestAIUsageSystemIntegration:
                     m.get("service", {}).get("S")
                     for m in mock_dynamo_with_data._stored_items
                 }
-                assert services_used == {"openai", "anthropic", "google_places"}
+                assert services_used == {
+                    "openai",
+                    "anthropic",
+                    "google_places",
+                }
 
     @pytest.mark.integration
     def test_batch_processing_with_report_generation(
@@ -263,7 +272,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
                 manager.set_tracking_context(batch_id=batch_id)
@@ -273,7 +283,9 @@ class TestAIUsageSystemIntegration:
                 for i in range(100):
                     openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": f"Batch item {i}"}],
+                        messages=[
+                            {"role": "user", "content": f"Batch item {i}"}
+                        ],
                         is_batch=True,  # Apply batch pricing
                     )
 
@@ -288,13 +300,16 @@ class TestAIUsageSystemIntegration:
 
                 # Calculate batch statistics
                 total_tokens = sum(
-                    int(m.get("totalTokens", {}).get("N", 0)) for m in batch_metrics
+                    int(m.get("totalTokens", {}).get("N", 0))
+                    for m in batch_metrics
                 )
                 total_cost = sum(
-                    float(m.get("costUSD", {}).get("N", 0)) for m in batch_metrics
+                    float(m.get("costUSD", {}).get("N", 0))
+                    for m in batch_metrics
                 )
                 avg_latency = sum(
-                    int(m.get("latencyMs", {}).get("N", 0)) for m in batch_metrics
+                    int(m.get("latencyMs", {}).get("N", 0))
+                    for m in batch_metrics
                 ) / len(batch_metrics)
 
                 # Create batch summary report
@@ -304,7 +319,9 @@ class TestAIUsageSystemIntegration:
                     "total_tokens": total_tokens,
                     "total_cost_usd": round(total_cost, 4),
                     "average_latency_ms": round(avg_latency, 2),
-                    "cost_savings": round(total_cost, 4),  # 50% discount for batch
+                    "cost_savings": round(
+                        total_cost, 4
+                    ),  # 50% discount for batch
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
@@ -314,7 +331,9 @@ class TestAIUsageSystemIntegration:
                     cost = float(metric.get("costUSD", {}).get("N", 0))
                     tokens = int(metric.get("totalTokens", {}).get("N", 0))
                     # Rough check that batch pricing is lower
-                    assert cost < tokens * 0.000002  # Less than regular pricing
+                    assert (
+                        cost < tokens * 0.000002
+                    )  # Less than regular pricing
 
     @pytest.mark.integration
     def test_error_recovery_and_retry_logic(
@@ -362,7 +381,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
 
@@ -376,7 +396,9 @@ class TestAIUsageSystemIntegration:
                             openai_client = manager.openai
                             response = openai_client.chat.completions.create(
                                 model="gpt-3.5-turbo",
-                                messages=[{"role": "user", "content": f"Request {i}"}],
+                                messages=[
+                                    {"role": "user", "content": f"Request {i}"}
+                                ],
                             )
                             success_count += 1
                             break
@@ -391,7 +413,9 @@ class TestAIUsageSystemIntegration:
                 all_metrics = mock_dynamo_with_data._stored_items
 
                 # Check error metrics
-                error_metrics = [m for m in all_metrics if m.get("error", {}).get("S")]
+                error_metrics = [
+                    m for m in all_metrics if m.get("error", {}).get("S")
+                ]
                 success_metrics = [
                     m for m in all_metrics if not m.get("error", {}).get("S")
                 ]
@@ -401,10 +425,15 @@ class TestAIUsageSystemIntegration:
 
                 # Verify error details
                 for error_metric in error_metrics:
-                    assert "API temporarily unavailable" in error_metric["error"]["S"]
+                    assert (
+                        "API temporarily unavailable"
+                        in error_metric["error"]["S"]
+                    )
 
     @pytest.mark.integration
-    def test_concurrent_batch_processing(self, integration_env, mock_dynamo_with_data):
+    def test_concurrent_batch_processing(
+        self, integration_env, mock_dynamo_with_data
+    ):
         """Test concurrent batch processing with proper isolation."""
         config = ClientConfig.from_env()
 
@@ -450,7 +479,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
 
                 def process_batch(batch_id: str, num_items: int):
@@ -503,10 +533,14 @@ class TestAIUsageSystemIntegration:
                         for m in mock_dynamo_with_data._stored_items
                         if m.get("batchId", {}).get("S") == batch_id
                     ]
-                    assert len(batch_metrics) == 20  # Each batch has exactly 20 items
+                    assert (
+                        len(batch_metrics) == 20
+                    )  # Each batch has exactly 20 items
 
     @pytest.mark.integration
-    def test_cost_threshold_monitoring(self, integration_env, mock_dynamo_with_data):
+    def test_cost_threshold_monitoring(
+        self, integration_env, mock_dynamo_with_data
+    ):
         """Test cost threshold monitoring and alerting."""
         config = ClientConfig.from_env()
 
@@ -582,7 +616,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 with patch.object(
                     AIUsageTracker, "_store_metric", store_with_threshold_check
@@ -596,7 +631,10 @@ class TestAIUsageSystemIntegration:
                             openai_client.chat.completions.create(
                                 model="gpt-4",
                                 messages=[
-                                    {"role": "user", "content": "Expensive request"}
+                                    {
+                                        "role": "user",
+                                        "content": "Expensive request",
+                                    }
                                 ],
                             )
                         except:
@@ -629,7 +667,9 @@ class TestAIUsageSystemIntegration:
                 raise Exception("DynamoDB write throttled")
             return original_put_item(**kwargs)
 
-        mock_dynamo_with_data.put_item = MagicMock(side_effect=failing_put_item)
+        mock_dynamo_with_data.put_item = MagicMock(
+            side_effect=failing_put_item
+        )
 
         # Create successful API responses
         responses = []
@@ -648,7 +688,8 @@ class TestAIUsageSystemIntegration:
             return_value=mock_dynamo_with_data,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
 
@@ -660,7 +701,9 @@ class TestAIUsageSystemIntegration:
                     try:
                         response = openai_client.chat.completions.create(
                             model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": f"Request {i}"}],
+                            messages=[
+                                {"role": "user", "content": f"Request {i}"}
+                            ],
                         )
                         api_call_count += 1
                     except:
@@ -680,7 +723,9 @@ class TestAIUsageSystemIntegration:
                 )  # Matches failure rate
 
     @pytest.mark.integration
-    async def test_async_batch_processing(self, integration_env, mock_dynamo_with_data):
+    async def test_async_batch_processing(
+        self, integration_env, mock_dynamo_with_data
+    ):
         """Test asynchronous batch processing for high throughput."""
         config = ClientConfig.from_env()
 
@@ -768,6 +813,9 @@ class TestAIUsageSystemIntegration:
             async_metrics = [
                 m
                 for m in mock_dynamo_with_data._stored_items
-                if m.get("metadata", {}).get("M", {}).get("async", {}).get("BOOL")
+                if m.get("metadata", {})
+                .get("M", {})
+                .get("async", {})
+                .get("BOOL")
             ]
             assert len(async_metrics) == 100
