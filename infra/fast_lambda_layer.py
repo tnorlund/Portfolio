@@ -63,9 +63,7 @@ class FastLambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.needs_pillow = needs_pillow
         self.opts = opts
 
@@ -96,13 +94,9 @@ class FastLambdaLayer(ComponentResource):
                 f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
             )
         else:
-            pulumi.log.info(
-                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
-            )
+            pulumi.log.info(f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)")
             if self.force_rebuild:
-                pulumi.log.info(
-                    "   🔨 Force rebuild enabled - will trigger build"
-                )
+                pulumi.log.info("   🔨 Force rebuild enabled - will trigger build")
             else:
                 pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
@@ -115,9 +109,7 @@ class FastLambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -130,9 +122,7 @@ class FastLambdaLayer(ComponentResource):
                 f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -173,24 +163,24 @@ LAYER_BASE_ARN=$(echo "$NEW_LAYER_ARN" | sed "s/:[^:]*$//")
 update_function() {
   local FUNC_NAME="$1"
   local FUNC_ARN="$2"
-  
+
   echo "Checking function: $FUNC_NAME"
   ENV_TAG=$(aws lambda list-tags --resource "$FUNC_ARN" --query "Tags.environment" --output text 2>/dev/null || echo "None")
-  
+
   if [ "$ENV_TAG" != "$STACK_NAME" ]; then
     echo "  Skipping $FUNC_NAME (environment: $ENV_TAG)"
     return 0
   fi
-  
+
   echo "  Function $FUNC_NAME matches environment $STACK_NAME"
   CURRENT_LAYERS=$(aws lambda get-function-configuration --function-name "$FUNC_NAME" --query "Layers[*].Arn" --output text)
-  
+
   # Quick check: does this function actually use the layer we are updating?
   if [ -z "$CURRENT_LAYERS" ] || [ "$CURRENT_LAYERS" = "None" ]; then
     echo "  Skipping $FUNC_NAME (no layers)"
     return 0
   fi
-  
+
   # Check if function uses the layer being updated
   USES_LAYER=false
   for LAYER in $CURRENT_LAYERS; do
@@ -200,28 +190,28 @@ update_function() {
       break
     fi
   done
-  
+
   if [ "$USES_LAYER" = "false" ]; then
     echo "  Skipping $FUNC_NAME (does not use this layer)"
     return 0
   fi
-  
+
   # Build new layer list
   NEW_LAYERS=""
   for LAYER in $CURRENT_LAYERS; do
     LAYER_BASE=$(echo "$LAYER" | sed "s/:[^:]*$//")
     LAYER_NAME=$(echo "$LAYER_BASE" | sed "s/.*://")
-    
+
     if [ "$LAYER_BASE" = "$LAYER_BASE_ARN" ]; then
       echo "    Replacing old version: $LAYER"
       continue
     fi
-    
+
     if echo "$LAYER_NAME" | grep -q "\\-$STACK_NAME$"; then
       NEW_LAYERS="$NEW_LAYERS $LAYER"
       echo "    Keeping env-specific layer: $LAYER"
     elif echo "$LAYER_BASE" | grep -q "\\-$STACK_NAME:"; then
-      NEW_LAYERS="$NEW_LAYERS $LAYER" 
+      NEW_LAYERS="$NEW_LAYERS $LAYER"
       echo "    Keeping env-specific layer: $LAYER"
     else
       NEW_LAYERS="$NEW_LAYERS $LAYER"
@@ -229,11 +219,11 @@ update_function() {
       echo "    Keeping cross-env layer: $LAYER (consider migrating to ${BASE_LAYER_NAME}-$STACK_NAME)"
     fi
   done
-  
+
   NEW_LAYERS="$NEW_LAYERS $NEW_LAYER_ARN"
   NEW_LAYERS=$(echo "$NEW_LAYERS" | xargs)
   echo "  Updating $FUNC_NAME with layers: $NEW_LAYERS"
-  
+
   if aws lambda update-function-configuration --function-name "$FUNC_NAME" --layers $NEW_LAYERS >/dev/null 2>&1; then
     echo "  ✅ Updated $FUNC_NAME successfully"
   else
@@ -377,14 +367,10 @@ echo "🎉 Parallel function updates completed!"'''
         upload_cmd = command.local.Command(
             f"{self.name}-upload-source",
             create=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: self._generate_upload_script(b, package_path, package_hash)
             ),
             update=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: self._generate_upload_script(b, package_path, package_hash)
             ),
             triggers=[package_hash],
             opts=pulumi.ResourceOptions(
@@ -402,16 +388,12 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -507,9 +489,7 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -665,15 +645,11 @@ echo "🎉 Parallel function updates completed!"'''
             commands.append("rm -rf merged && mkdir -p merged")
             # Step 2: Merge each version's unpacked artifact into python/lib/python<ver>/site-packages
             commands.append('echo "Setting up merged python/lib directory..."')
-            commands.append(
-                "rm -rf merged/python && mkdir -p merged/python/lib"
-            )
+            commands.append("rm -rf merged/python && mkdir -p merged/python/lib")
             for idx, v in enumerate(self.python_versions):
                 commands.append(f'echo "Merging artifacts for Python {v}..."')
                 # Use the version string directly (e.g., "3.11", "3.12")
-                commands.append(
-                    f"mkdir -p merged/python/lib/python{v}/site-packages"
-                )
+                commands.append(f"mkdir -p merged/python/lib/python{v}/site-packages")
                 if idx == 0:
                     # Primary artifact in root workspace
                     commands.append(
@@ -694,9 +670,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "aws s3 cp layer.zip s3://$BUCKET_NAME/${PACKAGE_NAME}/combined/layer.zip"
             )
             # Step 4: Publish the merged layer from S3
-            commands.append(
-                'echo "Publishing merged layer from S3 to Lambda..."'
-            )
+            commands.append('echo "Publishing merged layer from S3 to Lambda..."')
             commands.append(
                 "NEW_LAYER_ARN=$(aws lambda publish-layer-version "
                 '--layer-name "$LAYER_NAME" '
@@ -821,8 +795,7 @@ echo "🎉 Parallel function updates completed!"'''
                             provider="CodeBuild",
                             version="1",
                             input_artifacts=[
-                                f"py{v.replace('.', '')}"
-                                for v in self.python_versions
+                                f"py{v.replace('.', '')}" for v in self.python_versions
                             ],
                             run_order=1,
                             configuration={
@@ -885,9 +858,7 @@ done
             sync_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
-                opts=pulumi.ResourceOptions(
-                    parent=self, depends_on=[pipeline]
-                ),
+                opts=pulumi.ResourceOptions(parent=self, depends_on=[pipeline]),
             )
             # Ensure Pulumi waits for pipeline before proceeding
             pulumi.log.info(f"Sync command added for pipeline {self.name}")
@@ -1034,7 +1005,7 @@ echo "Build ID: $BUILD_ID"
 while true; do
     BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
     echo "Build status: $BUILD_STATUS"
-    
+
     if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
         echo "✅ Initial build completed successfully!"
         break
@@ -1042,7 +1013,7 @@ while true; do
         echo "❌ Initial build failed with status: $BUILD_STATUS"
         exit 1
     fi
-    
+
     sleep 30
 done
 """
@@ -1065,7 +1036,7 @@ echo "🔄 Building layer '{self.name}' in SYNC mode..."
 # Check if we need to rebuild
 if [ "$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
     echo "✅ No changes detected. Skipping rebuild."
-    
+
     # Ensure layer exists
     if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
         echo "❌ Layer missing but hash matches. Please run with force-rebuild."
@@ -1097,7 +1068,7 @@ echo "Build ID: $BUILD_ID"
 while true; do
     BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
     echo "Build status: $BUILD_STATUS"
-    
+
     if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
         echo "✅ Build completed successfully!"
         break
@@ -1105,7 +1076,7 @@ while true; do
         echo "❌ Build failed with status: $BUILD_STATUS"
         exit 1
     fi
-    
+
     sleep 30
 done
 

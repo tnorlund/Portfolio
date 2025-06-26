@@ -11,9 +11,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -32,9 +30,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             ValueError: When a job checkpoint with the same timestamp already exists
         """
         if job_checkpoint is None:
-            raise ValueError(
-                "JobCheckpoint parameter is required and cannot be None."
-            )
+            raise ValueError("JobCheckpoint parameter is required and cannot be None.")
         if not isinstance(job_checkpoint, JobCheckpoint):
             raise ValueError(
                 "job_checkpoint must be an instance of the JobCheckpoint class."
@@ -52,17 +48,13 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"JobCheckpoint with timestamp {job_checkpoint.timestamp} for job {job_checkpoint.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job checkpoint to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job checkpoint to DynamoDB: {e}") from e
 
     def getJobCheckpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
         """Gets a specific job checkpoint by job ID and timestamp
@@ -82,9 +74,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
             response = self._client.get_item(
@@ -129,9 +119,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         # First verify the checkpoint exists
         try:
@@ -153,9 +141,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                             "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},
                         },
                         UpdateExpression="SET is_best = :is_best",
-                        ExpressionAttributeValues={
-                            ":is_best": {"BOOL": False}
-                        },
+                        ExpressionAttributeValues={":is_best": {"BOOL": False}},
                     )
 
             # Then set the specified checkpoint to is_best=True
@@ -176,9 +162,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not update best checkpoint: {e}"
-                ) from e
+                raise Exception(f"Could not update best checkpoint: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -254,9 +238,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -347,9 +329,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
             self._client.delete_item(
@@ -430,9 +410,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -453,6 +431,4 @@ class _JobCheckpoint(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error listing all job checkpoints: {e}"
-                ) from e
+                raise Exception(f"Error listing all job checkpoints: {e}") from e

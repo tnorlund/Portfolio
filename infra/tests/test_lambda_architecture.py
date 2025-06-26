@@ -55,9 +55,7 @@ def test_all_lambdas_use_arm64():
     for file_path, line_no, definition in lambda_definitions:
         if 'architectures=["arm64"]' not in definition:
             # Extract function name for better error reporting
-            name_match = re.search(
-                r'Function\s*\(\s*["\']([^"\']+)', definition
-            )
+            name_match = re.search(r'Function\s*\(\s*["\']([^"\']+)', definition)
             func_name = name_match.group(1) if name_match else "unknown"
 
             missing_arm64.append(
@@ -70,16 +68,10 @@ def test_all_lambdas_use_arm64():
 
     # Report any Lambda functions missing ARM64 architecture
     if missing_arm64:
-        error_msg = (
-            "The following Lambda functions are missing ARM64 architecture:\n"
-        )
+        error_msg = "The following Lambda functions are missing ARM64 architecture:\n"
         for item in missing_arm64:
-            error_msg += (
-                f"  - {item['file']}:{item['line']} - {item['function']}\n"
-            )
-        error_msg += (
-            "\nAdd 'architectures=[\"arm64\"]' to each function definition."
-        )
+            error_msg += f"  - {item['file']}:{item['line']} - {item['function']}\n"
+        error_msg += "\nAdd 'architectures=[\"arm64\"]' to each function definition."
 
         pytest.fail(error_msg)
 
@@ -101,9 +93,7 @@ def test_all_lambdas_use_consistent_runtime():
             runtime = runtime_match.group(1)
 
             # Extract function name
-            name_match = re.search(
-                r'Function\s*\(\s*["\']([^"\']+)', definition
-            )
+            name_match = re.search(r'Function\s*\(\s*["\']([^"\']+)', definition)
             func_name = name_match.group(1) if name_match else "unknown"
 
             if runtime not in runtime_usage:
@@ -119,16 +109,14 @@ def test_all_lambdas_use_consistent_runtime():
 
     # Check if all functions use the same runtime
     if len(runtime_usage) > 1:
-        error_msg = (
-            "Lambda functions are using inconsistent Python runtimes:\n"
-        )
+        error_msg = "Lambda functions are using inconsistent Python runtimes:\n"
         for runtime, functions in runtime_usage.items():
             error_msg += f"\n{runtime}:\n"
             for func in functions:
-                error_msg += (
-                    f"  - {func['file']}:{func['line']} - {func['function']}\n"
-                )
-        error_msg += "\nStandardize all functions to use the same Python runtime version."
+                error_msg += f"  - {func['file']}:{func['line']} - {func['function']}\n"
+        error_msg += (
+            "\nStandardize all functions to use the same Python runtime version."
+        )
 
         pytest.fail(error_msg)
 

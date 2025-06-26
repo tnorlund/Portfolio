@@ -55,9 +55,7 @@ class SimpleLambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.opts = opts
 
         # Validate package directory
@@ -73,9 +71,7 @@ class SimpleLambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -88,9 +84,7 @@ class SimpleLambdaLayer(ComponentResource):
                 f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -170,9 +164,7 @@ class SimpleLambdaLayer(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -256,9 +248,9 @@ class SimpleLambdaLayer(ComponentResource):
                 location=pulumi.Output.concat(
                     build_bucket.bucket, f"/{self.name}/source.zip"
                 ),
-                buildspec=pulumi.Output.from_input(
-                    self._get_buildspec()
-                ).apply(lambda spec: json.dumps(spec)),
+                buildspec=pulumi.Output.from_input(self._get_buildspec()).apply(
+                    lambda spec: json.dumps(spec)
+                ),
             ),
             artifacts=aws.codebuild.ProjectArtifactsArgs(
                 type="S3",
@@ -311,9 +303,7 @@ class SimpleLambdaLayer(ComponentResource):
                     args[0], args[1], args[2], package_path, package_hash
                 )
             ),
-            opts=pulumi.ResourceOptions(
-                parent=self, depends_on=[codebuild_project]
-            ),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[codebuild_project]),
         )
 
         # Create the Lambda layer version resource
@@ -368,27 +358,27 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     echo "Uploading source package..."
     TMP_DIR=$(mktemp -d)
     trap 'rm -rf "$TMP_DIR"' EXIT
-    
+
     mkdir -p "$TMP_DIR/source"
     cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
-    
+
     # Use cd instead of pushd/popd for better shell compatibility
     cd "$TMP_DIR"
     zip -r source.zip source
     cd - >/dev/null
-    
+
     aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
-    
+
     # Step 3: Start CodeBuild and wait for completion
     echo "Starting CodeBuild..."
     BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
     echo "Build ID: $BUILD_ID"
-    
+
     echo "Waiting for build to complete..."
     while true; do
         BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
         echo "Build status: $BUILD_STATUS"
-        
+
         if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
             echo "Build completed successfully!"
             break
@@ -396,10 +386,10 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
             echo "Build failed with status: $BUILD_STATUS"
             exit 1
         fi
-        
+
         sleep 30
     done
-    
+
     # Step 4: Publish new layer version
     echo "Publishing new layer version..."
     NEW_LAYER_ARN=$(aws lambda publish-layer-version \
@@ -410,9 +400,9 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
         --description "{self.description}" \
         --query 'LayerVersionArn' \
         --output text)
-    
+
     echo "New layer ARN: $NEW_LAYER_ARN"
-    
+
     # Step 5: Update all Lambda functions that use this layer
     echo "Updating Lambda functions..."
     aws lambda list-functions --query 'Functions[*].[FunctionName,FunctionArn]' --output text | \
@@ -421,26 +411,26 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
         TAGS=$(aws lambda list-tags --resource "$FUNC_ARN" --query 'Tags.environment' --output text 2>/dev/null || echo "None")
         if [ "$TAGS" = "$STACK" ]; then
             echo "Checking function: $FUNC_NAME"
-            
+
             # Get current layers
             CURRENT_LAYERS=$(aws lambda get-function-configuration --function-name "$FUNC_NAME" --query 'Layers[*].Arn' --output text)
-            
+
             # Build new layer list (remove old versions of same layer, add new version)
             NEW_LAYERS=""
             for LAYER in $CURRENT_LAYERS; do
                 # Extract layer name without version (everything except last part after last colon)
                 LAYER_BASE=$(echo "$LAYER" | sed 's/:[^:]*$//')
                 NEW_LAYER_BASE=$(echo "$NEW_LAYER_ARN" | sed 's/:[^:]*$//')
-                
+
                 # If this is not the same layer family, keep it
                 if [ "$LAYER_BASE" != "$NEW_LAYER_BASE" ]; then
                     NEW_LAYERS="$NEW_LAYERS $LAYER"
                 fi
             done
-            
+
             # Add the new layer version
             NEW_LAYERS="$NEW_LAYERS $NEW_LAYER_ARN"
-            
+
             # Update function if it has any layers
             if [ -n "$NEW_LAYERS" ]; then
                 echo "Updating $FUNC_NAME with layers: $NEW_LAYERS"
@@ -451,7 +441,7 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
             fi
         fi
     done
-    
+
     # Step 6: Save the new hash
     echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
     echo "Process completed successfully!"

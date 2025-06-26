@@ -25,9 +25,7 @@ class JobRetryStrategy(enum.Enum):
     NONE = "none"  # No retries
     IMMEDIATE = "immediate"  # Retry immediately
     LINEAR_BACKOFF = "linear_backoff"  # Linear backoff between retries
-    EXPONENTIAL_BACKOFF = (
-        "exponential_backoff"  # Exponential backoff between retries
-    )
+    EXPONENTIAL_BACKOFF = "exponential_backoff"  # Exponential backoff between retries
 
 
 @dataclasses.dataclass
@@ -106,9 +104,7 @@ class JobQueue:
             return job.job_id
 
         except ClientError as e:
-            self.logger.error(
-                f"Error submitting job {job.job_id} to queue: {e}"
-            )
+            self.logger.error(f"Error submitting job {job.job_id} to queue: {e}")
             raise
 
     def batch_submit_jobs(self, jobs: List[Job]) -> List[str]:
@@ -337,9 +333,7 @@ class JobQueue:
             return 0
         elif self.config.retry_strategy == JobRetryStrategy.LINEAR_BACKOFF:
             return attempt * base_seconds
-        elif (
-            self.config.retry_strategy == JobRetryStrategy.EXPONENTIAL_BACKOFF
-        ):
+        elif self.config.retry_strategy == JobRetryStrategy.EXPONENTIAL_BACKOFF:
             return base_seconds * (2 ** (attempt - 1))
         else:
             return base_seconds
@@ -358,16 +352,12 @@ class JobQueue:
             handler: Function that processes a job and returns True if successful
             interval_seconds: Seconds to wait between polling if no jobs are available
         """
-        self.logger.info(
-            f"Starting job processor for queue {self.config.queue_url}"
-        )
+        self.logger.info(f"Starting job processor for queue {self.config.queue_url}")
 
         while not self._stop_processing.is_set():
             try:
                 # Receive jobs from the queue
-                jobs = self.receive_jobs(
-                    max_messages=self.config.max_batch_size
-                )
+                jobs = self.receive_jobs(max_messages=self.config.max_batch_size)
 
                 if not jobs:
                     # No jobs available, wait before polling again
@@ -382,9 +372,7 @@ class JobQueue:
                         job_service = self._get_job_service()
                         if job_service:
                             dependencies_satisfied, unsatisfied = (
-                                job_service.check_dependencies_satisfied(
-                                    job.job_id
-                                )
+                                job_service.check_dependencies_satisfied(job.job_id)
                             )
 
                             if not dependencies_satisfied:
@@ -408,9 +396,7 @@ class JobQueue:
                                 continue
 
                         # Process the job
-                        self.logger.info(
-                            f"Processing job {job.job_id}: {job.name}"
-                        )
+                        self.logger.info(f"Processing job {job.job_id}: {job.name}")
 
                         # Extend visibility timeout for long-running jobs
                         heartbeat_thread = None
@@ -436,15 +422,11 @@ class JobQueue:
 
                         # Handle the job based on the success status
                         if success:
-                            self.logger.info(
-                                f"Job {job.job_id} processed successfully"
-                            )
+                            self.logger.info(f"Job {job.job_id} processed successfully")
                             # Delete the job from the queue
                             self.delete_job(receipt_handle)
                         else:
-                            self.logger.warning(
-                                f"Job {job.job_id} processing failed"
-                            )
+                            self.logger.warning(f"Job {job.job_id} processing failed")
                             # Handle retry if configured
                             if job.retry_count < self.config.max_retries:
                                 self.logger.info(

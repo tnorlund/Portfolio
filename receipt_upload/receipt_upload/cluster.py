@@ -3,7 +3,6 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.entities import Line
-
 from receipt_upload.geometry import box_points, min_area_rect
 
 
@@ -226,9 +225,7 @@ def join_overlapping_clusters(
         """Return the 2D cross product of vectors a and b."""
         return a[0] * b[1] - a[1] * b[0]
 
-    def subtract(
-        a: Tuple[float, float], b: Tuple[float, float]
-    ) -> Tuple[float, float]:
+    def subtract(a: Tuple[float, float], b: Tuple[float, float]) -> Tuple[float, float]:
         """Subtract vector b from vector a."""
         return (a[0] - b[0], a[1] - b[1])
 
@@ -238,9 +235,7 @@ def join_overlapping_clusters(
         n = len(polygon)
         for i in range(n):
             j = (i + 1) % n
-            area += (
-                polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
-            )
+            area += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
         return abs(area) / 2.0
 
     def compute_intersection(
@@ -313,9 +308,7 @@ def join_overlapping_clusters(
             return 0.0
         return intersection_area / union_area
 
-    def boxes_overlap(
-        box_a: Dict, box_b: Dict, threshold: float = 0.1
-    ) -> bool:
+    def boxes_overlap(box_a: Dict, box_b: Dict, threshold: float = 0.1) -> bool:
         """Check if boxes overlap significantly based on IoU threshold."""
         iou = compute_iou(box_a, box_b)
         return iou > threshold

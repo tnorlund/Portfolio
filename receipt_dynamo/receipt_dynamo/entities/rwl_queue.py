@@ -57,19 +57,14 @@ class Queue:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError(
-                "created_at must be a datetime object or a string"
-            )
+            raise ValueError("created_at must be a datetime object or a string")
 
         if not isinstance(max_concurrent_jobs, int) or max_concurrent_jobs < 1:
             raise ValueError("max_concurrent_jobs must be a positive integer")
         self.max_concurrent_jobs = max_concurrent_jobs
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if (
-            not isinstance(priority, str)
-            or priority.lower() not in valid_priorities
-        ):
+        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 

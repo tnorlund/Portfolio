@@ -221,13 +221,9 @@ def create_queue_with_dlq(
     # Create the DLQ first
     dlq_url = None
     if fifo:
-        dlq_url = create_fifo_queue(
-            dlq_name, dlq_attributes, tags, region_name
-        )
+        dlq_url = create_fifo_queue(dlq_name, dlq_attributes, tags, region_name)
     else:
-        dlq_url = create_standard_queue(
-            dlq_name, dlq_attributes, tags, region_name
-        )
+        dlq_url = create_standard_queue(dlq_name, dlq_attributes, tags, region_name)
 
     if not dlq_url:
         logger.error(f"Failed to create DLQ {dlq_name}")
@@ -256,13 +252,9 @@ def create_queue_with_dlq(
     # Create the main queue
     queue_url = None
     if fifo:
-        queue_url = create_fifo_queue(
-            queue_name, attributes, tags, region_name
-        )
+        queue_url = create_fifo_queue(queue_name, attributes, tags, region_name)
     else:
-        queue_url = create_standard_queue(
-            queue_name, attributes, tags, region_name
-        )
+        queue_url = create_standard_queue(queue_name, attributes, tags, region_name)
 
     if not queue_url:
         logger.error(f"Failed to create main queue {queue_name}")

@@ -80,9 +80,7 @@ class ReceiptAnalysis:
             )
 
         analyses_str = (
-            ", ".join(available_analyses)
-            if available_analyses
-            else "no analyses"
+            ", ".join(available_analyses) if available_analyses else "no analyses"
         )
 
         return (

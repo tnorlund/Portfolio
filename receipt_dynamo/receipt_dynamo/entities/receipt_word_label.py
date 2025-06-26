@@ -91,9 +91,7 @@ class ReceiptWordLabel:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         # Always assign a valid enum value for validation_status
         status = validation_status or ValidationStatus.NONE.value
@@ -190,9 +188,7 @@ class ReceiptWordLabel:
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": (
-                {"S": self.reasoning}
-                if self.reasoning is not None
-                else {"NULL": True}
+                {"S": self.reasoning} if self.reasoning is not None else {"NULL": True}
             ),
             "timestamp_added": {"S": self.timestamp_added},
             "validation_status": {"S": self.validation_status},
@@ -343,9 +339,7 @@ def itemToReceiptWordLabel(item: dict) -> ReceiptWordLabel:
         line_id = int(sk_parts[3])
         word_id = int(sk_parts[5])
         label = sk_parts[7]
-        reasoning = (
-            item["reasoning"]["S"] if "S" in item["reasoning"] else None
-        )
+        reasoning = item["reasoning"]["S"] if "S" in item["reasoning"] else None
         timestamp_added = item["timestamp_added"]["S"]
         validation_status = None
         if "validation_status" in item:

@@ -82,9 +82,7 @@ class LabelMetadata:
             "schema_version": {"N": str(self.schema_version)},
             "last_updated": {"S": self.last_updated.isoformat()},
             "label_target": (
-                {"S": self.label_target}
-                if self.label_target
-                else {"NULL": True}
+                {"S": self.label_target} if self.label_target else {"NULL": True}
             ),
             "receipt_refs": (
                 {
@@ -142,16 +140,13 @@ def itemToLabelMetadata(item: dict) -> LabelMetadata:
         description = item["description"]["S"]
         schema_version = int(item["schema_version"]["N"])
         last_updated = datetime.fromisoformat(item["last_updated"]["S"])
-        label_target = (
-            item["label_target"]["S"] if item["label_target"]["S"] else None
-        )
+        label_target = item["label_target"]["S"] if item["label_target"]["S"] else None
         receipt_refs = (
             [
                 (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
                 for r in item["receipt_refs"]["L"]
             ]
-            if "receipt_refs" in item
-            and item["receipt_refs"] != {"NULL": True}
+            if "receipt_refs" in item and item["receipt_refs"] != {"NULL": True}
             else None
         )
 

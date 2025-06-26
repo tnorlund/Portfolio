@@ -122,9 +122,7 @@ async def run_pulumi_config_get(key: str, stack: str | None = None) -> str:
     return await _run_cmd(cmd, ROOT / "infra")
 
 
-async def handle_tool(
-    name: str, arguments: dict[str, Any]
-) -> Iterable[TextContent]:
+async def handle_tool(name: str, arguments: dict[str, Any]) -> Iterable[TextContent]:
     """Dispatch a tool call based on its name."""
 
     if name == "run_tests":

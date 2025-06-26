@@ -16,14 +16,10 @@ import uuid
 from typing import Any, Dict, Optional
 
 import boto3
+
 from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
-from receipt_trainer.jobs import (
-    Job,
-    JobPriority,
-    JobQueue,
-    JobQueueConfig,
-    JobStatus,
-)
+from receipt_trainer.jobs import (Job, JobPriority, JobQueue, JobQueueConfig,
+                                  JobStatus)
 from receipt_trainer.jobs.worker import process_training_jobs
 from receipt_trainer.utils.infrastructure import EC2Metadata
 
@@ -162,42 +158,30 @@ def setup_job_queue(queue_name: Optional[str] = None) -> JobQueue:
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Test SQS job queue integration"
-    )
+    parser = argparse.ArgumentParser(description="Test SQS job queue integration")
 
     # Queue options
     parser.add_argument("--queue", help="Queue name (optional)")
-    parser.add_argument(
-        "--dynamo-table", required=True, help="DynamoDB table name"
-    )
+    parser.add_argument("--dynamo-table", required=True, help="DynamoDB table name")
 
     # Action options
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--submit", action="store_true", help="Submit a test job"
-    )
+    group.add_argument("--submit", action="store_true", help="Submit a test job")
     group.add_argument(
         "--process", action="store_true", help="Process jobs from the queue"
     )
-    group.add_argument(
-        "--cleanup", action="store_true", help="Clean up the test queue"
-    )
+    group.add_argument("--cleanup", action="store_true", help="Clean up the test queue")
 
     # Job options
     parser.add_argument(
         "--model", default="microsoft/layoutlm-base-uncased", help="Model name"
     )
     parser.add_argument("--dataset", default="receipts-v1", help="Dataset ID")
-    parser.add_argument(
-        "--epochs", type=int, default=2, help="Number of epochs"
-    )
+    parser.add_argument("--epochs", type=int, default=2, help="Number of epochs")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
 
     # Processing options
-    parser.add_argument(
-        "--max-runtime", type=int, help="Maximum runtime in seconds"
-    )
+    parser.add_argument("--max-runtime", type=int, help="Maximum runtime in seconds")
 
     return parser.parse_args()
 

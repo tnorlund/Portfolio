@@ -109,9 +109,7 @@ class ReceiptValidationSummary:
         elif isinstance(timestamp_updated, str):
             self.timestamp_updated = timestamp_updated
         else:
-            raise ValueError(
-                "timestamp_updated must be a datetime, string, or None"
-            )
+            raise ValueError("timestamp_updated must be a datetime, string, or None")
 
     def key(self) -> Dict[str, str]:
         """Return the DynamoDB key for this item."""
@@ -266,9 +264,7 @@ class ReceiptValidationSummary:
         timestamp_added = None
         if "timestamp_added" in item and "S" in item["timestamp_added"]:
             try:
-                timestamp_added = datetime.fromisoformat(
-                    item["timestamp_added"]["S"]
-                )
+                timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
             except (ValueError, TypeError):
                 pass
 
@@ -444,6 +440,4 @@ def itemToReceiptValidationSummary(
             timestamp_updated=timestamp_updated,
         )
     except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(
-            "Error converting item to ReceiptValidationSummary"
-        ) from e
+        raise ValueError("Error converting item to ReceiptValidationSummary") from e

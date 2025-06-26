@@ -12,19 +12,12 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from receipt_dynamo.services.job_service import JobService
 from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
-from receipt_trainer.jobs import (
-    Job,
-    JobQueue,
-    JobQueueConfig,
-    JobRetryStrategy,
-)
+from receipt_trainer.jobs import (Job, JobQueue, JobQueueConfig,
+                                  JobRetryStrategy)
 from receipt_trainer.utils.checkpoint import CheckpointManager
-from receipt_trainer.utils.infrastructure import (
-    EC2Metadata,
-    EFSManager,
-    SpotInstanceHandler,
-    TrainingEnvironment,
-)
+from receipt_trainer.utils.infrastructure import (EC2Metadata, EFSManager,
+                                                  SpotInstanceHandler,
+                                                  TrainingEnvironment)
 
 logger = logging.getLogger(__name__)
 
@@ -205,9 +198,7 @@ def register_job_with_cluster(cluster_manager, job: Job) -> None:
         logger.error(f"Error registering job with cluster: {e}")
 
 
-def report_job_completion(
-    cluster_manager, job: Job, result: Dict[str, Any]
-) -> None:
+def report_job_completion(cluster_manager, job: Job, result: Dict[str, Any]) -> None:
     """Report job completion to the cluster manager.
 
     Args:
@@ -216,9 +207,7 @@ def report_job_completion(
         result: Training result
     """
     try:
-        logger.info(
-            f"Reporting job {job.job_id} completion to cluster manager"
-        )
+        logger.info(f"Reporting job {job.job_id} completion to cluster manager")
 
         # Update active jobs if we're the leader
         if (
@@ -394,9 +383,7 @@ def setup_coordination_handlers(training_env: TrainingEnvironment) -> None:
     logger.info("Setting up coordination handlers")
 
     # Register leader election handler
-    training_env.register_leader_handler(
-        lambda: handle_leader_election(training_env)
-    )
+    training_env.register_leader_handler(lambda: handle_leader_election(training_env))
 
     # Register coordination task handlers
     training_env.register_task_handler(
@@ -417,9 +404,7 @@ def handle_dataset_preprocessing(params: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Task result
     """
-    logger.info(
-        f"Handling dataset preprocessing task: {params.get('dataset_name')}"
-    )
+    logger.info(f"Handling dataset preprocessing task: {params.get('dataset_name')}")
 
     # Implementation for dataset preprocessing
     # This would typically download data, apply transformations, and save the processed data
@@ -466,9 +451,7 @@ def handle_evaluation_task(params: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Task result
     """
-    logger.info(
-        f"Handling evaluation task for model at {params.get('model_path')}"
-    )
+    logger.info(f"Handling evaluation task for model at {params.get('model_path')}")
 
     # Implementation for evaluation task
     # This would typically load a model and evaluate it on a dataset
@@ -538,9 +521,7 @@ def process_training_jobs(
         while True:
             # Check max_runtime
             if max_runtime and (time.time() - start_time) > max_runtime:
-                logger.info(
-                    f"Reached maximum runtime of {max_runtime} seconds"
-                )
+                logger.info(f"Reached maximum runtime of {max_runtime} seconds")
                 break
 
             # Get next job
@@ -569,10 +550,7 @@ def process_training_jobs(
                         )
 
                         current_instance = EC2Metadata.get_instance_id()
-                        if (
-                            better_instance
-                            and better_instance != current_instance
-                        ):
+                        if better_instance and better_instance != current_instance:
                             # There's a better instance for this job
                             logger.info(
                                 f"Instance {better_instance} is better suited for job {job.job_id}"
@@ -642,9 +620,7 @@ def process_training_jobs(
                                             MessageAttributes={
                                                 "RetryCount": {
                                                     "DataType": "Number",
-                                                    "StringValue": str(
-                                                        job.retry_count
-                                                    ),
+                                                    "StringValue": str(job.retry_count),
                                                 },
                                                 "FailureReason": {
                                                     "DataType": "String",
@@ -656,9 +632,7 @@ def process_training_jobs(
                                             f"Sent failed job {job.job_id} to DLQ"
                                         )
                                     except Exception as e:
-                                        logger.error(
-                                            f"Failed to send job to DLQ: {e}"
-                                        )
+                                        logger.error(f"Failed to send job to DLQ: {e}")
 
             except Exception as e:
                 logger.error(f"Error processing job batch: {e}")
@@ -676,9 +650,7 @@ def process_training_jobs(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Process training jobs from SQS"
-    )
+    parser = argparse.ArgumentParser(description="Process training jobs from SQS")
     parser.add_argument(
         "--queue-url",
         type=str,
