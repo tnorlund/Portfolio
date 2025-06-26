@@ -59,39 +59,39 @@ def compute_hull_centroid(
         x0, y0 = hull_vertices[0]
         x1, y1 = hull_vertices[1]
         return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
-    else:
-        # Compute the polygon centroid using the standard shoelace formula.
-        # (hull is in CCW order by definition of 'convex_hull')
-        area_sum = 0.0
-        cx = 0.0
-        cy = 0.0
-        for i in range(n):
-            x0, y0 = hull_vertices[i]
-            x1, y1 = hull_vertices[(i + 1) % n]
-            cross = x0 * y1 - x1 * y0
-            area_sum += cross
-            cx += (x0 + x1) * cross
-            cy += (y0 + y1) * cross
+    
+    # Compute the polygon centroid using the standard shoelace formula.
+    # (hull is in CCW order by definition of 'convex_hull')
+    area_sum = 0.0
+    cx = 0.0
+    cy = 0.0
+    for i in range(n):
+        x0, y0 = hull_vertices[i]
+        x1, y1 = hull_vertices[(i + 1) % n]
+        cross = x0 * y1 - x1 * y0
+        area_sum += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
 
-        # Polygon area is half the cross sum. For a CCW polygon, area_sum
-        # should be > 0.
-        area = area_sum / 2.0
+    # Polygon area is half the cross sum. For a CCW polygon, area_sum
+    # should be > 0.
+    area = area_sum / 2.0
 
-        # Centroid is (1/(6A)) * sum((x_i + x_{i+1}) * cross,
-        # (y_i + y_{i+1}) * cross)
-        # (make sure area != 0 for safety)
-        if abs(area) < 1e-14:
-            # Very thin or degenerate polygon, gracefully handle
-            # Here you might just return average of hull points if extremely
-            # degenerate
-            x_avg = sum(p[0] for p in hull_vertices) / n
-            y_avg = sum(p[1] for p in hull_vertices) / n
-            return (x_avg, y_avg)
+    # Centroid is (1/(6A)) * sum((x_i + x_{i+1}) * cross,
+    # (y_i + y_{i+1}) * cross)
+    # (make sure area != 0 for safety)
+    if abs(area) < 1e-14:
+        # Very thin or degenerate polygon, gracefully handle
+        # Here you might just return average of hull points if extremely
+        # degenerate
+        x_avg = sum(p[0] for p in hull_vertices) / n
+        y_avg = sum(p[1] for p in hull_vertices) / n
+        return (x_avg, y_avg)
 
-        cx /= 6.0 * area
-        cy /= 6.0 * area
+    cx /= 6.0 * area
+    cy /= 6.0 * area
 
-        return (cx, cy)
+    return (cx, cy)
 
 
 def convex_hull(

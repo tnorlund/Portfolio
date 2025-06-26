@@ -47,36 +47,56 @@ def dbscan_lines(
                 neighbors.append(j)
         return neighbors
 
+    def expand_cluster(point_idx: int, neighbors: List[int], cluster_id: int):
+        """Expand cluster from a core point."""
+        cluster_labels[point_idx] = cluster_id
+        seeds = neighbors.copy()
+
+        while seeds:
+            current_point = seeds.pop(0)
+
+            # Skip if already visited
+            if visited[current_point]:
+                # Assign to cluster if not already assigned
+                if (
+                    cluster_labels[current_point] is None
+                    or cluster_labels[current_point] == -1
+                ):
+                    cluster_labels[current_point] = cluster_id
+                continue
+
+            # Mark as visited and check neighbors
+            visited[current_point] = True
+            new_neighbors = region_query(current_point)
+
+            # If it's a core point, add unvisited neighbors to seeds
+            if len(new_neighbors) >= min_samples:
+                for neighbor in new_neighbors:
+                    if neighbor not in seeds:
+                        seeds.append(neighbor)
+
+            # Assign to cluster
+            if (
+                cluster_labels[current_point] is None
+                or cluster_labels[current_point] == -1
+            ):
+                cluster_labels[current_point] = cluster_id
+
     # DBSCAN algorithm
     for i in range(n):
-        if not visited[i]:
-            visited[i] = True
-            neighbors = region_query(i)
-            if len(neighbors) < min_samples:
-                # Label as noise if not enough neighbors.
-                cluster_labels[i] = -1
-            else:
-                # Start a new cluster and expand it.
-                cluster_labels[i] = current_cluster
-                seeds = neighbors.copy()
-                while seeds:
-                    current_point = seeds.pop(0)
-                    if not visited[current_point]:
-                        visited[current_point] = True
-                        new_neighbors = region_query(current_point)
-                        if len(new_neighbors) >= min_samples:
-                            # Add new neighbors to the seeds list if not
-                            # already present.
-                            for neighbor in new_neighbors:
-                                if neighbor not in seeds:
-                                    seeds.append(neighbor)
-                    # Assign to the cluster if not already assigned.
-                    if (
-                        cluster_labels[current_point] is None
-                        or cluster_labels[current_point] == -1
-                    ):
-                        cluster_labels[current_point] = current_cluster
-                current_cluster += 1
+        if visited[i]:
+            continue
+
+        visited[i] = True
+        neighbors = region_query(i)
+
+        if len(neighbors) < min_samples:
+            # Label as noise if not enough neighbors.
+            cluster_labels[i] = -1
+        else:
+            # Start a new cluster and expand it.
+            expand_cluster(i, neighbors, current_cluster)
+            current_cluster += 1
 
     # Group Line objects by cluster label.
     clusters: Dict[int, List[Line]] = {}
