@@ -81,17 +81,25 @@ class ClientManager:
     def usage_tracker(self) -> Optional[AIUsageTracker]:
         """Get or create usage tracker."""
         if self.config.track_usage and self._usage_tracker is None:
-            track_to_file = (
-                os.environ.get("TRACK_TO_FILE", "false").lower() == "true"
+            self._usage_tracker = AIUsageTracker.create_for_environment(
+                dynamo_client=self.dynamo,
+                table_name=self.config.dynamo_table,
+                user_id=self.config.user_id,
+                track_to_dynamo=True,
+                track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
+                == "true",
+                validate_table_environment=False,  # Allow custom table names for test configurations
             )
 
+            # Override with resilient tracker if configured
             if self.config.use_resilient_tracker:
                 self._usage_tracker = ResilientAIUsageTracker(
                     dynamo_client=self.dynamo,
                     table_name=self.config.dynamo_table,
                     user_id=self.config.user_id,
                     track_to_dynamo=True,
-                    track_to_file=track_to_file,
+                    track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
+                    == "true",
                     # Resilience configuration
                     circuit_breaker_threshold=int(
                         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
@@ -113,14 +121,6 @@ class ClientManager:
                         "ENABLE_BATCH_PROCESSING", "true"
                     ).lower()
                     == "true",
-                )
-            else:
-                self._usage_tracker = AIUsageTracker(
-                    dynamo_client=self.dynamo,
-                    table_name=self.config.dynamo_table,
-                    user_id=self.config.user_id,
-                    track_to_dynamo=True,
-                    track_to_file=track_to_file,
                 )
         return self._usage_tracker
 
@@ -166,6 +166,6 @@ class ClientManager:
     ):
         """Set context for usage tracking."""
         if self.usage_tracker:
-            self.usage_tracker.set_context(
+            self.usage_tracker.set_tracking_context(
                 job_id=job_id, batch_id=batch_id, user_id=user_id
             )
