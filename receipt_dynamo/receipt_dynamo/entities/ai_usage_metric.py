@@ -40,6 +40,7 @@ class AIUsageMetric:
         job_id: Optional[str] = None,
         batch_id: Optional[str] = None,
         github_pr: Optional[int] = None,
+        environment: Optional[str] = None,  # "production", "staging", "cicd", "development"
         error: Optional[str] = None,
         metadata: Optional[Dict] = None,
     ):
@@ -68,6 +69,7 @@ class AIUsageMetric:
         self.job_id = job_id
         self.batch_id = batch_id
         self.github_pr = github_pr
+        self.environment = environment
         self.error = error
         self.metadata = metadata or {}
 
@@ -176,6 +178,8 @@ class AIUsageMetric:
             item["batchId"] = {"S": self.batch_id}
         if self.github_pr is not None:
             item["githubPR"] = {"N": str(self.github_pr)}
+        if self.environment:
+            item["environment"] = {"S": self.environment}
         if self.error:
             item["error"] = {"S": self.error}
         if self.metadata:
@@ -263,6 +267,7 @@ class AIUsageMetric:
             github_pr=(
                 int(item["githubPR"]["N"]) if "githubPR" in item else None
             ),
+            environment=item.get("environment", {}).get("S"),
             error=item.get("error", {}).get("S"),
             metadata=(
                 cls._from_dynamodb_value(item["metadata"])
