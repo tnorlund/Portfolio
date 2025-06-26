@@ -8,10 +8,12 @@ import gc
 import json
 import os
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Dict, List
 from unittest.mock import MagicMock, Mock, patch
 
@@ -22,9 +24,12 @@ from openai.types.chat.chat_completion import Choice, CompletionUsage
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
+# Add the parent directory to the path to access the tests utils
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
+from tests.utils.ai_usage_helpers import create_mock_openai_response
 
 
 @pytest.fixture
@@ -505,6 +510,10 @@ class TestAIUsagePerformanceIntegration:
                         "GSI2SK": {"S": f"COST#{date_str}#openai"},
                         "service": {"S": "openai"},
                         "model": {"S": "gpt-3.5-turbo"},
+                        "operation": {"S": "completion"},
+                        "timestamp": {"S": timestamp.isoformat()},
+                        "requestId": {"S": f"req-{day}-{hour}-{i}"},
+                        "apiCalls": {"N": "1"},
                         "date": {"S": date_str},
                         "totalTokens": {"N": str(100 + i)},
                         "costUSD": {"N": str(0.0001 * (100 + i))},
