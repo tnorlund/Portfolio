@@ -2,12 +2,10 @@ from math import atan2, pi
 from typing import Generator, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities.util import (
-    _format_float,
-    assert_valid_bounding_box,
-    assert_valid_point,
-    assert_valid_uuid,
-)
+from receipt_dynamo.entities.util import (_format_float,
+                                          assert_valid_bounding_box,
+                                          assert_valid_point,
+                                          assert_valid_uuid)
 
 
 class ReceiptWord:
@@ -543,25 +541,6 @@ class ReceiptWord:
             )
         )
 
-    def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line.
-
-        Returns:
-            Tuple[float, float]: The (x, y) coordinates of the centroid.
-        """
-        x = (
-            self.top_right["x"]
-            + self.top_left["x"]
-            + self.bottom_right["x"]
-            + self.bottom_left["x"]
-        ) / 4
-        y = (
-            self.top_right["y"]
-            + self.top_left["y"]
-            + self.bottom_right["y"]
-            + self.bottom_left["y"]
-        ) / 4
-        return x, y
 
     def is_point_in_bounding_box(self, x: float, y: float) -> bool:
         """Determines if a point (x,y) is inside the bounding box of the line.
