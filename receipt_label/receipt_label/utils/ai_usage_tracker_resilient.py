@@ -19,7 +19,7 @@ from .ai_usage_tracker import AIUsageTracker
 from .batch_queue import BatchQueue
 from .circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from .cost_calculator import AICostCalculator
-from .retry_with_backoff import retry_with_backoff
+from .retry_with_backoff import exponential_backoff_with_jitter
 
 
 class ResilientAIUsageTracker(AIUsageTracker):
@@ -188,35 +188,56 @@ class ResilientAIUsageTracker(AIUsageTracker):
             for item in items:
                 self._write_metric_to_file_fallback(item)
 
-    @retry_with_backoff(max_attempts=3, base_delay=1.0, max_delay=10.0)
     def _dynamo_batch_write_with_retry(
         self, items: List[Dict[str, Any]]
     ) -> None:
         """Write batch to DynamoDB with retry logic."""
-        if len(items) == 1:
-            # Single item write
-            self.dynamo_client.put_item(
-                TableName=self.table_name, Item=items[0]
-            )
-        else:
-            # Batch write (max 25 items per DynamoDB batch)
-            for i in range(0, len(items), 25):
-                batch = items[i : i + 25]
-                request_items = {
-                    self.table_name: [
-                        {"PutRequest": {"Item": item}} for item in batch
-                    ]
-                }
+        last_exception: Optional[Exception] = None
 
-                response = self.dynamo_client.batch_write_item(
-                    RequestItems=request_items
-                )
+        for attempt in range(self.max_retry_attempts):
+            try:
+                if len(items) == 1:
+                    # Single item write
+                    self.dynamo_client.put_item(
+                        TableName=self.table_name, Item=items[0]
+                    )
+                else:
+                    # Batch write (max 25 items per DynamoDB batch)
+                    for i in range(0, len(items), 25):
+                        batch = items[i : i + 25]
+                        request_items = {
+                            self.table_name: [
+                                {"PutRequest": {"Item": item}}
+                                for item in batch
+                            ]
+                        }
 
-                # Handle unprocessed items
-                unprocessed = response.get("UnprocessedItems", {})
-                if unprocessed:
-                    # This will trigger a retry
-                    raise Exception(f"Unprocessed items: {len(unprocessed)}")
+                        response = self.dynamo_client.batch_write_item(
+                            RequestItems=request_items
+                        )
+
+                        # Handle unprocessed items
+                        unprocessed = response.get("UnprocessedItems", {})
+                        if unprocessed:
+                            # This will trigger a retry
+                            raise Exception(
+                                f"Unprocessed items: {len(unprocessed)}"
+                            )
+
+                # Success - return without error
+                return
+
+            except Exception as e:
+                last_exception = e
+                # Don't sleep after the last attempt
+                if attempt < self.max_retry_attempts - 1:
+                    delay = exponential_backoff_with_jitter(
+                        attempt, self.retry_base_delay, 10.0, True
+                    )
+                    time.sleep(delay)
+
+        # All attempts exhausted
+        raise last_exception or Exception("Failed to write to DynamoDB")
 
     def _batch_write_to_dynamo(self, items: List[Dict[str, Any]]) -> None:
         """Callback for batch queue to write items."""
