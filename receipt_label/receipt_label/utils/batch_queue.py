@@ -60,10 +60,15 @@ class BatchQueue:
         while not self.stop_flag.is_set():
             time.sleep(0.1)  # Check every 100ms
 
+            items_to_flush = None
             with self.lock:
                 time_since_flush = time.time() - self.last_flush_time
                 if self.queue and time_since_flush >= self.flush_interval:
-                    self._flush_internal()
+                    items_to_flush = self._prepare_flush()
+
+            # Execute callback outside of lock
+            if items_to_flush:
+                self.flush_callback(items_to_flush)
 
     def add_item(self, item: Dict[str, Any]) -> None:
         """
@@ -72,12 +77,17 @@ class BatchQueue:
         Args:
             item: Item to add to queue
         """
+        items_to_flush = None
         with self.lock:
             self.queue.append(item)
 
-            # Flush if batch size reached
+            # Check if we should flush
             if len(self.queue) >= self.batch_size:
-                self._flush_internal()
+                items_to_flush = self._prepare_flush()
+
+        # Execute callback outside of lock
+        if items_to_flush:
+            self.flush_callback(items_to_flush)
 
     def flush(self) -> int:
         """
@@ -86,31 +96,31 @@ class BatchQueue:
         Returns:
             Number of items flushed
         """
+        items_to_flush = None
         with self.lock:
-            return self._flush_internal()
+            items_to_flush = self._prepare_flush()
 
-    def _flush_internal(self) -> int:
+        # Execute callback outside of lock
+        if items_to_flush:
+            self.flush_callback(items_to_flush)
+            return len(items_to_flush)
+        return 0
+
+    def _prepare_flush(self) -> Optional[List[Dict[str, Any]]]:
         """
-        Internal flush implementation (must be called with lock held).
+        Prepare items for flushing (must be called with lock held).
 
         Returns:
-            Number of items flushed
+            Items to flush or None if queue is empty
         """
         if not self.queue:
-            return 0
+            return None
 
         # Copy items and clear queue
         items_to_flush = self.queue.copy()
         self.queue.clear()
         self.last_flush_time = time.time()
-
-        # Release lock before callback to prevent deadlock
-        self.lock.release()
-        try:
-            self.flush_callback(items_to_flush)
-            return len(items_to_flush)
-        finally:
-            self.lock.acquire()
+        return items_to_flush
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current queue statistics."""
