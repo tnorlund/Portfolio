@@ -9,8 +9,8 @@ from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import (
     Environment,

@@ -101,7 +101,9 @@ class TestAIUsageContext:
         contexts_captured = {}
 
         def capture_context(thread_name):
-            with ai_usage_context(f"op_{thread_name}", thread_name=thread_name):
+            with ai_usage_context(
+                f"op_{thread_name}", thread_name=thread_name
+            ):
                 # Capture the current context
                 contexts_captured[thread_name] = get_current_context()
                 time.sleep(0.01)  # Allow other threads to run
@@ -109,7 +111,9 @@ class TestAIUsageContext:
         # Run in multiple threads
         threads = []
         for i in range(5):
-            thread = threading.Thread(target=capture_context, args=(f"thread_{i}",))
+            thread = threading.Thread(
+                target=capture_context, args=(f"thread_{i}",)
+            )
             threads.append(thread)
             thread.start()
 
@@ -164,7 +168,10 @@ class TestAIUsageContext:
         """Test context manager with auto environment detection."""
         with patch.dict("os.environ", {"ENVIRONMENT": "staging"}):
             with ai_usage_context("test_op") as tracker:
-                assert tracker.environment_config.environment == Environment.STAGING
+                assert (
+                    tracker.environment_config.environment
+                    == Environment.STAGING
+                )
                 assert tracker.table_name == "AIUsageMetrics-staging"
 
     def test_context_without_tracker(self):
@@ -193,7 +200,8 @@ class TestAIUsageContext:
 
             # Verify environment is in auto-tags
             assert (
-                tracker.environment_config.auto_tag["environment"] == environment.value
+                tracker.environment_config.auto_tag["environment"]
+                == environment.value
             )
 
 

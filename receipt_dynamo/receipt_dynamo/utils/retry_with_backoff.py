@@ -50,7 +50,9 @@ def retry_with_backoff(
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+    exceptions: Union[
+        Type[Exception], Tuple[Type[Exception], ...]
+    ] = Exception,
     jitter: bool = True,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
