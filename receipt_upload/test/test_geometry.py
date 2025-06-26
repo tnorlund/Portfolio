@@ -2,19 +2,13 @@ import json
 import pathlib
 
 import pytest
+
 from receipt_upload.geometry import (
-    compute_edge,
-    compute_final_receipt_tilt,
-    compute_hull_centroid,
-    compute_receipt_box_from_boundaries,
-    convex_hull,
-    create_boundary_line_from_points,
-    create_boundary_line_from_theil_sen,
-    find_hull_extremes_along_angle,
-    find_line_edges_at_secondary_extremes,
-    refine_hull_extremes_with_hull_edge_alignment,
-    theil_sen,
-)
+    compute_edge, compute_final_receipt_tilt, compute_hull_centroid,
+    compute_receipt_box_from_boundaries, convex_hull,
+    create_boundary_line_from_points, create_boundary_line_from_theil_sen,
+    find_hull_extremes_along_angle, find_line_edges_at_secondary_extremes,
+    refine_hull_extremes_with_hull_edge_alignment, theil_sen)
 
 
 @pytest.mark.unit
@@ -99,9 +93,7 @@ def test_find_hull_extremes_along_angle():
 def test_fixture_receipt_box():
     # Use path relative to this test file's location for robust path resolution
     test_dir = pathlib.Path(__file__).parent
-    fixture_path = (
-        test_dir / "../../portfolio/tests/fixtures/target_receipt.json"
-    )
+    fixture_path = test_dir / "../../portfolio/tests/fixtures/target_receipt.json"
     fixture_path = fixture_path.resolve()  # Resolve to absolute path
 
     data = json.loads(fixture_path.read_text())
@@ -126,17 +118,11 @@ def test_fixture_receipt_box():
     refined = refine_hull_extremes_with_hull_edge_alignment(
         hull, extremes["leftPoint"], extremes["rightPoint"], final_angle
     )
-    edges = find_line_edges_at_secondary_extremes(
-        lines, hull, centroid, final_angle
-    )
+    edges = find_line_edges_at_secondary_extremes(lines, hull, centroid, final_angle)
 
     boundaries = {
-        "top": create_boundary_line_from_theil_sen(
-            theil_sen(edges["topEdge"])
-        ),
-        "bottom": create_boundary_line_from_theil_sen(
-            theil_sen(edges["bottomEdge"])
-        ),
+        "top": create_boundary_line_from_theil_sen(theil_sen(edges["topEdge"])),
+        "bottom": create_boundary_line_from_theil_sen(theil_sen(edges["bottomEdge"])),
         "left": create_boundary_line_from_points(
             refined["leftSegment"]["extreme"],
             refined["leftSegment"]["optimizedNeighbor"],
@@ -165,23 +151,9 @@ def test_fixture_receipt_box():
     tolerance = 2.5e-1  # 25% tolerance for complex geometric algorithm
     assert pytest.approx(expected["top_left"]["x"], rel=tolerance) == box[0][0]
     assert pytest.approx(expected["top_left"]["y"], rel=tolerance) == box[0][1]
-    assert (
-        pytest.approx(expected["top_right"]["x"], rel=tolerance) == box[1][0]
-    )
-    assert (
-        pytest.approx(expected["top_right"]["y"], rel=tolerance) == box[1][1]
-    )
-    assert (
-        pytest.approx(expected["bottom_right"]["x"], rel=tolerance)
-        == box[2][0]
-    )
-    assert (
-        pytest.approx(expected["bottom_right"]["y"], rel=tolerance)
-        == box[2][1]
-    )
-    assert (
-        pytest.approx(expected["bottom_left"]["x"], rel=tolerance) == box[3][0]
-    )
-    assert (
-        pytest.approx(expected["bottom_left"]["y"], rel=tolerance) == box[3][1]
-    )
+    assert pytest.approx(expected["top_right"]["x"], rel=tolerance) == box[1][0]
+    assert pytest.approx(expected["top_right"]["y"], rel=tolerance) == box[1][1]
+    assert pytest.approx(expected["bottom_right"]["x"], rel=tolerance) == box[2][0]
+    assert pytest.approx(expected["bottom_right"]["y"], rel=tolerance) == box[2][1]
+    assert pytest.approx(expected["bottom_left"]["x"], rel=tolerance) == box[3][0]
+    assert pytest.approx(expected["bottom_left"]["y"], rel=tolerance) == box[3][1]

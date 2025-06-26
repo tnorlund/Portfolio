@@ -3,25 +3,17 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pytest
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ContentPattern as DynamoContentPattern,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptSection as DynamoReceiptSection,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptStructureAnalysis,
-)
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    SpatialPattern as DynamoSpatialPattern,
-)
 
-from receipt_label.models.structure import (
-    ContentPattern,
-    ReceiptSection,
-    SpatialPattern,
-    StructureAnalysis,
-)
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ContentPattern as DynamoContentPattern
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ReceiptSection as DynamoReceiptSection
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    ReceiptStructureAnalysis
+from receipt_dynamo.entities.receipt_structure_analysis import \
+    SpatialPattern as DynamoSpatialPattern
+from receipt_label.models.structure import (ContentPattern, ReceiptSection,
+                                            SpatialPattern, StructureAnalysis)
 
 
 # Test data fixtures
@@ -165,8 +157,7 @@ class TestStructureAnalysis:
         assert dynamo_obj.image_id == "abc123"
         assert dynamo_obj.version == "1.0.0"
         assert (
-            dynamo_obj.overall_reasoning
-            == sample_structure_analysis.overall_reasoning
+            dynamo_obj.overall_reasoning == sample_structure_analysis.overall_reasoning
         )
 
         # Check sections
@@ -182,9 +173,7 @@ class TestStructureAnalysis:
 
         assert len(section.content_patterns) == 1
         assert section.content_patterns[0].pattern_type == "semantic"
-        assert (
-            section.content_patterns[0].description == "contains business name"
-        )
+        assert section.content_patterns[0].description == "contains business name"
         assert "Store" in section.content_patterns[0].examples
 
     def test_to_dynamo_with_string_patterns(self):
@@ -240,8 +229,7 @@ class TestStructureAnalysis:
         assert section.name == "header"
         assert section.line_ids == [1, 2, 3]
         assert (
-            section.reasoning
-            == "Clear header section with business name and address"
+            section.reasoning == "Clear header section with business name and address"
         )
 
         # Check patterns
@@ -251,9 +239,7 @@ class TestStructureAnalysis:
 
         assert len(section.content_patterns) == 1
         assert section.content_patterns[0].pattern_type == "semantic"
-        assert (
-            section.content_patterns[0].description == "contains business name"
-        )
+        assert section.content_patterns[0].description == "contains business name"
         assert "Store" in section.content_patterns[0].examples
 
         # Check metadata conversion
@@ -275,9 +261,7 @@ class TestStructureAnalysis:
         reconstructed = StructureAnalysis.from_dynamo(dynamo_obj)
 
         # Check key properties match
-        assert len(reconstructed.sections) == len(
-            sample_structure_analysis.sections
-        )
+        assert len(reconstructed.sections) == len(sample_structure_analysis.sections)
         assert (
             reconstructed.overall_reasoning
             == sample_structure_analysis.overall_reasoning
@@ -295,9 +279,7 @@ class TestStructureAnalysis:
         assert new_section.reasoning == orig_section.reasoning
 
         # Check pattern conversion
-        assert len(new_section.spatial_patterns) == len(
-            orig_section.spatial_patterns
-        )
+        assert len(new_section.spatial_patterns) == len(orig_section.spatial_patterns)
         assert (
             new_section.spatial_patterns[0].pattern_type
             == orig_section.spatial_patterns[0].pattern_type
@@ -307,9 +289,7 @@ class TestStructureAnalysis:
             == orig_section.spatial_patterns[0].description
         )
 
-        assert len(new_section.content_patterns) == len(
-            orig_section.content_patterns
-        )
+        assert len(new_section.content_patterns) == len(orig_section.content_patterns)
         assert (
             new_section.content_patterns[0].pattern_type
             == orig_section.content_patterns[0].pattern_type

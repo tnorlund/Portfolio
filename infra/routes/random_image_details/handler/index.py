@@ -62,9 +62,7 @@ def handler(event, context):
             # List all images of the requested type
             images, last_evaluated_key = client.listImagesByType(image_type)
             images = [
-                image
-                for image in images
-                if image.image_id in receipts_by_image_id
+                image for image in images if image.image_id in receipts_by_image_id
             ]
 
             # Randomly chose an image_id of the images with 2 receipts

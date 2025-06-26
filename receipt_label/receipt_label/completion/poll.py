@@ -4,12 +4,8 @@ from datetime import datetime, timezone
 from itertools import islice
 
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
-from receipt_dynamo.entities import (
-    BatchSummary,
-    CompletionBatchResult,
-    ReceiptWordLabel,
-)
-
+from receipt_dynamo.entities import (BatchSummary, CompletionBatchResult,
+                                     ReceiptWordLabel)
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -51,10 +47,8 @@ def list_pending_completion_batches(
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    pending_completion_batches, _ = (
-        client_manager.dynamo.getBatchSummariesByStatus(
-            status=BatchStatus.PENDING, batch_type=BatchType.COMPLETION
-        )
+    pending_completion_batches, _ = client_manager.dynamo.getBatchSummariesByStatus(
+        status=BatchStatus.PENDING, batch_type=BatchType.COMPLETION
     )
     return pending_completion_batches
 
@@ -105,9 +99,7 @@ def _extract_results(data: dict) -> list[dict]:
         try:
             return json.loads(arguments)["results"]
         except (json.JSONDecodeError, KeyError) as e:
-            raise ValueError(
-                f"Could not parse function_call arguments: {e}"
-            ) from e
+            raise ValueError(f"Could not parse function_call arguments: {e}") from e
     elif message["content"] is not None:
         return json.loads(message["content"])["results"]
     else:
@@ -126,9 +118,7 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    batch = client_manager.openai.batches.retrieve(
-        batch_summary.openai_batch_id
-    )
+    batch = client_manager.openai.batches.retrieve(batch_summary.openai_batch_id)
     output_file_id = batch.output_file_id
     response = client_manager.openai.files.content(output_file_id)
     if hasattr(response, "read"):
@@ -215,10 +205,7 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
                         and label.label == label_from_dynamo.label
                     )
                 ]
-                if (
-                    label_from_dynamo.validation_status
-                    == ValidationStatus.VALID.value
-                ):
+                if label_from_dynamo.validation_status == ValidationStatus.VALID.value:
                     continue
                 # Build other_labels for this word/line except this label
                 other_labels = [
@@ -325,14 +312,10 @@ def update_valid_labels(
     # 3. Write only vectors whose metadata changed                       #
     # ------------------------------------------------------------------ #
     for vid, meta in vectors_needing_update:
-        client_manager.pinecone.update(
-            id=vid, set_metadata=meta, namespace=PINECONE_NS
-        )
+        client_manager.pinecone.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
 
     # Chunk into 25 items and update
-    for chunk in _chunk(
-        [r.label_from_dynamo for r in valid_labels_results], 25
-    ):
+    for chunk in _chunk([r.label_from_dynamo for r in valid_labels_results], 25):
         client_manager.dynamo.updateReceiptWordLabels(chunk)
 
 
@@ -369,18 +352,14 @@ def update_invalid_labels(
                 ValidationStatus.NEEDS_REVIEW.value
             )
         else:
-            res.label_from_dynamo.validation_status = (
-                ValidationStatus.INVALID.value
-            )
+            res.label_from_dynamo.validation_status = ValidationStatus.INVALID.value
 
         res.label_from_dynamo.label_proposed_by = "COMPLETION_BATCH"
         labels_to_update.append(res.label_from_dynamo)
 
         # Track metadata for Pinecone
         vid = _build_vector_id(res.label_from_dynamo)
-        invalid_by_vector.setdefault(vid, []).append(
-            res.label_from_dynamo.label
-        )
+        invalid_by_vector.setdefault(vid, []).append(res.label_from_dynamo.label)
 
         # Handle a correct_label suggestion
         correct = res.result.get("correct_label")
@@ -443,9 +422,7 @@ def update_invalid_labels(
                 vectors_needing_update.append((vid, meta))
 
     for vid, meta in vectors_needing_update:
-        client_manager.pinecone.update(
-            id=vid, set_metadata=meta, namespace=PINECONE_NS
-        )
+        client_manager.pinecone.update(id=vid, set_metadata=meta, namespace=PINECONE_NS)
 
     # ------------------------------------------------------------------ #
     # 3.  DynamoDB writes                                                 #

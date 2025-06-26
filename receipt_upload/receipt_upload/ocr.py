@@ -9,14 +9,9 @@ from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import boto3
-from receipt_dynamo.entities import (
-    Letter,
-    Line,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-)
+
+from receipt_dynamo.entities import (Letter, Line, ReceiptLetter, ReceiptLine,
+                                     ReceiptWord, Word)
 
 
 def process_ocr_dict_as_receipt(
@@ -43,9 +38,7 @@ def process_ocr_dict_as_receipt(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(
-            line_data.get("words", []), start=1
-        ):
+        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
             extracted_data = word_data.get("extracted_data", None)
             word_obj = ReceiptWord(
                 image_id=image_id,
@@ -110,9 +103,7 @@ def process_ocr_dict_as_image(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(
-            line_data.get("words", []), start=1
-        ):
+        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
             # Check to see if the word has extracted data
             extracted_data = word_data.get("extracted_data", None)
             word_obj = Word(
@@ -155,9 +146,7 @@ def process_ocr_dict_as_image(
     return lines, words, letters
 
 
-def apple_vision_ocr_job(
-    image_paths: list[Path], temp_dir: Path
-) -> list[Path]:
+def apple_vision_ocr_job(image_paths: list[Path], temp_dir: Path) -> list[Path]:
     """Run Apple Vision OCR on image files and return JSON output paths."""
 
     # Check to make sure the files exist
@@ -211,9 +200,7 @@ def apple_vision_ocr_job(
     if len(ordered_json_files) != len(all_json_files):
         # Find which images failed to produce JSON output
         produced_json_names = {f.name for f in all_json_files}
-        expected_json_names = {
-            f"{image_path.stem}.json" for image_path in image_paths
-        }
+        expected_json_names = {f"{image_path.stem}.json" for image_path in image_paths}
         failed_images = expected_json_names - produced_json_names
 
         print(f"Expected JSON files: {expected_json_names}")
@@ -228,9 +215,7 @@ def apple_vision_ocr_job(
     return ordered_json_files
 
 
-def _download_image_from_s3(
-    image_id: str, s3_bucket: str, s3_key: str
-) -> Path:
+def _download_image_from_s3(image_id: str, s3_bucket: str, s3_key: str) -> Path:
     """Download image from S3 to local temporary file."""
     s3_client = boto3.client("s3")
     temp_dir = Path(tempfile.mkdtemp())

@@ -143,12 +143,8 @@ class Line:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
@@ -518,9 +514,7 @@ class Line:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError(
-                    "Inverse warp denominator ~ 0 at corner: " + name
-                )
+                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -757,12 +751,10 @@ def itemToLine(item: dict) -> Line:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

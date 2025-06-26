@@ -6,17 +6,11 @@ from typing import List, Optional, Tuple
 
 from boto3 import client
 from PIL import Image as PIL_Image
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (
-    Letter,
-    Line,
-    OCRJob,
-    OCRRoutingDecision,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-)
+from receipt_dynamo.entities import (Letter, Line, OCRJob, OCRRoutingDecision,
+                                     ReceiptLetter, ReceiptLine, ReceiptWord,
+                                     Word)
 
 
 def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
@@ -56,9 +50,7 @@ def download_image_from_s3(s3_bucket: str, s3_key: str, image_id: str) -> Path:
     return Path(image_path)
 
 
-def upload_jpeg_to_s3(
-    image: PIL_Image.Image, s3_bucket: str, s3_key: str
-) -> None:
+def upload_jpeg_to_s3(image: PIL_Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload an image to S3.
     """
@@ -74,9 +66,7 @@ def upload_jpeg_to_s3(
         )
 
 
-def upload_png_to_s3(
-    image: PIL_Image.Image, s3_bucket: str, s3_key: str
-) -> None:
+def upload_png_to_s3(image: PIL_Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload a PNG image to S3.
     """
@@ -100,9 +90,7 @@ def upload_webp_to_s3(
     """
     s3_client = client("s3")
     with BytesIO() as buffer:
-        image.convert("RGB").save(
-            buffer, format="WEBP", quality=quality, method=6
-        )
+        image.convert("RGB").save(buffer, format="WEBP", quality=quality, method=6)
         buffer.seek(0)
         s3_client.put_object(
             Bucket=s3_bucket,
@@ -311,9 +299,7 @@ def get_ocr_routing_decision(
     Get an OCR routing decision from the DynamoDB table.
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    return dynamo_client.getOCRRoutingDecision(
-        image_id=image_id, job_id=job_id
-    )
+    return dynamo_client.getOCRRoutingDecision(image_id=image_id, job_id=job_id)
 
 
 def image_ocr_to_receipt_ocr(

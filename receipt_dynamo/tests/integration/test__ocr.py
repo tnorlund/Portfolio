@@ -118,9 +118,7 @@ def test_apple_vision_ocr_integration(mocker, mock_ocr_json):
     structure given mock JSON data.
     """
     # 1. Mock 'platform.system' to return 'Darwin'
-    mocker.patch(
-        "receipt_dynamo.data._ocr.platform.system", return_value="Darwin"
-    )
+    mocker.patch("receipt_dynamo.data._ocr.platform.system", return_value="Darwin")
     # 2. Mock 'Path.exists' to return True
     mocker.patch.object(Path, "exists", return_value=True)
     # 3. Mock 'subprocess.run'
@@ -148,15 +146,11 @@ def test_apple_vision_ocr_integration(mocker, mock_ocr_json):
     image_id = list(result.keys())[0]
     lines, words, letters = result[image_id]
 
-    assert (
-        len(lines) == 1
-    ), "There should be exactly one line in the mock JSON."
+    assert len(lines) == 1, "There should be exactly one line in the mock JSON."
     assert lines[0].text == "Test line"
     assert len(words) == 1, "There should be exactly one word in that line."
     assert words[0].text == "Test"
-    assert (
-        len(letters) == 1
-    ), "There should be exactly one letter in that word."
+    assert len(letters) == 1, "There should be exactly one letter in that word."
     assert letters[0].text == "T"
 
     # Make sure your Swift script never actually got run
@@ -169,9 +163,7 @@ def test_apple_vision_ocr_missing_swift_script(mocker):
     Test that FileNotFoundError is raised if the Swift script does not exist.
     """
     # Mock platform to be 'Darwin' so we don't fail on OS check
-    mocker.patch(
-        "receipt_dynamo.data._ocr.platform.system", return_value="Darwin"
-    )
+    mocker.patch("receipt_dynamo.data._ocr.platform.system", return_value="Darwin")
     # Force Path.exists to return False, simulating a missing Swift script
     mocker.patch.object(Path, "exists", return_value=False)
 
@@ -187,9 +179,7 @@ def test_apple_vision_ocr_not_darwin(mocker):
     # Mock Path.exists to return True so we pass the "script found" check
     mocker.patch.object(Path, "exists", return_value=True)
     # Mock platform.system to return "Windows" (or anything but Darwin)
-    mocker.patch(
-        "receipt_dynamo.data._ocr.platform.system", return_value="Windows"
-    )
+    mocker.patch("receipt_dynamo.data._ocr.platform.system", return_value="Windows")
 
     with pytest.raises(
         ValueError, match="Apple's Vision Framework can only be run on a Mac"
@@ -205,9 +195,7 @@ def test_apple_vision_ocr_subprocess_error(mocker):
     """
     # Mock platform to be 'Darwin' and script exists
     mocker.patch.object(Path, "exists", return_value=True)
-    mocker.patch(
-        "receipt_dynamo.data._ocr.platform.system", return_value="Darwin"
-    )
+    mocker.patch("receipt_dynamo.data._ocr.platform.system", return_value="Darwin")
 
     # Make subprocess.run raise CalledProcessError
     mocker.patch.object(
