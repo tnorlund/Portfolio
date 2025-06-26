@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 """
@@ -11,10 +12,8 @@ and GSI lookups by status.
 """
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities.batch_summary import (
-    BatchSummary,
-    itemToBatchSummary,
-)
+from receipt_dynamo.entities.batch_summary import (BatchSummary,
+                                                   itemToBatchSummary)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

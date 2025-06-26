@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 import botocore
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.entities.instance import Instance, itemToInstance
