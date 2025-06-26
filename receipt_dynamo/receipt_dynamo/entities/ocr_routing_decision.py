@@ -1,8 +1,11 @@
 from datetime import datetime
 
 from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.entities.util import (_repr_str, assert_valid_uuid,
-                                          normalize_enum)
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 
 class OCRRoutingDecision:
@@ -143,4 +146,6 @@ def itemToOCRRoutingDecision(item: dict) -> OCRRoutingDecision:
             status=status,
         )
     except Exception as e:
-        raise ValueError(f"Invalid item format\nitem: {item}\nerror: {e}") from e
+        raise ValueError(
+            f"Invalid item format\nitem: {item}\nerror: {e}"
+        ) from e

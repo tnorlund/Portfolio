@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Cluster monitoring utility for the distributed training infrastructure."""
 
+import argparse
+import json
 import os
 import sys
 import time
-import argparse
-import json
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from tabulate import tabulate
+from typing import Any, Dict, List, Optional
 
-from receipt_trainer.utils.infrastructure import EC2Metadata
-from receipt_trainer.utils.coordinator import InstanceCoordinator
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.task import Task
+from receipt_trainer.utils.coordinator import InstanceCoordinator
+from receipt_trainer.utils.infrastructure import EC2Metadata
+from tabulate import tabulate
 
 
 def parse_args():

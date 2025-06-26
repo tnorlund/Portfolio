@@ -8,6 +8,7 @@ import os
 
 import pulumi
 import pulumi_aws as aws
+
 # Import dependencies
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer
@@ -116,7 +117,9 @@ ai_usage_sync_lambda = aws.lambda_.Function(
             # These are referenced here for the Lambda to know which secrets to fetch
             "OPENAI_API_KEY_SECRET": "openai-api-key",
             "ANTHROPIC_API_KEY_SECRET": "anthropic-api-key",
-            "GOOGLE_CLOUD_PROJECT_ID": os.environ.get("GOOGLE_CLOUD_PROJECT_ID", ""),
+            "GOOGLE_CLOUD_PROJECT_ID": os.environ.get(
+                "GOOGLE_CLOUD_PROJECT_ID", ""
+            ),
         }
     },
     memory_size=512,

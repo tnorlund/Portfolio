@@ -1,9 +1,10 @@
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.ocr_routing_decision import (
-    OCRRoutingDecision, itemToOCRRoutingDecision)
+    OCRRoutingDecision,
+    itemToOCRRoutingDecision,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -35,9 +36,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error adding OCR routing decision: {e}") from e
+                raise Exception(
+                    f"Error adding OCR routing decision: {e}"
+                ) from e
 
-    def addOCRRoutingDecisions(self, ocr_routing_decisions: list[OCRRoutingDecision]):
+    def addOCRRoutingDecisions(
+        self, ocr_routing_decisions: list[OCRRoutingDecision]
+    ):
         if ocr_routing_decisions is None:
             raise ValueError("ocr_routing_decisions cannot be None")
         if not isinstance(ocr_routing_decisions, list):
@@ -53,7 +58,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
         for i in range(0, len(ocr_routing_decisions), 25):
             chunk = ocr_routing_decisions[i : i + 25]
             request_items = [
-                {"PutRequest": {"Item": decision.to_item()}} for decision in chunk
+                {"PutRequest": {"Item": decision.to_item()}}
+                for decision in chunk
             ]
             try:
                 response = self._client.batch_write_item(
@@ -62,18 +68,24 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
             unprocessed = response.get("UnprocessedItems", {})
             while unprocessed.get(self.table_name):
                 try:
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
                 except ClientError as e:
                     error_code = e.response.get("Error", {}).get("Code", "")
                     if error_code == "ProvisionedThroughputExceededException":
-                        raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                        raise Exception(
+                            f"Provisioned throughput exceeded: {e}"
+                        ) from e
                     elif error_code == "InternalServerError":
                         raise Exception(f"Internal server error: {e}") from e
                     else:
@@ -81,7 +93,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                             f"Could not add OCR routing decisions to DynamoDB: {e}"
                         ) from e
 
-    def updateOCRRoutingDecision(self, ocr_routing_decision: OCRRoutingDecision):
+    def updateOCRRoutingDecision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
@@ -101,9 +115,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' not found"
                 ) from e
             else:
-                raise Exception(f"Error updating OCR routing decision: {e}") from e
+                raise Exception(
+                    f"Error updating OCR routing decision: {e}"
+                ) from e
 
-    def getOCRRoutingDecision(self, image_id: str, job_id: str) -> OCRRoutingDecision:
+    def getOCRRoutingDecision(
+        self, image_id: str, job_id: str
+    ) -> OCRRoutingDecision:
         if image_id is None:
             raise ValueError("image_id cannot be None")
         if job_id is None:
@@ -139,9 +157,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error getting OCR routing decision: {e}") from e
+                raise Exception(
+                    f"Error getting OCR routing decision: {e}"
+                ) from e
 
-    def deleteOCRRoutingDecision(self, ocr_routing_decision: OCRRoutingDecision):
+    def deleteOCRRoutingDecision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
@@ -164,7 +186,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' does not exist."
                 ) from e
             else:
-                raise Exception(f"Error deleting OCR routing decision: {e}") from e
+                raise Exception(
+                    f"Error deleting OCR routing decision: {e}"
+                ) from e
 
     def deleteOCRRoutingDecisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -198,9 +222,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("OCR routing decision does not exist") from e
+                    raise ValueError(
+                        "OCR routing decision does not exist"
+                    ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise RuntimeError(f"Provisioned throughput exceeded: {e}") from e
+                    raise RuntimeError(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise RuntimeError(f"Internal server error: {e}") from e
                 elif error_code == "AccessDeniedException":

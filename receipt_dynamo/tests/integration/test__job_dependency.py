@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.entities.job_dependency import JobDependency
 
 
@@ -44,12 +43,16 @@ def multiple_job_dependencies():
             created_at=(base_time - timedelta(minutes=i)).isoformat(),
             condition=f"Test condition {i}",
         )
-        for i, dep_type in enumerate(["SUCCESS", "COMPLETION", "ARTIFACT", "FAILURE"])
+        for i, dep_type in enumerate(
+            ["SUCCESS", "COMPLETION", "ARTIFACT", "FAILURE"]
+        )
     ]
 
 
 @pytest.mark.integration
-def test_addJobDependency_success(job_dependency_dynamo, sample_job_dependency):
+def test_addJobDependency_success(
+    job_dependency_dynamo, sample_job_dependency
+):
     """Test adding a job dependency successfully."""
     # Add the job dependency
     job_dependency_dynamo.addJobDependency(sample_job_dependency)
@@ -123,11 +126,15 @@ def test_addJobDependency_raises_resource_not_found(
     # Attempt to add the job dependency
     with pytest.raises(ClientError) as excinfo:
         job_dependency_dynamo.addJobDependency(sample_job_dependency)
-    assert excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    assert (
+        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
+    )
 
 
 @pytest.mark.integration
-def test_getJobDependency_success(job_dependency_dynamo, sample_job_dependency):
+def test_getJobDependency_success(
+    job_dependency_dynamo, sample_job_dependency
+):
     """Test retrieving a job dependency successfully."""
     # Add the job dependency
     job_dependency_dynamo.addJobDependency(sample_job_dependency)
@@ -183,7 +190,9 @@ def test_getJobDependency_raises_value_error_dependency_not_found(
 
 
 @pytest.mark.integration
-def test_listDependencies_success(job_dependency_dynamo, multiple_job_dependencies):
+def test_listDependencies_success(
+    job_dependency_dynamo, multiple_job_dependencies
+):
     """Test listing job dependencies successfully."""
     # Add the job dependencies
     for dependency in multiple_job_dependencies:
@@ -218,7 +227,9 @@ def test_listDependencies_success(job_dependency_dynamo, multiple_job_dependenci
 
 
 @pytest.mark.integration
-def test_listDependencies_with_limit(job_dependency_dynamo, multiple_job_dependencies):
+def test_listDependencies_with_limit(
+    job_dependency_dynamo, multiple_job_dependencies
+):
     """Test listing job dependencies with a limit."""
     # Add the job dependencies
     for dependency in multiple_job_dependencies:
@@ -243,10 +254,12 @@ def test_listDependencies_with_limit(job_dependency_dynamo, multiple_job_depende
 
     # Use the last key to get the next batch
     if last_key is not None:
-        next_dependencies, next_last_key = job_dependency_dynamo.listDependencies(
-            dependent_job_id=dependent_job_id,
-            limit=limit,
-            lastEvaluatedKey=last_key,
+        next_dependencies, next_last_key = (
+            job_dependency_dynamo.listDependencies(
+                dependent_job_id=dependent_job_id,
+                limit=limit,
+                lastEvaluatedKey=last_key,
+            )
         )
 
         # Check that we got more dependencies
@@ -316,7 +329,11 @@ def test_listDependents_success(job_dependency_dynamo):
     for dependent in dependent_jobs:
         # Find the corresponding dependent in the returned list
         matching_dependent = next(
-            (d for d in dependents if d.dependent_job_id == dependent.dependent_job_id),
+            (
+                d
+                for d in dependents
+                if d.dependent_job_id == dependent.dependent_job_id
+            ),
             None,
         )
         assert (
@@ -403,7 +420,9 @@ def test_listDependents_empty_result(job_dependency_dynamo):
 
 
 @pytest.mark.integration
-def test_deleteJobDependency_success(job_dependency_dynamo, sample_job_dependency):
+def test_deleteJobDependency_success(
+    job_dependency_dynamo, sample_job_dependency
+):
     """Test deleting a job dependency successfully."""
     # Add the job dependency
     job_dependency_dynamo.addJobDependency(sample_job_dependency)
@@ -482,7 +501,9 @@ def test_deleteAllDependencies_success(
     assert len(dependencies) == len(multiple_job_dependencies)
 
     # Delete all dependencies
-    job_dependency_dynamo.deleteAllDependencies(dependent_job_id=dependent_job_id)
+    job_dependency_dynamo.deleteAllDependencies(
+        dependent_job_id=dependent_job_id
+    )
 
     # Verify they were deleted
     dependencies, _ = job_dependency_dynamo.listDependencies(
@@ -508,4 +529,6 @@ def test_deleteAllDependencies_no_dependencies(job_dependency_dynamo):
     """Test deleteAllDependencies when there are no dependencies to delete."""
     dependent_job_id = str(uuid.uuid4())
     # This should not raise an error
-    job_dependency_dynamo.deleteAllDependencies(dependent_job_id=dependent_job_id)
+    job_dependency_dynamo.deleteAllDependencies(
+        dependent_job_id=dependent_job_id
+    )

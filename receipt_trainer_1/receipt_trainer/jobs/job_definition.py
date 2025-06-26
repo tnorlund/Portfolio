@@ -5,17 +5,18 @@ This module provides Pydantic models for defining, validating, and managing
 job configurations for training LayoutLM models on receipt data.
 """
 
-import os
-import yaml
 import json
-from typing import List, Dict, Optional, Union, Literal
+import os
 from datetime import datetime
+from typing import Dict, List, Literal, Optional, Union
+
+import yaml
 from pydantic import (
     BaseModel,
     Field,
-    validator,
-    root_validator,
     model_validator,
+    root_validator,
+    validator,
 )
 
 
@@ -351,8 +352,9 @@ class JobDefinition:
         Returns:
             List of created dependency objects
         """
-        from receipt_trainer.jobs.validator import validate_job_dependency
         import logging
+
+        from receipt_trainer.jobs.validator import validate_job_dependency
 
         logger = logging.getLogger(__name__)
         created_dependencies = []
