@@ -11,7 +11,6 @@ from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
@@ -76,13 +75,14 @@ class ClientManager:
     def usage_tracker(self) -> Optional[AIUsageTracker]:
         """Get or create usage tracker."""
         if self.config.track_usage and self._usage_tracker is None:
-            self._usage_tracker = AIUsageTracker(
+            self._usage_tracker = AIUsageTracker.create_for_environment(
                 dynamo_client=self.dynamo,
                 table_name=self.config.dynamo_table,
                 user_id=self.config.user_id,
                 track_to_dynamo=True,
                 track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
                 == "true",
+                validate_table_environment=False,  # Allow custom table names for test configurations
             )
         return self._usage_tracker
 
@@ -128,6 +128,6 @@ class ClientManager:
     ):
         """Set context for usage tracking."""
         if self.usage_tracker:
-            self.usage_tracker.set_context(
+            self.usage_tracker.set_tracking_context(
                 job_id=job_id, batch_id=batch_id, user_id=user_id
             )

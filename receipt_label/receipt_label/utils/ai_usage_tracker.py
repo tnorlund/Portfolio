@@ -13,10 +13,14 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
+from .environment_config import (
+    AIUsageEnvironmentConfig,
+    Environment,
+    EnvironmentConfig,
+)
 
 
 class AIUsageTracker:
@@ -32,21 +36,56 @@ class AIUsageTracker:
         user_id: Optional[str] = None,
         track_to_dynamo: bool = True,
         track_to_file: bool = False,
-        log_file: str = "/tmp/ai_usage.jsonl",
+        log_file: str = "/tmp/ai_usage.jsonl",  # nosec B108
+        environment: Optional[Environment] = None,
+        environment_config: Optional[EnvironmentConfig] = None,
+        validate_table_environment: bool = True,
     ) -> None:
         """
         Initialize the AI usage tracker.
 
         Args:
             dynamo_client: DynamoDB client for storing metrics
-            table_name: DynamoDB table name
+            table_name: DynamoDB table name (if None, will be auto-generated with environment suffix)
             user_id: User identifier for tracking
             track_to_dynamo: Whether to store metrics in DynamoDB
             track_to_file: Whether to log metrics to a file (for local dev)
             log_file: Path to the log file
+            environment: Specific environment to use (if None, will auto-detect)
+            environment_config: Pre-built environment config (if None, will create)
+            validate_table_environment: Whether to validate table name matches environment
         """
+        # Environment configuration
+        self.environment_config = (
+            environment_config
+            or AIUsageEnvironmentConfig.get_config(environment)
+        )
+
+        # Set up table name - if table_name is provided, use it as-is
+        # If not provided, construct it from base name with environment suffix
+        if table_name:
+            self.table_name = table_name
+        else:
+            base_table_name = os.environ.get(
+                "DYNAMODB_TABLE_NAME", "AIUsageMetrics"
+            )
+            self.table_name = AIUsageEnvironmentConfig.get_table_name(
+                base_table_name, self.environment_config.environment
+            )
+
+        # Optionally validate environment isolation
+        if (
+            validate_table_environment
+            and not AIUsageEnvironmentConfig.validate_environment_isolation(
+                self.table_name, self.environment_config.environment
+            )
+        ):
+            raise ValueError(
+                f"Table name '{self.table_name}' does not match environment "
+                f"'{self.environment_config.environment.value}' isolation requirements"
+            )
+
         self.dynamo_client = dynamo_client
-        self.table_name = table_name or os.environ.get("DYNAMODB_TABLE_NAME")
         self.user_id = user_id or os.environ.get("USER_ID", "default")
         self.track_to_dynamo = track_to_dynamo and dynamo_client is not None
         self.track_to_file = track_to_file
@@ -57,7 +96,12 @@ class AIUsageTracker:
         self.current_batch_id: Optional[str] = None
         self.github_pr: Optional[int] = None
 
-    def set_context(
+        # Context manager support
+        self.current_context: Dict[str, Any] = {}
+        self.pending_metrics: list[AIUsageMetric] = []
+        self.batch_mode: bool = False
+
+    def set_tracking_context(
         self,
         job_id: Optional[str] = None,
         batch_id: Optional[str] = None,
@@ -73,6 +117,31 @@ class AIUsageTracker:
             self.github_pr = github_pr
         if user_id is not None:
             self.user_id = user_id
+
+    def set_context(self, context: Dict[str, Any]) -> None:
+        """Set the current tracking context for the context manager pattern."""
+        self.current_context = context
+        # Extract standard fields if present
+        if "job_id" in context:
+            self.current_job_id = context["job_id"]
+        if "batch_id" in context:
+            self.current_batch_id = context["batch_id"]
+        if "github_pr" in context:
+            self.github_pr = context["github_pr"]
+
+    def add_context_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Add additional metadata to the current context."""
+        self.current_context.update(metadata)
+
+    def set_batch_mode(self, enabled: bool) -> None:
+        """Enable or disable batch pricing mode."""
+        self.batch_mode = enabled
+
+    def flush_metrics(self) -> None:
+        """Flush any pending metrics to storage."""
+        for metric in self.pending_metrics:
+            self._store_metric(metric)
+        self.pending_metrics.clear()
 
     def _store_metric(self, metric: AIUsageMetric) -> None:
         """Store metric in DynamoDB and/or file."""
@@ -102,12 +171,26 @@ class AIUsageTracker:
                     "user_id": metric.user_id,
                     "job_id": metric.job_id,
                     "batch_id": metric.batch_id,
+                    "environment": self.environment_config.environment.value,  # Add environment from config
                     "error": metric.error,
                 }
                 with open(self.log_file, "a") as f:
                     f.write(json.dumps(log_entry) + "\n")
             except Exception as e:
                 print(f"Failed to log metric to file: {e}")
+
+    def _create_base_metadata(self) -> Dict[str, Any]:
+        """Create base metadata including environment auto-tags and context."""
+        metadata = {}
+
+        # Add environment auto-tags
+        metadata.update(self.environment_config.auto_tag)
+
+        # Add current context metadata
+        if self.current_context:
+            metadata.update(self.current_context)
+
+        return metadata
 
     def track_openai_completion(
         self, func: Callable[..., Any]
@@ -159,8 +242,19 @@ class AIUsageTracker:
                             model=model,
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
-                            is_batch=kwargs.get("is_batch", False),
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
+
+                # Create base metadata with environment auto-tags
+                metadata = self._create_base_metadata()
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "temperature": kwargs.get("temperature"),
+                        "max_tokens": kwargs.get("max_tokens"),
+                    }
+                )
 
                 # Create and store metric
                 metric = AIUsageMetric(
@@ -177,11 +271,7 @@ class AIUsageTracker:
                     job_id=self.current_job_id,
                     batch_id=self.current_batch_id,
                     error=error,
-                    metadata={
-                        "function": func.__name__,
-                        "temperature": kwargs.get("temperature"),
-                        "max_tokens": kwargs.get("max_tokens"),
-                    },
+                    metadata=metadata,
                 )
                 self._store_metric(metric)
 
@@ -225,8 +315,22 @@ class AIUsageTracker:
                         cost_usd = AICostCalculator.calculate_openai_cost(
                             model=model,
                             total_tokens=total_tokens,
-                            is_batch=kwargs.get("is_batch", False),
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
+
+                # Create base metadata with environment auto-tags
+                metadata = self._create_base_metadata()
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "input_count": (
+                            len(kwargs.get("input", []))
+                            if "input" in kwargs
+                            else None
+                        ),
+                    }
+                )
 
                 # Create and store metric
                 metric = AIUsageMetric(
@@ -241,14 +345,7 @@ class AIUsageTracker:
                     job_id=self.current_job_id,
                     batch_id=self.current_batch_id,
                     error=error,
-                    metadata={
-                        "function": func.__name__,
-                        "input_count": (
-                            len(kwargs.get("input", []))
-                            if "input" in kwargs
-                            else None
-                        ),
-                    },
+                    metadata=metadata,
                 )
                 self._store_metric(metric)
 
@@ -293,6 +390,15 @@ class AIUsageTracker:
                             output_tokens=output_tokens,
                         )
 
+                # Create base metadata with environment auto-tags
+                metadata = self._create_base_metadata()
+                metadata.update(
+                    {
+                        "function": func.__name__,
+                        "max_tokens": kwargs.get("max_tokens"),
+                    }
+                )
+
                 # Create and store metric
                 metric = AIUsageMetric(
                     service="anthropic",
@@ -307,10 +413,7 @@ class AIUsageTracker:
                     job_id=self.current_job_id,
                     github_pr=self.github_pr,
                     error=error,
-                    metadata={
-                        "function": func.__name__,
-                        "max_tokens": kwargs.get("max_tokens"),
-                    },
+                    metadata=metadata,
                 )
                 self._store_metric(metric)
 
@@ -344,6 +447,14 @@ class AIUsageTracker:
                         operation=operation, api_calls=1
                     )
 
+                    # Create base metadata with environment auto-tags
+                    metadata = self._create_base_metadata()
+                    metadata.update(
+                        {
+                            "function": func.__name__,
+                        }
+                    )
+
                     # Create and store metric
                     metric = AIUsageMetric(
                         service="google_places",
@@ -356,9 +467,7 @@ class AIUsageTracker:
                         user_id=self.user_id,
                         job_id=self.current_job_id,
                         error=error,
-                        metadata={
-                            "function": func.__name__,
-                        },
+                        metadata=metadata,
                     )
                     self._store_metric(metric)
 
@@ -386,6 +495,15 @@ class AIUsageTracker:
             output_tokens=output_estimate,
         )
 
+        # Create base metadata with environment auto-tags
+        metadata = self._create_base_metadata()
+        metadata.update(
+            {
+                "pr_number": pr_number,
+                "workflow": "claude-review",
+            }
+        )
+
         metric = AIUsageMetric(
             service="anthropic",
             model=model,
@@ -397,12 +515,47 @@ class AIUsageTracker:
             cost_usd=cost_usd,
             github_pr=pr_number,
             user_id="github-actions",
-            metadata={
-                "pr_number": pr_number,
-                "workflow": "claude-review",
-            },
+            metadata=metadata,
         )
         self._store_metric(metric)
+
+    @classmethod
+    def create_for_environment(
+        cls,
+        dynamo_client: Optional[Any] = None,
+        table_name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        track_to_dynamo: bool = True,
+        track_to_file: bool = False,
+        environment: Optional[Environment] = None,
+        validate_table_environment: bool = True,  # Strict validation by default
+    ) -> "AIUsageTracker":
+        """
+        Create an AIUsageTracker with automatic environment detection and configuration.
+
+        This is the recommended factory method for creating trackers.
+
+        Args:
+            dynamo_client: DynamoDB client for storing metrics
+            table_name: DynamoDB table name (if None, will auto-generate with environment suffix)
+            user_id: User identifier for tracking
+            track_to_dynamo: Whether to store metrics in DynamoDB
+            track_to_file: Whether to log metrics to a file (for local dev)
+            environment: Specific environment to use (if None, will auto-detect)
+            validate_table_environment: Whether to validate table name matches environment
+
+        Returns:
+            AIUsageTracker: Configured tracker for the environment
+        """
+        return cls(
+            dynamo_client=dynamo_client,
+            table_name=table_name,
+            user_id=user_id,
+            track_to_dynamo=track_to_dynamo,
+            track_to_file=track_to_file,
+            environment=environment,
+            validate_table_environment=validate_table_environment,
+        )
 
     @classmethod
     def create_wrapped_openai_client(
