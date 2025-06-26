@@ -104,8 +104,8 @@ jobs:
     needs: fast-checks
     runs-on: ubuntu-latest
     if: |
-      (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
-      (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
+      needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
+      needs.fast-checks.outputs.receipt_label_changed == 'true' ||
       needs.fast-checks.outputs.workflows_changed == 'true' ||
       github.event_name == 'schedule'
     strategy:
@@ -219,6 +219,11 @@ jobs:
           pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
 
       - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
+        if: |
+          (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
+          (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
+          needs.fast-checks.outputs.workflows_changed == 'true' ||
+          github.event_name == 'schedule'
         run: |
           # Use smart test runner that can skip unchanged tests
           echo "🔍 Analyzing test dependencies and changes..."
