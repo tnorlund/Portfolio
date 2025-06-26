@@ -71,7 +71,14 @@ def mock_dynamo_with_data():
         client._stored_items.append(kwargs["Item"])
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
+    def store_metric(metric):
+        """Store AIUsageMetric for new resilient client interface."""
+        item = metric.to_dynamodb_item()
+        client._stored_items.append(item)
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
     client.put_item = MagicMock(side_effect=store_item)
+    client.put_ai_usage_metric = MagicMock(side_effect=store_metric)
 
     # Mock query responses
     def query_handler(**kwargs):

@@ -20,6 +20,32 @@ from tests.utils.ai_usage_helpers import create_mock_openai_response
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
+def get_dynamo_call_count(mock_dynamo):
+    """Helper to get the actual call count from mock DynamoDB client."""
+    # The tracker will use put_ai_usage_metric if available, else put_item
+    if hasattr(mock_dynamo, 'put_ai_usage_metric') and mock_dynamo.put_ai_usage_metric.called:
+        return mock_dynamo.put_ai_usage_metric.call_count
+    else:
+        return mock_dynamo.put_item.call_count
+
+
+def get_dynamo_call_args(mock_dynamo):
+    """Helper to get the actual call args from mock DynamoDB client."""
+    # The tracker will use put_ai_usage_metric if available, else put_item
+    if hasattr(mock_dynamo, 'put_ai_usage_metric') and mock_dynamo.put_ai_usage_metric.called:
+        # For put_ai_usage_metric, the metric object is passed directly
+        # We need to convert it to the same format as put_item calls
+        calls = []
+        for call in mock_dynamo.put_ai_usage_metric.call_args_list:
+            metric = call.args[0]  # First argument is the metric
+            item = metric.to_dynamodb_item()
+            # Simulate the put_item call format
+            calls.append(type('MockCall', (), {'kwargs': {'Item': item}})())
+        return calls
+    else:
+        return mock_dynamo.put_item.call_args_list
+
+
 @pytest.mark.performance
 class TestPerformanceBaseline:
     """Test baseline performance characteristics."""
@@ -90,7 +116,7 @@ class TestPerformanceBaseline:
         assert (
             duration < 1.0
         ), f"Duration: {duration}s for {iterations} metrics"
-        assert mock_dynamo.put_item.call_count == iterations
+        assert get_dynamo_call_count(mock_dynamo) == iterations
 
     def test_file_logging_performance(self):
         """Test file logging performance."""
@@ -185,7 +211,7 @@ class TestHighVolumeTracking:
         assert (
             duration < 10.0
         ), f"Burst duration: {duration}s for 1000 requests"
-        assert mock_dynamo.put_item.call_count == 1000
+        assert get_dynamo_call_count(mock_dynamo) == 1000
 
     def test_sustained_load(self):
         """Test sustained load over time."""
@@ -212,7 +238,7 @@ class TestHighVolumeTracking:
         # Should maintain reasonable throughput
         throughput = total_calls / duration
         assert throughput > 100, f"Throughput: {throughput} calls/sec"
-        assert mock_dynamo.put_item.call_count == total_calls
+        assert get_dynamo_call_count(mock_dynamo) == total_calls
 
     def test_large_batch_processing(self):
         """Test processing large batches efficiently."""
@@ -245,7 +271,7 @@ class TestHighVolumeTracking:
         throughput = total_items / duration
 
         assert throughput > 500, f"Batch throughput: {throughput} items/sec"
-        assert mock_dynamo.put_item.call_count == total_items
+        assert get_dynamo_call_count(mock_dynamo) == total_items
 
 
 @pytest.mark.performance
@@ -293,7 +319,7 @@ class TestConcurrentPerformance:
         assert (
             throughput > 200
         ), f"Concurrent throughput: {throughput} calls/sec"
-        assert mock_dynamo.put_item.call_count == total_calls
+        assert get_dynamo_call_count(mock_dynamo) == total_calls
 
     def test_wrapped_client_concurrent_performance(self):
         """Test wrapped client performance under concurrent load."""
@@ -397,7 +423,7 @@ class TestConcurrentPerformance:
         assert (
             throughput > 50
         ), f"Mixed service throughput: {throughput} calls/sec"
-        assert mock_dynamo.put_item.call_count == total_calls
+        assert get_dynamo_call_count(mock_dynamo) == total_calls
 
 
 @pytest.mark.performance
@@ -474,7 +500,7 @@ class TestMemoryEfficiency:
 
         # Should handle large responses efficiently
         assert duration < 5.0, f"Large response duration: {duration}s"
-        assert mock_dynamo.put_item.call_count == 20
+        assert get_dynamo_call_count(mock_dynamo) == 20
 
     def test_file_logging_memory_efficiency(self):
         """Test file logging doesn't accumulate memory."""
@@ -571,7 +597,7 @@ class TestScalabilityLimits:
         assert duration < 1.0, f"Large token handling duration: {duration}s"
 
         # Verify large numbers were handled correctly
-        calls = mock_dynamo.put_item.call_args_list
+        calls = get_dynamo_call_args(mock_dynamo)
         for call in calls:
             item = call.kwargs["Item"]
             assert int(item["inputTokens"]["N"]) == 1000000

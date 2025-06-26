@@ -74,7 +74,18 @@ def mock_high_performance_dynamo():
         client._write_latencies.append(latency)
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
+    def fast_put_metric(metric):
+        """Store AIUsageMetric for new resilient client interface."""
+        start = time.perf_counter()
+        item = metric.to_dynamodb_item()
+        with client._storage_lock:
+            client._stored_items.append(item)
+        latency = (time.perf_counter() - start) * 1000  # ms
+        client._write_latencies.append(latency)
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
     client.put_item = MagicMock(side_effect=fast_put_item)
+    client.put_ai_usage_metric = MagicMock(side_effect=fast_put_metric)
 
     def fast_query(**kwargs):
         with client._storage_lock:
