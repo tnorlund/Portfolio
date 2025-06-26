@@ -166,9 +166,9 @@ class ReceiptAnalyzer:
                 )
 
                 if isinstance(result, tuple):
-                    logger.info(f"Result tuple length: {len(result)}")
+                    logger.info("Result tuple length: %s", len(result))
                     for i, item in enumerate(result):
-                        logger.info(f"  Result[{i}] type: {type(item)}")
+                        logger.info("  Result[%s] type: %s", i, type(item))
 
                 structure_analysis, query, raw_response = result
                 logger.info("Successfully unpacked structure analysis result")
@@ -184,10 +184,10 @@ class ReceiptAnalyzer:
                     logger.error("Result is None")
                 raise
             except Exception as e:
-                logger.error(f"Other error in structure analysis: {str(e)}")
+                logger.error("Other error in structure analysis: %s", str(e))
                 raise
 
-            logger.debug(f"Raw analysis response: {raw_response}")
+            logger.debug("Raw analysis response: %s", raw_response)
             # Log reasoning fields if they exist
             if isinstance(structure_analysis, dict):
                 reasoning_fields = [
@@ -203,11 +203,11 @@ class ReceiptAnalyzer:
             return structure_analysis_obj
 
         except (TypeError, ValueError) as e:
-            logger.error(f"Input validation error: {str(e)}")
+            logger.error("Input validation error: %s", str(e))
             raise
         except Exception as e:
-            logger.error(f"Error in structure analysis: {str(e)}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error("Error in structure analysis: %s", str(e))
+            logger.error("Full traceback: %s", traceback.format_exc())
             raise
 
     def label_fields(
@@ -254,9 +254,9 @@ class ReceiptAnalyzer:
                 )
 
                 if isinstance(result, tuple):
-                    logger.info(f"Result tuple length: {len(result)}")
+                    logger.info("Result tuple length: %s", len(result))
                     for i, item in enumerate(result):
-                        logger.info(f"  Result[{i}] type: {type(item)}")
+                        logger.info("  Result[%s] type: %s", i, type(item))
 
                 field_analysis, query, raw_response = result
                 logger.info("Successfully unpacked field labeling result")
@@ -264,14 +264,18 @@ class ReceiptAnalyzer:
                 logger.error(
                     f"Error unpacking field labeling result: {str(e)}"
                 )
-                logger.error(f"Result type: {type(result)}, content: {result}")
+                logger.error(
+                    "Result type: %s, content: %s", type(result), result
+                )
                 raise
             except Exception as e:
-                logger.error(f"Other error in field labeling: {str(e)}")
+                logger.error("Other error in field labeling: %s", str(e))
                 raise
 
             logger.debug("Field labeling completed")
-            logger.debug(f"Field analysis result type: {type(field_analysis)}")
+            logger.debug(
+                "Field analysis result type: %s", type(field_analysis)
+            )
             logger.debug(
                 f"Number of labels generated: {len(field_analysis.get('labels', []))}"
             )
@@ -282,7 +286,9 @@ class ReceiptAnalyzer:
                 for label in field_analysis.get("labels", []):
                     if "reasoning" in label:
                         reasoning_fields.append(label["label"])
-                logger.info(f"Field labels with reasoning: {reasoning_fields}")
+                logger.info(
+                    "Field labels with reasoning: %s", reasoning_fields
+                )
 
                 logger.debug(
                     f"Field analysis metadata keys: {list(field_analysis['metadata'].keys())}"
@@ -306,7 +312,7 @@ class ReceiptAnalyzer:
             # Log a sample of labels for debugging
             if field_analysis_obj.labels:
                 sample_size = min(3, len(field_analysis_obj.labels))
-                logger.debug(f"Sample of {sample_size} labels:")
+                logger.debug("Sample of %s labels:", sample_size)
                 for label in field_analysis_obj.labels[:sample_size]:
                     logger.debug(
                         f"  {label.text} -> {label.label} (reasoning: {label.reasoning})"
@@ -315,8 +321,8 @@ class ReceiptAnalyzer:
             return field_analysis_obj
 
         except Exception as e:
-            logger.error(f"Error in field labeling: {str(e)}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error("Error in field labeling: %s", str(e))
+            logger.error("Full traceback: %s", traceback.format_exc())
             raise
 
     def analyze_line_items(
@@ -359,9 +365,9 @@ class ReceiptAnalyzer:
                 )
 
                 if isinstance(result, tuple):
-                    logger.info(f"Result tuple length: {len(result)}")
+                    logger.info("Result tuple length: %s", len(result))
                     for i, item in enumerate(result):
-                        logger.info(f"  Result[{i}] type: {type(item)}")
+                        logger.info("  Result[%s] type: %s", i, type(item))
 
                 line_item_analysis, query, raw_response = result
                 logger.info("Successfully unpacked line item analysis result")
@@ -369,13 +375,15 @@ class ReceiptAnalyzer:
                 logger.error(
                     f"Error unpacking line item analysis result: {str(e)}"
                 )
-                logger.error(f"Result type: {type(result)}, content: {result}")
+                logger.error(
+                    "Result type: %s, content: %s", type(result), result
+                )
                 raise
             except Exception as e:
-                logger.error(f"Other error in line item analysis: {str(e)}")
+                logger.error("Other error in line item analysis: %s", str(e))
                 raise
 
-            logger.debug(f"Raw line item analysis: {line_item_analysis}")
+            logger.debug("Raw line item analysis: %s", line_item_analysis)
 
             # Log reasoning fields if they exist
             if isinstance(line_item_analysis, dict):
@@ -396,8 +404,8 @@ class ReceiptAnalyzer:
             return line_item_analysis
 
         except Exception as e:
-            logger.error(f"Error in line item analysis: {str(e)}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error("Error in line item analysis: %s", str(e))
+            logger.error("Full traceback: %s", traceback.format_exc())
             raise
 
     def _prepare_prompt(
