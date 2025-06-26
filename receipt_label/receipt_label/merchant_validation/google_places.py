@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.data.places_api import PlacesAPI
 
 from .utils import get_name_similarity, normalize_phone
@@ -165,7 +166,7 @@ def is_valid_google_match(
                     )
                     return False
         except Exception as e:
-            logger.warning(f"Phone comparison failed: {e}")
+            logger.warning("Phone comparison failed: %s", e)
 
     # Compare merchant names using fuzzy matching
     extracted_name = extracted_data.get("name")
@@ -187,7 +188,7 @@ def is_valid_google_match(
                 )
                 return False
         except Exception as e:
-            logger.warning(f"Name comparison failed: {e}")
+            logger.warning("Name comparison failed: %s", e)
             return False
 
     # Log successful validation
@@ -199,7 +200,7 @@ def is_valid_google_match(
                 for check in validation_checks
             ]
         )
-        logger.debug(f"Validation checks: {check_summary}")
+        logger.debug("Validation checks: %s", check_summary)
 
     return True
 

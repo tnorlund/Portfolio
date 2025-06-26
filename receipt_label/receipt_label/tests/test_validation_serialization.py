@@ -8,6 +8,7 @@ from receipt_dynamo import (
     ReceiptValidationResult,
     ReceiptValidationSummary,
 )
+
 from receipt_label.models.validation import (
     FieldValidation,
     ValidationAnalysis,

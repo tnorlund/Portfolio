@@ -189,7 +189,7 @@ class LLMProcessor:
             # Extract updates from GPT response
             updates = {}
             analysis = gpt_result.get("analysis", {})
-            logger.debug(f"Received analysis from GPT: {analysis}")
+            logger.debug("Received analysis from GPT: %s", analysis)
 
             for field in ["subtotal", "tax", "total"]:
                 value = analysis.get(field)
@@ -206,7 +206,7 @@ class LLMProcessor:
                             f"Failed to convert {field} value '{value}': {str(e)}"
                         )
                 else:
-                    logger.debug(f"No value found for {field}")
+                    logger.debug("No value found for %s", field)
 
             return updates
 

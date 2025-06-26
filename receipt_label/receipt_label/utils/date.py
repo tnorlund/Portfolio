@@ -53,7 +53,7 @@ def parse_datetime(
                 continue
 
         if not date:
-            logger.warning(f"Could not parse date string: {date_str}")
+            logger.warning("Could not parse date string: %s", date_str)
             return None
 
         # If no time provided, return just the date
@@ -70,14 +70,14 @@ def parse_datetime(
                 continue
 
         if not time:
-            logger.warning(f"Could not parse time string: {time_str}")
+            logger.warning("Could not parse time string: %s", time_str)
             return date
 
         # Combine date and time
         return datetime.combine(date.date(), time.time())
 
     except Exception as e:
-        logger.error(f"Error parsing datetime: {str(e)}")
+        logger.error("Error parsing datetime: %s", str(e))
         return None
 
 
@@ -142,7 +142,7 @@ def extract_datetime(text: str) -> Optional[Dict]:
         }
 
     except Exception as e:
-        logger.error(f"Error extracting datetime: {str(e)}")
+        logger.error("Error extracting datetime: %s", str(e))
         return None
 
 
@@ -185,7 +185,7 @@ def is_valid_date(date_str: str) -> bool:
                 continue
         return False
     except Exception as e:
-        logger.error(f"Error validating date: {str(e)}")
+        logger.error("Error validating date: %s", str(e))
         return False
 
 
@@ -208,7 +208,7 @@ def is_valid_time(time_str: str) -> bool:
                 continue
         return False
     except Exception as e:
-        logger.error(f"Error validating time: {str(e)}")
+        logger.error("Error validating time: %s", str(e))
         return False
 
 

@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import requests
 from receipt_dynamo.entities.places_cache import PlacesCache
+
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -67,7 +68,7 @@ class PlacesAPI:
             Optional[Dict]: Cached place details if found, None otherwise
         """
         if not search_value:
-            logger.debug(f"Skipping cache lookup for empty {search_type}")
+            logger.debug("Skipping cache lookup for empty %s", search_type)
             return None
         try:
             # Skip cache for area searches
@@ -102,8 +103,10 @@ class PlacesAPI:
                     logger.info(
                         f"🔍 CACHE HIT: {search_type} - {search_value}"
                     )
-                    logger.info(f"   Last updated: {cached_item.last_updated}")
-                    logger.info(f"   Query count: {cached_item.query_count}")
+                    logger.info(
+                        "   Last updated: %s", cached_item.last_updated
+                    )
+                    logger.info("   Query count: %s", cached_item.query_count)
                     # Increment query count
                     try:
                         self.client_manager.dynamo.incrementQueryCount(
@@ -113,19 +116,21 @@ class PlacesAPI:
                             f"   Incremented query count to: {cached_item.query_count + 1}"
                         )
                     except Exception as e:
-                        logger.error(f"Error incrementing query count: {e}")
-                        logger.error(f"Stack trace: {traceback.format_exc()}")
+                        logger.error("Error incrementing query count: %s", e)
+                        logger.error("Stack trace: %s", traceback.format_exc())
                     return cached_item.places_response
-                logger.info(f"❌ CACHE MISS: {search_type} - {search_value}")
+                logger.info(
+                    "❌ CACHE MISS: %s - %s", search_type, search_value
+                )
                 return None
             except Exception as e:
-                logger.error(f"Error accessing DynamoDB cache: {e}")
-                logger.error(f"Stack trace: {traceback.format_exc()}")
+                logger.error("Error accessing DynamoDB cache: %s", e)
+                logger.error("Stack trace: %s", traceback.format_exc())
                 return None
 
         except Exception as e:
-            logger.error(f"Error in _get_cached_place: {e}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
+            logger.error("Error in _get_cached_place: %s", e)
+            logger.error("Stack trace: %s", traceback.format_exc())
             return None
 
     def _is_area_search(self, search_value: str) -> bool:
@@ -166,7 +171,7 @@ class PlacesAPI:
             places_response (Dict): The Places API response
         """
         if not search_value:
-            logger.debug(f"Skipping cache write for empty {search_type}")
+            logger.debug("Skipping cache write for empty %s", search_type)
             return
         try:
             if search_type == "ADDRESS":
@@ -194,7 +199,7 @@ class PlacesAPI:
                     )
                     return
 
-            logger.info(f"CACHING: {search_type} - {search_value}")
+            logger.info("CACHING: %s - %s", search_type, search_value)
 
             # Set TTL for 30 days
             ttl_seconds = 30 * 24 * 60 * 60
@@ -214,19 +219,21 @@ class PlacesAPI:
 
             try:
                 self.client_manager.dynamo.addPlacesCache(cache_item)
-                logger.info(f"SUCCESS: Cached {search_type} - {search_value}")
+                logger.info(
+                    "SUCCESS: Cached %s - %s", search_type, search_value
+                )
                 if search_type == "ADDRESS":
                     logger.info(
                         f"   Normalized: {cache_item.normalized_value}"
                     )
-                    logger.info(f"   Hash: {cache_item.value_hash}")
+                    logger.info("   Hash: %s", cache_item.value_hash)
             except Exception as e:
-                logger.error(f"Error adding to DynamoDB cache: {e}")
-                logger.error(f"Stack trace: {traceback.format_exc()}")
+                logger.error("Error adding to DynamoDB cache: %s", e)
+                logger.error("Stack trace: %s", traceback.format_exc())
         except Exception as e:
-            logger.error(f"Error in _cache_place: {e}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
-            logger.error(f"Failed to cache {search_type}: {search_value}")
+            logger.error("Error in _cache_place: %s", e)
+            logger.error("Stack trace: %s", traceback.format_exc())
+            logger.error("Failed to cache %s: %s", search_type, search_value)
 
     def search_by_phone(self, phone_number: str) -> Optional[Dict]:
         """Search for a place using a phone number.
@@ -241,14 +248,14 @@ class PlacesAPI:
         clean_phone = "".join(
             c for c in phone_number if c.isdigit() or c in "()+-"
         )
-        logger.info(f"Searching by phone: {clean_phone}")
+        logger.info("Searching by phone: %s", clean_phone)
         if not clean_phone:
             logger.info("Empty phone—skipping Places API search and cache")
             return None
         # Check cache first
         cached_result = self._get_cached_place("PHONE", clean_phone)
         if cached_result:
-            logger.info(f"Found cached result for phone: {clean_phone}")
+            logger.info("Found cached result for phone: %s", clean_phone)
             return cached_result
 
         # Validate phone number format
@@ -269,7 +276,7 @@ class PlacesAPI:
             )
             return None
 
-        logger.info(f"No cache hit for phone: {clean_phone}, making API call")
+        logger.info("No cache hit for phone: %s, making API call", clean_phone)
         url = f"{self.BASE_URL}/findplacefromtext/json"
 
         # For API call, strip all non-numeric characters
@@ -295,7 +302,9 @@ class PlacesAPI:
                 if place_details and "establishment" in place_details.get(
                     "types", []
                 ):
-                    logger.info(f"Caching new result for phone: {clean_phone}")
+                    logger.info(
+                        "Caching new result for phone: %s", clean_phone
+                    )
                     self._cache_place(
                         "PHONE", clean_phone, place_id, place_details
                     )
@@ -331,7 +340,7 @@ class PlacesAPI:
             return None
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error searching by phone: {e}")
+            logger.error("Error searching by phone: %s", e)
             return None
 
     def autocomplete_address(self, input_text: str) -> Optional[Dict]:
@@ -363,7 +372,7 @@ class PlacesAPI:
             return None
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error in autocomplete: {e}")
+            logger.error("Error in autocomplete: %s", e)
             return None
 
     def search_by_address(
@@ -410,12 +419,12 @@ class PlacesAPI:
                 completion = self.autocomplete_address(street_address)
                 if completion:
                     address = completion["description"]
-                    logger.debug(f"Using completed address: {address}")
+                    logger.debug("Using completed address: %s", address)
 
             # Check cache first
             cached_result = self._get_cached_place("ADDRESS", address)
             if cached_result:
-                logger.debug(f"Found cached result for address: {address}")
+                logger.debug("Found cached result for address: %s", address)
                 return cached_result
 
             url = f"{self.BASE_URL}/findplacefromtext/json"
@@ -451,10 +460,10 @@ class PlacesAPI:
                         f"Using business name in search: {business_name}"
                     )
 
-            logger.debug(f"Making Places API request to: {url}")
-            logger.debug(f"With params: {params}")
+            logger.debug("Making Places API request to: %s", url)
+            logger.debug("With params: %s", params)
             response = requests.get(url, params=params)
-            logger.debug(f"Response status code: {response.status_code}")
+            logger.debug("Response status code: %s", response.status_code)
             response.raise_for_status()
             data = response.json()
 
@@ -503,11 +512,11 @@ class PlacesAPI:
             return None
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error searching by address: {e}")
+            logger.error("Error searching by address: %s", e)
             return None
         except Exception as e:
-            logger.error(f"Unexpected error in search_by_address: {e}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
+            logger.error("Unexpected error in search_by_address: %s", e)
+            logger.error("Stack trace: %s", traceback.format_exc())
             return None
 
     def search_nearby(
@@ -540,7 +549,7 @@ class PlacesAPI:
         # Check cache first
         cached_result = self._get_cached_place("ADDRESS", cache_key)
         if cached_result:
-            logger.debug(f"Found cached result for location: {cache_key}")
+            logger.debug("Found cached result for location: %s", cache_key)
             return cached_result
 
         url = f"{self.BASE_URL}/nearbysearch/json"
@@ -556,12 +565,12 @@ class PlacesAPI:
             params["keyword"] = keyword
 
         try:
-            logger.debug(f"Searching nearby locations: {url}")
-            logger.debug(f"With params: {params}")
+            logger.debug("Searching nearby locations: %s", url)
+            logger.debug("With params: %s", params)
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-            logger.debug(f"Nearby search response: {data}")
+            logger.debug("Nearby search response: %s", data)
 
             if data["status"] == "OK" and data["results"]:
                 # If we have receipt words, try to find the best matching business
@@ -627,7 +636,7 @@ class PlacesAPI:
             return None
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error in nearby search: {e}")
+            logger.error("Error in nearby search: %s", e)
             return None
 
     def _compare_with_receipt(
@@ -714,7 +723,7 @@ class PlacesAPI:
             return None
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error getting place details: {e}")
+            logger.error("Error getting place details: %s", e)
             return None
 
     def search_by_text(
@@ -1024,7 +1033,7 @@ class BatchPlacesProcessor:
         clean_phone = "".join(filter(str.isdigit, phone))
 
         # Strategy 1: Search by address first
-        self.logger.debug(f"Searching by address: {address}")
+        self.logger.debug("Searching by address: %s", address)
         address_result = self.places_api.search_by_address(
             address, receipt.get("words", [])
         )
@@ -1077,7 +1086,7 @@ class BatchPlacesProcessor:
                 )
 
         # Strategy 2: Try searching by phone
-        self.logger.debug(f"Searching by phone: {phone}")
+        self.logger.debug("Searching by phone: %s", phone)
         phone_result = self.places_api.search_by_phone(phone)
 
         if phone_result:

@@ -53,7 +53,7 @@ def normalize_address(address: str) -> str:
     return address
 
 
-def parse_address(address: str) -> Dict[str, str]:
+def parse_address(address: str) -> Dict[str, Optional[str]]:
     """Parse an address string into its components."""
     if not address:
         return {}
