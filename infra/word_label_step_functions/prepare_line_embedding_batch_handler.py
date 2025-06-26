@@ -2,12 +2,9 @@ import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 from receipt_label.submit_line_embedding_batch.submit_line_batch import (
-    chunk_into_line_embedding_batches,
-    generate_batch_id,
-    list_receipt_lines_with_no_embeddings,
-    serialize_receipt_lines,
-    upload_serialized_lines,
-)
+    chunk_into_line_embedding_batches, generate_batch_id,
+    list_receipt_lines_with_no_embeddings, serialize_receipt_lines,
+    upload_serialized_lines)
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -38,9 +35,7 @@ def submit_handler(event, context):
     """
     logger.info("Starting prepare_line_embedding_batch_handler")
     lines_without_embeddings = list_receipt_lines_with_no_embeddings()
-    logger.info(
-        f"Found {len(lines_without_embeddings)} lines without embeddings"
-    )
+    logger.info(f"Found {len(lines_without_embeddings)} lines without embeddings")
     batches = chunk_into_line_embedding_batches(lines_without_embeddings)
     logger.info(f"Chunked into {len(batches)} batches")
 
@@ -58,9 +53,7 @@ def submit_handler(event, context):
                     f"Lines count OK for image {image_id}, receipt {receipt_id}: {total} lines"
                 )
 
-    uploaded = upload_serialized_lines(
-        serialize_receipt_lines(batches), bucket
-    )
+    uploaded = upload_serialized_lines(serialize_receipt_lines(batches), bucket)
     logger.info(f"Uploaded {len(uploaded)} files")
 
     cleaned = [

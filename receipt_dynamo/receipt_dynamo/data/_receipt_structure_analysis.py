@@ -55,9 +55,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be added to DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -83,9 +81,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -93,9 +89,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analysis to DynamoDB"
                 ) from e
 
-    def addReceiptStructureAnalyses(
-        self, analyses: list[ReceiptStructureAnalysis]
-    ):
+    def addReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
 
         Args:
@@ -106,9 +100,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be added to DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -120,18 +112,14 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": a.to_item()}} for a in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": a.to_item()}} for a in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -145,17 +133,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analyses to DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error adding receipt structure analyses"
-                ) from e
+                raise Exception("Error adding receipt structure analyses") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -163,9 +147,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analyses to DynamoDB"
                 ) from e
 
-    def updateReceiptStructureAnalysis(
-        self, analysis: ReceiptStructureAnalysis
-    ):
+    def updateReceiptStructureAnalysis(self, analysis: ReceiptStructureAnalysis):
         """Updates an existing ReceiptStructureAnalysis in the database.
 
         Args:
@@ -176,9 +158,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be updated in DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -204,9 +184,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -214,9 +192,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not update receipt structure analysis in the database"
                 ) from e
 
-    def updateReceiptStructureAnalyses(
-        self, analyses: list[ReceiptStructureAnalysis]
-    ):
+    def updateReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
         """Updates multiple ReceiptStructureAnalyses in the database.
 
         Args:
@@ -227,9 +203,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be updated in DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -241,18 +215,14 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [
-                    {"PutRequest": {"Item": a.to_item()}} for a in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": a.to_item()}} for a in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -266,9 +236,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not update receipt structure analyses in DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error updating receipt structure analyses"
-                ) from e
+                raise Exception("Error updating receipt structure analyses") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
@@ -301,9 +269,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 else:
                     detailed_error = f"Validation error: {error_message}"
 
-                print(
-                    f"Error in updateReceiptStructureAnalyses: {detailed_error}"
-                )
+                print(f"Error in updateReceiptStructureAnalyses: {detailed_error}")
                 raise Exception(
                     f"One or more parameters given were invalid: {detailed_error}"
                 ) from e
@@ -314,9 +280,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not update receipt structure analyses in DynamoDB"
                 ) from e
 
-    def deleteReceiptStructureAnalysis(
-        self, analysis: ReceiptStructureAnalysis
-    ):
+    def deleteReceiptStructureAnalysis(self, analysis: ReceiptStructureAnalysis):
         """Deletes a single ReceiptStructureAnalysis by IDs.
 
         Args:
@@ -327,9 +291,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -359,9 +321,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -369,9 +329,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not delete receipt structure analysis from the database"
                 ) from e
 
-    def deleteReceiptStructureAnalyses(
-        self, analyses: list[ReceiptStructureAnalysis]
-    ):
+    def deleteReceiptStructureAnalyses(self, analyses: list[ReceiptStructureAnalysis]):
         """Deletes multiple ReceiptStructureAnalyses in batch.
 
         Args:
@@ -382,9 +340,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -415,9 +371,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -431,17 +385,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not delete receipt structure analyses from DynamoDB: Table not found"
                 ) from e
             elif error_code == "TransactionCanceledException":
-                raise Exception(
-                    "Error deleting receipt structure analyses"
-                ) from e
+                raise Exception("Error deleting receipt structure analyses") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -543,9 +493,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -573,9 +521,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None")
 
         structure_analyses = []
@@ -595,18 +541,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             structure_analyses.extend(
-                [
-                    itemToReceiptStructureAnalysis(item)
-                    for item in response["Items"]
-                ]
+                [itemToReceiptStructureAnalysis(item) for item in response["Items"]]
             )
 
             if limit is None:
                 # Paginate through all the structure analyses
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     structure_analyses.extend(
                         [
@@ -630,9 +571,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
@@ -688,21 +627,15 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             analyses = [
-                itemToReceiptStructureAnalysis(item)
-                for item in response["Items"]
+                itemToReceiptStructureAnalysis(item) for item in response["Items"]
             ]
 
             # Continue querying if there are more results
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [
-                        itemToReceiptStructureAnalysis(item)
-                        for item in response["Items"]
-                    ]
+                    [itemToReceiptStructureAnalysis(item) for item in response["Items"]]
                 )
 
             return analyses
@@ -717,9 +650,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:

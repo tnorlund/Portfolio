@@ -82,9 +82,7 @@ class EmbeddingBatchResult:
         self.error_message = error_message
 
         # validate pinecone_id format
-        if not validate_pinecone_id_format(
-            pinecone_id, receipt_id, line_id, word_id
-        ):
+        if not validate_pinecone_id_format(pinecone_id, receipt_id, line_id, word_id):
             raise ValueError(
                 "pinecone_id must be in the format "
                 "IMAGE#<uuid>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id> "
@@ -112,9 +110,7 @@ class EmbeddingBatchResult:
 
     def gsi3_key(self) -> dict:
         return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
@@ -129,9 +125,7 @@ class EmbeddingBatchResult:
             "text": {"S": self.text},
             "status": {"S": self.status},
             "error_message": (
-                {"S": self.error_message}
-                if self.error_message
-                else {"NULL": True}
+                {"S": self.error_message} if self.error_message else {"NULL": True}
             ),
         }
 
@@ -228,9 +222,7 @@ def itemToEmbeddingBatchResult(item: dict) -> EmbeddingBatchResult:
             if idxs:
                 idx = idxs[-1]
                 return sk_parts[idx + 1]
-            raise ValueError(
-                f"SK missing expected key '{key}': {item['SK']['S']}"
-            )
+            raise ValueError(f"SK missing expected key '{key}': {item['SK']['S']}")
 
         image_id = item["image_id"]["S"]
 

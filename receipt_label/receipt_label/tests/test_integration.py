@@ -16,12 +16,8 @@ sys.path.insert(0, parent_dir)
 
 from receipt_label.core.labeler import LabelingResult, ReceiptLabeler
 from receipt_label.models.label import LabelAnalysis
-from receipt_label.models.line_item import (
-    LineItem,
-    LineItemAnalysis,
-    Price,
-    Quantity,
-)
+from receipt_label.models.line_item import (LineItem, LineItemAnalysis, Price,
+                                            Quantity)
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 from receipt_label.models.validation import ValidationAnalysis
@@ -142,9 +138,7 @@ def mock_line_items():
         LineItem(
             description="Test Item",
             quantity=Quantity(amount=Decimal("1")),
-            price=Price(
-                unit_price=Decimal("15.99"), extended_price=Decimal("15.99")
-            ),
+            price=Price(unit_price=Decimal("15.99"), extended_price=Decimal("15.99")),
             reasoning="Single test item",
             line_ids=[1],
             metadata={},
@@ -197,9 +191,7 @@ def test_labeling_result_with_base_classes(
     """Test that LabelingResult correctly uses our base classes."""
     # Set up mocks - these functions don't exist in the current implementation
     # so we'll create the analysis objects directly
-    structure_analysis = StructureAnalysis.from_gpt_response(
-        mock_structure_analysis
-    )
+    structure_analysis = StructureAnalysis.from_gpt_response(mock_structure_analysis)
 
     field_analysis = LabelAnalysis.from_gpt_response(mock_field_analysis)
 
@@ -229,10 +221,7 @@ def test_labeling_result_with_base_classes(
     assert isinstance(result.validation_analysis, ValidationAnalysis)
 
     # Verify validation results
-    assert (
-        result.validation_analysis.overall_reasoning
-        == "No discrepancies found"
-    )
+    assert result.validation_analysis.overall_reasoning == "No discrepancies found"
 
 
 # Run the test directly when this file is executed

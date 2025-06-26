@@ -55,9 +55,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the result cannot be added to DynamoDB.
         """
         if result is None:
-            raise ValueError(
-                "result parameter is required and cannot be None."
-            )
+            raise ValueError("result parameter is required and cannot be None.")
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
                 "result must be an instance of the ReceiptValidationResult class."
@@ -93,9 +91,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     f"Could not add receipt validation result to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptValidationResults(
-        self, results: list[ReceiptValidationResult]
-    ):
+    def addReceiptValidationResults(self, results: list[ReceiptValidationResult]):
         """Adds multiple ReceiptValidationResults to DynamoDB in batches.
 
         Args:
@@ -106,16 +102,12 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the results cannot be added to DynamoDB.
         """
         if results is None:
-            raise ValueError(
-                "results parameter is required and cannot be None."
-            )
+            raise ValueError("results parameter is required and cannot be None.")
         if not isinstance(results, list):
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(
-            isinstance(res, ReceiptValidationResult) for res in results
-        ):
+        if not all(isinstance(res, ReceiptValidationResult) for res in results):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
@@ -130,9 +122,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -162,9 +152,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the result cannot be updated in DynamoDB.
         """
         if result is None:
-            raise ValueError(
-                "result parameter is required and cannot be None."
-            )
+            raise ValueError("result parameter is required and cannot be None.")
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
                 "result must be an instance of the ReceiptValidationResult class."
@@ -196,9 +184,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     f"Could not update ReceiptValidationResult in the database: {e}"
                 ) from e
 
-    def updateReceiptValidationResults(
-        self, results: list[ReceiptValidationResult]
-    ):
+    def updateReceiptValidationResults(self, results: list[ReceiptValidationResult]):
         """Updates multiple ReceiptValidationResults in the database.
 
         Args:
@@ -209,16 +195,12 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the results cannot be updated in DynamoDB.
         """
         if results is None:
-            raise ValueError(
-                "results parameter is required and cannot be None."
-            )
+            raise ValueError("results parameter is required and cannot be None.")
         if not isinstance(results, list):
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(
-            isinstance(res, ReceiptValidationResult) for res in results
-        ):
+        if not all(isinstance(res, ReceiptValidationResult) for res in results):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
@@ -245,9 +227,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                             "One or more ReceiptValidationResults do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -275,9 +255,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the result cannot be deleted from DynamoDB.
         """
         if result is None:
-            raise ValueError(
-                "result parameter is required and cannot be None."
-            )
+            raise ValueError("result parameter is required and cannot be None.")
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
                 "result must be an instance of the ReceiptValidationResult class."
@@ -309,9 +287,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     f"Could not delete ReceiptValidationResult from the database: {e}"
                 ) from e
 
-    def deleteReceiptValidationResults(
-        self, results: list[ReceiptValidationResult]
-    ):
+    def deleteReceiptValidationResults(self, results: list[ReceiptValidationResult]):
         """Deletes multiple ReceiptValidationResults in batch.
 
         Args:
@@ -322,33 +298,25 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             Exception: If the results cannot be deleted from DynamoDB.
         """
         if results is None:
-            raise ValueError(
-                "results parameter is required and cannot be None."
-            )
+            raise ValueError("results parameter is required and cannot be None.")
         if not isinstance(results, list):
             raise ValueError(
                 "results must be a list of ReceiptValidationResult instances."
             )
-        if not all(
-            isinstance(res, ReceiptValidationResult) for res in results
-        ):
+        if not all(isinstance(res, ReceiptValidationResult) for res in results):
             raise ValueError(
                 "All results must be instances of the ReceiptValidationResult class."
             )
         try:
             for i in range(0, len(results), 25):
                 chunk = results[i : i + 25]
-                request_items = [
-                    {"DeleteRequest": {"Key": res.key}} for res in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": res.key}} for res in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -390,28 +358,20 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             ReceiptValidationResult: The retrieved receipt validation result.
         """
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
+            raise ValueError("receipt_id parameter is required and cannot be None.")
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
+            raise ValueError("image_id parameter is required and cannot be None.")
         assert_valid_uuid(image_id)
         if field_name is None:
-            raise ValueError(
-                "field_name parameter is required and cannot be None."
-            )
+            raise ValueError("field_name parameter is required and cannot be None.")
         if not isinstance(field_name, str):
             raise ValueError("field_name must be a string.")
         if not field_name:
             raise ValueError("field_name must not be empty.")
         if result_index is None:
-            raise ValueError(
-                "result_index parameter is required and cannot be None."
-            )
+            raise ValueError("result_index parameter is required and cannot be None.")
         if not isinstance(result_index, int):
             raise ValueError("result_index must be an integer.")
         if result_index < 0:
@@ -444,9 +404,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(
-                    f"Error getting receipt validation result: {e}"
-                ) from e
+                raise Exception(f"Error getting receipt validation result: {e}") from e
 
     def listReceiptValidationResults(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
@@ -467,9 +425,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_results = []
@@ -492,18 +448,13 @@ class _ReceiptValidationResult(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             validation_results.extend(
-                [
-                    itemToReceiptValidationResult(item)
-                    for item in response["Items"]
-                ]
+                [itemToReceiptValidationResult(item) for item in response["Items"]]
             )
 
             if limit is None:
                 # Paginate through all the validation results.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     validation_results.extend(
                         [
@@ -531,9 +482,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error listing receipt validation results: {e}"
-                ) from e
+                raise Exception(f"Error listing receipt validation results: {e}") from e
 
     def listReceiptValidationResultsForField(
         self, receipt_id: int, image_id: str, field_name: str
@@ -553,20 +502,14 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             list[ReceiptValidationResult]: A list of validation results for the specified field.
         """
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
+            raise ValueError("receipt_id parameter is required and cannot be None.")
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
+            raise ValueError("image_id parameter is required and cannot be None.")
         assert_valid_uuid(image_id)
         if field_name is None:
-            raise ValueError(
-                "field_name parameter is required and cannot be None."
-            )
+            raise ValueError("field_name parameter is required and cannot be None.")
         if not isinstance(field_name, str):
             raise ValueError("field_name must be a string.")
         if not field_name:
@@ -585,10 +528,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 },
             )
             validation_results.extend(
-                [
-                    itemToReceiptValidationResult(item)
-                    for item in response["Items"]
-                ]
+                [itemToReceiptValidationResult(item) for item in response["Items"]]
             )
 
             while "LastEvaluatedKey" in response:
@@ -604,10 +544,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 validation_results.extend(
-                    [
-                        itemToReceiptValidationResult(item)
-                        for item in response["Items"]
-                    ]
+                    [itemToReceiptValidationResult(item) for item in response["Items"]]
                 )
             return validation_results
 
@@ -650,18 +587,14 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                                                                the last evaluated key (or None if no more results).
         """
         if result_type is None:
-            raise ValueError(
-                "result_type parameter is required and cannot be None."
-            )
+            raise ValueError("result_type parameter is required and cannot be None.")
         if not isinstance(result_type, str):
             raise ValueError("result_type must be a string.")
         if not result_type:
             raise ValueError("result_type must not be empty.")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         validation_results = []
@@ -684,18 +617,13 @@ class _ReceiptValidationResult(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             validation_results.extend(
-                [
-                    itemToReceiptValidationResult(item)
-                    for item in response["Items"]
-                ]
+                [itemToReceiptValidationResult(item) for item in response["Items"]]
             )
 
             if limit is None:
                 # Paginate through all the validation results.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     validation_results.extend(
                         [
@@ -723,6 +651,4 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error listing receipt validation results: {e}"
-                ) from e
+                raise Exception(f"Error listing receipt validation results: {e}") from e

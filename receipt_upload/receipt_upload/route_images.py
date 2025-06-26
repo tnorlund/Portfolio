@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image as PIL_Image
+
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities import Letter, Line, ReceiptLine, Word
 
@@ -77,9 +78,7 @@ def classify_image_layout(
     )
 
     # Classify based on which format is closer
-    return (
-        ImageType.SCAN if scan_distance < photo_distance else ImageType.PHOTO
-    )
+    return ImageType.SCAN if scan_distance < photo_distance else ImageType.PHOTO
 
 
 def _open_image(image_path: Path) -> PIL_Image.Image:

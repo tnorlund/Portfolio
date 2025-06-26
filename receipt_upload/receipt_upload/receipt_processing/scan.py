@@ -4,25 +4,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image as PIL_Image
+
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
-
-from receipt_upload.cluster import (
-    dbscan_lines_x_axis,
-    join_overlapping_clusters,
-    reorder_box_points,
-)
+from receipt_upload.cluster import (dbscan_lines_x_axis,
+                                    join_overlapping_clusters,
+                                    reorder_box_points)
 from receipt_upload.geometry import box_points, invert_affine, min_area_rect
 from receipt_upload.ocr import process_ocr_dict_as_image
-from receipt_upload.utils import (
-    calculate_sha256_from_bytes,
-    download_file_from_s3,
-    download_image_from_s3,
-    send_message_to_sqs,
-    upload_jpeg_to_s3,
-    upload_png_to_s3,
-)
+from receipt_upload.utils import (calculate_sha256_from_bytes,
+                                  download_file_from_s3,
+                                  download_image_from_s3, send_message_to_sqs,
+                                  upload_jpeg_to_s3, upload_png_to_s3)
 
 
 def process_scan(
@@ -57,14 +51,10 @@ def process_scan(
     # Download the OCR JSON
     json_s3_key = ocr_routing_decision.s3_key
     json_s3_bucket = ocr_routing_decision.s3_bucket
-    ocr_json_path = download_file_from_s3(
-        json_s3_bucket, json_s3_key, Path("/tmp")
-    )
+    ocr_json_path = download_file_from_s3(json_s3_bucket, json_s3_key, Path("/tmp"))
     with open(ocr_json_path, "r") as f:
         ocr_json = json.load(f)
-    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
-        ocr_json, image_id
-    )
+    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(ocr_json, image_id)
 
     # Download the raw image
     raw_image_s3_key = ocr_job.s3_key
@@ -170,9 +160,7 @@ def process_scan(
         f_i = src_tl[1]
 
         # Invert it to get the forward transform for lines, words, etc.
-        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-            a_i, b_i, c_i, d_i, e_i, f_i
-        )
+        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
         # 4) Warp the image using the "inverse" (dst->src) matrix
         affine_img = image.transform(

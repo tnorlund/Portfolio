@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+
 from receipt_trainer.utils.aws import get_dynamo_table, get_s3_bucket, load_env
 
 

@@ -52,12 +52,8 @@ class CompletionBatchResult:
         self.gpt_suggested_label = gpt_suggested_label
 
         if not isinstance(status, str | BatchStatus):
-            raise ValueError(
-                format_type_error("status", status, (str, BatchStatus))
-            )
-        if isinstance(status, str) and not status in [
-            s.value for s in BatchStatus
-        ]:
+            raise ValueError(format_type_error("status", status, (str, BatchStatus)))
+        if isinstance(status, str) and not status in [s.value for s in BatchStatus]:
             raise ValueError(
                 f"status must be one of: {', '.join(status.value for status in BatchStatus)}"
             )
@@ -101,9 +97,7 @@ class CompletionBatchResult:
 
     def gsi3_key(self) -> dict:
         return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
-            },
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"},
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
@@ -238,6 +232,4 @@ def itemToCompletionBatchResult(item: dict) -> CompletionBatchResult:
             validated_at=validated_at,
         )
     except Exception as e:
-        raise ValueError(
-            f"Error converting item to CompletionBatchResult: {e}"
-        )
+        raise ValueError(f"Error converting item to CompletionBatchResult: {e}")

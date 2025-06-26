@@ -55,14 +55,10 @@ def dict_to_point(point_dict: Dict[str, Any]) -> Optional[Point]:
     # Handle DynamoDB format if present
     if "M" in point_dict:
         dynamo_dict = point_dict["M"]
-        return Point(
-            x=float(dynamo_dict["x"]["N"]), y=float(dynamo_dict["y"]["N"])
-        )
+        return Point(x=float(dynamo_dict["x"]["N"]), y=float(dynamo_dict["y"]["N"]))
 
     # Regular dictionary format
-    return Point(
-        x=float(point_dict.get("x", 0)), y=float(point_dict.get("y", 0))
-    )
+    return Point(x=float(point_dict.get("x", 0)), y=float(point_dict.get("y", 0)))
 
 
 def bounding_box_to_dynamo_dict(bbox: Optional[BoundingBox]) -> Dict:

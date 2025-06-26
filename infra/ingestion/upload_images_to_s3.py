@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pulumi
 import pulumi.automation as auto
+
 from receipt_dynamo import DynamoClient, process, validate
 
 
@@ -164,9 +165,7 @@ def upload_files_with_uuid_in_batches(
     Returns:
         None
     """
-    all_png_files = sorted(
-        p for p in directory.iterdir() if p.suffix.lower() == ".png"
-    )
+    all_png_files = sorted(p for p in directory.iterdir() if p.suffix.lower() == ".png")
     files_to_upload = compare_local_files_with_dynamo(
         all_png_files, dynamodb_table_name
     )
@@ -175,9 +174,7 @@ def upload_files_with_uuid_in_batches(
         pulumi.log.info("No new files to upload.")
         return
 
-    for batch_index, batch in enumerate(
-        chunked(files_to_upload, batch_size), start=1
-    ):
+    for batch_index, batch in enumerate(chunked(files_to_upload, batch_size), start=1):
         pulumi.log.info(
             f"\nProcessing batch #{batch_index} with up to {batch_size} files..."
         )
@@ -211,9 +208,7 @@ def upload_files_with_uuid_in_batches(
                     json_path = tmp_dir / f"{new_uuid}.json"
 
                     if not png_path.exists():
-                        raise FileNotFoundError(
-                            f"Swift OCR did not produce {png_path}"
-                        )
+                        raise FileNotFoundError(f"Swift OCR did not produce {png_path}")
                     with open(png_path, "rb") as pf:
                         png_data = pf.read()
 
@@ -242,8 +237,7 @@ def upload_files_with_uuid_in_batches(
             # Process files concurrently without artificial delays
             with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
                 futures = [
-                    executor.submit(process_single_uuid, uuid)
-                    for uuid in mapped_uuids
+                    executor.submit(process_single_uuid, uuid) for uuid in mapped_uuids
                 ]
                 for future in as_completed(futures):
                     future.result()
@@ -280,9 +274,7 @@ def upload_files_with_uuid_in_batches(
                         validation_failed_uuids.append(uuid)
 
                 # Validate files concurrently without artificial delays
-                with ThreadPoolExecutor(
-                    max_workers=sub_batch_size
-                ) as executor:
+                with ThreadPoolExecutor(max_workers=sub_batch_size) as executor:
                     futures = [
                         executor.submit(validate_single_uuid, uuid)
                         for uuid in successful_uuids
@@ -349,9 +341,7 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     dynamo_client.deleteReceiptWords(receipt_words)
 
     receipt_word_tags, _ = dynamo_client.listReceiptWordTags()
-    pulumi.log.info(
-        f" - Deleting {len(receipt_word_tags)} receipt word tag items"
-    )
+    pulumi.log.info(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
     dynamo_client.deleteReceiptWordTags(receipt_word_tags)
 
     receipt_letters = dynamo_client.listReceiptLetters()

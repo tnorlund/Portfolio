@@ -16,7 +16,7 @@ This React project. It is a portfolio of projects that Tyler has worked on.
 
 ### **Pytest Optimization System (4x Faster Tests)**
 - **Intelligent Parallelization**: 62.8min → 15.8min test execution
-- **Smart Test Splitting**: 39 integration files across 4 optimal parallel groups  
+- **Smart Test Splitting**: 39 integration files across 4 optimal parallel groups
 - **File Change Detection**: Skip unnecessary tests based on changed files
 - **Advanced Caching**: Environment, dependencies, and test result caching
 
@@ -44,6 +44,32 @@ python scripts/cost_optimizer.py --check-budget
 ```
 
 **Documentation**: See [`PYTEST_OPTIMIZATIONS.md`](PYTEST_OPTIMIZATIONS.md) for optimization details.
+
+## 🎨 Code Formatting Best Practices
+
+### **Automatic Formatting Setup**
+Pre-commit hooks are now installed to automatically format your code before each commit:
+- **Black**: Python code formatter (79-char line limit)
+- **isort**: Import statement organizer (Black-compatible)
+
+### **Quick Commands**
+```bash
+# Format all code
+make format
+
+# Install pre-commit hooks (already done!)
+make install-hooks
+
+# Run formatters manually
+black receipt_dynamo receipt_label infra
+isort receipt_dynamo receipt_label infra
+```
+
+### **Best Practices**
+1. **Pre-commit hooks are active**: Code will be auto-formatted on commit
+2. **CI/CD enforces formatting**: PRs must have properly formatted code
+3. **Use `make format`**: Before pushing if you skip commits
+4. **Configuration**: See `pyproject.toml` and `.pre-commit-config.yaml`
 
 ## MCP servers
 

@@ -59,7 +59,7 @@ def compute_hull_centroid(
         x0, y0 = hull_vertices[0]
         x1, y1 = hull_vertices[1]
         return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
-    
+
     # Compute the polygon centroid using the standard shoelace formula.
     # (hull is in CCW order by definition of 'convex_hull')
     area_sum = 0.0

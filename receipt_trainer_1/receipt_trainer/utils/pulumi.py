@@ -9,9 +9,7 @@ from typing import Any, Dict, Optional
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_trainer.utils.auto_scaling import (
-    AutoScalingManager,
-    generate_training_worker_user_data,
-)
+    AutoScalingManager, generate_training_worker_user_data)
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +55,9 @@ def get_auto_scaling_config(
     config = {
         "queue_url": stack_outputs.get("job_queue_url"),
         "dynamo_table": stack_outputs.get("dynamodb_table_name"),
-        "instance_registry_table": stack_outputs.get(
-            "instance_registry_table_name"
-        ),
+        "instance_registry_table": stack_outputs.get("instance_registry_table_name"),
         "instance_ami": stack_outputs.get("training_ami_id"),
-        "instance_profile": stack_outputs.get(
-            "training_instance_profile_name"
-        ),
+        "instance_profile": stack_outputs.get("training_instance_profile_name"),
         "subnet_id": stack_outputs.get("training_subnet_id"),
         "security_group_id": stack_outputs.get("training_security_group_id"),
         "efs_id": stack_outputs.get("training_efs_id"),
@@ -75,9 +69,7 @@ def get_auto_scaling_config(
     }
 
     # Log available configuration
-    logger.info(
-        f"Loaded configuration: {', '.join(k for k, v in config.items() if v)}"
-    )
+    logger.info(f"Loaded configuration: {', '.join(k for k, v in config.items() if v)}")
 
     # Check for required values
     required_keys = [
@@ -91,9 +83,7 @@ def get_auto_scaling_config(
 
     missing_keys = [k for k in required_keys if not config.get(k)]
     if missing_keys:
-        logger.warning(
-            f"Missing required configuration: {', '.join(missing_keys)}"
-        )
+        logger.warning(f"Missing required configuration: {', '.join(missing_keys)}")
 
     return config
 

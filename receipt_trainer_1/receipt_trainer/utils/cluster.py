@@ -37,9 +37,7 @@ class ClusterManager:
             region: AWS region (optional, will try to autodetect)
         """
         self.registry_table = registry_table
-        self.region = (
-            region or EC2Metadata.get_instance_region() or "us-east-1"
-        )
+        self.region = region or EC2Metadata.get_instance_region() or "us-east-1"
 
         # Initialize coordinator
         self.coordinator = InstanceCoordinator(registry_table, region)
@@ -213,9 +211,7 @@ class ClusterManager:
             table = dynamodb.Table(self.registry_table)
 
             # Filter for instances (exclude task records)
-            response = table.scan(
-                FilterExpression="attribute_not_exists(task_id)"
-            )
+            response = table.scan(FilterExpression="attribute_not_exists(task_id)")
 
             for item in response.get("Items", []):
                 instance_id = item.get("instance_id")
@@ -334,9 +330,7 @@ class ClusterManager:
             return
 
         def leader_loop():
-            while (
-                self.is_leader and not self.coordinator.stop_threads.is_set()
-            ):
+            while self.is_leader and not self.coordinator.stop_threads.is_set():
                 try:
                     # Scan cluster periodically
                     now = int(time.time())
@@ -354,10 +348,7 @@ class ClusterManager:
 
                 # Sleep for a while
                 for _ in range(10):  # Check every 10 seconds
-                    if (
-                        not self.is_leader
-                        or self.coordinator.stop_threads.is_set()
-                    ):
+                    if not self.is_leader or self.coordinator.stop_threads.is_set():
                         break
                     time.sleep(1)
 
@@ -411,20 +402,14 @@ class ClusterManager:
 
                     # Find the best instance for this task
                     if task_type == "training_job":
-                        requirements = task.get("params", {}).get(
-                            "requirements", {}
-                        )
-                        target_instance = self._find_best_instance_for_job(
-                            requirements
-                        )
+                        requirements = task.get("params", {}).get("requirements", {})
+                        target_instance = self._find_best_instance_for_job(requirements)
                     elif task_type == "preprocess_dataset":
                         # Preprocessing can use any instance
                         target_instance = self._find_least_busy_instance()
                     elif task_type == "evaluation":
                         # Evaluations should prefer GPU instances but can use any
-                        target_instance = (
-                            self._find_best_instance_for_evaluation()
-                        )
+                        target_instance = self._find_best_instance_for_evaluation()
                     else:
                         # For unknown task types, use least busy
                         target_instance = self._find_least_busy_instance()
@@ -705,9 +690,7 @@ class ClusterManager:
             logger.error(f"Error cleaning up dead jobs: {e}")
 
     # Task handler methods
-    def _handle_preprocess_task(
-        self, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _handle_preprocess_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle a dataset preprocessing task.
 
@@ -761,9 +744,7 @@ class ClusterManager:
             },
         }
 
-    def _handle_evaluation_task(
-        self, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _handle_evaluation_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle an evaluation task.
 
@@ -776,9 +757,7 @@ class ClusterManager:
         model_path = params.get("model_path")
         dataset_name = params.get("dataset_name")
 
-        logger.info(
-            f"Evaluating model at {model_path} on dataset {dataset_name}"
-        )
+        logger.info(f"Evaluating model at {model_path} on dataset {dataset_name}")
 
         # Actual implementation would evaluate the model and return metrics
         # This is just a placeholder
@@ -795,9 +774,7 @@ class ClusterManager:
             },
         }
 
-    def _handle_cluster_state_task(
-        self, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _handle_cluster_state_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle a cluster state task.
 

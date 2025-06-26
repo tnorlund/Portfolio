@@ -7,10 +7,10 @@ import boto3
 import pytest
 from moto import mock_aws
 from PIL import Image as PIL_Image
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
-
 from receipt_upload.ocr import process_ocr_dict_as_image
 
 # Bar receipt image dimensions (portrait orientation)
@@ -221,9 +221,7 @@ def test_bar_receipt_photo_processing_integration(
             )
 
     # Process OCR data to create Lines, Words, Letters
-    lines, words, letters = process_ocr_dict_as_image(
-        bar_receipt_ocr_data, image_id
-    )
+    lines, words, letters = process_ocr_dict_as_image(bar_receipt_ocr_data, image_id)
 
     # Verify image classification will be PHOTO
     from receipt_upload.route_images import classify_image_layout
@@ -235,9 +233,7 @@ def test_bar_receipt_photo_processing_integration(
     from receipt_upload.receipt_processing.photo import process_photo
 
     # Mock the SQS queue URL since we're not testing the actual queue
-    ocr_job_queue_url = (
-        "https://sqs.us-east-1.amazonaws.com/123456789012/ocr-job-queue"
-    )
+    ocr_job_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/ocr-job-queue"
 
     # Call process_photo directly to test the photo processing path
     try:
@@ -253,9 +249,7 @@ def test_bar_receipt_photo_processing_integration(
 
         # If we get here, photo processing completed successfully
         # Verify the routing decision was updated
-        updated_routing_decision = dynamo_client.getOCRRoutingDecision(
-            image_id, job_id
-        )
+        updated_routing_decision = dynamo_client.getOCRRoutingDecision(image_id, job_id)
         assert (
             updated_routing_decision.receipt_count >= 0
         ), "Receipt count should be set"
@@ -329,9 +323,7 @@ def test_bar_receipt_geometry_error_handling(
             )
 
     # Mock geometry functions to force a geometry error using pytest-mock
-    mock_perspective = mocker.patch(
-        "receipt_upload.geometry.find_perspective_coeffs"
-    )
+    mock_perspective = mocker.patch("receipt_upload.geometry.find_perspective_coeffs")
 
     # Make the geometry function raise a ValueError
     mock_perspective.side_effect = ValueError(
@@ -341,9 +333,7 @@ def test_bar_receipt_geometry_error_handling(
     # Test the photo processing path directly
     from receipt_upload.receipt_processing.photo import process_photo
 
-    ocr_job_queue_url = (
-        "https://sqs.us-east-1.amazonaws.com/123456789012/ocr-job-queue"
-    )
+    ocr_job_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/ocr-job-queue"
 
     # Call process_photo directly - should handle the geometry error gracefully
     try:
@@ -362,9 +352,7 @@ def test_bar_receipt_geometry_error_handling(
         print(f"Exception during processing: {e}")
 
     # Verify the routing decision shows expected results
-    updated_routing_decision = dynamo_client.getOCRRoutingDecision(
-        image_id, job_id
-    )
+    updated_routing_decision = dynamo_client.getOCRRoutingDecision(image_id, job_id)
 
     # The process_photo function should have handled errors gracefully
     print(f"Final routing decision status: {updated_routing_decision.status}")
@@ -381,16 +369,12 @@ def test_bar_receipt_ocr_data_processing(bar_receipt_ocr_data):
     image_id = "12345678-1234-4123-8123-123456789012"  # Valid UUID v4 format
 
     # Process the OCR data
-    lines, words, letters = process_ocr_dict_as_image(
-        bar_receipt_ocr_data, image_id
-    )
+    lines, words, letters = process_ocr_dict_as_image(bar_receipt_ocr_data, image_id)
 
     # Verify we got data
     assert len(lines) > 0, "Should have processed some lines from bar receipt"
     assert len(words) > 0, "Should have processed some words from bar receipt"
-    assert (
-        len(letters) > 0
-    ), "Should have processed some letters from bar receipt"
+    assert len(letters) > 0, "Should have processed some letters from bar receipt"
 
     # Verify structure
     assert all(
