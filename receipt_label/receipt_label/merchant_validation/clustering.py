@@ -58,7 +58,7 @@ def cluster_by_metadata(
             "All items in metadata_list must be ReceiptMetadata objects"
         )
 
-    logger.info(f"Clustering {len(metadata_list)} metadata records")
+    logger.info("Clustering %s metadata records", len(metadata_list))
 
     clusters = []
     used_indices = set()
@@ -81,7 +81,9 @@ def cluster_by_metadata(
                     cluster.append(record2)
                     used_indices.add(j)
             except Exception as e:
-                logger.warning(f"Error comparing records {i} and {j}: {e}")
+                logger.warning(
+                    "Error comparing records %s and %s: %s", i, j, e
+                )
                 continue
 
         clusters.append(cluster)

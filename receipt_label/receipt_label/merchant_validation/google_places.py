@@ -166,7 +166,7 @@ def is_valid_google_match(
                     )
                     return False
         except Exception as e:
-            logger.warning(f"Phone comparison failed: {e}")
+            logger.warning("Phone comparison failed: %s", e)
 
     # Compare merchant names using fuzzy matching
     extracted_name = extracted_data.get("name")
@@ -188,7 +188,7 @@ def is_valid_google_match(
                 )
                 return False
         except Exception as e:
-            logger.warning(f"Name comparison failed: {e}")
+            logger.warning("Name comparison failed: %s", e)
             return False
 
     # Log successful validation
@@ -200,7 +200,7 @@ def is_valid_google_match(
                 for check in validation_checks
             ]
         )
-        logger.debug(f"Validation checks: {check_summary}")
+        logger.debug("Validation checks: %s", check_summary)
 
     return True
 

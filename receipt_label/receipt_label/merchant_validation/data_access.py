@@ -44,7 +44,7 @@ def list_receipt_metadatas(
         result = client_manager.dynamo.listReceiptMetadatas()
         return result[0] if result else []
     except (ClientError, BotoCoreError) as e:
-        logger.error(f"Failed to list receipt metadatas: {e}")
+        logger.error("Failed to list receipt metadatas: %s", e)
         raise
 
 
@@ -79,7 +79,7 @@ def list_receipts_for_merchant_validation(
             )
             receipts.extend(next_receipts)
     except (ClientError, BotoCoreError) as e:
-        logger.error(f"Failed to list receipts: {e}")
+        logger.error("Failed to list receipts: %s", e)
         raise
     # Filter out receipts that have receipt metadata
     try:
@@ -93,7 +93,7 @@ def list_receipts_for_merchant_validation(
             ]
         )
     except (ClientError, BotoCoreError) as e:
-        logger.error(f"Failed to get receipt metadatas: {e}")
+        logger.error("Failed to get receipt metadatas: %s", e)
         raise
     # Create a set of tuples with (image_id, receipt_id) from metadata for efficient lookup
     metadata_keys = {
@@ -265,7 +265,7 @@ def query_records_by_place_id(
             record for record in all_records if record.place_id == place_id
         ]
     except Exception as e:
-        logger.error(f"Failed to query records by place_id {place_id}: {e}")
+        logger.error("Failed to query records by place_id %s: %s", place_id, e)
         raise
 
 
@@ -303,7 +303,7 @@ def list_all_receipt_metadatas(
 
         return all_records, records_by_place_id
     except Exception as e:
-        logger.error(f"Failed to list and group metadata records: {e}")
+        logger.error("Failed to list and group metadata records: %s", e)
         raise
 
 
