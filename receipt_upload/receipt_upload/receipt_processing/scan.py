@@ -7,6 +7,7 @@ from PIL import Image as PIL_Image
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
+
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     join_overlapping_clusters,

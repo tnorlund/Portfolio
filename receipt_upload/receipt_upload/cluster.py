@@ -2,8 +2,8 @@
 import math
 from typing import Dict, List, Optional, Tuple
 
-from PIL import Image as PIL_Image
 from receipt_dynamo.entities import Line
+
 from receipt_upload.geometry import box_points, min_area_rect
 
 
@@ -16,14 +16,14 @@ def dbscan_lines(
 
     Args:
         lines (List[Line]): List of Line objects to cluster.
-        eps (float, optional): Maximum distance between two points to be considered
-            as neighbors. Defaults to 10.0.
-        min_samples (int, optional): Minimum number of points required to form a dense
-            region. Defaults to 2.
+        eps (float, optional): Maximum distance between two points to be
+            considered as neighbors. Defaults to 10.0.
+        min_samples (int, optional): Minimum number of points required to
+            form a dense region. Defaults to 2.
 
     Returns:
-        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists of Line objects.
-            A label of -1 indicates a noise point.
+        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists
+            of Line objects. A label of -1 indicates a noise point.
     """
 
     # Extract centroids for each line.
@@ -38,7 +38,7 @@ def dbscan_lines(
     current_cluster = 1
 
     def region_query(idx: int) -> List[int]:
-        """Returns a list of indices for points within eps distance of points[idx]."""
+        """Returns indices for points within eps distance of points[idx]."""
         neighbors = []
         x1, y1 = points[idx]
         for j in range(n):
@@ -47,36 +47,56 @@ def dbscan_lines(
                 neighbors.append(j)
         return neighbors
 
+    def expand_cluster(point_idx: int, neighbors: List[int], cluster_id: int):
+        """Expand cluster from a core point."""
+        cluster_labels[point_idx] = cluster_id
+        seeds = neighbors.copy()
+
+        while seeds:
+            current_point = seeds.pop(0)
+
+            # Skip if already visited
+            if visited[current_point]:
+                # Assign to cluster if not already assigned
+                if (
+                    cluster_labels[current_point] is None
+                    or cluster_labels[current_point] == -1
+                ):
+                    cluster_labels[current_point] = cluster_id
+                continue
+
+            # Mark as visited and check neighbors
+            visited[current_point] = True
+            new_neighbors = region_query(current_point)
+
+            # If it's a core point, add unvisited neighbors to seeds
+            if len(new_neighbors) >= min_samples:
+                for neighbor in new_neighbors:
+                    if neighbor not in seeds:
+                        seeds.append(neighbor)
+
+            # Assign to cluster
+            if (
+                cluster_labels[current_point] is None
+                or cluster_labels[current_point] == -1
+            ):
+                cluster_labels[current_point] = cluster_id
+
     # DBSCAN algorithm
     for i in range(n):
-        if not visited[i]:
-            visited[i] = True
-            neighbors = region_query(i)
-            if len(neighbors) < min_samples:
-                # Label as noise if not enough neighbors.
-                cluster_labels[i] = -1
-            else:
-                # Start a new cluster and expand it.
-                cluster_labels[i] = current_cluster
-                seeds = neighbors.copy()
-                while seeds:
-                    current_point = seeds.pop(0)
-                    if not visited[current_point]:
-                        visited[current_point] = True
-                        new_neighbors = region_query(current_point)
-                        if len(new_neighbors) >= min_samples:
-                            # Add new neighbors to the seeds list if not
-                            # already present.
-                            for neighbor in new_neighbors:
-                                if neighbor not in seeds:
-                                    seeds.append(neighbor)
-                    # Assign to the cluster if not already assigned.
-                    if (
-                        cluster_labels[current_point] is None
-                        or cluster_labels[current_point] == -1
-                    ):
-                        cluster_labels[current_point] = current_cluster
-                current_cluster += 1
+        if visited[i]:
+            continue
+
+        visited[i] = True
+        neighbors = region_query(i)
+
+        if len(neighbors) < min_samples:
+            # Label as noise if not enough neighbors.
+            cluster_labels[i] = -1
+        else:
+            # Start a new cluster and expand it.
+            expand_cluster(i, neighbors, current_cluster)
+            current_cluster += 1
 
     # Group Line objects by cluster label.
     clusters: Dict[int, List[Line]] = {}
@@ -229,7 +249,7 @@ def join_overlapping_clusters(
         cp1: Tuple[float, float],
         cp2: Tuple[float, float],
     ) -> Optional[Tuple[float, float]]:
-        """Compute intersection point of line segment s->e with line cp1->cp2."""
+        """Compute intersection of line segment s->e with line cp1->cp2."""
         r = subtract(e, s)
         d = subtract(cp2, cp1)
         denominator = cross(r, d)
@@ -250,7 +270,7 @@ def join_overlapping_clusters(
         subject_polygon: List[Tuple[float, float]],
         clip_polygon: List[Tuple[float, float]],
     ) -> List[Tuple[float, float]]:
-        """Clip a polygon with another polygon using Sutherland-Hodgman algorithm."""
+        """Clip a polygon with another using Sutherland-Hodgman algorithm."""
         output_list = subject_polygon[:]
         cp1 = clip_polygon[-1]
         for cp2 in clip_polygon:
@@ -302,8 +322,7 @@ def join_overlapping_clusters(
 
     # Step 4: Compare every pair of clusters and merge if they overlap
     all_ids = list(cluster_bboxes.keys())
-    for i in range(len(all_ids)):
-        cid_a = all_ids[i]
+    for i, cid_a in enumerate(all_ids):
         for j in range(i + 1, len(all_ids)):
             cid_b = all_ids[j]
             if boxes_overlap(

@@ -7,6 +7,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+
 from receipt_upload.utils import image_ocr_to_receipt_ocr
 
 
