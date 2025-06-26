@@ -13,7 +13,10 @@ def get_pr_diff(pr_number: str) -> str:
     """Get PR diff for Claude analysis."""
     try:
         result = subprocess.run(
-            ["gh", "pr", "diff", pr_number], capture_output=True, text=True, check=True
+            ["gh", "pr", "diff", pr_number],
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return result.stdout
     except subprocess.CalledProcessError:

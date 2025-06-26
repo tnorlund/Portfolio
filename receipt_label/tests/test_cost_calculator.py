@@ -179,7 +179,10 @@ class TestAICostCalculator:
     def test_openai_batch_discount_gpt4o(self):
         """Test 50% batch API discount for GPT-4o."""
         regular_cost = self.calculator.calculate_openai_cost(
-            model="gpt-4o", input_tokens=1000, output_tokens=500, is_batch=False
+            model="gpt-4o",
+            input_tokens=1000,
+            output_tokens=500,
+            is_batch=False,
         )
 
         batch_cost = self.calculator.calculate_openai_cost(
@@ -192,11 +195,17 @@ class TestAICostCalculator:
     def test_openai_batch_discount_gpt35_turbo(self):
         """Test 50% batch API discount for GPT-3.5-turbo."""
         regular_cost = self.calculator.calculate_openai_cost(
-            model="gpt-3.5-turbo", input_tokens=2000, output_tokens=1000, is_batch=False
+            model="gpt-3.5-turbo",
+            input_tokens=2000,
+            output_tokens=1000,
+            is_batch=False,
         )
 
         batch_cost = self.calculator.calculate_openai_cost(
-            model="gpt-3.5-turbo", input_tokens=2000, output_tokens=1000, is_batch=True
+            model="gpt-3.5-turbo",
+            input_tokens=2000,
+            output_tokens=1000,
+            is_batch=True,
         )
 
         assert batch_cost == pytest.approx(regular_cost * 0.5, rel=1e-6)
@@ -229,7 +238,9 @@ class TestAICostCalculator:
     def test_anthropic_claude_35_sonnet_20241022_cost(self):
         """Test Claude 3.5 Sonnet (20241022) cost calculation."""
         cost = self.calculator.calculate_anthropic_cost(
-            model="claude-3-5-sonnet-20241022", input_tokens=2000, output_tokens=1000
+            model="claude-3-5-sonnet-20241022",
+            input_tokens=2000,
+            output_tokens=1000,
         )
         # $0.003 * 2 + $0.015 * 1 = $0.006 + $0.015 = $0.021
         assert cost == pytest.approx(0.021, rel=1e-6)
@@ -257,7 +268,9 @@ class TestAICostCalculator:
     def test_anthropic_claude_3_haiku_20240307_cost(self):
         """Test Claude 3 Haiku (20240307) cost calculation."""
         cost = self.calculator.calculate_anthropic_cost(
-            model="claude-3-haiku-20240307", input_tokens=5000, output_tokens=2500
+            model="claude-3-haiku-20240307",
+            input_tokens=5000,
+            output_tokens=2500,
         )
         # $0.00025 * 5 + $0.00125 * 2.5 = $0.00125 + $0.003125 = $0.004375
         assert cost == pytest.approx(0.004375, rel=1e-6)
@@ -285,7 +298,9 @@ class TestAICostCalculator:
     def test_anthropic_claude_3_opus_20240229_cost(self):
         """Test Claude 3 Opus (20240229) cost calculation."""
         cost = self.calculator.calculate_anthropic_cost(
-            model="claude-3-opus-20240229", input_tokens=1000, output_tokens=500
+            model="claude-3-opus-20240229",
+            input_tokens=1000,
+            output_tokens=500,
         )
         # $0.015 input + $0.075 output = $0.015 + $0.0375 = $0.0525
         assert cost == pytest.approx(0.0525, rel=1e-6)
@@ -313,7 +328,9 @@ class TestAICostCalculator:
     def test_anthropic_claude_3_sonnet_20240229_cost(self):
         """Test Claude 3 Sonnet (20240229) cost calculation."""
         cost = self.calculator.calculate_anthropic_cost(
-            model="claude-3-sonnet-20240229", input_tokens=1000, output_tokens=500
+            model="claude-3-sonnet-20240229",
+            input_tokens=1000,
+            output_tokens=500,
         )
         # $0.003 input + $0.015 output = $0.003 + $0.0075 = $0.0105
         assert cost == pytest.approx(0.0105, rel=1e-6)
@@ -510,7 +527,9 @@ class TestAICostCalculator:
 
     def test_openai_total_tokens_fallback_with_output(self):
         """Test OpenAI cost using total_tokens fallback for completion models."""
-        cost = self.calculator.calculate_openai_cost(model="gpt-4o", total_tokens=1000)
+        cost = self.calculator.calculate_openai_cost(
+            model="gpt-4o", total_tokens=1000
+        )
         # 50/50 split: 500 input + 500 output
         # $0.005 * 0.5 + $0.015 * 0.5 = $0.0025 + $0.0075 = $0.01
         assert cost == pytest.approx(0.01, rel=1e-6)
@@ -579,7 +598,9 @@ class TestAICostCalculator:
         costs = []
         for i in range(1000):
             cost = self.calculator.calculate_anthropic_cost(
-                model="claude-3.5-sonnet", input_tokens=1000 + i, output_tokens=500 + i
+                model="claude-3.5-sonnet",
+                input_tokens=1000 + i,
+                output_tokens=500 + i,
             )
             costs.append(cost)
 
@@ -648,24 +669,37 @@ class TestAICostCalculator:
     def test_get_model_context_window_openai(self):
         """Test getting context window for OpenAI models."""
         assert self.calculator.get_model_context_window("gpt-4o") == 128000
-        assert self.calculator.get_model_context_window("gpt-3.5-turbo") == 4096
-        assert self.calculator.get_model_context_window("gpt-4-turbo") == 128000
+        assert (
+            self.calculator.get_model_context_window("gpt-3.5-turbo") == 4096
+        )
+        assert (
+            self.calculator.get_model_context_window("gpt-4-turbo") == 128000
+        )
 
     def test_get_model_context_window_anthropic(self):
         """Test getting context window for Anthropic models."""
-        assert self.calculator.get_model_context_window("claude-3.5-sonnet") == 200000
-        assert self.calculator.get_model_context_window("claude-3-haiku") == 200000
+        assert (
+            self.calculator.get_model_context_window("claude-3.5-sonnet")
+            == 200000
+        )
+        assert (
+            self.calculator.get_model_context_window("claude-3-haiku")
+            == 200000
+        )
         assert self.calculator.get_model_context_window("claude-2.1") == 200000
 
     def test_get_model_context_window_unknown(self):
         """Test getting context window for unknown model."""
-        assert self.calculator.get_model_context_window("unknown-model") is None
+        assert (
+            self.calculator.get_model_context_window("unknown-model") is None
+        )
 
     def test_get_model_context_window_partial_match(self):
         """Test getting context window with partial model name match."""
         # Should match "claude-3-opus" in the context windows dict
         assert (
-            self.calculator.get_model_context_window("claude-3-opus-20240229") == 200000
+            self.calculator.get_model_context_window("claude-3-opus-20240229")
+            == 200000
         )
 
     def test_get_pricing_info_openai(self):
@@ -728,11 +762,15 @@ class TestAICostCalculator:
 
             # Embedding models don't have output pricing
             if "embedding" not in model:
-                assert "output" in pricing, f"Model {model} missing output pricing"
+                assert (
+                    "output" in pricing
+                ), f"Model {model} missing output pricing"
                 assert isinstance(
                     pricing["output"], (int, float)
                 ), f"Model {model} output price not numeric"
-                assert pricing["output"] >= 0, f"Model {model} output price negative"
+                assert (
+                    pricing["output"] >= 0
+                ), f"Model {model} output price negative"
 
     def test_pricing_data_completeness_anthropic(self):
         """Test that all Anthropic models have required pricing data."""
@@ -746,7 +784,9 @@ class TestAICostCalculator:
                 pricing["output"], (int, float)
             ), f"Model {model} output price not numeric"
             assert pricing["input"] >= 0, f"Model {model} input price negative"
-            assert pricing["output"] >= 0, f"Model {model} output price negative"
+            assert (
+                pricing["output"] >= 0
+            ), f"Model {model} output price negative"
 
     def test_pricing_data_completeness_google_places(self):
         """Test that all Google Places operations have pricing data."""

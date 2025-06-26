@@ -2,8 +2,10 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.label_count_cache import (LabelCountCache,
-                                                       itemToLabelCountCache)
+from receipt_dynamo.entities.label_count_cache import (
+    LabelCountCache,
+    itemToLabelCountCache,
+)
 
 
 @pytest.fixture

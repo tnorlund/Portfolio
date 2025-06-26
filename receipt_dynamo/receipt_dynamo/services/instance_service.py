@@ -108,7 +108,9 @@ class InstanceService:
         """
         self.dynamo_client.updateInstance(instance)
 
-    def update_instance_status(self, instance_id: str, status: str) -> Instance:
+    def update_instance_status(
+        self, instance_id: str, status: str
+    ) -> Instance:
         """
         Update the status of an instance.
 
@@ -217,7 +219,9 @@ class InstanceService:
             instance_type, limit, last_evaluated_key
         )
 
-    def find_idle_instances(self, limit: Optional[int] = None) -> List[Instance]:
+    def find_idle_instances(
+        self, limit: Optional[int] = None
+    ) -> List[Instance]:
         """
         Find instances that are idle (running but not processing jobs).
 

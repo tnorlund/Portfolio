@@ -35,7 +35,9 @@ def extract_validation_details(validation_analysis):
         hasattr(validation_analysis, "overall_reasoning")
         and validation_analysis.overall_reasoning
     ):
-        logger.info(f"Validation reasoning: {validation_analysis.overall_reasoning}")
+        logger.info(
+            f"Validation reasoning: {validation_analysis.overall_reasoning}"
+        )
 
     return {
         "status": validation_status,
@@ -66,7 +68,9 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
         logger.info(f"Processing receipt {receipt_id} from image {image_id}")
 
         # Check if analysis already exists
-        existing_analysis = client.getReceiptAnalysis(image_id, int(receipt_id))
+        existing_analysis = client.getReceiptAnalysis(
+            image_id, int(receipt_id)
+        )
 
         # Only process if there's no complete analysis already
         if (
@@ -89,7 +93,9 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
                 "success": True,
                 "message": f"Receipt {receipt_id} already analyzed",
                 "analysis_summary": {
-                    "has_label_analysis": bool(existing_analysis.label_analysis),
+                    "has_label_analysis": bool(
+                        existing_analysis.label_analysis
+                    ),
                     "has_structure_analysis": bool(
                         existing_analysis.structure_analysis
                     ),
@@ -145,8 +151,12 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
                 hasattr(analysis_result, "field_analysis")
                 and analysis_result.field_analysis
             ):
-                field_count = len(getattr(analysis_result.field_analysis, "labels", []))
-                logger.info(f"Field analysis found {field_count} labeled fields")
+                field_count = len(
+                    getattr(analysis_result.field_analysis, "labels", [])
+                )
+                logger.info(
+                    f"Field analysis found {field_count} labeled fields"
+                )
                 response["analysis_summary"]["field_count"] = field_count
 
             # Add structure analysis details if available
@@ -157,7 +167,9 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
                 section_count = len(
                     getattr(analysis_result.structure_analysis, "sections", [])
                 )
-                logger.info(f"Structure analysis found {section_count} sections")
+                logger.info(
+                    f"Structure analysis found {section_count} sections"
+                )
                 response["analysis_summary"]["section_count"] = section_count
 
             # Add line item analysis details if available
@@ -168,7 +180,9 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
                 item_count = len(
                     getattr(analysis_result.line_item_analysis, "items", [])
                 )
-                logger.info(f"Line item analysis found {item_count} line items")
+                logger.info(
+                    f"Line item analysis found {item_count} line items"
+                )
                 response["analysis_summary"]["line_item_count"] = item_count
 
                 # Add financial details if available
@@ -194,7 +208,9 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
                     analysis_result.validation_analysis
                 )
                 if validation_details:
-                    response["analysis_summary"]["validation"] = validation_details
+                    response["analysis_summary"][
+                        "validation"
+                    ] = validation_details
 
             return response
         else:

@@ -53,10 +53,18 @@ def is_point_in_quadrilateral(point_x, point_y, corners):
 
         # Check if the point is on an edge
         # Calculate the distance from point to line segment
-        if yi == yj and yi == point_y and min(xi, xj) <= point_x <= max(xi, xj):
+        if (
+            yi == yj
+            and yi == point_y
+            and min(xi, xj) <= point_x <= max(xi, xj)
+        ):
             return True  # Point is on a horizontal edge
 
-        if xi == xj and xi == point_x and min(yi, yj) <= point_y <= max(yi, yj):
+        if (
+            xi == xj
+            and xi == point_x
+            and min(yi, yj) <= point_y <= max(yi, yj)
+        ):
             return True  # Point is on a vertical edge
 
         # Check if ray from point crosses this edge
@@ -194,7 +202,11 @@ def refine_receipt_ocr(
             print(f"Letters detected: {len(new_receipt_letters)}")
 
         # Validate OCR results
-        if not new_receipt_lines or not new_receipt_words or not new_receipt_letters:
+        if (
+            not new_receipt_lines
+            or not new_receipt_words
+            or not new_receipt_letters
+        ):
             error_msg = "OCR process produced empty results"
             if debug:
                 print(f"\nError: {error_msg}")
@@ -256,7 +268,9 @@ def commit_ocr_changes(client, results, debug=False):
         Dictionary with counts of deleted and created entities and success status
     """
     if debug:
-        print("\n--- Committing changes to database using batch operations ---")
+        print(
+            "\n--- Committing changes to database using batch operations ---"
+        )
 
     commit_results = {
         "deleted": {"tags": 0, "letters": 0, "words": 0, "lines": 0},
@@ -287,7 +301,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Deleting {len(entities_to_delete['tags'])} tags in batch..."
                     )
                 client.deleteReceiptWordTags(entities_to_delete["tags"])
-                commit_results["deleted"]["tags"] = len(entities_to_delete["tags"])
+                commit_results["deleted"]["tags"] = len(
+                    entities_to_delete["tags"]
+                )
 
             # Delete letters
             if entities_to_delete["letters"]:
@@ -307,7 +323,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Deleting {len(entities_to_delete['words'])} words in batch..."
                     )
                 client.deleteReceiptWords(entities_to_delete["words"])
-                commit_results["deleted"]["words"] = len(entities_to_delete["words"])
+                commit_results["deleted"]["words"] = len(
+                    entities_to_delete["words"]
+                )
 
             # Delete lines
             if entities_to_delete["lines"]:
@@ -316,7 +334,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Deleting {len(entities_to_delete['lines'])} lines in batch..."
                     )
                 client.deleteReceiptLines(entities_to_delete["lines"])
-                commit_results["deleted"]["lines"] = len(entities_to_delete["lines"])
+                commit_results["deleted"]["lines"] = len(
+                    entities_to_delete["lines"]
+                )
 
         except Exception as delete_error:
             if debug:
@@ -334,7 +354,9 @@ def commit_ocr_changes(client, results, debug=False):
                     hasattr(line, attr)
                     for attr in ["image_id", "line_id", "receipt_id"]
                 ):
-                    raise ValueError(f"Line missing required attributes: {vars(line)}")
+                    raise ValueError(
+                        f"Line missing required attributes: {vars(line)}"
+                    )
 
             for word in entities_to_create["words"]:
                 if not all(
@@ -346,7 +368,9 @@ def commit_ocr_changes(client, results, debug=False):
                         "receipt_id",
                     ]
                 ):
-                    raise ValueError(f"Word missing required attributes: {vars(word)}")
+                    raise ValueError(
+                        f"Word missing required attributes: {vars(word)}"
+                    )
 
             for letter in entities_to_create["letters"]:
                 if not all(
@@ -370,7 +394,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Creating {len(entities_to_create['lines'])} lines in batch..."
                     )
                 client.addReceiptLines(entities_to_create["lines"])
-                commit_results["created"]["lines"] = len(entities_to_create["lines"])
+                commit_results["created"]["lines"] = len(
+                    entities_to_create["lines"]
+                )
 
             # Create words
             if entities_to_create["words"]:
@@ -379,7 +405,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Creating {len(entities_to_create['words'])} words in batch..."
                     )
                 client.addReceiptWords(entities_to_create["words"])
-                commit_results["created"]["words"] = len(entities_to_create["words"])
+                commit_results["created"]["words"] = len(
+                    entities_to_create["words"]
+                )
 
             # Create letters
             if entities_to_create["letters"]:
@@ -399,7 +427,9 @@ def commit_ocr_changes(client, results, debug=False):
                         f"Creating {len(entities_to_create['tags'])} tags in batch..."
                     )
                 client.addReceiptWordTags(entities_to_create["tags"])
-                commit_results["created"]["tags"] = len(entities_to_create["tags"])
+                commit_results["created"]["tags"] = len(
+                    entities_to_create["tags"]
+                )
 
         except Exception as creation_error:
             if debug:
@@ -596,14 +626,18 @@ def process_ocr_results(
                 new_cx, new_cy = new_word.calculate_centroid()
 
                 # Calculate distance
-                distance = ((new_cx - old_cx) ** 2 + (new_cy - old_cy) ** 2) ** 0.5
+                distance = (
+                    (new_cx - old_cx) ** 2 + (new_cy - old_cy) ** 2
+                ) ** 0.5
 
                 # Apply text and spatial adjustments
                 adjusted_distance = distance
 
                 # Text similarity boost
                 if new_word.text.lower() == old_word.text.lower():
-                    adjusted_distance *= 0.2  # 80% reduction for exact text match
+                    adjusted_distance *= (
+                        0.2  # 80% reduction for exact text match
+                    )
                     if distance < EXACT_MATCH_THRESHOLD:
                         best_match = new_word
                         best_match_distance = distance
@@ -615,7 +649,9 @@ def process_ocr_results(
                     new_word.text.lower() in old_word.text.lower()
                     or old_word.text.lower() in new_word.text.lower()
                 ):
-                    adjusted_distance *= 0.7  # 30% reduction for partial text match
+                    adjusted_distance *= (
+                        0.7  # 30% reduction for partial text match
+                    )
 
                 # Line context bonus
                 if abs(new_cy - old_cy) < 0.02:  # Same vertical position
@@ -650,13 +686,15 @@ def process_ocr_results(
                     best_match = new_word
                     best_match_distance = adjusted_distance
                     if in_quad:
-                        best_match_reason = f"In quad + distance: {distance:.4f}"
-                    elif new_word.text.lower() == old_word.text.lower():
                         best_match_reason = (
-                            f"Text match: '{old_word.text}' + distance: {distance:.4f}"
+                            f"In quad + distance: {distance:.4f}"
                         )
+                    elif new_word.text.lower() == old_word.text.lower():
+                        best_match_reason = f"Text match: '{old_word.text}' + distance: {distance:.4f}"
                     else:
-                        best_match_reason = f"Centroid distance: {distance:.4f}"
+                        best_match_reason = (
+                            f"Centroid distance: {distance:.4f}"
+                        )
 
             # Create tag if good match found
             if best_match and best_match_distance < PROXIMITY_MATCH_THRESHOLD:
@@ -687,7 +725,9 @@ def process_ocr_results(
                     "old_word": f"'{old_tag.tag}' for word '{old_word.text}'",
                     "new_word": f"'{best_match.text}'",
                     "reason": best_match_reason,
-                    "human_validated": getattr(old_tag, "human_validated", False),
+                    "human_validated": getattr(
+                        old_tag, "human_validated", False
+                    ),
                 }
 
                 tags_transferred += 1
@@ -700,9 +740,13 @@ def process_ocr_results(
         print(f"Transferred {validated_tags_transferred} human-validated tags")
 
     # Then, process non-validated tags
-    non_validated_tags_transferred = process_tags_for_transfer(non_validated_tag_keys)
+    non_validated_tags_transferred = process_tags_for_transfer(
+        non_validated_tag_keys
+    )
     if debug:
-        print(f"Transferred {non_validated_tags_transferred} non-validated tags")
+        print(
+            f"Transferred {non_validated_tags_transferred} non-validated tags"
+        )
 
     # Debug: Count tags by type
     if debug:
@@ -799,7 +843,9 @@ def process_ocr_results(
         if untransferred_tags:
             print("\nTags that were not transferred:")
             for tag_info in untransferred_tags:
-                validation_status = "VALIDATED" if tag_info[2] else "non-validated"
+                validation_status = (
+                    "VALIDATED" if tag_info[2] else "non-validated"
+                )
                 print(
                     f"  - {tag_info[0]} for word '{tag_info[1]}' ({validation_status})"
                 )

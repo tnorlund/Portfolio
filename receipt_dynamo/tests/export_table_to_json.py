@@ -11,7 +11,9 @@ IMAGE_ID = "2f05267d-86df-42b3-8a14-e29c5ea567b3"
 
 if __name__ == "__main__":
     # 1) Grab data from Dynamo or wherever
-    dynamo_client = DynamoClient(os.getenv("DYNAMO_DB_TABLE"))  # Adjust as needed
+    dynamo_client = DynamoClient(
+        os.getenv("DYNAMO_DB_TABLE")
+    )  # Adjust as needed
 
     # For example, get an image and lines from your DB:
     details = dynamo_client.getImageDetails(IMAGE_ID)
@@ -43,7 +45,9 @@ if __name__ == "__main__":
         Bucket=image.raw_s3_bucket,
         Prefix=f"raw/{image.image_id}",
     )
-    gpt_objects = [obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]]
+    gpt_objects = [
+        obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]
+    ]
     for obj in gpt_objects:
         response = s3.get_object(
             Bucket=image.raw_s3_bucket,
@@ -90,7 +94,9 @@ if __name__ == "__main__":
         print(
             f"Downloading raw receipt file from {receipt.raw_s3_bucket}/{receipt.raw_s3_key} to {receipt_local_path}"
         )
-        s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path)
+        s3.download_file(
+            receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path
+        )
     # -------------------------------------------------------------------------
 
     with open(os.path.join(json_dir, f"{IMAGE_ID}_RESULTS.json"), "w") as f:
@@ -147,8 +153,12 @@ if __name__ == "__main__":
                     }
                     for word in receipt_words
                 ],
-                "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
-                "receipt_letters": [dict(letter) for letter in receipt_letters],
+                "receipt_word_tags": [
+                    dict(word_tag) for word_tag in receipt_word_tags
+                ],
+                "receipt_letters": [
+                    dict(letter) for letter in receipt_letters
+                ],
             },
             f,
             indent=4,

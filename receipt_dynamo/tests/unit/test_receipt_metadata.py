@@ -4,8 +4,10 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.entities.receipt_metadata import (ReceiptMetadata,
-                                                      itemToReceiptMetadata)
+from receipt_dynamo.entities.receipt_metadata import (
+    ReceiptMetadata,
+    itemToReceiptMetadata,
+)
 
 
 @pytest.fixture
@@ -77,7 +79,8 @@ def test_key_and_gsi_keys(example_receipt_metadata):
 
     gsi1 = m.gsi1_key()
     assert (
-        gsi1["GSI1PK"]["S"] == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
+        gsi1["GSI1PK"]["S"]
+        == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
     )
     assert "IMAGE#" in gsi1["GSI1SK"]["S"]
     assert "RECEIPT#" in gsi1["GSI1SK"]["S"]

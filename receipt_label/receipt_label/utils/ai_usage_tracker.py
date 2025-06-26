@@ -79,7 +79,9 @@ class AIUsageTracker:
         if self.track_to_dynamo and self.dynamo_client:
             try:
                 item = metric.to_dynamodb_item()
-                self.dynamo_client.put_item(TableName=self.table_name, Item=item)
+                self.dynamo_client.put_item(
+                    TableName=self.table_name, Item=item
+                )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -145,7 +147,9 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(usage, "completion_tokens", None)
+                        output_tokens = getattr(
+                            usage, "completion_tokens", None
+                        )
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -236,7 +240,9 @@ class AIUsageTracker:
                     metadata={
                         "function": func.__name__,
                         "input_count": (
-                            len(kwargs.get("input", [])) if "input" in kwargs else None
+                            len(kwargs.get("input", []))
+                            if "input" in kwargs
+                            else None
                         ),
                     },
                 )
