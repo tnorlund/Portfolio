@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_status import JobStatus
+from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -342,15 +342,46 @@ class _Job(DynamoClientProtocol):
         Returns:
             Tuple[Job, List[JobStatus]]: A tuple containing the job and a list of its status updates
         """
-        # Use the protected method instead of trying to access a private method
-        job_item, statuses = self._getJobWithStatus(job_id)
+        if job_id is None:
+            raise ValueError("Job ID is required and cannot be None.")
 
-        if job_item is None:
-            raise ValueError(f"Job with ID {job_id} does not exist.")
+        # Validate job_id as a UUID
+        assert_valid_uuid(job_id)
 
-        job = itemToJob(job_item)
+        try:
+            # Get the job first
+            job = self.getJob(job_id)
 
-        return job, statuses
+            # Get the job status updates
+            status_response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"JOB#{job_id}"},
+                    ":sk": {"S": "STATUS#"},
+                },
+            )
+
+            statuses = []
+            if "Items" in status_response:
+                # Convert DynamoDB items to JobStatus objects
+                for item in status_response["Items"]:
+                    statuses.append(itemToJobStatus(item))
+
+            return job, statuses
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+            elif error_code == "ValidationException":
+                raise Exception(f"Validation error: {e}") from e
+            elif error_code == "InternalServerError":
+                raise Exception(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise Exception(f"Access denied: {e}") from e
+            else:
+                raise Exception(f"Error getting job with status: {e}") from e
 
     def listJobs(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
