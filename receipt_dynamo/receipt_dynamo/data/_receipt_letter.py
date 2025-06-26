@@ -1,5 +1,4 @@
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -56,9 +55,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letter cannot be added to DynamoDB.
         """
         if letter is None:
-            raise ValueError("letter parameter is required and cannot be None.")
+            raise ValueError(
+                "letter parameter is required and cannot be None."
+            )
         if not isinstance(letter, ReceiptLetter):
-            raise ValueError("letter must be an instance of the ReceiptLetter class.")
+            raise ValueError(
+                "letter must be an instance of the ReceiptLetter class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -72,7 +75,9 @@ class _ReceiptLetter(DynamoClientProtocol):
                     f"ReceiptLetter with ID {letter.letter_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not add receipt letter to DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not add receipt letter to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -84,7 +89,9 @@ class _ReceiptLetter(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise Exception(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Could not add receipt letter to DynamoDB: {e}") from e
+                raise Exception(
+                    f"Could not add receipt letter to DynamoDB: {e}"
+                ) from e
 
     def addReceiptLetters(self, letters: list[ReceiptLetter]):
         """Adds multiple ReceiptLetters to DynamoDB in batches.
@@ -97,9 +104,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letters cannot be added to DynamoDB.
         """
         if letters is None:
-            raise ValueError("letters parameter is required and cannot be None.")
+            raise ValueError(
+                "letters parameter is required and cannot be None."
+            )
         if not isinstance(letters, list):
-            raise ValueError("letters must be a list of ReceiptLetter instances.")
+            raise ValueError(
+                "letters must be a list of ReceiptLetter instances."
+            )
         if not all(isinstance(lt, ReceiptLetter) for lt in letters):
             raise ValueError(
                 "All letters must be instances of the ReceiptLetter class."
@@ -107,13 +118,17 @@ class _ReceiptLetter(DynamoClientProtocol):
         try:
             for i in range(0, len(letters), 25):
                 chunk = letters[i : i + 25]
-                request_items = [{"PutRequest": {"Item": lt.to_item()}} for lt in chunk]
+                request_items = [
+                    {"PutRequest": {"Item": lt.to_item()}} for lt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -143,9 +158,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letter cannot be updated in DynamoDB.
         """
         if letter is None:
-            raise ValueError("letter parameter is required and cannot be None.")
+            raise ValueError(
+                "letter parameter is required and cannot be None."
+            )
         if not isinstance(letter, ReceiptLetter):
-            raise ValueError("letter must be an instance of the ReceiptLetter class.")
+            raise ValueError(
+                "letter must be an instance of the ReceiptLetter class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -184,9 +203,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letters cannot be updated in DynamoDB.
         """
         if letters is None:
-            raise ValueError("letters parameter is required and cannot be None.")
+            raise ValueError(
+                "letters parameter is required and cannot be None."
+            )
         if not isinstance(letters, list):
-            raise ValueError("letters must be a list of ReceiptLetter instances.")
+            raise ValueError(
+                "letters must be a list of ReceiptLetter instances."
+            )
         if not all(isinstance(lt, ReceiptLetter) for lt in letters):
             raise ValueError(
                 "All letters must be instances of the ReceiptLetter class."
@@ -214,7 +237,9 @@ class _ReceiptLetter(DynamoClientProtocol):
                             "One or more ReceiptLetters do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                    raise Exception(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -246,9 +271,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letter cannot be deleted from DynamoDB.
         """
         if letter is None:
-            raise ValueError("letter parameter is required and cannot be None.")
+            raise ValueError(
+                "letter parameter is required and cannot be None."
+            )
         if not isinstance(letter, ReceiptLetter):
-            raise ValueError("letter must be an instance of the ReceiptLetter class.")
+            raise ValueError(
+                "letter must be an instance of the ReceiptLetter class."
+            )
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -287,9 +316,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the letters cannot be deleted from DynamoDB.
         """
         if letters is None:
-            raise ValueError("letters parameter is required and cannot be None.")
+            raise ValueError(
+                "letters parameter is required and cannot be None."
+            )
         if not isinstance(letters, list):
-            raise ValueError("letters must be a list of ReceiptLetter instances.")
+            raise ValueError(
+                "letters must be a list of ReceiptLetter instances."
+            )
         if not all(isinstance(lt, ReceiptLetter) for lt in letters):
             raise ValueError(
                 "All letters must be instances of the ReceiptLetter class."
@@ -297,13 +330,17 @@ class _ReceiptLetter(DynamoClientProtocol):
         try:
             for i in range(0, len(letters), 25):
                 chunk = letters[i : i + 25]
-                request_items = [{"DeleteRequest": {"Key": lt.key()}} for lt in chunk]
+                request_items = [
+                    {"DeleteRequest": {"Key": lt.key()}} for lt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -348,22 +385,32 @@ class _ReceiptLetter(DynamoClientProtocol):
             Exception: If the receipt letter cannot be retrieved from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if line_id is None:
-            raise ValueError("line_id parameter is required and cannot be None.")
+            raise ValueError(
+                "line_id parameter is required and cannot be None."
+            )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
-            raise ValueError("word_id parameter is required and cannot be None.")
+            raise ValueError(
+                "word_id parameter is required and cannot be None."
+            )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
         if letter_id is None:
-            raise ValueError("letter_id parameter is required and cannot be None.")
+            raise ValueError(
+                "letter_id parameter is required and cannot be None."
+            )
         if not isinstance(letter_id, int):
             raise ValueError("letter_id must be an integer.")
         try:
@@ -382,7 +429,9 @@ class _ReceiptLetter(DynamoClientProtocol):
             if "Item" in response:
                 return itemToReceiptLetter(response["Item"])
             else:
-                raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
+                raise ValueError(
+                    f"ReceiptLetter with ID {letter_id} not found"
+                )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
@@ -402,7 +451,9 @@ class _ReceiptLetter(DynamoClientProtocol):
         """Returns all ReceiptLetters from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         receipt_letters = []
@@ -426,10 +477,15 @@ class _ReceiptLetter(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the receipt letters.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     receipt_letters.extend(
-                        [itemToReceiptLetter(item) for item in response["Items"]]
+                        [
+                            itemToReceiptLetter(item)
+                            for item in response["Items"]
+                        ]
                     )
                 last_evaluated_key = None
             else:
@@ -458,18 +514,26 @@ class _ReceiptLetter(DynamoClientProtocol):
     ) -> list[ReceiptLetter]:
         """Returns all ReceiptLetters for a given word."""
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if line_id is None:
-            raise ValueError("line_id parameter is required and cannot be None.")
+            raise ValueError(
+                "line_id parameter is required and cannot be None."
+            )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
-            raise ValueError("word_id parameter is required and cannot be None.")
+            raise ValueError(
+                "word_id parameter is required and cannot be None."
+            )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
 

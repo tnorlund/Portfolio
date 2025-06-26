@@ -1,10 +1,11 @@
 """Unit tests for data processing utilities."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 from receipt_trainer.utils.data import (
-    process_receipt_details,
     create_sliding_windows,
+    process_receipt_details,
 )
 
 

@@ -1,18 +1,17 @@
 """Utility for submitting training jobs to SQS queue."""
 
-import os
-import json
-import uuid
-import logging
 import argparse
-from typing import Dict, Any, Optional, List, Union, Tuple
+import itertools
+import json
+import logging
+import os
+import uuid
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
-import itertools
-
-from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_trainer.jobs.job import Job, JobStatus, JobPriority
+from receipt_trainer.config import DataConfig, TrainingConfig
+from receipt_trainer.jobs.job import Job, JobPriority, JobStatus
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
 
 logger = logging.getLogger(__name__)

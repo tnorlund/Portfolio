@@ -18,18 +18,18 @@ Usage:
   python manage_checkpoints.py download --job-id JOB_ID [--checkpoint NAME] [--output DIR] [--dynamo-table TABLE]
 """
 
-import os
-import sys
-import json
-import time
 import argparse
 import datetime
+import json
 import logging
-from typing import List, Dict, Any, Optional
+import os
+import sys
+import time
+from typing import Any, Dict, List, Optional
 
+from receipt_dynamo.services.job_service import JobService
 from receipt_trainer.utils.checkpoint import CheckpointManager
 from receipt_trainer.utils.infrastructure import EFSManager
-from receipt_dynamo.services.job_service import JobService
 from tabulate import tabulate
 
 # Set up logging

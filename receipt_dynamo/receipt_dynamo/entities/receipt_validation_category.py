@@ -62,7 +62,9 @@ class ReceiptValidationCategory:
 
         if not isinstance(validation_timestamp, str):
             raise ValueError("validation_timestamp must be a string")
-        self.validation_timestamp = validation_timestamp or datetime.now().isoformat()
+        self.validation_timestamp = (
+            validation_timestamp or datetime.now().isoformat()
+        )
 
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary")
@@ -93,7 +95,9 @@ class ReceiptValidationCategory:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI3SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
     def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
@@ -107,7 +111,9 @@ class ReceiptValidationCategory:
         elif isinstance(value, bool):
             return {"BOOL": value}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -151,7 +157,9 @@ class ReceiptValidationCategory:
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
         # Extract complex structures with recursive conversion
-        result_summary = cls._dynamo_to_python(item.get("result_summary", {"M": {}}))
+        result_summary = cls._dynamo_to_python(
+            item.get("result_summary", {"M": {}})
+        )
         metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
 
         # Create the ReceiptValidationCategory
@@ -307,11 +315,15 @@ def itemToReceiptValidationCategory(
 
     # Get image_id safely
     image_id = (
-        item["PK"]["S"].split("#")[1] if len(item["PK"]["S"].split("#")) > 1 else None
+        item["PK"]["S"].split("#")[1]
+        if len(item["PK"]["S"].split("#")) > 1
+        else None
     )
     if image_id is None and "image_id" in item:
         image_id = (
-            item["image_id"]["S"] if "S" in item["image_id"] else item["image_id"]
+            item["image_id"]["S"]
+            if "S" in item["image_id"]
+            else item["image_id"]
         )
 
     # Get field_name safely

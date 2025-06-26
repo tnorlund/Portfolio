@@ -1,14 +1,18 @@
 """Unit tests for AWS utilities."""
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import patch, Mock
-from receipt_trainer.utils.aws import load_env, get_dynamo_table, get_s3_bucket
+from receipt_trainer.utils.aws import get_dynamo_table, get_s3_bucket, load_env
 
 
 @pytest.fixture
 def mock_pulumi_outputs():
     """Create mock Pulumi stack outputs."""
-    return {"dynamodb_table_name": "test-table", "s3_bucket_name": "test-bucket"}
+    return {
+        "dynamodb_table_name": "test-table",
+        "s3_bucket_name": "test-bucket",
+    }
 
 
 @patch("receipt_trainer.utils.aws._load_pulumi_env")

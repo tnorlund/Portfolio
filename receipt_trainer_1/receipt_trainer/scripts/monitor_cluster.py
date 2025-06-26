@@ -1,23 +1,22 @@
 #!/usr/bin/env python
 """Cluster monitoring script for distributed training."""
 
-import os
-import sys
-import time
+import argparse
 import json
 import logging
-import argparse
+import os
+import sys
 import threading
-from typing import Dict, List, Any, Optional
+import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import boto3
-from tabulate import tabulate
-
 from receipt_trainer.utils.infrastructure import (
-    TrainingEnvironment,
     EC2Metadata,
+    TrainingEnvironment,
 )
+from tabulate import tabulate
 
 # Set up logging
 logging.basicConfig(
