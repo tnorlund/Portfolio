@@ -52,6 +52,7 @@ from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
+from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 
 
 class DynamoClient(
@@ -92,6 +93,7 @@ class DynamoClient(
     _OCRJob,
     _ReceiptSection,
     _OCRRoutingDecision,
+    _AIUsageMetric,
 ):
     """A class used to represent a DynamoDB client."""
 
