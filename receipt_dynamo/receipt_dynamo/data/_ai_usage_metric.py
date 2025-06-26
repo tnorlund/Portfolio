@@ -81,19 +81,15 @@ class _AIUsageMetric:
             List of metric items from DynamoDB
         """
         # Query using GSI1 to get metrics by date
+        # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
+        if not service:
+            raise ValueError("Service parameter is required for date-based queries")
+            
         key_condition = "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk"
         expression_values = {
-            ":gsi1pk": {"S": f"AI_USAGE#{service}" if service else "AI_USAGE"},
+            ":gsi1pk": {"S": f"AI_USAGE#{service}"},
             ":gsi1sk": {"S": f"DATE#{date}"}
         }
-        
-        if service:
-            # If service specified, use GSI1 with exact service match
-            pass
-        else:
-            # If no service, we need to scan or use a different approach
-            # For now, require service parameter
-            raise ValueError("Service parameter is required for date-based queries")
 
         response = self.query(
             TableName=self.table_name,
