@@ -20,8 +20,11 @@ class TestAIUsageTrackerEnvironmentIntegration:
     def test_tracker_creation_with_environment_detection(self):
         """Test tracker creation with automatic environment detection."""
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=False):
-            # When table_name is provided, it's used as-is
-            tracker = AIUsageTracker.create_for_environment(table_name="AIUsageMetrics")
+            # When table_name is provided, it's used as-is but validation should be disabled
+            tracker = AIUsageTracker.create_for_environment(
+                table_name="AIUsageMetrics",
+                validate_table_environment=False
+            )
 
             assert tracker.environment_config.environment == Environment.STAGING
             assert tracker.table_name == "AIUsageMetrics"  # Used as-is
@@ -381,6 +384,7 @@ class TestTrackerFactoryMethods:
             track_to_dynamo=True,
             track_to_file=True,
             environment=Environment.STAGING,
+            validate_table_environment=False  # Custom table names require validation to be disabled
         )
 
         assert tracker.dynamo_client == mock_client

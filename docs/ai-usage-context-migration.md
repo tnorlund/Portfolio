@@ -99,13 +99,13 @@ tracker = AIUsageTracker()
 
 def process_workflow(data):
     tracker.set_tracking_context(job_id="workflow-789")
-    
+
     # Step 1
     step1_result = analyze_data(data, tracker)
-    
+
     # Step 2
     step2_result = generate_summary(step1_result, tracker)
-    
+
     return step2_result
 ```
 
@@ -114,15 +114,15 @@ def process_workflow(data):
 # New approach with nested contexts
 def process_workflow(data):
     with ai_usage_context('data_workflow', workflow_id='workflow-789') as tracker:
-        
+
         # Step 1 with sub-context
         with ai_usage_context('analyze_step', tracker=tracker) as step_tracker:
             step1_result = analyze_data(data, step_tracker)
-        
+
         # Step 2 with sub-context
         with ai_usage_context('summary_step', tracker=tracker) as step_tracker:
             step2_result = generate_summary(step1_result, step_tracker)
-        
+
         return step2_result
 ```
 
@@ -158,7 +158,7 @@ with ai_usage_context('risky_operation') as tracker:
 async def process_async(data):
     tracker = AIUsageTracker()
     tracker.set_tracking_context(job_id="async-123")
-    
+
     result = await async_ai_call(data, tracker)
     return result
 ```
@@ -223,13 +223,13 @@ with batch_ai_usage_context(
 ```python
 # ✅ Nested contexts for complex workflows
 with ai_usage_context('document_pipeline', pipeline_id='pipe-123') as pipeline_tracker:
-    
+
     with ai_usage_context('ocr_stage', tracker=pipeline_tracker) as ocr_tracker:
         text = extract_text(document, ocr_tracker)
-    
+
     with ai_usage_context('nlp_stage', tracker=pipeline_tracker) as nlp_tracker:
         entities = extract_entities(text, nlp_tracker)
-    
+
     return entities
 ```
 
@@ -242,10 +242,10 @@ def test_migrated_function():
         # Verify context is set
         assert tracker.current_context['operation_type'] == 'test_operation'
         assert tracker.current_context['test_id'] == 'test-123'
-        
+
         # Your test logic
         result = your_function(tracker)
-        
+
         # Verify metrics were tracked
         assert len(tracker.pending_metrics) > 0
 ```
@@ -257,7 +257,7 @@ def test_end_to_end_tracking():
         with ai_usage_context('integration_test') as tracker:
             # Perform operations
             result = complex_workflow(tracker)
-        
+
         # Verify flush was called
         assert mock_store.call_count > 0
 ```

@@ -28,9 +28,12 @@ script_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(script_dir))
 sys.path.insert(0, str(script_dir / "receipt_label"))
 
+from receipt_label.utils.ai_usage_context import (
+    ai_usage_context,
+    batch_ai_usage_context,
+)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import AIUsageEnvironmentConfig, Environment
-from receipt_label.utils.ai_usage_context import ai_usage_context, batch_ai_usage_context
 
 
 def demo_environment_detection():
@@ -179,17 +182,15 @@ def demo_cicd_auto_tagging():
 def demo_context_manager_basic():
     """Demonstrate basic context manager usage."""
     print("\n=== Phase 2: Context Manager Pattern Demo ===")
-    
+
     print("\n1. Basic context manager usage:")
     with ai_usage_context(
-        'receipt_processing',
-        job_id='job-456',
-        user_request='analyze receipts'
+        "receipt_processing", job_id="job-456", user_request="analyze receipts"
     ) as tracker:
         print(f"   Operation type: {tracker.current_context['operation_type']}")
         print(f"   Job ID: {tracker.current_context.get('job_id')}")
         print(f"   Context includes: {list(tracker.current_context.keys())}")
-        
+
         # Simulate API call tracking
         print("   [Simulating AI API calls within context...]")
         # In real usage: result = await tracker.track_openai_completion(...)
@@ -198,11 +199,9 @@ def demo_context_manager_basic():
 def demo_batch_context():
     """Demonstrate batch processing with context manager."""
     print("\n2. Batch processing context:")
-    
+
     with batch_ai_usage_context(
-        'batch-789',
-        item_count=50,
-        batch_type='receipt_extraction'
+        "batch-789", item_count=50, batch_type="receipt_extraction"
     ) as tracker:
         print(f"   Batch ID: {tracker.current_context['batch_id']}")
         print(f"   Batch mode enabled: {tracker.batch_mode}")
@@ -213,31 +212,37 @@ def demo_batch_context():
 def demo_nested_contexts():
     """Demonstrate nested context managers."""
     print("\n3. Nested contexts for complex workflows:")
-    
-    with ai_usage_context('parent_workflow', workflow_id='wf-123') as parent_tracker:
-        print(f"   Parent operation: {parent_tracker.current_context['operation_type']}")
-        
+
+    with ai_usage_context("parent_workflow", workflow_id="wf-123") as parent_tracker:
+        print(
+            f"   Parent operation: {parent_tracker.current_context['operation_type']}"
+        )
+
         # Nested context inherits parent
-        with ai_usage_context('child_task', task_id='task-456') as child_tracker:
+        with ai_usage_context("child_task", task_id="task-456") as child_tracker:
             context = child_tracker.current_context
             print(f"   Child operation: {context['operation_type']}")
             print(f"   Parent reference: {context.get('parent_operation')}")
-            print(f"   Inherited workflow_id: {context.get('parent_context', {}).get('workflow_id')}")
+            print(
+                f"   Inherited workflow_id: {context.get('parent_context', {}).get('workflow_id')}"
+            )
 
 
 def demo_context_with_environment():
     """Demonstrate context manager with environment configuration."""
     print("\n4. Context manager with environment integration:")
-    
+
     # Set different environments
-    for env_name in ['production', 'staging', 'cicd']:
-        os.environ['ENVIRONMENT'] = env_name
-        
-        with ai_usage_context(f'{env_name}_operation') as tracker:
+    for env_name in ["production", "staging", "cicd"]:
+        os.environ["ENVIRONMENT"] = env_name
+
+        with ai_usage_context(f"{env_name}_operation") as tracker:
             print(f"\n   Environment: {tracker.environment_config.environment.value}")
             print(f"   Table: {tracker.table_name}")
-            print(f"   Auto-tags: {tracker.environment_config.auto_tag.get('environment')}")
-            
+            print(
+                f"   Auto-tags: {tracker.environment_config.auto_tag.get('environment')}"
+            )
+
             # Show how metadata combines context + environment
             metadata = tracker._create_base_metadata()
             print(f"   Combined metadata keys: {list(metadata.keys())[:5]}...")
@@ -247,7 +252,7 @@ def main():
     """Run all demonstrations."""
     print("Issue #119: AI Usage Tracking - Phases 1 & 2")
     print("=" * 60)
-    
+
     # Phase 1 demos
     print("\n📋 PHASE 1: Environment Configuration")
     print("-" * 40)
@@ -256,7 +261,7 @@ def main():
     demo_environment_isolation()
     demo_ai_usage_tracker()
     demo_cicd_auto_tagging()
-    
+
     # Phase 2 demos
     print("\n\n📋 PHASE 2: Context Manager Pattern")
     print("-" * 40)
