@@ -60,7 +60,9 @@ def ai_usage_context(
     """
     # Get or create tracker
     if tracker is None:
-        tracker = AIUsageTracker.create_for_environment(environment=environment)
+        tracker = AIUsageTracker.create_for_environment(
+            environment=environment
+        )
 
     # Build context
     context = {
@@ -96,7 +98,9 @@ def ai_usage_context(
             duration_ms = int(
                 (datetime.now(timezone.utc) - start).total_seconds() * 1000
             )
-            tracker.add_context_metadata({"operation_duration_ms": duration_ms})
+            tracker.add_context_metadata(
+                {"operation_duration_ms": duration_ms}
+            )
 
         # Flush any pending metrics
         tracker.flush_metrics()
@@ -126,7 +130,10 @@ def batch_ai_usage_context(
                 await process_with_ai(item, tracker)
     """
     with ai_usage_context(
-        operation_type=operation_type, batch_id=batch_id, is_batch=True, **kwargs
+        operation_type=operation_type,
+        batch_id=batch_id,
+        is_batch=True,
+        **kwargs
     ) as tracker:
         # Enable batch pricing for compatible operations
         tracker.set_batch_mode(True)

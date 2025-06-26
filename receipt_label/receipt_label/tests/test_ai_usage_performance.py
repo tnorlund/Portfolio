@@ -10,18 +10,23 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from tests.utils.ai_usage_helpers import create_mock_openai_response
+
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
 def get_dynamo_call_count(mock_dynamo):
     """Helper to get the actual call count from mock DynamoDB client."""
     # The tracker will use put_ai_usage_metric if available, else put_item
-    if hasattr(mock_dynamo, 'put_ai_usage_metric') and mock_dynamo.put_ai_usage_metric.called:
+    if (
+        hasattr(mock_dynamo, "put_ai_usage_metric")
+        and mock_dynamo.put_ai_usage_metric.called
+    ):
         return mock_dynamo.put_ai_usage_metric.call_count
     else:
         return mock_dynamo.put_item.call_count
@@ -30,7 +35,10 @@ def get_dynamo_call_count(mock_dynamo):
 def get_dynamo_call_args(mock_dynamo):
     """Helper to get the actual call args from mock DynamoDB client."""
     # The tracker will use put_ai_usage_metric if available, else put_item
-    if hasattr(mock_dynamo, 'put_ai_usage_metric') and mock_dynamo.put_ai_usage_metric.called:
+    if (
+        hasattr(mock_dynamo, "put_ai_usage_metric")
+        and mock_dynamo.put_ai_usage_metric.called
+    ):
         # For put_ai_usage_metric, the metric object is passed directly
         # We need to convert it to the same format as put_item calls
         calls = []
@@ -38,7 +46,7 @@ def get_dynamo_call_args(mock_dynamo):
             metric = call.args[0]  # First argument is the metric
             item = metric.to_dynamodb_item()
             # Simulate the put_item call format
-            calls.append(type('MockCall', (), {'kwargs': {'Item': item}})())
+            calls.append(type("MockCall", (), {"kwargs": {"Item": item}})())
         return calls
     else:
         return mock_dynamo.put_item.call_args_list
