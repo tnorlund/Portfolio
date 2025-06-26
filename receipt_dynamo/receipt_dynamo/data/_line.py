@@ -1,7 +1,6 @@
 from typing import Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import Line, itemToLine
 from receipt_dynamo.data._base import DynamoClientProtocol
 
@@ -61,7 +60,9 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add lines to the database")
@@ -79,7 +80,10 @@ class _Line(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(f"Line with ID {line.line_id} not found")
             else:
                 raise Exception(f"Error updating line: {e}")
@@ -157,7 +161,9 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete lines from the database")
@@ -212,10 +218,17 @@ class _Line(DynamoClientProtocol):
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    lines.extend([itemToLine(item) for item in response["Items"]])
+                    lines.extend(
+                        [itemToLine(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)

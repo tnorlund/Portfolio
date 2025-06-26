@@ -1,10 +1,11 @@
 """Example script demonstrating how to use distributed training with Receipt Trainer."""
 
 import os
+
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from receipt_trainer import ReceiptTrainer, TrainingConfig, DataConfig
+from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
 
 
 def setup_trainer(rank, world_size):
@@ -84,13 +85,17 @@ def main():
     # Get the number of available GPUs
     world_size = torch.cuda.device_count()
     if world_size < 1:
-        raise RuntimeError("No CUDA devices available for distributed training")
+        raise RuntimeError(
+            "No CUDA devices available for distributed training"
+        )
 
     print(f"Starting distributed training with {world_size} GPUs")
 
     # Start processes
     try:
-        mp.spawn(setup_trainer, args=(world_size,), nprocs=world_size, join=True)
+        mp.spawn(
+            setup_trainer, args=(world_size,), nprocs=world_size, join=True
+        )
     except Exception as e:
         print(f"Error during distributed training: {e}")
         raise

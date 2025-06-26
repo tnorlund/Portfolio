@@ -1,91 +1,90 @@
 """Main trainer class for Receipt Trainer."""
 
-import os
+import dataclasses
+import glob
 import json
-import tempfile
 import logging
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
+import os
+import random
+import tempfile
+import threading
+import time
+import traceback
+import uuid
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
-from sklearn.metrics import (
-    confusion_matrix,
-    precision_recall_fscore_support,
-    accuracy_score,
-)
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from typing import Optional, Dict, Any, List, Tuple, Union
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import torch
 from datasets import (
     Dataset,
     DatasetDict,
-    load_dataset,
-    Value,
     Features,
     Sequence,
-)
-from transformers import (
-    LayoutLMForTokenClassification,
-    LayoutLMTokenizerFast,
-    TrainingArguments,
-    DataCollatorForTokenClassification,
-    EarlyStoppingCallback,
-    Trainer,
-    AutoModel,
-    AutoTokenizer,
-    TrainerCallback,
-    TrainerState,
-    TrainerControl,
+    Value,
+    load_dataset,
 )
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.services.job_service import JobService
-import random
-import seaborn as sns
-from collections import defaultdict
+from receipt_trainer.config import DataConfig, TrainingConfig
+from receipt_trainer.constants import REQUIRED_ENV_VARS
+from receipt_trainer.jobs import JobQueue
+from receipt_trainer.utils.aws import get_dynamo_table
+from receipt_trainer.utils.checkpoint import CheckpointManager
+from receipt_trainer.utils.data import (
+    augment_example,
+    balance_dataset,
+    create_sliding_windows,
+    process_receipt_details,
+)
+from receipt_trainer.utils.infrastructure import TrainingEnvironment
+from receipt_trainer.utils.metrics import (
+    compute_all_ner_metrics,
+    confusion_matrix_entities,
+    entity_class_accuracy,
+    entity_level_metrics,
+    field_extraction_accuracy,
+)
+from receipt_trainer.version import __version__
 from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_fscore_support,
     precision_score,
     recall_score,
-    f1_score,
-    classification_report,
 )
-import threading
-import time
-import glob
-from receipt_trainer.utils.aws import get_dynamo_table
-import traceback
-import uuid
-from datetime import datetime
-from receipt_trainer.utils.metrics import (
-    entity_level_metrics,
-    entity_class_accuracy,
-    field_extraction_accuracy,
-    confusion_matrix_entities,
-    compute_all_ner_metrics,
+
+from transformers import (
+    AutoModel,
+    AutoTokenizer,
+    DataCollatorForTokenClassification,
+    EarlyStoppingCallback,
+    LayoutLMForTokenClassification,
+    LayoutLMTokenizerFast,
+    Trainer,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
 )
-from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_trainer.utils.data import (
-    process_receipt_details,
-    create_sliding_windows,
-    balance_dataset,
-    augment_example,
-)
-from receipt_trainer.constants import REQUIRED_ENV_VARS
-from receipt_trainer.version import __version__
-from receipt_trainer.jobs import JobQueue
-import dataclasses
-from receipt_trainer.utils.infrastructure import TrainingEnvironment
-from receipt_trainer.utils.checkpoint import CheckpointManager
 
 # Set tokenizer parallelism to false to avoid deadlocks
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from receipt_trainer.config import TrainingConfig, DataConfig
-from receipt_trainer.utils.data import (
-    process_receipt_details,
-    create_sliding_windows,
-    balance_dataset,
-    augment_example,
-)
+from receipt_trainer.config import DataConfig, TrainingConfig
 from receipt_trainer.constants import REQUIRED_ENV_VARS
+from receipt_trainer.utils.data import (
+    augment_example,
+    balance_dataset,
+    create_sliding_windows,
+    process_receipt_details,
+)
 from receipt_trainer.version import __version__
 
 

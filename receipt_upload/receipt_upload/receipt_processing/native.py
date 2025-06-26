@@ -13,7 +13,6 @@ from receipt_dynamo.entities import (
     Receipt,
     Word,
 )
-
 from receipt_upload.utils import (
     calculate_sha256_from_bytes,
     image_ocr_to_receipt_ocr,

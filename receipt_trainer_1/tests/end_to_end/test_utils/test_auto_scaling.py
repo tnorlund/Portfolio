@@ -1,20 +1,20 @@
 """End-to-end tests for auto-scaling functionality."""
 
-import pytest
-import boto3
-import time
 import os
-from botocore.exceptions import ClientError
-from unittest.mock import patch, MagicMock
+import time
+from unittest.mock import MagicMock, patch
 
+import boto3
+import pytest
+from botocore.exceptions import ClientError
 from receipt_dynamo.data._pulumi import load_env
-from receipt_trainer.utils.pulumi import (
-    get_auto_scaling_config,
-    create_auto_scaling_manager,
-)
 from receipt_trainer.utils.auto_scaling import (
     AutoScalingManager,
     generate_training_worker_user_data,
+)
+from receipt_trainer.utils.pulumi import (
+    create_auto_scaling_manager,
+    get_auto_scaling_config,
 )
 
 

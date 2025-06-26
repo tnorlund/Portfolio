@@ -1,5 +1,4 @@
 import pytest
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_trainer.utils.data import process_receipt_details

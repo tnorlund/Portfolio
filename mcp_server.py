@@ -113,9 +113,7 @@ async def run_pulumi_logs(
     return await _run_pulumi("logs", stack, args)
 
 
-async def run_pulumi_config_get(
-    key: str, stack: str | None = None
-) -> str:
+async def run_pulumi_config_get(key: str, stack: str | None = None) -> str:
     """Get a configuration value from Pulumi."""
 
     cmd = ["pulumi", "config", "get", key]
