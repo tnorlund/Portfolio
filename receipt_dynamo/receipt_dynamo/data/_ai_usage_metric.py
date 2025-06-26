@@ -44,7 +44,9 @@ class _AIUsageMetric:
         for i in range(0, len(items), 25):
             batch = items[i : i + 25]
             request_items = {
-                self.table_name: [{"PutRequest": {"Item": item}} for item in batch]
+                self.table_name: [
+                    {"PutRequest": {"Item": item}} for item in batch
+                ]
             }
 
             response = self.batch_write_item(RequestItems=request_items)
@@ -60,7 +62,9 @@ class _AIUsageMetric:
                         item = request["PutRequest"]["Item"]
                         # Match by requestId (camelCase as per DynamoDB item format)
                         for j, metric in enumerate(metrics[i : i + 25]):
-                            if metric.request_id == item.get("requestId", {}).get("S"):
+                            if metric.request_id == item.get(
+                                "requestId", {}
+                            ).get("S"):
                                 failed_metrics.append(metric)
                                 break
 
@@ -83,12 +87,14 @@ class _AIUsageMetric:
         # Query using GSI1 to get metrics by date
         # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
         if not service:
-            raise ValueError("Service parameter is required for date-based queries")
-            
+            raise ValueError(
+                "Service parameter is required for date-based queries"
+            )
+
         key_condition = "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk"
         expression_values = {
             ":gsi1pk": {"S": f"AI_USAGE#{service}"},
-            ":gsi1sk": {"S": f"DATE#{date}"}
+            ":gsi1sk": {"S": f"DATE#{date}"},
         }
 
         response = self.query(
@@ -121,7 +127,7 @@ class _AIUsageMetric:
             Key={
                 "PK": {"S": f"AI_USAGE#{service}#{model}"},
                 "SK": {"S": f"USAGE#{timestamp}#{request_id}"},
-            }
+            },
         )
 
         return response.get("Item")

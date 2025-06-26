@@ -12,17 +12,19 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from freezegun import freeze_time
 from openai import OpenAI
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
     create_test_tracking_context,
 )
+
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.mark.unit
@@ -59,7 +61,10 @@ class TestAIUsageTrackerInitialization:
         assert tracker.dynamo_client is None
         # Table name should have environment suffix (could be -development or -cicd depending on environment)
         assert tracker.table_name.startswith("AIUsageMetrics-")
-        assert tracker.table_name in ["AIUsageMetrics-development", "AIUsageMetrics-cicd"]
+        assert tracker.table_name in [
+            "AIUsageMetrics-development",
+            "AIUsageMetrics-cicd",
+        ]
         assert tracker.user_id == "default"
         assert (
             tracker.track_to_dynamo is False
@@ -79,7 +84,10 @@ class TestAIUsageTrackerInitialization:
             tracker = AIUsageTracker()
             # Table name should have environment suffix (could be -development or -cicd depending on environment)
             assert tracker.table_name.startswith("env-table-")
-            assert tracker.table_name in ["env-table-development", "env-table-cicd"]
+            assert tracker.table_name in [
+                "env-table-development",
+                "env-table-cicd",
+            ]
             assert tracker.user_id == "env-user"
 
     def test_track_to_dynamo_requires_client(self):
