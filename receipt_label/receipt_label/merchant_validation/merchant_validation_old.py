@@ -16,7 +16,6 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
     ReceiptWordTag,
 )
-
 from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
@@ -57,9 +56,7 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
     """
     receipts, lek = dynamo_client.listReceipts(limit=25)
     while lek:
-        next_receipts, lek = dynamo_client.listReceipts(
-            limit=25, lastEvaluatedKey=lek
-        )
+        next_receipts, lek = dynamo_client.listReceipts(limit=25, lastEvaluatedKey=lek)
         receipts.extend(next_receipts)
     # Filter out receipts that have receipt metadata
     receipt_metadatas = dynamo_client.getReceiptMetadatas(
@@ -73,8 +70,7 @@ def list_receipts_for_merchant_validation() -> List[Tuple[str, int]]:
     )
     # Create a set of tuples with (image_id, receipt_id) from metadata for efficient lookup
     metadata_keys = {
-        (metadata.image_id, metadata.receipt_id)
-        for metadata in receipt_metadatas
+        (metadata.image_id, metadata.receipt_id) for metadata in receipt_metadatas
     }
 
     # Return receipts that don't have corresponding metadata
@@ -132,9 +128,7 @@ def get_receipt_details(image_id: str, receipt_id: int) -> Tuple[
         )
     except Exception as e:
         # Log the error for debugging
-        print(
-            f"Error getting receipt details for {image_id}/{receipt_id}: {e}"
-        )
+        print(f"Error getting receipt details for {image_id}/{receipt_id}: {e}")
         raise
 
 
@@ -254,21 +248,21 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
         "You use string similarity and common sense, and explain your decision clearly."
     )
 
-    user_prompt = f""" 
+    user_prompt = f"""
     Compare the following two merchant records and decide whether they match.
- 
+
     📄 Extracted from receipt:
     - Name: {normalized_fields['name']}
     - Address: {normalized_fields['address']}
     - Phone: {normalized_fields['phone_number']}
- 
+
     📍 From Google Places:
     - Name: {google_place.get('name')}
     - Address: {google_place.get('formatted_address')}
     - Phone: {google_place.get('formatted_phone_number')}
- 
+
     Note: if the 'Name' field appears to be an address rather than a business name, focus matching on the Address field.
- 
+
     Only return structured output by calling the `validateMatch` function.
     """
 
@@ -314,14 +308,10 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
             else:
                 receipt_phone_str = str(phone_field)
             # Strip spaces and hyphens
-            receipt_phone_str = receipt_phone_str.replace(" ", "").replace(
-                "-", ""
-            )
+            receipt_phone_str = receipt_phone_str.replace(" ", "").replace("-", "")
 
             # Normalize Google phone
-            cleaned_google_phone = google_phone.replace(" ", "").replace(
-                "-", ""
-            )
+            cleaned_google_phone = google_phone.replace(" ", "").replace("-", "")
 
             # Compare normalized phone strings
             if receipt_phone_str and receipt_phone_str == cleaned_google_phone:
@@ -338,18 +328,13 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
             # Lowercase and tokenize
             address_str = address_str.lower()
             addr_tokens = address_str.split()
-            alpha_tokens = [
-                tok for tok in addr_tokens if any(c.isalpha() for c in tok)
-            ]
-            if alpha_tokens and all(
-                tok in google_addr for tok in alpha_tokens
-            ):
+            alpha_tokens = [tok for tok in addr_tokens if any(c.isalpha() for c in tok)]
+            if alpha_tokens and all(tok in google_addr for tok in alpha_tokens):
                 field_matches.append("address")
 
             # Apply override rules
             if len(field_matches) >= 2 or (
-                len(field_matches) == 1
-                and result["confidence"] >= CONFIDENCE_THRESHOLD
+                len(field_matches) == 1 and result["confidence"] >= CONFIDENCE_THRESHOLD
             ):
                 result["decision"] = "YES"
                 result["matched_fields"] = field_matches
@@ -358,9 +343,7 @@ def validate_match_with_gpt(receipt_fields: dict, google_place: dict) -> dict:
                     result["confidence"] = max(
                         result["confidence"], CONFIDENCE_THRESHOLD
                     )
-                result["reason"] = (
-                    f"Validated by field matching: {field_matches}"
-                )
+                result["reason"] = f"Validated by field matching: {field_matches}"
         except JSONDecodeError:
             pass
 
@@ -639,9 +622,7 @@ def retry_google_search_with_inferred_data(
             geo = places_api.geocode(address)
             if geo and "lat" in geo and "lng" in geo:
                 lat_lng = (geo["lat"], geo["lng"])
-                nearby_results = places_api.search_nearby(
-                    location=lat_lng, radius=50
-                )
+                nearby_results = places_api.search_nearby(location=lat_lng, radius=50)
                 for candidate in nearby_results:
                     if is_match_found(candidate) and is_valid_google_match(
                         candidate, gpt_merchant_data
@@ -777,9 +758,7 @@ def build_receipt_metadata_from_result_no_match(
     if gpt_result:
         reasoning = "No valid Google Places match; used GPT inference"
     else:
-        reasoning = (
-            "No valid Google Places match and no GPT inference was performed"
-        )
+        reasoning = "No valid Google Places match and no GPT inference was performed"
 
     # Use empty placeholders for place_id and category
     place_id = ""
@@ -838,9 +817,7 @@ def cluster_by_metadata(metadata_list: List[ReceiptMetadata]):
             if name_sim < 90:
                 continue
             addr_sim = get_address_similarity(record1.address, record2.address)
-            phone_sim = get_phone_similarity(
-                record1.phone_number, record2.phone_number
-            )
+            phone_sim = get_phone_similarity(record1.phone_number, record2.phone_number)
             if addr_sim >= 85 or phone_sim == 100:
                 current_cluster.append(record2)
                 processed_indices.add(j)
@@ -906,12 +883,8 @@ def choose_canonical_metadata(cluster_members: List[ReceiptMetadata]):
         return None
 
     # Prefer records with place_id
-    with_place_id = [
-        m for m in cluster_members if getattr(m, "place_id", None)
-    ]
-    without_place_id = [
-        m for m in cluster_members if not getattr(m, "place_id", None)
-    ]
+    with_place_id = [m for m in cluster_members if getattr(m, "place_id", None)]
+    without_place_id = [m for m in cluster_members if not getattr(m, "place_id", None)]
     candidates = with_place_id if with_place_id else without_place_id
 
     if not candidates:
@@ -925,9 +898,7 @@ def choose_canonical_metadata(cluster_members: List[ReceiptMetadata]):
 # --- DynamoDB Interaction ---
 
 
-def list_all_receipt_metadatas() -> (
-    List[ReceiptMetadata]
-):  # Renamed and updated
+def list_all_receipt_metadatas() -> List[ReceiptMetadata]:  # Renamed and updated
     """Lists ALL receipt metadata entities from DynamoDB, handling pagination."""
     all_metadatas = []
     lek = None
@@ -978,15 +949,11 @@ def update_items_with_canonical(
     for record in cluster_members:
         try:
             # Update the in-memory ReceiptMetadata object
-            record.canonical_place_id = canonical_details.get(
-                "canonical_place_id", ""
-            )
+            record.canonical_place_id = canonical_details.get("canonical_place_id", "")
             record.canonical_merchant_name = canonical_details.get(
                 "canonical_merchant_name", ""
             )
-            record.canonical_address = canonical_details.get(
-                "canonical_address", ""
-            )
+            record.canonical_address = canonical_details.get("canonical_address", "")
             record.canonical_phone_number = canonical_details.get(
                 "canonical_phone_number", ""
             )
@@ -1060,9 +1027,7 @@ def query_records_by_place_id(place_id: str) -> list[ReceiptMetadata]:
         )
 
         # Filter to only include records that have canonical fields
-        return [
-            metadata for metadata in metadatas if metadata.canonical_place_id
-        ]
+        return [metadata for metadata in metadatas if metadata.canonical_place_id]
 
     except Exception as e:
         logger.error("Error querying by place_id %s: %s", place_id, e)
@@ -1103,9 +1068,7 @@ def collapse_canonical_aliases(
             continue
 
         # Pick the most common name, or shortest if tied
-        preferred = sorted(
-            name_counter.items(), key=lambda x: (-x[1], len(x[0]))
-        )[0][0]
+        preferred = sorted(name_counter.items(), key=lambda x: (-x[1], len(x[0])))[0][0]
 
         for _, (rec, current_name) in name_map.items():
             if current_name != preferred:
@@ -1141,14 +1104,8 @@ def merge_place_id_aliases_by_address(records: List[ReceiptMetadata]) -> int:
         if len(group) < 2:
             continue
 
-        place_ids = [
-            r.canonical_place_id for r in group if r.canonical_place_id
-        ]
-        names = [
-            r.canonical_merchant_name
-            for r in group
-            if r.canonical_merchant_name
-        ]
+        place_ids = [r.canonical_place_id for r in group if r.canonical_place_id]
+        names = [r.canonical_merchant_name for r in group if r.canonical_merchant_name]
 
         if not place_ids or not names:
             continue

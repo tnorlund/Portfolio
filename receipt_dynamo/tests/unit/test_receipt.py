@@ -318,9 +318,7 @@ def test_receipt_gsi2_key_generation(example_receipt):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt.gsi2_key() == {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
 
@@ -342,9 +340,7 @@ def test_receipt_to_item(example_receipt):
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "RECEIPT#00001"},
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI3SK": {"S": "RECEIPT#00001"},
         "TYPE": {"S": "RECEIPT"},

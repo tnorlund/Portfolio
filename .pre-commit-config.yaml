@@ -27,7 +27,7 @@ repos:
           types-requests,
           types-boto3,
           types-python-dateutil,
-          boto3-stubs[dynamodb,s3,lambda,stepfunctions]
+          "boto3-stubs[dynamodb,s3,lambda,stepfunctions]"
         ]
         files: '\.(py|pyi)$'
         args: ["--ignore-missing-imports", "--no-strict-optional"]

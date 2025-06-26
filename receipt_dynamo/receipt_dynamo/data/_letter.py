@@ -1,7 +1,6 @@
 from typing import Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import Letter, itemToLetter
 from receipt_dynamo.data._base import DynamoClientProtocol
 
@@ -36,9 +35,7 @@ class _Letter(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError:
-            raise ValueError(
-                f"Letter with ID {letter.letter_id} already exists"
-            )
+            raise ValueError(f"Letter with ID {letter.letter_id} already exists")
 
     def addLetters(self, letters: list[Letter]):
         """Adds a list of letters to the database
@@ -53,8 +50,7 @@ class _Letter(DynamoClientProtocol):
             for i in range(0, len(letters), CHUNK_SIZE):
                 chunk = letters[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": letter.to_item()}}
-                    for letter in chunk
+                    {"PutRequest": {"Item": letter.to_item()}} for letter in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -63,9 +59,7 @@ class _Letter(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
         except ClientError:
             raise ValueError("Could not add letters to the database")
 
@@ -87,9 +81,7 @@ class _Letter(DynamoClientProtocol):
         except ClientError:
             raise ValueError(f"Letter with ID {letter.letter_id} not found")
 
-    def deleteLetter(
-        self, image_id: str, line_id: int, word_id: int, letter_id: int
-    ):
+    def deleteLetter(self, image_id: str, line_id: int, word_id: int, letter_id: int):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -110,8 +102,7 @@ class _Letter(DynamoClientProtocol):
             for i in range(0, len(letters), CHUNK_SIZE):
                 chunk = letters[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"DeleteRequest": {"Key": letter.key()}}
-                    for letter in chunk
+                    {"DeleteRequest": {"Key": letter.key()}} for letter in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -120,9 +111,7 @@ class _Letter(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
         except ClientError:
             raise ValueError("Could not delete letters from the database")
 
@@ -179,13 +168,9 @@ class _Letter(DynamoClientProtocol):
 
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    letters.extend(
-                        [itemToLetter(item) for item in response["Items"]]
-                    )
+                    letters.extend([itemToLetter(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 last_evaluated_key = response.get("LastEvaluatedKey", None)
@@ -222,9 +207,7 @@ class _Letter(DynamoClientProtocol):
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                letters.extend(
-                    [itemToLetter(item) for item in response["Items"]]
-                )
+                letters.extend([itemToLetter(item) for item in response["Items"]])
 
             return letters
         except ClientError as e:

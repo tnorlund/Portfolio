@@ -21,9 +21,7 @@ def sample_batch_summary():
     )
 
 
-def test_addBatchSummary_duplicate_raises(
-    dynamodb_table, sample_batch_summary, mocker
-):
+def test_addBatchSummary_duplicate_raises(dynamodb_table, sample_batch_summary, mocker):
     client = DynamoClient(dynamodb_table)
     mock_put = mocker.patch.object(
         client._client,
@@ -74,14 +72,10 @@ def test_addBatchSummaries_unprocessed_retry(
     assert mock_batch.call_count == 2
 
 
-def test_updateBatchSummaries_chunked(
-    dynamodb_table, sample_batch_summary, mocker
-):
+def test_updateBatchSummaries_chunked(dynamodb_table, sample_batch_summary, mocker):
     client = DynamoClient(dynamodb_table)
     summaries = [
-        BatchSummary(
-            **{**dict(sample_batch_summary), "batch_id": str(uuid4())}
-        )
+        BatchSummary(**{**dict(sample_batch_summary), "batch_id": str(uuid4())})
         for i in range(30)
     ]
     for item in summaries:
@@ -93,14 +87,10 @@ def test_updateBatchSummaries_chunked(
     assert mock_write.call_count == 2
 
 
-def test_deleteBatchSummaries_chunked(
-    dynamodb_table, sample_batch_summary, mocker
-):
+def test_deleteBatchSummaries_chunked(dynamodb_table, sample_batch_summary, mocker):
     client = DynamoClient(dynamodb_table)
     summaries = [
-        BatchSummary(
-            **{**dict(sample_batch_summary), "batch_id": str(uuid4())}
-        )
+        BatchSummary(**{**dict(sample_batch_summary), "batch_id": str(uuid4())})
         for i in range(30)
     ]
     for item in summaries:
@@ -112,9 +102,7 @@ def test_deleteBatchSummaries_chunked(
     assert mock_write.call_count == 2
 
 
-def test_listBatchSummaries_with_limit_and_LEK(
-    dynamodb_table, sample_batch_summary
-):
+def test_listBatchSummaries_with_limit_and_LEK(dynamodb_table, sample_batch_summary):
     client = DynamoClient(dynamodb_table)
     for i in range(3):
         summary = BatchSummary(
@@ -124,9 +112,7 @@ def test_listBatchSummaries_with_limit_and_LEK(
     first_page, lek = client.listBatchSummaries(limit=1)
     assert len(first_page) == 1
     assert lek is not None
-    second_page, lek2 = client.listBatchSummaries(
-        limit=1, lastEvaluatedKey=lek
-    )
+    second_page, lek2 = client.listBatchSummaries(limit=1, lastEvaluatedKey=lek)
     assert len(second_page) == 1
 
 

@@ -2,19 +2,38 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
-
-from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
-                            ReceiptLine, ReceiptWord, ReceiptWordTag, Word,
-                            WordTag, itemToImage, itemToLetter, itemToLine,
-                            itemToReceipt, itemToReceiptLetter,
-                            itemToReceiptLine, itemToReceiptWord,
-                            itemToReceiptWordTag, itemToWord, itemToWordTag)
+from receipt_dynamo import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    Word,
+    WordTag,
+    itemToImage,
+    itemToLetter,
+    itemToLine,
+    itemToReceipt,
+    itemToReceiptLetter,
+    itemToReceiptLine,
+    itemToReceiptWord,
+    itemToReceiptWordTag,
+    itemToWord,
+    itemToWordTag,
+)
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities import (ImageDetails, ReceiptMetadata,
-                                     assert_valid_uuid, itemToOCRJob,
-                                     itemToOCRRoutingDecision,
-                                     itemToReceiptMetadata)
+from receipt_dynamo.entities import (
+    ImageDetails,
+    ReceiptMetadata,
+    assert_valid_uuid,
+    itemToOCRJob,
+    itemToOCRRoutingDecision,
+    itemToReceiptMetadata,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
@@ -147,9 +166,7 @@ class _Image(DynamoClientProtocol):
             For any other errors encountered during the batch write operation.
         """
         if images is None:
-            raise ValueError(
-                "Images parameter is required and cannot be None."
-            )
+            raise ValueError("Images parameter is required and cannot be None.")
         if not isinstance(images, list):
             raise ValueError("Images must be provided as a list.")
         if not all(isinstance(img, Image) for img in images):
@@ -161,8 +178,7 @@ class _Image(DynamoClientProtocol):
             for i in range(0, len(images), CHUNK_SIZE):
                 chunk = images[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": image.to_item()}}
-                    for image in chunk
+                    {"PutRequest": {"Item": image.to_item()}} for image in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -170,9 +186,7 @@ class _Image(DynamoClientProtocol):
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(f"Error adding images: {e}") from e
@@ -216,9 +230,7 @@ class _Image(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Table {self.table_name} not found: {e}"
-                ) from e
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
@@ -262,9 +274,7 @@ class _Image(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Image with ID {image.image_id} not found"
-                ) from e
+                raise ValueError(f"Image with ID {image.image_id} not found") from e
             else:
                 raise Exception(f"Error updating image: {e}") from e
 
@@ -293,9 +303,7 @@ class _Image(DynamoClientProtocol):
             - or any other unexpected errors.
         """
         if images is None:
-            raise ValueError(
-                "Images parameter is required and cannot be None."
-            )
+            raise ValueError("Images parameter is required and cannot be None.")
         if not isinstance(images, list):
             raise ValueError("Images must be provided as a list.")
         if not all(isinstance(img, Image) for img in images):
@@ -323,9 +331,7 @@ class _Image(DynamoClientProtocol):
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more images do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+                    raise Exception(f"Provisioned throughput exceeded: {e}") from e
                 elif error_code == "InternalServerError":
                     raise Exception(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
@@ -380,17 +386,13 @@ class _Image(DynamoClientProtocol):
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
-                ExpressionAttributeValues={
-                    ":pk_value": {"S": f"IMAGE#{image_id}"}
-                },
+                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                 ScanIndexForward=True,
             )
             items = response["Items"]
 
             # Keep querying if there's a LastEvaluatedKey
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                 response = self._client.query(
                     TableName=self.table_name,
                     KeyConditionExpression="#pk = :pk_value",
@@ -429,9 +431,7 @@ class _Image(DynamoClientProtocol):
                 elif item["TYPE"]["S"] == "OCR_JOB":
                     ocr_jobs.append(itemToOCRJob(item))
                 elif item["TYPE"]["S"] == "OCR_ROUTING_DECISION":
-                    ocr_routing_decisions.append(
-                        itemToOCRRoutingDecision(item)
-                    )
+                    ocr_routing_decisions.append(itemToOCRRoutingDecision(item))
 
             return ImageDetails(
                 images=images,
@@ -469,23 +469,17 @@ class _Image(DynamoClientProtocol):
                 IndexName="GSI1",
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "GSI1PK"},
-                ExpressionAttributeValues={
-                    ":pk_value": {"S": f"IMAGE#{image_id}"}
-                },
+                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                 ScanIndexForward=True,
             )
             items = response["Items"]
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                 response = self._client.query(
                     TableName=self.table_name,
                     IndexName="GSI1",
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "GSI1PK"},
-                    ExpressionAttributeValues={
-                        ":pk_value": {"S": f"IMAGE#{image_id}"}
-                    },
+                    ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                     ScanIndexForward=True,
                 )
@@ -493,9 +487,7 @@ class _Image(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Table {self.table_name} not found: {e}"
-                ) from e
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
             if error_code == "ValidationException":
                 raise Exception(f"Validation exception: {e}") from e
             else:
@@ -539,10 +531,7 @@ class _Image(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(f"Image with ID {image_id} not found")
             else:
                 raise Exception(f"Error deleting image: {e}")
@@ -574,14 +563,10 @@ class _Image(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not delete images from the database"
-            ) from e
+            raise ValueError("Could not delete images from the database") from e
 
     def listImagesWordsTags(
         self,
@@ -626,9 +611,7 @@ class _Image(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :val",
-                "ExpressionAttributeValues": {
-                    ":val": {"S": f"IMAGE#{image_id}"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}},
             }
 
             if lastEvaluatedKey is not None:
@@ -708,17 +691,10 @@ class _Image(DynamoClientProtocol):
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    images.extend(
-                        [itemToImage(item) for item in response["Items"]]
-                    )
+                    images.extend([itemToImage(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)
@@ -754,9 +730,7 @@ class _Image(DynamoClientProtocol):
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "GSI3PK"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": f"IMAGE#{image_type}"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_type}"}},
             }
 
             if lastEvaluatedKey is not None:
@@ -771,17 +745,10 @@ class _Image(DynamoClientProtocol):
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    images.extend(
-                        [itemToImage(item) for item in response["Items"]]
-                    )
+                    images.extend([itemToImage(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)
@@ -792,9 +759,7 @@ class _Image(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Table {self.table_name} not found: {e}"
-                ) from e
+                raise Exception(f"Table {self.table_name} not found: {e}") from e
             if error_code == "ValidationException":
                 raise Exception(f"Validation exception: {e}") from e
             else:

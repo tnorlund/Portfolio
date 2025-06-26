@@ -1,9 +1,12 @@
 from datetime import datetime
 from typing import Any, Generator, List, Tuple
 
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_valid_point,
-                                          assert_valid_uuid)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_point,
+    assert_valid_uuid,
+)
 
 
 class ReceiptField:
@@ -95,9 +98,7 @@ class ReceiptField:
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
     def key(self) -> dict:
         """Generates the primary key for the receipt field.
@@ -107,9 +108,7 @@ class ReceiptField:
         """
         return {
             "PK": {"S": f"FIELD#{self.field_type}"},
-            "SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def gsi1_key(self) -> dict:
@@ -120,9 +119,7 @@ class ReceiptField:
         """
         return {
             "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI1SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"
-            },
+            "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"},
         }
 
     def to_item(self) -> dict:

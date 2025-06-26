@@ -65,39 +65,58 @@ __all__ = [
 ]
 
 # Entities must be imported first to avoid circular imports
-from receipt_dynamo.entities import (Image, Letter, Line, Receipt,
-                                     ReceiptAnalysis, ReceiptChatGPTValidation,
-                                     ReceiptField, ReceiptLabelAnalysis,
-                                     ReceiptLetter, ReceiptLine,
-                                     ReceiptLineItemAnalysis,
-                                     ReceiptStructureAnalysis,
-                                     ReceiptValidationCategory,
-                                     ReceiptValidationResult,
-                                     ReceiptValidationSummary, ReceiptWord,
-                                     ReceiptWordLabel, Word, itemToImage,
-                                     itemToLetter, itemToLine, itemToReceipt,
-                                     itemToReceiptChatGPTValidation,
-                                     itemToReceiptField,
-                                     itemToReceiptLabelAnalysis,
-                                     itemToReceiptLetter, itemToReceiptLine,
-                                     itemToReceiptLineItemAnalysis,
-                                     itemToReceiptStructureAnalysis,
-                                     itemToReceiptValidationCategory,
-                                     itemToReceiptValidationResult,
-                                     itemToReceiptValidationSummary,
-                                     itemToReceiptWord, itemToReceiptWordLabel,
-                                     itemToWord)
+from receipt_dynamo.entities import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptAnalysis,
+    ReceiptChatGPTValidation,
+    ReceiptField,
+    ReceiptLabelAnalysis,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptLineItemAnalysis,
+    ReceiptStructureAnalysis,
+    ReceiptValidationCategory,
+    ReceiptValidationResult,
+    ReceiptValidationSummary,
+    ReceiptWord,
+    ReceiptWordLabel,
+    Word,
+    itemToImage,
+    itemToLetter,
+    itemToLine,
+    itemToReceipt,
+    itemToReceiptChatGPTValidation,
+    itemToReceiptField,
+    itemToReceiptLabelAnalysis,
+    itemToReceiptLetter,
+    itemToReceiptLine,
+    itemToReceiptLineItemAnalysis,
+    itemToReceiptStructureAnalysis,
+    itemToReceiptValidationCategory,
+    itemToReceiptValidationResult,
+    itemToReceiptValidationSummary,
+    itemToReceiptWord,
+    itemToReceiptWordLabel,
+    itemToWord,
+)
 from receipt_dynamo.entities.instance import Instance, itemToInstance
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
 from receipt_dynamo.entities.job import Job, itemToJob
 from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
-from receipt_dynamo.entities.receipt_structure_analysis import (ContentPattern,
-                                                                ReceiptSection,
-                                                                SpatialPattern)
-from receipt_dynamo.entities.receipt_word_tag import (ReceiptWordTag,
-                                                      itemToReceiptWordTag)
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ContentPattern,
+    ReceiptSection,
+    SpatialPattern,
+)
+from receipt_dynamo.entities.receipt_word_tag import (
+    ReceiptWordTag,
+    itemToReceiptWordTag,
+)
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 
 # Only import what's actually used elsewhere in the package
@@ -109,9 +128,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
         """Placeholder for DynamoClient when boto3 is unavailable."""
 
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError(
-                "boto3 is required for DynamoClient"
-            ) from exc
+            raise ModuleNotFoundError("boto3 is required for DynamoClient") from exc
 
 
 try:  # Optional dependency
@@ -119,9 +136,7 @@ try:  # Optional dependency
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def export_image(*_, **__):
-        raise ModuleNotFoundError(
-            "boto3 is required for export_image"
-        ) from exc
+        raise ModuleNotFoundError("boto3 is required for export_image") from exc
 
 
 try:
@@ -129,9 +144,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def import_image(*_, **__):
-        raise ModuleNotFoundError(
-            "boto3 is required for import_image"
-        ) from exc
+        raise ModuleNotFoundError("boto3 is required for import_image") from exc
 
 
 try:  # Optional dependency
@@ -142,9 +155,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     class _ServicePlaceholder:  # type: ignore
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError(
-                "boto3 is required for service classes"
-            ) from exc
+            raise ModuleNotFoundError("boto3 is required for service classes") from exc
 
     InstanceService = _ServicePlaceholder
     JobService = _ServicePlaceholder

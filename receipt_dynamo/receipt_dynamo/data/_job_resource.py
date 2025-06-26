@@ -1,7 +1,6 @@
 from typing import Optional
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -10,9 +9,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -31,9 +28,7 @@ class _JobResource(DynamoClientProtocol):
             ValueError: When a job resource with the same resource ID already exists
         """
         if job_resource is None:
-            raise ValueError(
-                "JobResource parameter is required and cannot be None."
-            )
+            raise ValueError("JobResource parameter is required and cannot be None.")
         if not isinstance(job_resource, JobResource):
             raise ValueError(
                 "job_resource must be an instance of the JobResource class."
@@ -51,17 +46,13 @@ class _JobResource(DynamoClientProtocol):
                     f"JobResource with resource ID {job_resource.resource_id} for job {job_resource.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add job resource to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job resource to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add job resource to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job resource to DynamoDB: {e}") from e
 
     def getJobResource(self, job_id: str, resource_id: str) -> JobResource:
         """Gets a specific job resource by job ID and resource ID
@@ -80,9 +71,7 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
 
         try:
             response = self._client.get_item(
@@ -132,19 +121,13 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
         if not status or not isinstance(status, str):
-            raise ValueError(
-                "Status is required and must be a non-empty string."
-            )
+            raise ValueError("Status is required and must be a non-empty string.")
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
         if status.lower() not in valid_statuses:
-            raise ValueError(
-                f"Invalid status. Must be one of {valid_statuses}"
-            )
+            raise ValueError(f"Invalid status. Must be one of {valid_statuses}")
 
         if status.lower() == "released" and not released_at:
             raise ValueError(
@@ -158,9 +141,7 @@ class _JobResource(DynamoClientProtocol):
 
             if released_at:
                 update_expression += ", released_at = :released_at"
-                expression_attribute_values[":released_at"] = {
-                    "S": released_at
-                }
+                expression_attribute_values[":released_at"] = {"S": released_at}
 
             self._client.update_item(
                 TableName=self.table_name,
@@ -180,17 +161,13 @@ class _JobResource(DynamoClientProtocol):
                     f"No job resource found with job ID {job_id} and resource ID {resource_id}"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not update job resource status: {e}"
-                ) from e
+                raise Exception(f"Could not update job resource status: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error updating job resource status: {e}"
-                ) from e
+                raise Exception(f"Error updating job resource status: {e}") from e
 
     def listJobResources(
         self,
@@ -259,9 +236,7 @@ class _JobResource(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -356,9 +331,7 @@ class _JobResource(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -402,9 +375,7 @@ class _JobResource(DynamoClientProtocol):
             Exception: If the underlying database query fails.
         """
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
-                "Resource ID is required and must be a non-empty string."
-            )
+            raise ValueError("Resource ID is required and must be a non-empty string.")
 
         try:
             response = self._client.query(

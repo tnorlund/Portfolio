@@ -4,9 +4,8 @@ from json import JSONDecodeError, dumps, loads
 from os import environ, getenv
 
 import requests
-from requests.models import Response
-
 from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag
+from requests.models import Response
 
 
 def gpt_request_tagging_validation(
@@ -134,8 +133,7 @@ def _validate_gpt_response_initial_tagging(response: Response) -> dict:
         if value:  # Only check non-empty values.
             if isinstance(value, list):
                 if not all(
-                    isinstance(tag, dict) and "l" in tag and "w" in tag
-                    for tag in value
+                    isinstance(tag, dict) and "l" in tag and "w" in tag for tag in value
                 ):
                     raise ValueError(
                         "The response message content values do not contain 'l' and 'w'."
@@ -218,9 +216,7 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
                 "flag",
             ]
         ):
-            raise ValueError(
-                "The response items do not contain the expected fields."
-            )
+            raise ValueError("The response items do not contain the expected fields.")
     return content
 
 
@@ -583,12 +579,10 @@ def _llm_prompt_structure_analysis(
     """
     # Calculate receipt dimensions and statistics
     max_y = max(
-        line.bounding_box["y"] + line.bounding_box["height"]
-        for line in receipt_lines
+        line.bounding_box["y"] + line.bounding_box["height"] for line in receipt_lines
     )
     max_x = max(
-        line.bounding_box["x"] + line.bounding_box["width"]
-        for line in receipt_lines
+        line.bounding_box["x"] + line.bounding_box["width"] for line in receipt_lines
     )
 
     # Format lines with spatial information
@@ -611,19 +605,10 @@ def _llm_prompt_structure_analysis(
             # Output previous group if exists
             if current_group:
                 spatial_info = f" [y:{current_y:.2f}"
-                if (
-                    len(
-                        set(
-                            l.split(":")[1].strip()[:10] for l in current_group
-                        )
-                    )
-                    == 1
-                ):
+                if len(set(l.split(":")[1].strip()[:10] for l in current_group)) == 1:
                     spatial_info += " repeated"
                 spatial_info += "]"
-                formatted_lines.append(
-                    f"{' | '.join(current_group)}{spatial_info}"
-                )
+                formatted_lines.append(f"{' | '.join(current_group)}{spatial_info}")
 
             # Start new group
             current_group = [f"L{line.line_id}: {line.text}"]
@@ -639,9 +624,7 @@ def _llm_prompt_structure_analysis(
         "name": places_api_data.get("name", ""),
         "type": places_api_data.get("types", [])[:3],  # Only first 3 types
         "address": places_api_data.get("formatted_address", ""),
-        "hours": places_api_data.get("opening_hours", {}).get(
-            "weekday_text", []
-        )[
+        "hours": places_api_data.get("opening_hours", {}).get("weekday_text", [])[
             :1
         ],  # Only first day
     }
@@ -770,9 +753,7 @@ def _validate_gpt_response_structure_analysis(response: Response) -> dict:
                 "confidence",
             ]
             if not all(key in section for key in required_keys):
-                raise ValueError(
-                    f"Section missing required keys: {required_keys}"
-                )
+                raise ValueError(f"Section missing required keys: {required_keys}")
 
             if not isinstance(section["line_ids"], list):
                 raise ValueError("'line_ids' must be a list.")
@@ -829,9 +810,7 @@ def _map_labels_to_word_ids(
         # Single word case
         if len(words) == 1:
             if text in text_to_words and text_to_words[text]:
-                word = text_to_words[text].pop(
-                    0
-                )  # Get and remove first matching word
+                word = text_to_words[text].pop(0)  # Get and remove first matching word
                 result.append(
                     {
                         "line_id": word.line_id,
@@ -901,12 +880,8 @@ def gpt_request_field_labeling(
 
     for section in section_boundaries["discovered_sections"]:
         # Get words for this section
-        section_lines = [
-            l for l in receipt_lines if l.line_id in section["line_ids"]
-        ]
-        section_words = [
-            w for w in receipt_words if w.line_id in section["line_ids"]
-        ]
+        section_lines = [l for l in receipt_lines if l.line_id in section["line_ids"]]
+        section_words = [w for w in receipt_words if w.line_id in section["line_ids"]]
 
         if not section_words:
             continue
@@ -969,14 +944,10 @@ def gpt_request_field_labeling(
 
             if section_result["metadata"]["requires_review"]:
                 requires_review = True
-                review_reasons.extend(
-                    section_result["metadata"]["review_reasons"]
-                )
+                review_reasons.extend(section_result["metadata"]["review_reasons"])
 
         except Exception as e:
-            raise ValueError(
-                f"Error processing section {section['name']}: {str(e)}"
-            )
+            raise ValueError(f"Error processing section {section['name']}: {str(e)}")
 
     # Combine results
     if not all_labels:
@@ -1057,9 +1028,7 @@ def _llm_prompt_field_labeling_section(
         f"Receipt Content:\n"
         + "\n".join(formatted_lines)
         + "\n\nAvailable Labels:\n"
-        + "\n".join(
-            f"- {label}: {desc}" for label, desc in label_types.items()
-        )
+        + "\n".join(f"- {label}: {desc}" for label, desc in label_types.items())
         + "\n\nExample Labelings:\n"
         + "\n".join(examples)
         + "\n\nINSTRUCTIONS:\n"
@@ -1120,10 +1089,7 @@ def _detect_line_pattern(
         return "city_state_zip"
 
     # Business name pattern
-    if (
-        places_api_data.get("name")
-        and places_api_data["name"].upper() in text.upper()
-    ):
+    if places_api_data.get("name") and places_api_data["name"].upper() in text.upper():
         return "business_name"
 
     # Phone number pattern
@@ -1181,11 +1147,7 @@ def _extract_relevant_business_context(
 
     if "hours" in section_name_lower or "schedule" in section_name_lower:
         context.update(
-            {
-                "hours": places_api_data.get("opening_hours", {}).get(
-                    "weekday_text", []
-                )
-            }
+            {"hours": places_api_data.get("opening_hours", {}).get("weekday_text", [])}
         )
 
     return context
@@ -1344,9 +1306,7 @@ def _validate_gpt_response_field_labeling(response: Response) -> dict:
 
             required_label_keys = ["text", "label", "confidence"]
             if not all(key in label for key in required_label_keys):
-                raise ValueError(
-                    f"Label missing required keys: {required_label_keys}"
-                )
+                raise ValueError(f"Label missing required keys: {required_label_keys}")
 
             if not isinstance(label["text"], str):
                 raise ValueError("'text' must be a string.")

@@ -2,7 +2,6 @@ from typing import Dict, List, Optional, Tuple
 
 import botocore
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.entities.instance import Instance, itemToInstance
@@ -36,9 +35,7 @@ class _Instance(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} already exists"
-                )
+                raise ValueError(f"Instance {instance.instance_id} already exists")
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Could not add instance to DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
@@ -64,9 +61,7 @@ class _Instance(DynamoClientProtocol):
         if not isinstance(instances, list):
             raise ValueError("instances must be a list")
         if not all(isinstance(instance, Instance) for instance in instances):
-            raise ValueError(
-                "All elements in instances must be instances of Instance"
-            )
+            raise ValueError("All elements in instances must be instances of Instance")
 
         if not instances:
             return  # Nothing to do if the list is empty
@@ -77,13 +72,9 @@ class _Instance(DynamoClientProtocol):
 
             # Batch write the items to DynamoDB
             request_items = {
-                self.table_name: [
-                    {"PutRequest": {"Item": item}} for item in items
-                ]
+                self.table_name: [{"PutRequest": {"Item": item}} for item in items]
             }
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -92,9 +83,7 @@ class _Instance(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
@@ -107,13 +96,9 @@ class _Instance(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise Exception("Internal server error, retry later")
             elif error_code == "ValidationException":
-                raise Exception(
-                    f"Validation error: {e.response['Error']['Message']}"
-                )
+                raise Exception(f"Validation error: {e.response['Error']['Message']}")
             elif error_code == "AccessDeniedException":
-                raise Exception(
-                    f"Access denied: {e.response['Error']['Message']}"
-                )
+                raise Exception(f"Access denied: {e.response['Error']['Message']}")
             else:
                 raise Exception(
                     f"Failed to add instances: {e.response['Error']['Message']}"
@@ -143,14 +128,11 @@ class _Instance(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
+                raise ValueError(f"Instance {instance.instance_id} does not exist")
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Could not update instance in DynamoDB: {e}")
             elif (
-                e.response["Error"]["Code"]
-                == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
             ):
                 raise Exception(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
@@ -187,9 +169,7 @@ class _Instance(DynamoClientProtocol):
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
+                raise ValueError(f"Instance {instance.instance_id} does not exist")
             elif error_code == "ResourceNotFoundException":
                 raise Exception(f"Table {self.table_name} does not exist")
             elif error_code == "ProvisionedThroughputExceededException":
@@ -263,9 +243,7 @@ class _Instance(DynamoClientProtocol):
         instance = self.getInstance(instance_id)
 
         # Then, query for its jobs
-        instance_jobs = self.listInstanceJobs(instance_id)[
-            0
-        ]  # Ignore lastEvaluatedKey
+        instance_jobs = self.listInstanceJobs(instance_id)[0]  # Ignore lastEvaluatedKey
 
         return instance, instance_jobs
 
@@ -484,9 +462,7 @@ class _Instance(DynamoClientProtocol):
         try:
             instances = []
             response = self._client.query(**query_params)
-            instances = [
-                itemToInstance(item) for item in response.get("Items", [])
-            ]
+            instances = [itemToInstance(item) for item in response.get("Items", [])]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -543,9 +519,7 @@ class _Instance(DynamoClientProtocol):
 
         try:
             response = self._client.query(**query_params)
-            instances = [
-                itemToInstance(item) for item in response.get("Items", [])
-            ]
+            instances = [itemToInstance(item) for item in response.get("Items", [])]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")

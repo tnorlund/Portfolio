@@ -3,9 +3,13 @@ from datetime import datetime, timezone
 from typing import Any, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_valid_point,
-                                          assert_valid_uuid, normalize_enum)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_point,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 # Validation thresholds
 MIN_PHONE_DIGITS = (
@@ -170,9 +174,7 @@ class ReceiptMetadata:
                     high_quality_fields.append(field)
             elif field == "phone":
                 # Phone must have at least 7 digits (tolerate missing area code)
-                phone_digits = "".join(
-                    c for c in self.phone_number if c.isdigit()
-                )
+                phone_digits = "".join(c for c in self.phone_number if c.isdigit())
                 if len(phone_digits) >= MIN_PHONE_DIGITS:
                     high_quality_fields.append(field)
             elif field == "address":
@@ -194,8 +196,7 @@ class ReceiptMetadata:
                         meaningful_tokens += 1
                     # 3. It's a word with 3+ letters
                     elif (
-                        len(token_clean) >= MIN_ADDRESS_TOKENS
-                        and token_clean.isalpha()
+                        len(token_clean) >= MIN_ADDRESS_TOKENS and token_clean.isalpha()
                     ):
                         meaningful_tokens += 1
                     # 4. It's a short token (likely abbreviation) but not the only token
@@ -207,11 +208,7 @@ class ReceiptMetadata:
                 # components (e.g., "123 Main").
                 if (
                     meaningful_tokens >= 2
-                    or (
-                        len(tokens) == 1
-                        and meaningful_tokens >= 1
-                        and not has_number
-                    )
+                    or (len(tokens) == 1 and meaningful_tokens >= 1 and not has_number)
                     or (has_number and len(tokens) > 1)
                 ):
                     high_quality_fields.append(field)
@@ -244,9 +241,7 @@ class ReceiptMetadata:
             if self.canonical_merchant_name
             else self.merchant_name
         )
-        normalized_merchant_name = merchant_name_to_use.upper().replace(
-            " ", "_"
-        )
+        normalized_merchant_name = merchant_name_to_use.upper().replace(" ", "_")
 
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
@@ -436,11 +431,7 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
 
         # Parse sort key components
         sk_parts = item["SK"]["S"].split("#")
-        if (
-            len(sk_parts) != 3
-            or sk_parts[0] != "RECEIPT"
-            or sk_parts[2] != "METADATA"
-        ):
+        if len(sk_parts) != 3 or sk_parts[0] != "RECEIPT" or sk_parts[2] != "METADATA":
             raise ValueError(f"Invalid SK format: {item['SK']['S']}")
 
         try:
@@ -460,13 +451,9 @@ def itemToReceiptMetadata(item: dict) -> ReceiptMetadata:
         validated_by = item.get("validated_by", {}).get("S") or ""
         reasoning = item.get("reasoning", {}).get("S") or ""
         canonical_place_id = item.get("canonical_place_id", {}).get("S") or ""
-        canonical_merchant_name = (
-            item.get("canonical_merchant_name", {}).get("S") or ""
-        )
+        canonical_merchant_name = item.get("canonical_merchant_name", {}).get("S") or ""
         canonical_address = item.get("canonical_address", {}).get("S") or ""
-        canonical_phone_number = (
-            item.get("canonical_phone_number", {}).get("S") or ""
-        )
+        canonical_phone_number = item.get("canonical_phone_number", {}).get("S") or ""
 
         # Parse timestamp
         timestamp_str = item["timestamp"]["S"]

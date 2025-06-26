@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
 
@@ -37,9 +36,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.put_item(
@@ -57,15 +54,11 @@ class _PlacesCache(DynamoClientProtocol):
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception("Provisioned throughput exceeded") from e
             elif error_code == "ValidationException":
-                raise Exception(
-                    "One or more parameters given were invalid"
-                ) from e
+                raise Exception("One or more parameters given were invalid") from e
             elif error_code == "AccessDeniedException":
                 raise Exception("Access denied") from e
             else:
-                raise Exception(
-                    "Could not add places cache item to DynamoDB"
-                ) from e
+                raise Exception("Could not add places cache item to DynamoDB") from e
 
     def updatePlacesCache(self, item: PlacesCache):
         """
@@ -80,9 +73,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.put_item(
@@ -91,10 +82,7 @@ class _PlacesCache(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"PlacesCache for search_type={item.search_type}, "
                     f"search_value={item.search_value} does not exist."
@@ -119,9 +107,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             # Update the item's attributes
@@ -158,9 +144,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.delete_item(
@@ -169,10 +153,7 @@ class _PlacesCache(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"PlacesCache with search_type={item.search_type}, "
                     f"search_value={item.search_value} does not exist"
@@ -190,9 +171,7 @@ class _PlacesCache(DynamoClientProtocol):
             )
         if not isinstance(places_cache_items, list):
             raise ValueError("places_cache_items must be a list.")
-        if not all(
-            isinstance(item, PlacesCache) for item in places_cache_items
-        ):
+        if not all(isinstance(item, PlacesCache) for item in places_cache_items):
             raise ValueError(
                 "All items in places_cache_items must be PlacesCache objects."
             )
@@ -240,9 +219,7 @@ class _PlacesCache(DynamoClientProtocol):
                 elif error_code == "ResourceNotFoundException":
                     raise ValueError("table not found") from e
                 else:
-                    raise ValueError(
-                        f"Error deleting places caches: {e}"
-                    ) from e
+                    raise ValueError(f"Error deleting places caches: {e}") from e
 
     def getPlacesCache(
         self, search_type: str, search_value: str
@@ -324,9 +301,7 @@ class _PlacesCache(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         places_caches = []
@@ -351,9 +326,7 @@ class _PlacesCache(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the places caches
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     places_caches.extend(
                         [itemToPlacesCache(item) for item in response["Items"]]
@@ -413,11 +386,7 @@ class _PlacesCache(DynamoClientProtocol):
                 items_to_delete = items_to_delete[CHUNK_SIZE:]
 
                 request_items = [
-                    {
-                        "DeleteRequest": {
-                            "Key": {"PK": item["PK"], "SK": item["SK"]}
-                        }
-                    }
+                    {"DeleteRequest": {"Key": {"PK": item["PK"], "SK": item["SK"]}}}
                     for item in batch
                 ]
 

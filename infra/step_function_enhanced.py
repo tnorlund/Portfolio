@@ -4,6 +4,7 @@ import json
 
 import pulumi
 import pulumi_aws as aws
+
 from lambda_functions.receipt_processor.infra import (
     list_receipts_lambda,
     process_receipt_lambda,

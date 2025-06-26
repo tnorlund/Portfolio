@@ -3,10 +3,20 @@ import json
 import os
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (Image, Letter, Line, OCRJob,
-                                     OCRRoutingDecision, Receipt,
-                                     ReceiptLetter, ReceiptLine, ReceiptWord,
-                                     ReceiptWordTag, Word, WordTag)
+from receipt_dynamo.entities import (
+    Image,
+    Letter,
+    Line,
+    OCRJob,
+    OCRRoutingDecision,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordTag,
+    Word,
+    WordTag,
+)
 
 
 def import_image(table_name: str, json_path: str) -> None:
@@ -45,22 +55,15 @@ def import_image(table_name: str, json_path: str) -> None:
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_lines": [
-            ReceiptLine(**item) for item in data["receipt_lines"]
-        ],
-        "receipt_words": [
-            ReceiptWord(**item) for item in data["receipt_words"]
-        ],
+        "receipt_lines": [ReceiptLine(**item) for item in data["receipt_lines"]],
+        "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
         "receipt_word_tags": [
             ReceiptWordTag(**item) for item in data["receipt_word_tags"]
         ],
-        "receipt_letters": [
-            ReceiptLetter(**item) for item in data["receipt_letters"]
-        ],
+        "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
         "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
         "ocr_routing_decisions": [
-            OCRRoutingDecision(**item)
-            for item in data.get("ocr_routing_decisions", [])
+            OCRRoutingDecision(**item) for item in data.get("ocr_routing_decisions", [])
         ],
     }
 

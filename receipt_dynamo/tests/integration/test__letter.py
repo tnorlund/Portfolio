@@ -157,9 +157,7 @@ def test_letter_get(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.addLetter(letter)
-    response = client.getLetter(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
-    )
+    response = client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     assert response == letter
@@ -208,9 +206,7 @@ def test_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"]):
     client.addLetter(letter2)
 
     # Act
-    letters = client.listLettersFromWord(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
-    )
+    letters = client.listLettersFromWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
 
     # Assert
     assert letter1 in letters

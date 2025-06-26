@@ -1,7 +1,6 @@
 from typing import Any, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -10,9 +9,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -31,13 +28,9 @@ class _JobStatus(DynamoClientProtocol):
             ValueError: When a job status with the same timestamp already exists
         """
         if job_status is None:
-            raise ValueError(
-                "JobStatus parameter is required and cannot be None."
-            )
+            raise ValueError("JobStatus parameter is required and cannot be None.")
         if not isinstance(job_status, JobStatus):
-            raise ValueError(
-                "job_status must be an instance of the JobStatus class."
-            )
+            raise ValueError("job_status must be an instance of the JobStatus class.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -51,17 +44,13 @@ class _JobStatus(DynamoClientProtocol):
                     f"JobStatus with timestamp {job_status.updated_at} for job {job_status.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not add job status to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job status to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise Exception(f"Provisioned throughput exceeded: {e}") from e
             elif error_code == "InternalServerError":
                 raise Exception(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Could not add job status to DynamoDB: {e}"
-                ) from e
+                raise Exception(f"Could not add job status to DynamoDB: {e}") from e
 
     def getLatestJobStatus(self, job_id: str) -> JobStatus:
         """Gets the latest status for a job
@@ -92,9 +81,7 @@ class _JobStatus(DynamoClientProtocol):
             )
 
             if not response["Items"]:
-                raise ValueError(
-                    f"No status updates found for job with ID {job_id}"
-                )
+                raise ValueError(f"No status updates found for job with ID {job_id}")
 
             return itemToJobStatus(response["Items"][0])
         except ClientError as e:
@@ -166,9 +153,7 @@ class _JobStatus(DynamoClientProtocol):
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                statuses.extend(
-                    [itemToJobStatus(item) for item in response["Items"]]
-                )
+                statuses.extend([itemToJobStatus(item) for item in response["Items"]])
 
                 if limit is not None and len(statuses) >= limit:
                     statuses = statuses[:limit]
@@ -176,9 +161,7 @@ class _JobStatus(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -203,9 +186,7 @@ class _JobStatus(DynamoClientProtocol):
                     f"Could not list job statuses from the database: {e}"
                 ) from e
 
-    def _getJobWithStatus(
-        self, job_id: str
-    ) -> Tuple[Optional[Any], List[JobStatus]]:
+    def _getJobWithStatus(self, job_id: str) -> Tuple[Optional[Any], List[JobStatus]]:
         """Get a job with all its status updates
 
         Args:

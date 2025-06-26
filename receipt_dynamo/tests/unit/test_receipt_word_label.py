@@ -21,10 +21,7 @@ def example_receipt_word_label():
 @pytest.mark.unit
 def test_receipt_word_label_init_valid(example_receipt_word_label):
     """Test constructing a valid ReceiptWordLabel."""
-    assert (
-        example_receipt_word_label.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_word_label.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_word_label.receipt_id == 1
     assert example_receipt_word_label.line_id == 2
     assert example_receipt_word_label.word_id == 3
@@ -34,10 +31,7 @@ def test_receipt_word_label_init_valid(example_receipt_word_label):
         == "This word appears at the top of the receipt and matches known business name patterns"
     )
     assert example_receipt_word_label.timestamp_added == "2021-01-01T00:00:00"
-    assert (
-        example_receipt_word_label.validation_status
-        == ValidationStatus.NONE.value
-    )
+    assert example_receipt_word_label.validation_status == ValidationStatus.NONE.value
     assert example_receipt_word_label.label_proposed_by is None
     assert example_receipt_word_label.label_consolidated_from is None
 
@@ -251,9 +245,7 @@ def test_receipt_word_label_to_item(example_receipt_word_label):
     assert item["GSI2SK"] == {
         "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003"
     }
-    assert item["GSI3PK"] == {
-        "S": f"VALIDATION_STATUS#{ValidationStatus.NONE.value}"
-    }
+    assert item["GSI3PK"] == {"S": f"VALIDATION_STATUS#{ValidationStatus.NONE.value}"}
     assert item["GSI3SK"] == {
         "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"
     }
@@ -352,7 +344,5 @@ def test_item_to_receipt_word_label_invalid_format():
         "reasoning": {"N": "123"},  # Should be {"S": "123"}
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to ReceiptWordLabel"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to ReceiptWordLabel"):
         itemToReceiptWordLabel(invalid_item)
