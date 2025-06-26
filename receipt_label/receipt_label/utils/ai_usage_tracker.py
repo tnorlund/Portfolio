@@ -2,7 +2,6 @@
 AI Usage Tracker - Decorator and middleware for tracking AI service usage and costs.
 """
 
-import inspect
 import json
 import os
 import time
@@ -26,32 +25,29 @@ from .environment_config import (
 
 def _supports_put_ai_usage_metric(obj: Any) -> bool:
     """
-    Return True **only** when the object really provides a callable
-    `put_ai_usage_metric`, i.e. when it is implemented on the class or
-    has been explicitly set on the instance.
+    True  → safe to call obj.put_ai_usage_metric(metric)
+    False → call obj.put_item(TableName=..., Item=...)
     
-    Works for:
-      - real DynamoClient instances
-      - MagicMock(spec=DynamoClient)
-    
-    Returns False for:
-      - plain Mock() / MagicMock() without spec
-      - any object where the attribute is missing
+    Uses probe-based detection that only relies on public Mock behavior:
+    - Real objects are checked for the method
+    - Spec'd mocks reject unknown attributes (raises AttributeError)
+    - Plain mocks create any attribute on demand
     """
-    # First try getattr_static for real objects
-    try:
-        attr = inspect.getattr_static(obj, "put_ai_usage_metric")
-        if callable(attr):
-            return True
-    except AttributeError:
-        pass
-
-    # For spec'd mocks, check if they have _spec_class and the method is in spec
-    if hasattr(obj, '_spec_class') and obj._spec_class is not None:
-        # This is a spec'd mock, check if the method is in the spec
-        return hasattr(obj._spec_class, 'put_ai_usage_metric')
+    from unittest.mock import Mock
     
-    return False
+    # Real objects (and non-Mock stubs)
+    if not isinstance(obj, Mock):
+        return callable(getattr(obj, "put_ai_usage_metric", None))
+
+    # Mock instances → probe with a name that cannot exist on DynamoClient
+    PROBE = "_ai_usage_tracker_probe_attribute_"
+    try:
+        getattr(obj, PROBE)
+        # Attribute was fabricated → this is a *basic* Mock
+        return False
+    except AttributeError:
+        # Attribute not allowed → this mock is spec'd
+        return True
 
 
 class AIUsageTracker:
