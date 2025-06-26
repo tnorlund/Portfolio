@@ -107,8 +107,8 @@ def main():
                 ),
             )
             print(
-                f"Adding OCR routing decision for\nimage {image_id}\njob {job_id}\n"
-                f"s3_bucket {image_s3_bucket}\n"
+                f"Adding OCR routing decision for\nimage {image_id}\n"
+                f"job {job_id}\ns3_bucket {image_s3_bucket}\n"
                 f"s3_key {ocr_json_file_s3_key}"
             )
             ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)

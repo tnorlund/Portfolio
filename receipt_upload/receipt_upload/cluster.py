@@ -16,14 +16,14 @@ def dbscan_lines(
 
     Args:
         lines (List[Line]): List of Line objects to cluster.
-        eps (float, optional): Maximum distance between two points to be considered
-            as neighbors. Defaults to 10.0.
-        min_samples (int, optional): Minimum number of points required to form a dense
-            region. Defaults to 2.
+        eps (float, optional): Maximum distance between two points to be
+            considered as neighbors. Defaults to 10.0.
+        min_samples (int, optional): Minimum number of points required to
+            form a dense region. Defaults to 2.
 
     Returns:
-        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists of Line objects.
-            A label of -1 indicates a noise point.
+        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists
+            of Line objects. A label of -1 indicates a noise point.
     """
 
     # Extract centroids for each line.
@@ -38,7 +38,7 @@ def dbscan_lines(
     current_cluster = 1
 
     def region_query(idx: int) -> List[int]:
-        """Returns a list of indices for points within eps distance of points[idx]."""
+        """Returns indices for points within eps distance of points[idx]."""
         neighbors = []
         x1, y1 = points[idx]
         for j in range(n):
@@ -229,7 +229,7 @@ def join_overlapping_clusters(
         cp1: Tuple[float, float],
         cp2: Tuple[float, float],
     ) -> Optional[Tuple[float, float]]:
-        """Compute intersection point of line segment s->e with line cp1->cp2."""
+        """Compute intersection of line segment s->e with line cp1->cp2."""
         r = subtract(e, s)
         d = subtract(cp2, cp1)
         denominator = cross(r, d)
@@ -250,7 +250,7 @@ def join_overlapping_clusters(
         subject_polygon: List[Tuple[float, float]],
         clip_polygon: List[Tuple[float, float]],
     ) -> List[Tuple[float, float]]:
-        """Clip a polygon with another polygon using Sutherland-Hodgman algorithm."""
+        """Clip a polygon with another using Sutherland-Hodgman algorithm."""
         output_list = subject_polygon[:]
         cp1 = clip_polygon[-1]
         for cp2 in clip_polygon:
