@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import boto3
-from receipt_dynamo.data._ocr import _process_ocr_dict
 from receipt_dynamo.entities import (
     Letter,
     Line,

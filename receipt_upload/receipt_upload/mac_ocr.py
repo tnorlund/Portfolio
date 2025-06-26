@@ -1,14 +1,14 @@
 import argparse
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import boto3
-from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
+from receipt_dynamo.entities import OCRRoutingDecision
+
 from receipt_upload.ocr import apple_vision_ocr_job
 from receipt_upload.pulumi import load_env
 from receipt_upload.utils import download_image_from_s3, upload_file_to_s3
@@ -107,8 +107,8 @@ def main():
                 ),
             )
             print(
-                f"Adding OCR routing decision for\nimage {image_id}\njob {job_id}\n"
-                f"s3_bucket {image_s3_bucket}\n"
+                f"Adding OCR routing decision for\nimage {image_id}\n"
+                f"job {job_id}\ns3_bucket {image_s3_bucket}\n"
                 f"s3_key {ocr_json_file_s3_key}"
             )
             ocr_job = dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
