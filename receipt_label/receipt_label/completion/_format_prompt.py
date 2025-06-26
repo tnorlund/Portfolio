@@ -8,6 +8,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+
 from receipt_label.constants import CORE_LABELS
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager

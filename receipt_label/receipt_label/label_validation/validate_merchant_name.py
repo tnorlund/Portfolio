@@ -8,6 +8,7 @@ from typing import Optional
 from rapidfuzz.fuzz import ratio
 from receipt_dynamo.entities import ReceiptMetadata  # type: ignore
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import (
     normalize_text,

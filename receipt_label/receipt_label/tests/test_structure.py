@@ -15,6 +15,7 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
 from receipt_dynamo.entities.receipt_structure_analysis import (
     SpatialPattern as DynamoSpatialPattern,
 )
+
 from receipt_label.models.structure import (
     ContentPattern,
     ReceiptSection,

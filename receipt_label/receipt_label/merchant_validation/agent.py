@@ -331,8 +331,8 @@ You may call the following tools in any order:
                         "result": getattr(item, "output", None),
                     }
                     partial_results.append(partial_result)
-                    logger.info(f"Captured partial result from {raw.name}")
+                    logger.info("Captured partial result from %s", raw.name)
                 except Exception as e:
-                    logger.warning(f"Failed to capture partial result: {e}")
+                    logger.warning("Failed to capture partial result: %s", e)
 
         return metadata, partial_results

@@ -19,7 +19,7 @@ class Point:
         """Convert to dictionary representation."""
         return {"x": self.x, "y": self.y}
 
-    def to_dynamo(self) -> Dict[str, Dict[str, str]]:
+    def to_dynamo(self) -> Dict[str, Any]:
         """Convert to DynamoDB representation."""
         return {"M": {"x": {"N": str(self.x)}, "y": {"N": str(self.y)}}}
 
@@ -114,7 +114,7 @@ class BoundingBox:
             "height": self.height,
         }
 
-    def to_dynamo(self) -> Dict[str, Dict[str, str]]:
+    def to_dynamo(self) -> Dict[str, Any]:
         """Convert to DynamoDB representation."""
         return {
             "M": {
@@ -134,7 +134,7 @@ class BoundingBox:
             "bottom_right": self.bottom_right.to_dict(),
         }
 
-    def to_corners_dynamo(self) -> Dict[str, Dict[str, Dict[str, str]]]:
+    def to_corners_dynamo(self) -> Dict[str, Any]:
         """Convert to a DynamoDB representation with all four corners."""
         return {
             "top_left": self.top_left.to_dynamo(),
@@ -209,10 +209,10 @@ class BoundingBox:
     @classmethod
     def from_corners_dynamo(
         cls,
-        top_left: Dict[str, Any] = None,
-        top_right: Dict[str, Any] = None,
-        bottom_left: Dict[str, Any] = None,
-        bottom_right: Dict[str, Any] = None,
+        top_left: Optional[Dict[str, Any]] = None,
+        top_right: Optional[Dict[str, Any]] = None,
+        bottom_left: Optional[Dict[str, Any]] = None,
+        bottom_right: Optional[Dict[str, Any]] = None,
     ) -> "BoundingBox":
         """Create a BoundingBox from four corner points in DynamoDB format."""
         # Convert DynamoDB data to Points

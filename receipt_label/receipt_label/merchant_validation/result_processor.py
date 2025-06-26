@@ -332,5 +332,5 @@ def sanitize_string(value: str) -> str:
 
     except Exception as e:
         # If anything goes wrong, log and return the original trimmed value
-        logger.warning(f"Error sanitizing string: {e}")
+        logger.warning("Error sanitizing string: %s", e)
         return original_value.strip()
