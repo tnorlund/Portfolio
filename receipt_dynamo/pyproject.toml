@@ -52,6 +52,7 @@ dev = [
     "pylint>=3.0.0,<4.0.0",
     "mypy>=1.0",
     "isort>=5.0",
+    "boto3-stubs[dynamodb,s3]>=1.34.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -97,7 +98,7 @@ exclude = '''
   | build
   | dist
 )/
-''' 
+'''
 
 [tool.pylint.format]
 max-line-length = 79
@@ -106,11 +107,11 @@ max-line-length = 79
 disable = [
     "too-few-public-methods",
     "too-many-arguments",
-    "too-many-locals", 
+    "too-many-locals",
     "too-many-instance-attributes",
     "too-many-branches",
     "missing-module-docstring",
-    "missing-class-docstring", 
+    "missing-class-docstring",
     "missing-function-docstring",
 ]
 
@@ -119,4 +120,10 @@ good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
 
 [tool.pylint.design]
 max-args = 10
-max-locals = 20 
+max-locals = 20
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
