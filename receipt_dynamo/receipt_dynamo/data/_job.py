@@ -343,7 +343,7 @@ class _Job(DynamoClientProtocol):
             Tuple[Job, List[JobStatus]]: A tuple containing the job and a list of its status updates
         """
         # Use the protected method instead of trying to access a private method
-        job_item, statuses = self.getJobWithStatus(job_id)
+        job_item, statuses = self._getJobWithStatus(job_id)
 
         if job_item is None:
             raise ValueError(f"Job with ID {job_id} does not exist.")
