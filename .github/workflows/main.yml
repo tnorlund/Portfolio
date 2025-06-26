@@ -413,7 +413,7 @@ jobs:
   # Summary job for branch protection
   ci-success:
     name: CI Success
-    needs: [fast-checks]
+    needs: [fast-checks, test-python, test-typescript]
     runs-on: ubuntu-latest
     if: always()
     steps:
