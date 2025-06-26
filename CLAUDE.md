@@ -176,7 +176,7 @@ This design prevents "formatting thrash" where developers push unformatted code 
 
 **Scenario**: Your PR fails due to formatting, you start fixing it, then find more files need formatting, and suddenly you're reformatting half the codebase.
 
-**Solution**: 
+**Solution**:
 - STOP and check which files are actually part of your PR
 - Only format files you've modified
 - Let other files remain as they are
@@ -194,4 +194,36 @@ git push
 # If CI still complains about formatting in OTHER files:
 # IGNORE IT - those aren't your responsibility
 ```
+
+# Boto3 Type Safety
+
+**IMPORTANT**: This project uses boto3 type stubs for improved developer experience without runtime overhead.
+
+## Implementation
+
+We use the TYPE_CHECKING pattern to import boto3 type stubs only during development:
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+    from mypy_boto3_s3 import S3Client
+```
+
+## Key Points
+
+1. **Dev Dependencies**: `boto3-stubs[dynamodb,s3]` is in `[dev]` extras, not required at runtime
+2. **Zero Runtime Impact**: TYPE_CHECKING imports are skipped during execution
+3. **Full IDE Support**: Developers get autocomplete, parameter hints, and type checking
+4. **CI Compatibility**: Tests run without dev dependencies installed
+
+## Adding New AWS Services
+
+When adding boto3 clients for new AWS services:
+1. Add the service to boto3-stubs extras: `boto3-stubs[dynamodb,s3,new-service]`
+2. Use TYPE_CHECKING pattern for imports
+3. Add type annotations to client variables: `client: ServiceClient = boto3.client("service")`
+
+This approach provides type safety during development while maintaining fast runtime performance.
 EOF < /dev/null
