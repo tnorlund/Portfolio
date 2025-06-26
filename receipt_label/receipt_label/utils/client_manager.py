@@ -94,7 +94,7 @@ class ClientManager:
             # Override with resilient tracker if configured
             if self.config.use_resilient_tracker:
                 self._usage_tracker = ResilientAIUsageTracker(
-                    dynamo_client=self.dynamo,
+                    dynamo_client=None,  # Let ResilientAIUsageTracker create its own ResilientDynamoClient
                     table_name=self.config.dynamo_table,
                     user_id=self.config.user_id,
                     track_to_dynamo=True,

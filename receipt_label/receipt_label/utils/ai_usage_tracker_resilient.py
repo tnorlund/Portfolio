@@ -48,7 +48,7 @@ class ResilientAIUsageTracker(AIUsageTracker):
 
         # Create resilient client if not provided
         if dynamo_client is None and track_to_dynamo:
-            table_name = table_name or os.environ.get("DYNAMODB_TABLE_NAME")
+            table_name = table_name or os.environ.get("DYNAMO_TABLE_NAME")
             if table_name:
                 dynamo_client = ResilientDynamoClient(
                     table_name=table_name,
