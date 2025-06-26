@@ -4,8 +4,9 @@ from json import JSONDecodeError, dumps, loads
 from os import environ, getenv
 
 import requests
-from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag
 from requests.models import Response
+
+from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordTag
 
 
 def gpt_request_tagging_validation(

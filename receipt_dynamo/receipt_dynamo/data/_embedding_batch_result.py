@@ -2,12 +2,11 @@ from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.embedding_batch_result import (
-    EmbeddingBatchResult,
-    itemToEmbeddingBatchResult,
-)
+    EmbeddingBatchResult, itemToEmbeddingBatchResult)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -449,7 +448,6 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 pinecone_id="dummy",
                 status="dummy",
                 text="dummy",
-                label="dummy",
                 error_message="dummy",
             )
             query_params = {

@@ -294,8 +294,8 @@ class JobService:
             job_id=job_id,
             timestamp=datetime.now(),
             metric_name=metric_name,
-            metric_value=metric_value,
-            metadata=metadata or {},
+            value=metric_value,  # Changed from metric_value to value
+            # unit, step, and epoch are optional
         )
         self.dynamo_client.addJobMetric(job_metric)
         return job_metric
@@ -334,10 +334,13 @@ class JobService:
         """
         job_resource = JobResource(
             job_id=job_id,
-            resource_type=resource_type,
             resource_id=resource_id,
-            created_at=datetime.now(),
-            metadata=metadata or {},
+            instance_id="unknown",  # TODO: Get actual instance ID
+            instance_type="unknown",  # TODO: Get actual instance type
+            resource_type=resource_type,
+            allocated_at=datetime.now(),
+            status="allocated",  # TODO: Set appropriate status
+            # gpu_count, released_at, and resource_config are optional
         )
         self.dynamo_client.addJobResource(job_resource)
         return job_resource
@@ -369,9 +372,11 @@ class JobService:
             The created JobDependency object
         """
         job_dependency = JobDependency(
-            job_id=job_id,
-            depends_on_job_id=depends_on_job_id,
+            dependent_job_id=job_id,  # Changed from job_id
+            dependency_job_id=depends_on_job_id,  # Changed from depends_on_job_id
+            type="COMPLETION",  # TODO: Allow specifying dependency type
             created_at=datetime.now(),
+            # condition is optional
         )
         self.dynamo_client.addJobDependency(job_dependency)
         return job_dependency
@@ -514,9 +519,13 @@ class JobService:
         """
         job_checkpoint = JobCheckpoint(
             job_id=job_id,
-            checkpoint_name=checkpoint_name,
-            created_at=datetime.now(),
-            metadata=metadata or {},
+            timestamp=datetime.now().isoformat(),
+            s3_bucket="unknown",  # TODO: Get actual S3 bucket
+            s3_key=f"checkpoints/{job_id}/{checkpoint_name}",  # TODO: Set appropriate S3 key
+            size_bytes=0,  # TODO: Get actual checkpoint size
+            step=0,  # TODO: Get actual step
+            epoch=0,  # TODO: Get actual epoch
+            # model_state, optimizer_state, metrics, and is_best have defaults
         )
         self.dynamo_client.addJobCheckpoint(job_checkpoint)
         return job_checkpoint
