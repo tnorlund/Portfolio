@@ -30,6 +30,7 @@ def mock_get_clients():
 clients.get_clients = mock_get_clients
 
 import receipt_label.merchant_validation.google_places as gp
+
 # local modules under test
 import receipt_label.merchant_validation.merchant_validation as mv
 
@@ -58,7 +59,9 @@ def mock_places_api(mocker):
 @pytest.fixture(autouse=True)
 def mock_openai(mocker):
     fake_msg = type("M", (), {})()
-    fake_resp = type("R", (), {"choices": [type("C", (), {"message": fake_msg})()]})
+    fake_resp = type(
+        "R", (), {"choices": [type("C", (), {"message": fake_msg})()]}
+    )
     # Mock get_client_manager to return a mock client manager with mock openai
     mock_client_manager = mocker.Mock()
     mock_openai_client = mocker.Mock()
@@ -120,8 +123,12 @@ class DummyWord:
         (None, None, None),
     ],
 )
-def test_query_google_places_branches(phone_resp, address_resp, expected, mocker):
-    mocker.patch.object(gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp)
+def test_query_google_places_branches(
+    phone_resp, address_resp, expected, mocker
+):
+    mocker.patch.object(
+        gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
+    )
     mocker.patch.object(
         gp.PlacesAPI,
         "search_by_address",
@@ -176,11 +183,15 @@ def test_query_google_places_branches(phone_resp, address_resp, expected, mocker
 )
 
 # Tests for infer_merchant_with_gpt
-def test_infer_merchant_with_gpt_branches(mock_openai, has_call, args, expected):
+def test_infer_merchant_with_gpt_branches(
+    mock_openai, has_call, args, expected
+):
     msg = mock_openai.choices[0].message
     if has_call:
         if isinstance(args, dict):
-            msg.function_call = type("F", (), {"arguments": json.dumps(args)})()
+            msg.function_call = type(
+                "F", (), {"arguments": json.dumps(args)}
+            )()
         else:
             msg.function_call = type("F", (), {"arguments": args})()
     else:
@@ -232,7 +243,9 @@ def test_infer_merchant_with_gpt_branches(mock_openai, has_call, args, expected)
 )
 
 # Tests for validate_match_with_gpt
-def test_validate_match_with_gpt_branches(mock_openai, mocker, args, expected_fields):
+def test_validate_match_with_gpt_branches(
+    mock_openai, mocker, args, expected_fields
+):
     # Mock the entire module function (not just the one in the class)
     result = args.copy()
     result["matched_fields"] = expected_fields
@@ -556,7 +569,9 @@ def test_build_receipt_metadata_from_result_category_and_timestamp(mocker):
 
     assert result.merchant_category == "shop"
     assert result.timestamp.tzinfo is not None
-    assert datetime.now(timezone.utc) - result.timestamp < timedelta(seconds=15)
+    assert datetime.now(timezone.utc) - result.timestamp < timedelta(
+        seconds=15
+    )
 
 
 def test_write_receipt_metadata_to_dynamo_errors():

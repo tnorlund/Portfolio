@@ -240,7 +240,9 @@ def analyze_api_logs(logs_client, start_date, end_date, table) -> Dict:
     return insights
 
 
-def store_aws_cost(table, date: str, service: str, usage_type: str, cost: float):
+def store_aws_cost(
+    table, date: str, service: str, usage_type: str, cost: float
+):
     """
     Store AWS cost data in DynamoDB.
     """
@@ -290,7 +292,9 @@ def estimate_external_api_costs(api_calls: Dict, table):
                 estimated_cost = count * est["cost_per_call"]
             else:
                 estimated_tokens = count * est["avg_tokens_per_call"]
-                estimated_cost = (estimated_tokens / 1000) * est["cost_per_1k_tokens"]
+                estimated_cost = (estimated_tokens / 1000) * est[
+                    "cost_per_1k_tokens"
+                ]
 
             # Store estimate
             store_cost_estimate(table, service, count, estimated_cost)

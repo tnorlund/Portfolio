@@ -54,7 +54,14 @@ class PRAnalyzer:
         """Get PR diff using gh CLI or API."""
         try:
             result = subprocess.run(
-                ["gh", "pr", "diff", str(pr_number), "--repo", self.repo.full_name],
+                [
+                    "gh",
+                    "pr",
+                    "diff",
+                    str(pr_number),
+                    "--repo",
+                    self.repo.full_name,
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -201,7 +208,9 @@ class PRAnalyzer:
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        validation_status = "✅ PASSED" if fast_validation_passed else "❌ FAILED"
+        validation_status = (
+            "✅ PASSED" if fast_validation_passed else "❌ FAILED"
+        )
 
         summary = f"""# 🤖 Claude Code Review Summary
 
@@ -220,9 +229,7 @@ class PRAnalyzer:
 """
 
         if cursor_findings:
-            summary += (
-                f"Found {len(cursor_findings)} Cursor bot comments to validate:\n\n"
-            )
+            summary += f"Found {len(cursor_findings)} Cursor bot comments to validate:\n\n"
             for i, finding in enumerate(cursor_findings, 1):
                 summary += f"### {i}. {finding['author']} Comment\n"
                 summary += f"```\n{finding['body'][:500]}{'...' if len(finding['body']) > 500 else ''}\n```\n\n"
@@ -300,16 +307,26 @@ class PRAnalyzer:
 
 
 @click.command()
-@click.option("--pr-number", required=True, type=int, help="PR number to analyze")
-@click.option("--repository", required=True, help="Repository in format owner/repo")
 @click.option(
-    "--output-file", default="claude_review_results.md", help="Output file for results"
+    "--pr-number", required=True, type=int, help="PR number to analyze"
 )
 @click.option(
-    "--fast-validation-passed", default="true", help="Whether fast validation passed"
+    "--repository", required=True, help="Repository in format owner/repo"
 )
 @click.option(
-    "--model", default="haiku", help="Claude model to use (haiku, sonnet, opus)"
+    "--output-file",
+    default="claude_review_results.md",
+    help="Output file for results",
+)
+@click.option(
+    "--fast-validation-passed",
+    default="true",
+    help="Whether fast validation passed",
+)
+@click.option(
+    "--model",
+    default="haiku",
+    help="Claude model to use (haiku, sonnet, opus)",
 )
 def main(
     pr_number: int,
@@ -342,7 +359,11 @@ def main(
         testing = analyzer.analyze_test_strategy(pr_data)
 
         # Parse validation status
-        validation_passed = fast_validation_passed.lower() in ("true", "1", "yes")
+        validation_passed = fast_validation_passed.lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         # Store selected model for summary
         analyzer._selected_model = model
@@ -370,7 +391,9 @@ def main(
         # Print key findings
         click.echo(f"\n📊 Summary:")
         click.echo(f"   • Cursor findings: {len(cursor_findings)}")
-        click.echo(f"   • Architecture concerns: {len(architecture['concerns'])}")
+        click.echo(
+            f"   • Architecture concerns: {len(architecture['concerns'])}"
+        )
         click.echo(
             f"   • Performance optimizations: {len(performance['optimizations'])}"
         )

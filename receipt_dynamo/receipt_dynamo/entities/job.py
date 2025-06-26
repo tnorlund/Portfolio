@@ -72,7 +72,9 @@ class Job:
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if not isinstance(created_by, str) or not created_by:
             raise ValueError("created_by must be a non-empty string")
@@ -91,7 +93,10 @@ class Job:
         self.status = status.lower()
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
@@ -100,8 +105,13 @@ class Job:
         self.job_config = job_config
 
         if estimated_duration is not None:
-            if not isinstance(estimated_duration, int) or estimated_duration <= 0:
-                raise ValueError("estimated_duration must be a positive integer")
+            if (
+                not isinstance(estimated_duration, int)
+                or estimated_duration <= 0
+            ):
+                raise ValueError(
+                    "estimated_duration must be a positive integer"
+                )
         self.estimated_duration = estimated_duration
 
         if tags is not None and not isinstance(tags, dict):
@@ -168,7 +178,9 @@ class Job:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):

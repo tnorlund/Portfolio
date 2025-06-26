@@ -5,9 +5,11 @@ from typing import Any, Dict, List, Optional
 import botocore.exceptions
 
 from receipt_dynamo.entities import ReceiptMetadata
-from receipt_label.merchant_validation import (normalize_address,
-                                               query_records_by_place_id,
-                                               update_items_with_canonical)
+from receipt_label.merchant_validation import (
+    normalize_address,
+    query_records_by_place_id,
+    update_items_with_canonical,
+)
 from receipt_label.utils import get_clients
 
 from .common import setup_logger
@@ -68,7 +70,9 @@ def extract_receipts_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]:
     return receipts_to_process
 
 
-def get_receipt_metadata(image_id: str, receipt_id: str) -> Optional[ReceiptMetadata]:
+def get_receipt_metadata(
+    image_id: str, receipt_id: str
+) -> Optional[ReceiptMetadata]:
     """
     Retrieve metadata for a receipt.
 
@@ -112,14 +116,16 @@ def build_canonical_details_from_record(
             canonical_record.canonical_place_id or canonical_record.place_id
         ),
         "canonical_merchant_name": (
-            canonical_record.canonical_merchant_name or canonical_record.merchant_name
+            canonical_record.canonical_merchant_name
+            or canonical_record.merchant_name
         ),
         "canonical_address": (
             canonical_record.canonical_address
             or normalize_address(canonical_record.address)
         ),
         "canonical_phone_number": (
-            canonical_record.canonical_phone_number or canonical_record.phone_number
+            canonical_record.canonical_phone_number
+            or canonical_record.phone_number
         ),
     }
 
@@ -147,8 +153,12 @@ def determine_canonical_details(
         if matching_records:
             # Use canonical data from first matching record
             canonical_record = matching_records[0]
-            canonical_details = build_canonical_details_from_record(canonical_record)
-            logger.info("Found existing canonical record for place_id %s", place_id)
+            canonical_details = build_canonical_details_from_record(
+                canonical_record
+            )
+            logger.info(
+                "Found existing canonical record for place_id %s", place_id
+            )
         else:
             # No existing canonical records found
             # Self-canonize this record
@@ -161,7 +171,9 @@ def determine_canonical_details(
     else:
         # No place_id, self-canonize
         canonical_details = self_canonize_record(metadata)
-        logger.info("No place_id for %s/%s, self-canonizing", image_id, receipt_id)
+        logger.info(
+            "No place_id for %s/%s, self-canonizing", image_id, receipt_id
+        )
 
     return canonical_details
 
@@ -193,7 +205,9 @@ def update_metadata_with_canonical(
             receipt_id,
         )
         return True
-    logger.warning("Failed to update %s/%s with canonical data", image_id, receipt_id)
+    logger.warning(
+        "Failed to update %s/%s with canonical data", image_id, receipt_id
+    )
     return False
 
 
@@ -222,7 +236,9 @@ def process_single_receipt(receipt_data: Dict[str, Any]) -> bool:
             return False
 
         # Determine canonical details
-        canonical_details = determine_canonical_details(metadata, image_id, receipt_id)
+        canonical_details = determine_canonical_details(
+            metadata, image_id, receipt_id
+        )
 
         # Update the record with canonical data
         return update_metadata_with_canonical(
@@ -248,11 +264,15 @@ def process_single_receipt(receipt_data: Dict[str, Any]) -> bool:
         )
         return False
     except ValueError as e:
-        logger.error("Invalid value for receipt %s/%s: %s", image_id, receipt_id, e)
+        logger.error(
+            "Invalid value for receipt %s/%s: %s", image_id, receipt_id, e
+        )
         return False
 
 
-def consolidate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def consolidate_handler(
+    event: Dict[str, Any], _context: Any
+) -> Dict[str, Any]:
     """
     Lambda handler for incrementally consolidating newly created receipt
     metadata.

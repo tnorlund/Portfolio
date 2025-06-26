@@ -335,7 +335,11 @@ def test_addReceiptWordLabels_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": sample_receipt_word_label.to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": sample_receipt_word_label.to_item()
+                            }
+                        }
                     ]
                 }
             },
@@ -1583,7 +1587,9 @@ def test_getReceiptWordLabelsByLabel_with_limit(
     client.addReceiptWordLabel(second_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel("ITEM", limit=1)
+    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+        "ITEM", limit=1
+    )
 
     # Assert
     assert len(labels) == 1
@@ -1613,7 +1619,9 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
     client.addReceiptWordLabel(second_label)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptWordLabelsByLabel("ITEM", limit=1)
+    first_page, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+        "ITEM", limit=1
+    )
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
@@ -1834,7 +1842,9 @@ def test_getReceiptWordLabelsByValidationStatus_success(
     client.addReceiptWordLabel(sample_receipt_word_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByValidationStatus("VALID")
+    labels, last_evaluated_key = client.getReceiptWordLabelsByValidationStatus(
+        "VALID"
+    )
 
     # Assert
     assert len(labels) == 1
@@ -2030,11 +2040,15 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
             "LastEvaluatedKey": {"PK": {"S": "k2"}, "SK": {"S": "k2"}},
         },
         {
-            "Items": [sample_receipt_word_label.to_item()],  # total = 3 (hits limit)
+            "Items": [
+                sample_receipt_word_label.to_item()
+            ],  # total = 3 (hits limit)
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALID", limit=3)
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALID", limit=3
+    )
 
     assert len(labels) == 3
     assert lek is None
@@ -2062,7 +2076,9 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALID", limit=2)
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALID", limit=2
+    )
 
     assert len(labels) == 2
     assert lek is None
@@ -2093,7 +2109,9 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALID", limit=3)
+    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+        "VALID", limit=3
+    )
 
     assert len(labels) == 3
     assert lek is None  # loop completed
