@@ -13,6 +13,7 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
@@ -27,14 +28,14 @@ def _supports_put_ai_usage_metric(obj: Any) -> bool:
     """
     True  → safe to call obj.put_ai_usage_metric(metric)
     False → call obj.put_item(TableName=..., Item=...)
-    
+
     Uses probe-based detection that only relies on public Mock behavior:
     - Real objects are checked for the method
     - Spec'd mocks reject unknown attributes (raises AttributeError)
     - Plain mocks create any attribute on demand
     """
     from unittest.mock import Mock
-    
+
     # Real objects (and non-Mock stubs)
     if not isinstance(obj, Mock):
         return callable(getattr(obj, "put_ai_usage_metric", None))
