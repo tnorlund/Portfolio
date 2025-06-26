@@ -10,16 +10,13 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from freezegun import freeze_time
 from openai import OpenAI
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+from receipt_label.tests.utils.ai_usage_helpers import (
+    create_mock_anthropic_response, create_mock_openai_response,
+    create_test_tracking_context)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
-
-from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_anthropic_response,
-    create_mock_openai_response,
-    create_test_tracking_context,
-)
 
 
 @pytest.mark.unit
@@ -1048,7 +1045,9 @@ class TestConcurrentTracking:
         def call_openai(request_id):
             response = Mock()
             response.model = "gpt-3.5-turbo"
-            response.usage = Mock(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+            response.usage = Mock(
+                prompt_tokens=100, completion_tokens=50, total_tokens=150
+            )
             return response
 
         # Make multiple calls

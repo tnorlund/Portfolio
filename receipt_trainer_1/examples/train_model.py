@@ -10,15 +10,12 @@ import uuid
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from sklearn.metrics import (accuracy_score, confusion_matrix,
+                             precision_recall_fscore_support)
+from transformers import TrainerCallback
+
 from receipt_trainer import DataConfig, ReceiptTrainer, TrainingConfig
 from receipt_trainer.utils.aws import get_dynamo_table
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix,
-    precision_recall_fscore_support,
-)
-
-from transformers import TrainerCallback
 
 
 class MetricsCallback(TrainerCallback):
@@ -172,9 +169,7 @@ class MetricsCallback(TrainerCallback):
             plt.tight_layout()
 
             # Save the plot to a temporary file
-            with tempfile.NamedTemporaryFile(
-                suffix=".png", delete=False
-            ) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
                 plt_path = tmp_file.name
                 plt.savefig(plt_path)
 
@@ -244,12 +239,8 @@ def validate_environment():
 
 def parse_args():
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Train a Receipt Trainer model."
-    )
-    parser.add_argument(
-        "--run_name", type=str, default=None, help="Name of the run."
-    )
+    parser = argparse.ArgumentParser(description="Train a Receipt Trainer model.")
+    parser.add_argument("--run_name", type=str, default=None, help="Name of the run.")
     parser.add_argument(
         "--model_name",
         type=str,

@@ -30,9 +30,7 @@ TIME_FORMATS = [
 ]
 
 
-def parse_datetime(
-    date_str: str, time_str: Optional[str] = None
-) -> Optional[datetime]:
+def parse_datetime(date_str: str, time_str: Optional[str] = None) -> Optional[datetime]:
     """Parse date and time strings into a datetime object.
 
     Args:
@@ -232,9 +230,7 @@ def get_date_range(start_date: datetime, end_date: datetime) -> List[datetime]:
     return dates
 
 
-def get_time_difference(
-    time1: datetime, time2: datetime
-) -> Tuple[int, int, int]:
+def get_time_difference(time1: datetime, time2: datetime) -> Tuple[int, int, int]:
     """Calculate the difference between two times.
 
     Args:

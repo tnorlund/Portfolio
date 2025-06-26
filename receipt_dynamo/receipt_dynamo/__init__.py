@@ -109,9 +109,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
         """Placeholder for DynamoClient when boto3 is unavailable."""
 
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError(
-                "boto3 is required for DynamoClient"
-            ) from exc
+            raise ModuleNotFoundError("boto3 is required for DynamoClient") from exc
 
 
 try:  # Optional dependency
@@ -119,9 +117,7 @@ try:  # Optional dependency
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def export_image(*_, **__):
-        raise ModuleNotFoundError(
-            "boto3 is required for export_image"
-        ) from exc
+        raise ModuleNotFoundError("boto3 is required for export_image") from exc
 
 
 try:
@@ -129,9 +125,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def import_image(*_, **__):
-        raise ModuleNotFoundError(
-            "boto3 is required for import_image"
-        ) from exc
+        raise ModuleNotFoundError("boto3 is required for import_image") from exc
 
 
 try:  # Optional dependency
@@ -142,9 +136,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     class _ServicePlaceholder:  # type: ignore
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError(
-                "boto3 is required for service classes"
-            ) from exc
+            raise ModuleNotFoundError("boto3 is required for service classes") from exc
 
     InstanceService = _ServicePlaceholder
     JobService = _ServicePlaceholder

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
 
 
@@ -34,13 +35,8 @@ def example_instance_job_minimal():
 @pytest.mark.unit
 def test_instance_job_init_valid(example_instance_job):
     """Test the InstanceJob constructor with valid parameters."""
-    assert (
-        example_instance_job.instance_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
-    assert (
-        example_instance_job.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_instance_job.instance_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert example_instance_job.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_instance_job.assigned_at == "2021-01-01T00:00:00"
     assert example_instance_job.status == "running"
     assert example_instance_job.resource_utilization == {
@@ -57,10 +53,7 @@ def test_instance_job_init_minimal(example_instance_job_minimal):
         example_instance_job_minimal.instance_id
         == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
-    assert (
-        example_instance_job_minimal.job_id
-        == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_instance_job_minimal.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_instance_job_minimal.assigned_at == "2021-01-01T00:00:00"
     assert example_instance_job_minimal.status == "running"
     assert example_instance_job_minimal.resource_utilization == {}
@@ -81,9 +74,7 @@ def test_instance_job_init_datetime():
 @pytest.mark.unit
 def test_instance_job_init_invalid_instance_id():
     """Test the InstanceJob constructor with invalid instance_id."""
-    with pytest.raises(
-        ValueError, match="instance_id must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="instance_id must be a non-empty string"):
         InstanceJob(
             1,  # Invalid: not a string
             "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -149,9 +140,7 @@ def test_instance_job_init_invalid_status():
 @pytest.mark.unit
 def test_instance_job_init_invalid_resource_utilization():
     """Test the InstanceJob constructor with invalid resource_utilization."""
-    with pytest.raises(
-        ValueError, match="resource_utilization must be a dictionary"
-    ):
+    with pytest.raises(ValueError, match="resource_utilization must be a dictionary"):
         InstanceJob(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "4f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -183,9 +172,7 @@ def test_instance_job_gsi1_key(example_instance_job):
 
 
 @pytest.mark.unit
-def test_instance_job_to_item(
-    example_instance_job, example_instance_job_minimal
-):
+def test_instance_job_to_item(example_instance_job, example_instance_job_minimal):
     """Test the InstanceJob.to_item() method."""
     # Test with full instance job
     item = example_instance_job.to_item()
@@ -200,9 +187,7 @@ def test_instance_job_to_item(
     assert item["assigned_at"] == {"S": "2021-01-01T00:00:00"}
     assert item["status"] == {"S": "running"}
     assert item["resource_utilization"]["M"]["cpu_utilization"] == {"N": "75"}
-    assert item["resource_utilization"]["M"]["memory_utilization"] == {
-        "N": "60"
-    }
+    assert item["resource_utilization"]["M"]["memory_utilization"] == {"N": "60"}
     assert item["resource_utilization"]["M"]["gpu_utilization"] == {"N": "90"}
 
     # Test minimal instance job
@@ -227,13 +212,8 @@ def test_instance_job_repr(example_instance_job):
 def test_instance_job_iter(example_instance_job):
     """Test the InstanceJob.__iter__() method."""
     instance_job_dict = dict(example_instance_job)
-    assert (
-        instance_job_dict["instance_id"]
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
-    assert (
-        instance_job_dict["job_id"] == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert instance_job_dict["instance_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert instance_job_dict["job_id"] == "4f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert instance_job_dict["assigned_at"] == "2021-01-01T00:00:00"
     assert instance_job_dict["status"] == "running"
     assert instance_job_dict["resource_utilization"] == {
@@ -348,9 +328,7 @@ def test_itemToInstanceJob(example_instance_job, example_instance_job_minimal):
         itemToInstanceJob({"PK": {"S": "INSTANCE#id"}, "SK": {"S": "JOB#id"}})
 
     # Test with invalid item format
-    with pytest.raises(
-        ValueError, match="Error converting item to InstanceJob"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to InstanceJob"):
         itemToInstanceJob(
             {
                 "PK": {"S": "INSTANCE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
