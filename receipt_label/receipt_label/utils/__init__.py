@@ -2,6 +2,11 @@
 
 import importlib.metadata
 
+# Import resilience patterns from receipt_dynamo (moved from receipt_label)
+from receipt_dynamo.utils.batch_queue import BatchQueue
+from receipt_dynamo.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from receipt_dynamo.utils.retry_with_backoff import RetryManager, retry_with_backoff
+
 from .address import (
     compare_addresses,
     format_address,
@@ -10,8 +15,6 @@ from .address import (
 )
 from .ai_usage_tracker import AIUsageTracker
 from .ai_usage_tracker_resilient import ResilientAIUsageTracker
-from .batch_queue import BatchQueue
-from .circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from .client_manager import ClientConfig, ClientManager
 from .clients import get_client_manager, get_clients
 from .cost_calculator import AICostCalculator
@@ -24,7 +27,6 @@ from .date import (
     is_valid_time,
     parse_datetime,
 )
-from .retry_with_backoff import RetryManager, retry_with_backoff
 from .validation import (
     validate_address,
     validate_amounts,

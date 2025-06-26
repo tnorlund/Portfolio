@@ -43,6 +43,9 @@ class ResilientAIUsageTracker(AIUsageTracker):
         If no dynamo_client is provided, creates a ResilientDynamoClient with
         the specified resilience parameters.
         """
+        # Track if we need to create a client
+        created_client = False
+
         # Create resilient client if not provided
         if dynamo_client is None and track_to_dynamo:
             table_name = table_name or os.environ.get("DYNAMODB_TABLE_NAME")
@@ -57,6 +60,7 @@ class ResilientAIUsageTracker(AIUsageTracker):
                     batch_flush_interval=batch_flush_interval,
                     enable_batch_processing=enable_batch_processing,
                 )
+                created_client = True
 
         # Initialize parent with resilient client
         super().__init__(
@@ -69,7 +73,7 @@ class ResilientAIUsageTracker(AIUsageTracker):
         )
 
         # Store reference for cleanup
-        self._created_client = dynamo_client is None and self.dynamo_client is not None
+        self._created_client = created_client
 
     def flush(self) -> None:
         """Flush any pending metrics in the batch queue."""

@@ -65,6 +65,12 @@ __all__ = [
     "AIUsageMetric",
     "itemToAIUsageMetric",
     "ResilientDynamoClient",
+    # Resilience patterns (moved from receipt_label)
+    "BatchQueue",
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+    "RetryManager",
+    "retry_with_backoff",
 ]
 
 # Entities must be imported first to avoid circular imports
@@ -173,5 +179,14 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
     InstanceService = _ServicePlaceholder
     JobService = _ServicePlaceholder
     QueueService = _ServicePlaceholder
+
+# Import resilience patterns
+from receipt_dynamo.utils import (
+    BatchQueue,
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+    RetryManager,
+    retry_with_backoff,
+)
 
 # For backward compatibility:
