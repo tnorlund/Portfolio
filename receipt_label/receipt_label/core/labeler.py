@@ -175,7 +175,7 @@ class ReceiptLabeler:
         if enable_validation is None:
             enable_validation = self.validation_config["enable_validation"]
 
-        logger.info(f"Processing receipt {receipt.receipt_id}...")
+        logger.info("Processing receipt %s...", receipt.receipt_id)
 
         # Initialize tracking dictionaries
         execution_times = {}
@@ -199,7 +199,8 @@ class ReceiptLabeler:
             )
             logger.debug("Structure analysis completed successfully")
             logger.debug(
-                f"Structure analysis sections: {len(structure_analysis.sections)} found"
+                "Structure analysis sections: %s found",
+                len(structure_analysis.sections),
             )
 
             # Label fields
@@ -213,11 +214,16 @@ class ReceiptLabeler:
             )
             logger.debug("Field labeling completed successfully")
             logger.debug(
-                f"Field analysis found {len(field_analysis.labels) if hasattr(field_analysis, 'labels') else 0} labels"
+                "Field analysis found %s labels",
+                (
+                    len(field_analysis.labels)
+                    if hasattr(field_analysis, "labels")
+                    else 0
+                ),
             )
             if hasattr(field_analysis, "metadata") and field_analysis.metadata:
                 logger.debug(
-                    f"Field analysis has metadata: {field_analysis.metadata}"
+                    "Field analysis has metadata: %s", field_analysis.metadata
                 )
 
             # Process line items using line item processor
@@ -912,7 +918,7 @@ class ReceiptLabeler:
                     )
 
                 except Exception as e:
-                    logger.error(f"Error during validation: {str(e)}")
+                    logger.error("Error during validation: %s", str(e))
                     validation_analysis = ValidationAnalysis(
                         overall_reasoning=f"Validation failed due to error: {str(e)}",
                         overall_status=ValidationStatus.INCOMPLETE,
@@ -941,9 +947,9 @@ class ReceiptLabeler:
             return result
 
         except Exception as e:
-            logger.error(f"Error processing receipt: {str(e)}")
-            logger.error(f"Error type: {type(e)}")
-            logger.error(f"Error traceback: {traceback.format_exc()}")
+            logger.error("Error processing receipt: %s", str(e))
+            logger.error("Error type: %s", type(e))
+            logger.error("Error traceback: %s", traceback.format_exc())
             raise
 
     def _log_label_application_summary(
@@ -958,64 +964,64 @@ class ReceiptLabeler:
 
         # Summary of applied labels
         total_applied = sum(len(labels) for labels in applied_labels.values())
-        logger.info(f"✅ APPLIED LABELS: {total_applied}")
+        logger.info("✅ APPLIED LABELS: %s", total_applied)
 
         if applied_labels:
             for label_type, labels in applied_labels.items():
-                logger.info(f"\n  🏷️  {label_type}: {len(labels)} labels")
+                logger.info("\n  🏷️  %s: %s labels", label_type, len(labels))
                 # Show first 5 examples at most to keep logs reasonable
                 for i, label in enumerate(labels[:5]):
                     logger.info(
                         f"    • '{label['text']}' ({label['position']})"
                     )
                 if len(labels) > 5:
-                    logger.info(f"    • ... and {len(labels) - 5} more")
+                    logger.info("    • ... and %s more", len(labels) - 5)
         else:
             logger.info("  No labels were applied")
 
         # Summary of updated labels
         total_updated = sum(len(labels) for labels in updated_labels.values())
-        logger.info(f"\n🔄 UPDATED LABELS: {total_updated}")
+        logger.info("\n🔄 UPDATED LABELS: %s", total_updated)
 
         if updated_labels:
             for label_type, labels in updated_labels.items():
-                logger.info(f"\n  🔀 {label_type}: {len(labels)} labels")
+                logger.info("\n  🔀 %s: %s labels", label_type, len(labels))
                 # Show first 5 examples at most
                 for i, label in enumerate(labels[:5]):
                     logger.info(
                         f"    • '{label['text']}' ({label['position']}) - was '{label['previous_label']}'"
                     )
                 if len(labels) > 5:
-                    logger.info(f"    • ... and {len(labels) - 5} more")
+                    logger.info("    • ... and %s more", len(labels) - 5)
         else:
             logger.info("  No labels were updated")
 
         # Summary of skipped labels
         total_skipped = sum(len(labels) for labels in skipped_labels.values())
-        logger.info(f"\n⏭️  SKIPPED LABELS: {total_skipped}")
+        logger.info("\n⏭️  SKIPPED LABELS: %s", total_skipped)
 
         if skipped_labels:
             for label_type, labels in skipped_labels.items():
-                logger.info(f"\n  🚫 {label_type}: {len(labels)} labels")
+                logger.info("\n  🚫 %s: %s labels", label_type, len(labels))
                 # Show first 5 examples at most
                 for i, label in enumerate(labels[:5]):
                     logger.info(
                         f"    • '{label['text']}' ({label['position']}) - kept '{label['existing_label']}'"
                     )
                 if len(labels) > 5:
-                    logger.info(f"    • ... and {len(labels) - 5} more")
+                    logger.info("    • ... and %s more", len(labels) - 5)
         else:
             logger.info("  No labels were skipped")
 
         # Overall statistics
         total_attempted = total_applied + total_updated + total_skipped
-        logger.info(f"\n📊 OVERALL STATISTICS:")
-        logger.info(f"   Total attempted: {total_attempted}")
+        logger.info("\n📊 OVERALL STATISTICS:")
+        logger.info("   Total attempted: %s", total_attempted)
         if total_attempted > 0:
             success_rate = (
                 (total_applied + total_updated) / total_attempted
             ) * 100
-            logger.info(f"   Success rate: {success_rate:.1f}%")
+            logger.info("   Success rate: %.1f%%", success_rate)
             logger.info(
                 f"   Applied: {total_applied} ({(total_applied/total_attempted)*100:.1f}%)"
             )
@@ -1026,7 +1032,7 @@ class ReceiptLabeler:
                 f"   Skipped: {total_skipped} ({(total_skipped/total_attempted)*100:.1f}%)"
             )
 
-        logger.info(f"{divider}\n")
+        logger.info("%s\n", divider)
 
     def _get_places_data(
         self, receipt_words: List[ReceiptWord]
@@ -1052,7 +1058,7 @@ class ReceiptLabeler:
                 return results[0].get("places_api_match")
             return None
         except Exception as e:
-            logger.warning(f"Error getting Places data: {str(e)}")
+            logger.warning("Error getting Places data: %s", str(e))
             return None
 
     def validate_receipt(
@@ -1198,6 +1204,11 @@ class ReceiptLabeler:
                 f"Checking for existing analysis for receipt {receipt_id}, image {image_id}"
             )
 
+            # Import the get_receipt_analyses function
+            from receipt_label.data.analysis_operations import (
+                get_receipt_analyses,
+            )
+
             # Get all analyses in a single query using the new method
             (
                 existing_label_analysis,
@@ -1284,7 +1295,9 @@ class ReceiptLabeler:
                     return result
 
         # Existing analysis not found or version mismatch, proceed with normal processing
-        logger.info(f"Processing receipt {receipt_id} from image {image_id}")
+        logger.info(
+            "Processing receipt %s from image %s", receipt_id, image_id
+        )
 
         # Get receipt data from DynamoDB
         if not client:
@@ -1379,6 +1392,7 @@ class ReceiptLabeler:
 
             # Import the save_analysis_transaction function
             from receipt_label.data.analysis_operations import (
+                get_receipt_analyses,
                 save_analysis_transaction,
                 save_label_analysis,
                 save_validation_analysis,
@@ -1435,10 +1449,10 @@ class ReceiptLabeler:
 
             return success
         except Exception as e:
-            logger.error(f"Error saving analysis results: {str(e)}")
+            logger.error("Error saving analysis results: %s", str(e))
             import traceback
 
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error("Traceback: %s", traceback.format_exc())
             return False
 
     def _update_metadata_with_version(self, metadata):

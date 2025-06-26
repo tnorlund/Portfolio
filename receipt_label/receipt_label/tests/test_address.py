@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_label.utils.address import (
     compare_addresses,
     format_address,

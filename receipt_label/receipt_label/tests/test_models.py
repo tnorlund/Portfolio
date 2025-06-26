@@ -9,6 +9,7 @@ from receipt_dynamo.entities.receipt_line import (
 from receipt_dynamo.entities.receipt_word import (
     ReceiptWord as DynamoReceiptWord,
 )
+
 from receipt_label.models.receipt import (
     Receipt,
     ReceiptLine,

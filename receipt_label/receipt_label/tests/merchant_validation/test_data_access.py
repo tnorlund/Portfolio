@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from botocore.exceptions import ClientError
 from receipt_dynamo.entities import Receipt, ReceiptMetadata, ReceiptWord
+
 from receipt_label.merchant_validation.data_access import (
     get_receipt_details,
     list_all_receipt_metadatas,
@@ -64,17 +65,11 @@ class TestListReceiptMetadatas:
         """Test handling of DynamoDB client errors."""
         # Arrange
         mock_client_manager = Mock()
-<<<<<<< Updated upstream
-        mock_client_manager.dynamo.listReceiptMetadatas.side_effect = ClientError(
-            {"Error": {"Code": "ValidationException"}},
-            "listReceiptMetadatas",
-=======
         mock_client_manager.dynamo.listReceiptMetadatas.side_effect = (
             ClientError(
                 {"Error": {"Code": "ValidationException"}},
                 "listReceiptMetadatas",
             )
->>>>>>> Stashed changes
         )
         mock_get_client_manager.return_value = mock_client_manager
 
