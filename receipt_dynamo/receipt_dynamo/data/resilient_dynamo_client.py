@@ -111,12 +111,17 @@ class ResilientDynamoClient(DynamoClient):
         """
         if self.enable_batch_processing:
             # Add to queue for batch processing
+            metrics_to_flush = None
             with self.queue_lock:
                 self.metric_queue.append(metric)
                 
-                # Flush if batch size reached
+                # Check if we should flush
                 if len(self.metric_queue) >= self.batch_size:
-                    self._flush_metrics()
+                    metrics_to_flush = self._prepare_flush()
+                    
+            # Execute batch write outside of lock
+            if metrics_to_flush:
+                self._batch_write_with_retry(metrics_to_flush)
         else:
             # Direct write with retry
             self._put_metric_with_retry(metric)
@@ -147,26 +152,29 @@ class ResilientDynamoClient(DynamoClient):
         while not self.stop_flag.is_set():
             time.sleep(0.1)
             
+            metrics_to_flush = None
             with self.queue_lock:
                 if self.metric_queue and (time.time() - self.last_flush_time) >= self.batch_flush_interval:
-                    self._flush_metrics()
+                    metrics_to_flush = self._prepare_flush()
+            
+            # Execute batch write outside of lock
+            if metrics_to_flush:
+                self._batch_write_with_retry(metrics_to_flush)
     
-    def _flush_metrics(self) -> None:
-        """Flush queued metrics to DynamoDB."""
+    def _prepare_flush(self) -> Optional[List[AIUsageMetric]]:
+        """Prepare metrics for flushing (must be called with lock held).
+        
+        Returns:
+            Metrics to flush or None if queue is empty
+        """
         if not self.metric_queue:
-            return
+            return None
         
         # Copy and clear queue
         metrics_to_flush = self.metric_queue.copy()
         self.metric_queue.clear()
         self.last_flush_time = time.time()
-        
-        # Release lock before processing
-        self.queue_lock.release()
-        try:
-            self._batch_write_with_retry(metrics_to_flush)
-        finally:
-            self.queue_lock.acquire()
+        return metrics_to_flush
     
     def _batch_write_with_retry(self, metrics: List[AIUsageMetric]) -> None:
         """Batch write metrics with retry logic."""
@@ -204,8 +212,13 @@ class ResilientDynamoClient(DynamoClient):
     
     def flush(self) -> None:
         """Manually flush any pending metrics."""
+        metrics_to_flush = None
         with self.queue_lock:
-            self._flush_metrics()
+            metrics_to_flush = self._prepare_flush()
+        
+        # Execute batch write outside of lock
+        if metrics_to_flush:
+            self._batch_write_with_retry(metrics_to_flush)
     
     def close(self) -> None:
         """Clean up resources."""
