@@ -14,12 +14,11 @@ from openai.types.create_embedding_response import CreateEmbeddingResponse
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from tests.utils.ai_usage_helpers import (
     create_mock_openai_response,
     create_test_tracking_context,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
 @pytest.mark.unit
@@ -108,6 +107,7 @@ class TestWrappedChatCompletions:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Create wrapped client
@@ -176,6 +176,7 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -230,6 +231,7 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -288,6 +290,7 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -336,6 +339,7 @@ class TestWrappedEmbeddings:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="embed-user",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -390,6 +394,7 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -433,6 +438,7 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -466,6 +472,7 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -505,10 +512,11 @@ class TestWrapperWithContext:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Set context before wrapping
-        tracker.set_context(
+        tracker.set_tracking_context(
             job_id="job-999",
             batch_id="batch-888",
             github_pr=777,
@@ -544,6 +552,7 @@ class TestWrapperWithContext:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -551,7 +560,7 @@ class TestWrapperWithContext:
         )
 
         # First call with initial context
-        tracker.set_context(job_id="job-1")
+        tracker.set_tracking_context(job_id="job-1")
         wrapped_client.chat.completions.create(model="gpt-3.5-turbo")
 
         first_call = mock_dynamo.put_item.call_args_list[0]
@@ -559,7 +568,7 @@ class TestWrapperWithContext:
         assert first_item["jobId"]["S"] == "job-1"
 
         # Change context and make another call
-        tracker.set_context(job_id="job-2")
+        tracker.set_tracking_context(job_id="job-2")
         wrapped_client.chat.completions.create(model="gpt-3.5-turbo")
 
         second_call = mock_dynamo.put_item.call_args_list[1]
@@ -662,6 +671,7 @@ class TestWrapperEdgeCases:
             dynamo_client=Mock(),
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Create multiple clients
@@ -762,6 +772,7 @@ class TestWrapperPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
