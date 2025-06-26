@@ -46,6 +46,7 @@ test = [
     "pytest-mock>=3.14.0,<4.0.0",
     "pytest-cov>=6.1.0,<7.0.0",
     "pytest-xdist>=3.6.0,<4.0.0",
+    "pytest-asyncio>=0.24.0,<1.0.0",
     "moto>=5.1.0,<6.0.0",
     "freezegun>=1.5.0,<2.0.0",
 ]
@@ -91,11 +92,11 @@ max-line-length = 79
 disable = [
     "too-few-public-methods",
     "too-many-arguments",
-    "too-many-locals", 
+    "too-many-locals",
     "too-many-instance-attributes",
     "too-many-branches",
     "missing-module-docstring",
-    "missing-class-docstring", 
+    "missing-class-docstring",
     "missing-function-docstring",
 ]
 
@@ -104,4 +105,4 @@ good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
 
 [tool.pylint.design]
 max-args = 10
-max-locals = 20 
+max-locals = 20

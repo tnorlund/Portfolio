@@ -17,11 +17,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from openai import OpenAI
-from openai.types.chat import ChatCompletion, ChatCompletionMessage, Choice
-from openai.types.chat.chat_completion import CompletionUsage
-
+from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat.chat_completion import Choice, CompletionUsage
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
@@ -69,7 +69,9 @@ def mock_high_performance_dynamo():
     def fast_query(**kwargs):
         with client._storage_lock:
             # Simple in-memory query simulation
-            return {"Items": client._stored_items[:100]}  # Limit for performance
+            return {
+                "Items": client._stored_items[:100]
+            }  # Limit for performance
 
     client.query = MagicMock(side_effect=fast_query)
 
@@ -121,7 +123,8 @@ class TestAIUsagePerformanceIntegration:
             return_value=mock_high_performance_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
                 openai_client = manager.openai
@@ -207,7 +210,8 @@ class TestAIUsagePerformanceIntegration:
             return_value=mock_high_performance_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
 
                 def worker_task(worker_id: int, num_requests: int):
@@ -258,16 +262,23 @@ class TestAIUsagePerformanceIntegration:
                 # Analyze results
                 total_requests = num_workers * requests_per_worker
                 overall_throughput = total_requests / total_elapsed
-                avg_worker_latency = statistics.mean(r["avg_latency"] for r in results)
+                avg_worker_latency = statistics.mean(
+                    r["avg_latency"] for r in results
+                )
                 max_worker_latency = max(r["max_latency"] for r in results)
 
                 # Performance assertions
-                assert overall_throughput > 200  # Higher throughput with concurrency
+                assert (
+                    overall_throughput > 200
+                )  # Higher throughput with concurrency
                 assert avg_worker_latency < 20  # Reasonable latency under load
                 assert max_worker_latency < 100  # No extreme outliers
 
                 # Verify data integrity
-                assert len(mock_high_performance_dynamo._stored_items) == total_requests
+                assert (
+                    len(mock_high_performance_dynamo._stored_items)
+                    == total_requests
+                )
 
                 # Check job isolation
                 for worker_id in range(num_workers):
@@ -314,7 +325,8 @@ class TestAIUsagePerformanceIntegration:
             return_value=mock_high_performance_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
                 openai_client = manager.openai
@@ -335,7 +347,10 @@ class TestAIUsagePerformanceIntegration:
                         openai_client.chat.completions.create(
                             model="gpt-3.5-turbo",
                             messages=[
-                                {"role": "user", "content": f"Batch {batch} msg {i}"}
+                                {
+                                    "role": "user",
+                                    "content": f"Batch {batch} msg {i}",
+                                }
                             ],
                         )
 
@@ -392,14 +407,17 @@ class TestAIUsagePerformanceIntegration:
                 ),
             )
 
-        mock_openai.chat.completions.create.side_effect = variable_latency_response
+        mock_openai.chat.completions.create.side_effect = (
+            variable_latency_response
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
             return_value=mock_high_performance_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
                 openai_client = manager.openai
@@ -421,9 +439,16 @@ class TestAIUsagePerformanceIntegration:
                         req_start = time.perf_counter()
                         openai_client.chat.completions.create(
                             model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": f"{phase_name} {i}"}],
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": f"{phase_name} {i}",
+                                }
+                            ],
                         )
-                        latencies.append((time.perf_counter() - req_start) * 1000)
+                        latencies.append(
+                            (time.perf_counter() - req_start) * 1000
+                        )
 
                         if i < count - 1:
                             time.sleep(delay)
@@ -445,7 +470,9 @@ class TestAIUsagePerformanceIntegration:
                 assert (
                     burst_metrics["throughput"] > 50
                 )  # Handle at least 50 req/s during burst
-                assert burst_metrics["p99_latency"] < 100  # Maintain reasonable latency
+                assert (
+                    burst_metrics["p99_latency"] < 100
+                )  # Maintain reasonable latency
 
                 # System should recover after burst
                 steady_after = phase_metrics["steady"]
@@ -482,7 +509,9 @@ class TestAIUsagePerformanceIntegration:
                         "totalTokens": {"N": str(100 + i)},
                         "costUSD": {"N": str(0.0001 * (100 + i))},
                     }
-                    mock_high_performance_dynamo._stored_items.append(metric_item)
+                    mock_high_performance_dynamo._stored_items.append(
+                        metric_item
+                    )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
@@ -575,13 +604,17 @@ class TestAIUsagePerformanceIntegration:
         mock_dynamo.put_item = MagicMock(side_effect=stressed_put_item)
 
         mock_openai = MagicMock(spec=OpenAI)
-        mock_openai.chat.completions.create.return_value = create_mock_openai_response()
+        mock_openai.chat.completions.create.return_value = (
+            create_mock_openai_response()
+        )
 
         with patch(
-            "receipt_label.utils.client_manager.DynamoClient", return_value=mock_dynamo
+            "receipt_label.utils.client_manager.DynamoClient",
+            return_value=mock_dynamo,
         ):
             with patch(
-                "receipt_label.utils.client_manager.OpenAI", return_value=mock_openai
+                "receipt_label.utils.client_manager.OpenAI",
+                return_value=mock_openai,
             ):
                 manager = ClientManager(config)
                 openai_client = manager.openai
@@ -618,7 +651,9 @@ class TestAIUsagePerformanceIntegration:
                             "window": window_num,
                             "success_rate": success_rate,
                             "throughput": window_size / window_duration,
-                            "avg_latency": window_duration / window_size * 1000,
+                            "avg_latency": window_duration
+                            / window_size
+                            * 1000,
                         }
                     )
 
@@ -630,7 +665,9 @@ class TestAIUsagePerformanceIntegration:
                 early_success = statistics.mean(
                     w["success_rate"] for w in early_windows
                 )
-                late_success = statistics.mean(w["success_rate"] for w in late_windows)
+                late_success = statistics.mean(
+                    w["success_rate"] for w in late_windows
+                )
 
                 assert early_success > 0.95  # Nearly perfect when not stressed
                 assert late_success > 0.70  # Still functional under stress
@@ -639,7 +676,9 @@ class TestAIUsagePerformanceIntegration:
                 early_throughput = statistics.mean(
                     w["throughput"] for w in early_windows
                 )
-                late_throughput = statistics.mean(w["throughput"] for w in late_windows)
+                late_throughput = statistics.mean(
+                    w["throughput"] for w in late_windows
+                )
 
                 assert (
                     late_throughput > early_throughput * 0.3
