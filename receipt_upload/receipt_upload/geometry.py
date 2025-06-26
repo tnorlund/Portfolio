@@ -257,7 +257,7 @@ def find_perspective_coeffs(
     except ValueError as e:
         raise ValueError(
             f"Failed to compute perspective transform: {e}. Source points may be too close to collinear."
-        )
+        ) from e
 
 
 def compute_receipt_box_from_skewed_extents(
@@ -866,7 +866,7 @@ def compute_edge(
 
 
 def find_line_edges_at_secondary_extremes(
-    lines: List[object],
+    lines: List[object],  # pylint: disable=unused-argument
     hull: List[Tuple[float, float]],
     centroid: Tuple[float, float],
     avg_angle: float,
@@ -877,7 +877,7 @@ def find_line_edges_at_secondary_extremes(
     secondary_axis_angle = angle_rad + radians(90)
 
     hull_projections = []
-    for idx, point in enumerate(hull):
+    for point in hull:
         rel_x = point[0] - centroid[0]
         rel_y = point[1] - centroid[1]
         projection = rel_x * cos(secondary_axis_angle) + rel_y * sin(

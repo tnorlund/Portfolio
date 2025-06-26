@@ -1,14 +1,13 @@
 import argparse
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import boto3
-from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
+from receipt_dynamo.entities import OCRRoutingDecision
 
 from receipt_upload.ocr import apple_vision_ocr_job
 from receipt_upload.pulumi import load_env
