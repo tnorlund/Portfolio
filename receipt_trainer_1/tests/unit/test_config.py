@@ -1,6 +1,7 @@
 """Unit tests for configuration classes."""
 
 import pytest
+
 from receipt_trainer.config import DataConfig, TrainingConfig
 
 

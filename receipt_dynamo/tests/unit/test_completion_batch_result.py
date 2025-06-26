@@ -1,11 +1,10 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.constants import BatchStatus, PassNumber, ValidationStatus
 from receipt_dynamo.entities.completion_batch_result import (
-    CompletionBatchResult,
-    itemToCompletionBatchResult,
-)
+    CompletionBatchResult, itemToCompletionBatchResult)
 
 
 @pytest.fixture
@@ -50,16 +49,12 @@ def test_completion_batch_result_repr(example_completion_batch_result):
 
 @pytest.mark.unit
 def test_completion_batch_result_str(example_completion_batch_result):
-    assert str(example_completion_batch_result) == repr(
-        example_completion_batch_result
-    )
+    assert str(example_completion_batch_result) == repr(example_completion_batch_result)
 
 
 @pytest.mark.unit
 def test_completion_batch_result_eq_and_hash(example_completion_batch_result):
-    clone = itemToCompletionBatchResult(
-        example_completion_batch_result.to_item()
-    )
+    clone = itemToCompletionBatchResult(example_completion_batch_result.to_item())
     assert clone == example_completion_batch_result
     assert hash(clone) == hash(example_completion_batch_result)
     assert example_completion_batch_result != "not-a-batch"

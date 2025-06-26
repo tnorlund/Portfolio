@@ -59,10 +59,10 @@ jobs:
         if: steps.changes.outputs.code == 'true' || steps.changes.outputs.config == 'true'
         run: |
           echo "🔍 Running fast validation checks..."
-          
+
           # Install minimal dependencies for syntax checking
           pip install --quiet black isort flake8 || echo "::warning::Could not install linting tools"
-          
+
           # Quick syntax validation
           echo "Checking Python syntax..."
           python -m py_compile $(find . -name "*.py" -not -path "./.*" | head -20) || {
@@ -70,12 +70,12 @@ jobs:
             echo "passed=false" >> $GITHUB_OUTPUT
             exit 1
           }
-          
+
           # Quick format check (don't fail, just warn)
           echo "Checking code formatting..."
           black --check --quiet . || echo "::warning::Code formatting issues detected"
           isort --check-only --quiet . || echo "::warning::Import sorting issues detected"
-          
+
           echo "✅ Fast validation passed"
           echo "passed=true" >> $GITHUB_OUTPUT
           echo "detected=true" >> $GITHUB_OUTPUT
@@ -108,7 +108,7 @@ jobs:
     needs: [fast-validation, wait-for-cursor]
     runs-on: ubuntu-latest
     if: |
-      always() && 
+      always() &&
       (needs.fast-validation.outputs.tests_passed == 'true' || github.event_name == 'workflow_dispatch') &&
       (needs.fast-validation.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
@@ -139,7 +139,7 @@ jobs:
           else
             PR_NUMBER="${{ github.event.pull_request.number }}"
           fi
-          
+
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
           echo "📋 Analyzing PR #${PR_NUMBER}"
 
@@ -150,20 +150,20 @@ jobs:
           PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
         run: |
           echo "💰 Checking budget and selecting optimal model..."
-          
+
           # Check budget limits
           python scripts/cost_optimizer.py --check-budget
-          
+
           # Get model recommendation
           python scripts/cost_optimizer.py \
             --pr-number "$PR_NUMBER" \
             --repository "${{ github.repository }}" \
             --config ".github/claude-cost-config.json" > model_recommendation.txt
-          
+
           # Extract recommended model
           RECOMMENDED_MODEL=$(grep "Recommended Model:" model_recommendation.txt | cut -d' ' -f3)
           echo "selected_model=${RECOMMENDED_MODEL,,}" >> $GITHUB_OUTPUT
-          
+
           # Check if budget allows review
           if python scripts/cost_optimizer.py --check-budget | grep -q "WITHIN BUDGET"; then
             echo "budget_ok=true" >> $GITHUB_OUTPUT
@@ -171,7 +171,7 @@ jobs:
             echo "budget_ok=false" >> $GITHUB_OUTPUT
             echo "⚠️ Budget limit reached - skipping Claude review"
           fi
-          
+
           cat model_recommendation.txt
 
       - name: Run Claude Review Analysis
@@ -184,7 +184,7 @@ jobs:
           CLAUDE_MODEL: ${{ steps.cost-check.outputs.selected_model }}
         run: |
           echo "🤖 Starting Claude analysis with model: $CLAUDE_MODEL (fast validation: $FAST_VALIDATION_PASSED)"
-          
+
           python scripts/claude_review_analyzer.py \
             --pr-number "$PR_NUMBER" \
             --repository "${{ github.repository }}" \
@@ -207,10 +207,10 @@ jobs:
             echo "$(python scripts/cost_optimizer.py --check-budget)" >> budget_message.md
             echo "" >> budget_message.md
             echo "To continue reviews, either:" >> budget_message.md
-            echo "- Wait for the budget to reset" >> budget_message.md  
+            echo "- Wait for the budget to reset" >> budget_message.md
             echo "- Increase budget limits in \`.github/claude-cost-config.json\`" >> budget_message.md
             echo "- Use manual trigger: \`/claude-review --force\`" >> budget_message.md
-            
+
             python scripts/post_review_comment.py \
               --pr-number "$PR_NUMBER" \
               --repository "${{ github.repository }}" \
