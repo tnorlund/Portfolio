@@ -310,4 +310,75 @@ When adding boto3 clients for new AWS services:
 3. Add type annotations to client variables: `client: ServiceClient = boto3.client("service")`
 
 This approach provides type safety during development while maintaining fast runtime performance.
+
+# Performance Testing Guidelines
+
+## CRITICAL: Environment-Dependent Performance Tests
+
+**IMPORTANT**: Performance tests with hardcoded thresholds WILL fail in different environments. CI environments (GitHub Actions) are significantly less performant than local development machines.
+
+### The Problem
+
+Performance tests that pass locally often fail in CI because:
+- CI runners have limited CPU and memory resources
+- Network latency varies between environments  
+- Shared infrastructure causes unpredictable performance
+- Background processes affect timing measurements
+
+### Example Issue
+
+```python
+# ❌ WRONG: Hardcoded performance threshold
+expected_throughput_ratio = 0.10  # Expects 10% throughput
+assert late_throughput > early_throughput * expected_throughput_ratio
+```
+
+This test might pass locally (powerful development machine) but fail in CI (constrained GitHub Actions runner).
+
+### Solution: Environment-Aware Thresholds
+
+```python
+# ✅ CORRECT: Environment-aware thresholds
+# IMPORTANT: These thresholds are environment-dependent
+# CI environments are less performant than local development machines
+# Values tuned for GitHub Actions CI environment performance
+expected_throughput_ratio = (
+    0.03 if config.use_resilient_tracker else 0.01  # CI-tuned values
+)
+```
+
+### Best Practices
+
+1. **Always document performance thresholds**:
+   - Explain why specific values were chosen
+   - Note which environment they were tuned for
+   - Add comments about environment dependencies
+
+2. **Tune thresholds for CI environment**:
+   - Use the lowest-performance environment as baseline
+   - Test thoroughly in CI before merging
+   - Consider using environment detection for different thresholds
+
+3. **Avoid absolute performance measurements**:
+   - Use relative improvements instead of absolute values
+   - Focus on "better than baseline" rather than specific numbers
+   - Test resilience patterns, not raw performance
+
+4. **Alternative approaches**:
+   - Mock time-dependent operations
+   - Use deterministic test scenarios
+   - Focus on functional correctness over performance
+
+### Code Review Checklist
+
+When reviewing performance tests:
+- [ ] Are performance thresholds documented and justified?
+- [ ] Have thresholds been tested in CI environment?
+- [ ] Are tests measuring relative improvement, not absolute performance?
+- [ ] Do tests focus on resilience patterns rather than raw speed?
+- [ ] Are environment dependencies clearly documented?
+
+### Historical Context
+
+This documentation was added after issue #130 where performance tests expected 10% throughput under stress but CI achieved only ~3%. The tests were updated to use CI-tuned thresholds (3%) to prevent spurious failures while maintaining the functional verification of resilience patterns.
 EOF < /dev/null
