@@ -3,50 +3,31 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Cancel previous runs
-concurrency:
-  group: pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
-  # Quick format check and auto-fix
+  # Quick format check
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     outputs:
-      formatted: ${{ steps.format.outputs.formatted }}
+      formatted: ${{ steps.check.outputs.formatted }}
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-python@v4
         with:
           python-version: '3.12'
 
-      - name: Format code
-        id: format
+      - name: Check Python formatting
+        id: check
         run: |
-          pip install black isort
+          # Install formatters
+          pip install isort black
           
-          # Run formatters
-          black receipt_dynamo receipt_label infra || true
-          isort receipt_dynamo receipt_label infra || true
-          
-          # Check for changes
-          if [[ -n $(git diff --name-only) ]]; then
+          # Check if code is formatted
+          if isort --check-only . && black --check .; then
             echo "formatted=true" >> $GITHUB_OUTPUT
-            
-            # Commit changes
-            git config user.email "action@github.com"
-            git config user.name "GitHub Action"
-            git add -A
-            git commit -m "style: auto-format code [skip ci]"
-            git push
           else
             echo "formatted=false" >> $GITHUB_OUTPUT
           fi
@@ -82,25 +63,30 @@ jobs:
         if: matrix.package != 'portfolio'
         working-directory: ${{ matrix.package }}
         run: |
-          # Install minimal dependencies
-          pip install pytest pytest-xdist
-          
-          # Install package with test dependencies for receipt_label
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            # receipt_label depends on receipt_dynamo (cross-package dependency)
-            pip install -e "../receipt_dynamo"
+          # Install package with test dependencies
+          if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
+            echo "Installing package with test dependencies"
             pip install -e ".[test]"
           else
+            echo "Installing minimal test dependencies"
+            pip install pytest pytest-xdist pytest-cov
             pip install -e .
           fi
           
-          # Run only fast unit tests (handle different test organization patterns)
+          # Handle cross-package dependencies
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            # receipt_label uses marker-based organization
-            pytest receipt_label/tests -n auto -m "unit and not slow" --tb=short -q
+            echo "Installing receipt_dynamo dependency for receipt_label"
+            pip install -e "../receipt_dynamo"
+          fi
+          
+          # Run only fast unit tests
+          # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label uses marker-based test organization
+            pytest tests -n auto -m "unit and not slow" --tb=short -q -o addopts=""
           else
-            # receipt_dynamo uses directory-based organization
-            pytest tests/unit -n auto -m "not slow" --tb=short -q
+            # receipt_dynamo uses directory-based test organization
+            pytest tests/unit -n auto -m "not slow" --tb=short -q -o addopts=""
           fi
 
       - name: Run TypeScript checks
@@ -127,53 +113,47 @@ jobs:
         with:
           script: |
             const formatted = '${{ needs.format-check.outputs.formatted }}' === 'true';
-            const icon = formatted ? '🎨' : '✅';
-            const formatCheck = '${{ needs.format-check.result }}';
-            const quickTests = '${{ needs.quick-tests.result }}';
+            const testsPass = '${{ needs.quick-tests.result }}' === 'success';
             
-            let message = 'All PR checks passed!';
-            let details = [];
-            
-            if (formatted) {
-              message = 'Code has been auto-formatted. Please pull the latest changes.';
-              details.push('📝 **Auto-formatting**: Applied black and isort formatting');
-            }
-            
-            if (formatCheck === 'success' && quickTests === 'success') {
-              details.push('✅ **Format check**: Passed');
-              details.push('✅ **Quick tests**: Passed');
-            } else {
-              if (formatCheck !== 'success') details.push('❌ **Format check**: Failed');
-              if (quickTests !== 'success') details.push('❌ **Quick tests**: Failed');
-            }
-            
-            const detailsText = details.length > 0 ? '\n\n' + details.join('\n') : '';
+            let comment = '## PR Status\n\n';
+            comment += formatted ? '✅ Code is properly formatted\n' : '❌ Code needs formatting (run `make format`)\n';
+            comment += testsPass ? '✅ Tests pass\n' : '❌ Tests failed\n';
             
             // Find and update existing comment or create new
             const { data: comments } = await github.rest.issues.listComments({
-              ...context.repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               issue_number: context.issue.number,
             });
             
             const botComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
-              (comment.body.includes('## ✅ PR Status') || comment.body.includes('## 🎨 PR Status'))
+              comment.user.type === 'Bot' && comment.body.includes('## PR Status')
             );
-            
-            const body = `## ${icon} PR Status\n\n${message}${detailsText}\n\n<sub>Last updated: ${new Date().toISOString()} | Run: ${context.runId}</sub>`;
             
             if (botComment) {
               console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
               await github.rest.issues.updateComment({
-                ...context.repo,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 comment_id: botComment.id,
-                body
+                body: comment
               });
             } else {
               console.log('Creating new PR status comment');
               await github.rest.issues.createComment({
-                ...context.repo,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body
+                body: comment
               });
             }
+
+      - name: Set status
+        run: |
+          if [[ "${{ needs.format-check.outputs.formatted }}" == "true" ]] && [[ "${{ needs.quick-tests.result }}" == "success" ]]; then
+            echo "All checks passed!"
+            exit 0
+          else
+            echo "Some checks failed"
+            exit 1
+          fi

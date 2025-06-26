@@ -67,10 +67,16 @@ class JobStatus:
         elif isinstance(updated_at, str):
             self.updated_at = updated_at
         else:
-            raise ValueError("updated_at must be a datetime object or a string")
+            raise ValueError(
+                "updated_at must be a datetime object or a string"
+            )
 
         if progress is not None:
-            if not isinstance(progress, (int, float)) or progress < 0 or progress > 100:
+            if (
+                not isinstance(progress, (int, float))
+                or progress < 0
+                or progress > 100
+            ):
                 raise ValueError("progress must be a number between 0 and 100")
             self.progress = float(progress)
         else:
@@ -251,7 +257,9 @@ def itemToJobStatus(item: dict) -> JobStatus:
         progress = float(item["progress"]["N"]) if "progress" in item else None
         message = item["message"]["S"] if "message" in item else None
         updated_by = item["updated_by"]["S"] if "updated_by" in item else None
-        instance_id = item["instance_id"]["S"] if "instance_id" in item else None
+        instance_id = (
+            item["instance_id"]["S"] if "instance_id" in item else None
+        )
 
         return JobStatus(
             job_id=job_id,

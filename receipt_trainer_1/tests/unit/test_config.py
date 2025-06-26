@@ -1,7 +1,7 @@
 """Unit tests for configuration classes."""
 
 import pytest
-from receipt_trainer.config import TrainingConfig, DataConfig
+from receipt_trainer.config import DataConfig, TrainingConfig
 
 
 def test_training_config_defaults():
@@ -24,7 +24,10 @@ def test_training_config_defaults():
 def test_training_config_custom_values():
     """Test TrainingConfig with custom values."""
     config = TrainingConfig(
-        batch_size=8, learning_rate=1e-4, num_epochs=10, gradient_accumulation_steps=16
+        batch_size=8,
+        learning_rate=1e-4,
+        num_epochs=10,
+        gradient_accumulation_steps=16,
     )
     assert config.batch_size == 8
     assert config.learning_rate == 1e-4
