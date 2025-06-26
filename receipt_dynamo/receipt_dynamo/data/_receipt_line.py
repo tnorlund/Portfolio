@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
@@ -295,8 +296,6 @@ class _ReceiptLine(DynamoClientProtocol):
                 ) from e
 
         return [itemToReceiptLine(result) for result in results]
-
-        return receipt_lines
 
     def listReceiptLines(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
