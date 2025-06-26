@@ -1,5 +1,11 @@
+from typing import TYPE_CHECKING
+
 import boto3
 
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+
+from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
@@ -52,7 +58,6 @@ from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
 from receipt_dynamo.data._word_tag import _WordTag
-from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 
 
 class DynamoClient(
@@ -105,11 +110,13 @@ class DynamoClient(
             region (str, optional): The AWS region where the DynamoDB table is located. Defaults to "us-east-1".
 
         Attributes:
-            _client (boto3.client): The Boto3 DynamoDB client.
+            _client (DynamoDBClient): The Boto3 DynamoDB client.
             table_name (str): The name of the DynamoDB table.
         """
 
-        self._client = boto3.client("dynamodb", region_name=region)
+        self._client: DynamoDBClient = boto3.client(
+            "dynamodb", region_name=region
+        )
         self.table_name = table_name
         # Ensure the table already exists
         try:
