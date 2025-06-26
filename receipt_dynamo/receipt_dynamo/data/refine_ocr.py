@@ -13,9 +13,12 @@ maintaining tag information.
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import boto3
-from mypy_boto3_s3 import S3Client
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
 
 from receipt_dynamo.data._ocr import apple_vision_ocr
 from receipt_dynamo.data._pulumi import load_env

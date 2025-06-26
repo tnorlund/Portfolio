@@ -1,6 +1,10 @@
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from mypy_boto3_dynamodb import DynamoDBClient
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+else:
+    # Runtime fallback
+    DynamoDBClient = object
 
 
 class DynamoClientProtocol(Protocol):

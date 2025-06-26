@@ -1,5 +1,9 @@
+from typing import TYPE_CHECKING
+
 import boto3
-from mypy_boto3_dynamodb import DynamoDBClient
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
 
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
