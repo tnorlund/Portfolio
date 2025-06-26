@@ -2,12 +2,11 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from receipt_dynamo.entities.job_checkpoint import (
-    JobCheckpoint,
-    _parse_dynamodb_map,
-    _parse_dynamodb_value,
-    itemToJobCheckpoint,
-)
+
+from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
+                                                    _parse_dynamodb_map,
+                                                    _parse_dynamodb_value,
+                                                    itemToJobCheckpoint)
 
 
 @pytest.fixture

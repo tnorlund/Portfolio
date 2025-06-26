@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptWord, itemToReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol

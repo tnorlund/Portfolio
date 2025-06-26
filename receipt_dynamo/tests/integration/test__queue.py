@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._queue import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Job, Queue, QueueJob

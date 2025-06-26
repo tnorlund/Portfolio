@@ -1,5 +1,6 @@
 # _receipt_word_tag.py
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptWordTag, itemToReceiptWordTag
 from receipt_dynamo.data._base import DynamoClientProtocol
 

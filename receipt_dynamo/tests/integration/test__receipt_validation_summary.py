@@ -5,10 +5,10 @@ from typing import Literal
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
+
 from receipt_dynamo import DynamoClient, ReceiptValidationSummary
-from receipt_dynamo.data._receipt_validation_summary import (
-    _ReceiptValidationSummary,
-)
+from receipt_dynamo.data._receipt_validation_summary import \
+    _ReceiptValidationSummary
 
 
 @pytest.fixture

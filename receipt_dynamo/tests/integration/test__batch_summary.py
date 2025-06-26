@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import BatchSummary

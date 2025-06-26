@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 

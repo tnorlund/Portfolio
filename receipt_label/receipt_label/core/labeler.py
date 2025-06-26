@@ -12,12 +12,8 @@ from ..models.label import LabelAnalysis, WordLabel
 from ..models.line_item import LineItem, LineItemAnalysis
 from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
 from ..models.structure import StructureAnalysis
-from ..models.validation import (
-    ValidationAnalysis,
-    ValidationResult,
-    ValidationResultType,
-    ValidationStatus,
-)
+from ..models.validation import (ValidationAnalysis, ValidationResult,
+                                 ValidationResultType, ValidationStatus)
 from ..processors.line_item_processor import LineItemProcessor
 from ..processors.receipt_analyzer import ReceiptAnalyzer
 from ..utils import get_package_version
@@ -1134,9 +1130,8 @@ class ReceiptLabeler:
             )
 
             # Import the get_receipt_analyses function
-            from receipt_label.data.analysis_operations import (
-                get_receipt_analyses,
-            )
+            from receipt_label.data.analysis_operations import \
+                get_receipt_analyses
 
             # Get all analyses in a single query using the new method
             (
@@ -1307,11 +1302,8 @@ class ReceiptLabeler:
 
             # Import the save_analysis_transaction function
             from receipt_label.data.analysis_operations import (
-                get_receipt_analyses,
-                save_analysis_transaction,
-                save_label_analysis,
-                save_validation_analysis,
-            )
+                get_receipt_analyses, save_analysis_transaction,
+                save_label_analysis, save_validation_analysis)
 
             # Create a transaction to save all analyses
             success = save_analysis_transaction(

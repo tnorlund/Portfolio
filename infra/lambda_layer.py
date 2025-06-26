@@ -79,7 +79,6 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_command as command
 from pulumi import ComponentResource, Output
-
 from utils import _find_project_root
 
 # Constants

@@ -3,10 +3,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import pytest
-from receipt_dynamo import (
-    ReceiptValidationSummary,
-    itemToReceiptValidationSummary,
-)
+
+from receipt_dynamo import (ReceiptValidationSummary,
+                            itemToReceiptValidationSummary)
 
 
 @pytest.fixture

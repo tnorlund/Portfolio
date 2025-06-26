@@ -1,10 +1,9 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.label_hygiene_result import (
-    LabelHygieneResult,
-    itemToLabelHygieneResult,
-)
+    LabelHygieneResult, itemToLabelHygieneResult)
 
 # === FIXTURE ===
 

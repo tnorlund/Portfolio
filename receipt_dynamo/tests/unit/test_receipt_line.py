@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from receipt_dynamo import ReceiptLine, itemToReceiptLine
 
 

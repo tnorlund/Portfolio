@@ -1,6 +1,7 @@
 import math
 
 import pytest
+
 from receipt_dynamo import Letter, itemToLetter
 
 

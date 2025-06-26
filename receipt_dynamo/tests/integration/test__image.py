@@ -4,6 +4,7 @@ from uuid import uuid4
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision, ReceiptMetadata

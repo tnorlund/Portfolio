@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_dynamo import JobResource, itemToJobResource
 from receipt_dynamo.entities.job_resource import _parse_dynamodb_map
 

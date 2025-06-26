@@ -15,6 +15,7 @@ from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_dynamo.entities import ReceiptMetadata
 
 

@@ -3,6 +3,7 @@ from datetime import datetime
 
 import botocore
 import pytest
+
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
 
 

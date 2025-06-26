@@ -4,15 +4,12 @@ import json
 
 import pytest
 import requests
+
 from receipt_dynamo.data._gpt import (
-    _llm_prompt_initial_tagging,
-    _llm_prompt_tagging_validation,
-    _reduce_precision,
-    _validate_gpt_response_initial_tagging,
-    _validate_gpt_response_tagging_validation,
-    gpt_request_initial_tagging,
-    gpt_request_tagging_validation,
-)
+    _llm_prompt_initial_tagging, _llm_prompt_tagging_validation,
+    _reduce_precision, _validate_gpt_response_initial_tagging,
+    _validate_gpt_response_tagging_validation, gpt_request_initial_tagging,
+    gpt_request_tagging_validation)
 
 # --- Dummy Classes for Testing ---
 

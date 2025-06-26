@@ -5,6 +5,7 @@ Test cases for ReceiptMetadata field quality validation.
 from datetime import datetime, timezone
 
 import pytest
+
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 

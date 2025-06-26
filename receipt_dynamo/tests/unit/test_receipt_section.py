@@ -2,13 +2,11 @@ from copy import deepcopy
 from datetime import datetime
 
 import pytest
-from receipt_dynamo.constants import SectionType
 
+from receipt_dynamo.constants import SectionType
 # Fix circular import by importing directly from the entity module
-from receipt_dynamo.entities.receipt_section import (
-    ReceiptSection,
-    itemToReceiptSection,
-)
+from receipt_dynamo.entities.receipt_section import (ReceiptSection,
+                                                     itemToReceiptSection)
 
 
 @pytest.fixture

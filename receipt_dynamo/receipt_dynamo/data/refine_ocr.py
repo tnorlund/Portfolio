@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 import boto3
+
 from receipt_dynamo.data._ocr import apple_vision_ocr
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient

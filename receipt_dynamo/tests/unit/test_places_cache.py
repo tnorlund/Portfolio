@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.places_cache import PlacesCache, itemToPlacesCache
 
 

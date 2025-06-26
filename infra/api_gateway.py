@@ -1,8 +1,6 @@
 import pulumi
 import pulumi_aws as aws
-
 from routes.ai_usage.infra import ai_usage_lambda
-
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
 from routes.image_count.infra import image_count_lambda

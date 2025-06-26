@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import pytest
+
 from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 
 

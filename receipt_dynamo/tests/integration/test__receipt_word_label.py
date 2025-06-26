@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus
 

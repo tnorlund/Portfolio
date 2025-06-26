@@ -12,10 +12,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 from freezegun import freeze_time
+
 from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_anthropic_response,
-    create_mock_openai_response,
-)
+    create_mock_anthropic_response, create_mock_openai_response)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
 

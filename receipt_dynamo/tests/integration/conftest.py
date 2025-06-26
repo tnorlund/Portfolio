@@ -5,19 +5,10 @@ from os.path import dirname, join
 import boto3
 import pytest
 from moto import mock_aws
-from receipt_dynamo import (
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    ReceiptWordLabel,
-    ReceiptWordTag,
-    Word,
-    WordTag,
-)
+
+from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
+                            ReceiptLine, ReceiptWord, ReceiptWordLabel,
+                            ReceiptWordTag, Word, WordTag)
 
 
 @pytest.fixture

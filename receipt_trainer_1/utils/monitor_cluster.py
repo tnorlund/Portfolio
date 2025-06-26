@@ -9,11 +9,12 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from tabulate import tabulate
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.task import Task
 from receipt_trainer.utils.coordinator import InstanceCoordinator
 from receipt_trainer.utils.infrastructure import EC2Metadata
-from tabulate import tabulate
 
 
 def parse_args():
@@ -99,9 +100,7 @@ def get_all_tasks(dynamo_client: DynamoClient) -> List[Task]:
 
         # If there are more tasks, continue fetching
         while last_key:
-            status_tasks, last_key = dynamo_client.listTasksByStatus(
-                status, last_key
-            )
+            status_tasks, last_key = dynamo_client.listTasksByStatus(status, last_key)
             tasks.extend(status_tasks)
 
     return tasks
@@ -235,15 +234,9 @@ def display_tasks(tasks: List[Task], max_tasks: int = 20) -> None:
 
     for task in display_tasks:
         # Format dates as relative time
-        created_at = (
-            format_time_ago(task.created_at) if task.created_at else "unknown"
-        )
-        started_at = (
-            format_time_ago(task.started_at) if task.started_at else ""
-        )
-        completed_at = (
-            format_time_ago(task.completed_at) if task.completed_at else ""
-        )
+        created_at = format_time_ago(task.created_at) if task.created_at else "unknown"
+        started_at = format_time_ago(task.started_at) if task.started_at else ""
+        completed_at = format_time_ago(task.completed_at) if task.completed_at else ""
 
         rows.append(
             [
@@ -292,9 +285,7 @@ def display_task_details(task: Task) -> None:
         print(json.dumps(task.result, indent=2))
 
 
-def display_cluster_summary(
-    instances: List[Dict[str, Any]], tasks: List[Task]
-) -> None:
+def display_cluster_summary(instances: List[Dict[str, Any]], tasks: List[Task]) -> None:
     """Display a summary of the cluster state.
 
     Args:
@@ -303,18 +294,10 @@ def display_cluster_summary(
     """
     # Count instances by status
     instance_count = len(
-        [
-            i
-            for i in instances
-            if not i.get("instance_id", "").startswith("TASK#")
-        ]
+        [i for i in instances if not i.get("instance_id", "").startswith("TASK#")]
     )
-    healthy_count = len(
-        [i for i in instances if i.get("health_status") == "healthy"]
-    )
-    degraded_count = len(
-        [i for i in instances if i.get("health_status") == "degraded"]
-    )
+    healthy_count = len([i for i in instances if i.get("health_status") == "healthy"])
+    degraded_count = len([i for i in instances if i.get("health_status") == "degraded"])
     unhealthy_count = len(
         [i for i in instances if i.get("health_status") == "unhealthy"]
     )
@@ -344,9 +327,7 @@ def display_cluster_summary(
     print(f"Leader: {leader_id}")
 
 
-def display_json_output(
-    instances: List[Dict[str, Any]], tasks: List[Task]
-) -> None:
+def display_json_output(instances: List[Dict[str, Any]], tasks: List[Task]) -> None:
     """Display all information as JSON.
 
     Args:
@@ -370,11 +351,7 @@ def display_json_output(
             "instance_count": len(instances),
             "task_count": len(tasks),
             "leader": next(
-                (
-                    i.get("instance_id")
-                    for i in instances
-                    if i.get("is_leader", False)
-                ),
+                (i.get("instance_id") for i in instances if i.get("is_leader", False)),
                 None,
             ),
         },
@@ -423,9 +400,7 @@ def main():
             if args.refresh <= 0:
                 break
 
-            print(
-                f"\nRefreshing in {args.refresh} seconds (Ctrl+C to exit)..."
-            )
+            print(f"\nRefreshing in {args.refresh} seconds (Ctrl+C to exit)...")
             time.sleep(args.refresh)
 
     except KeyboardInterrupt:

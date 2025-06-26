@@ -1,5 +1,6 @@
 # infra/lambda_layer/python/test/unit/test_image.py
 import pytest
+
 from receipt_dynamo import Image, itemToImage
 
 

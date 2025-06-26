@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptLetter, itemToReceiptLetter
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid

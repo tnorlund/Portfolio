@@ -8,10 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import Mock
 
 import pytest
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_openai_response,
-)
+from receipt_label.tests.utils.ai_usage_helpers import \
+    create_mock_openai_response
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 

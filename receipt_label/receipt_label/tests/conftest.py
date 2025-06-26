@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import boto3
 import pytest
-import receipt_label.utils.clients as clients
 from moto import mock_aws
+
+import receipt_label.utils.clients as clients
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 

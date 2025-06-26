@@ -6,15 +6,9 @@ from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
-from receipt_dynamo import (
-    DynamoClient,
-    Image,
-    Receipt,
-    ReceiptLetter,
-    ReceiptWord,
-    ReceiptWordLabel,
-    ReceiptWordTag,
-)
+
+from receipt_dynamo import (DynamoClient, Image, Receipt, ReceiptLetter,
+                            ReceiptWord, ReceiptWordLabel, ReceiptWordTag)
 
 # -------------------------------------------------------------------
 #                        FIXTURES

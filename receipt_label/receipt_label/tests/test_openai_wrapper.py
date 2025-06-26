@@ -9,10 +9,9 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
+
 from receipt_label.tests.utils.ai_usage_helpers import (
-    create_mock_openai_response,
-    create_test_tracking_context,
-)
+    create_mock_openai_response, create_test_tracking_context)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 

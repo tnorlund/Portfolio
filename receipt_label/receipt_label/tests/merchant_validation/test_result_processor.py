@@ -13,14 +13,11 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
+
 from receipt_dynamo.constants import ValidationMethod
 from receipt_label.merchant_validation.result_processor import (
-    _validate_match_quality,
-    build_receipt_metadata_from_partial_result,
-    extract_best_partial_match,
-    sanitize_metadata_strings,
-    sanitize_string,
-)
+    _validate_match_quality, build_receipt_metadata_from_partial_result,
+    extract_best_partial_match, sanitize_metadata_strings, sanitize_string)
 
 
 @pytest.mark.unit

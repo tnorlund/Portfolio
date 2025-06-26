@@ -1,5 +1,6 @@
 # test__cluster.py
 import pytest
+
 from receipt_dynamo.data._cluster import dbscan_lines
 from receipt_dynamo.entities import Line
 

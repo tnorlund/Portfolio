@@ -2,6 +2,7 @@ from typing import Literal
 
 import boto3
 import pytest
+
 from receipt_dynamo import DynamoClient, Letter
 
 correct_letter_params = {

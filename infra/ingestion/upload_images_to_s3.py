@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pulumi
 import pulumi.automation as auto
+
 from receipt_dynamo import DynamoClient, process, validate
 
 

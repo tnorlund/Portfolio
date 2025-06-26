@@ -24,6 +24,7 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptLine
 from receipt_label.utils import get_client_manager

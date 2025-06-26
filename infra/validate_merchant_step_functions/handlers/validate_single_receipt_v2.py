@@ -9,10 +9,8 @@ import os
 from typing import Any, Dict
 
 from receipt_label.merchant_validation import (
-    create_validation_handler,
-    get_receipt_details,
-    write_receipt_metadata_to_dynamo,
-)
+    create_validation_handler, get_receipt_details,
+    write_receipt_metadata_to_dynamo)
 
 from .common import setup_logger
 

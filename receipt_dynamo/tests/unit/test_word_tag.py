@@ -1,5 +1,6 @@
 # test_word_tag.py
 import pytest
+
 from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
 
 

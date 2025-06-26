@@ -1,10 +1,9 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
-from receipt_dynamo import (
-    ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
-)
+
+from receipt_dynamo import (ReceiptStructureAnalysis,
+                            itemToReceiptStructureAnalysis)
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.util import assert_valid_uuid
 

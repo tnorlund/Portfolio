@@ -4,6 +4,7 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, WordTag
 
 

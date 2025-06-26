@@ -2,19 +2,12 @@
 from math import isclose, pi, sqrt
 
 import pytest
+
 from receipt_dynamo.data._geometry import (
-    box_points,
-    compute_hull_centroid,
-    compute_receipt_box_from_skewed_extents,
-    convex_hull,
-    find_hull_extents_relative_to_centroid,
-    find_perspective_coeffs,
-    invert_affine,
-    invert_warp,
-    min_area_rect,
-    pad_corners_opposite,
-    solve_8x8_system,
-)
+    box_points, compute_hull_centroid, compute_receipt_box_from_skewed_extents,
+    convex_hull, find_hull_extents_relative_to_centroid,
+    find_perspective_coeffs, invert_affine, invert_warp, min_area_rect,
+    pad_corners_opposite, solve_8x8_system)
 
 
 def multiply_perspective(m1, m2):

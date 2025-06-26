@@ -3,6 +3,7 @@ from typing import Literal
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, Word
 
 correct_word_params = {

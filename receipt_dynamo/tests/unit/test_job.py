@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_dynamo import Job, itemToJob
 from receipt_dynamo.entities.job import _parse_dynamodb_map
 

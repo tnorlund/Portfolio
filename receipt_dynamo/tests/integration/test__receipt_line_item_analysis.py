@@ -8,6 +8,7 @@ import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 from pytest_mock import MockerFixture
+
 from receipt_dynamo import DynamoClient, ReceiptLineItemAnalysis
 
 
