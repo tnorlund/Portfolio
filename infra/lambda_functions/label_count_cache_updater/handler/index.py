@@ -121,7 +121,8 @@ def handler(event, context):
     with ThreadPoolExecutor(max_workers=5) as executor:
         # Submit all tasks
         futures = {
-            executor.submit(fetch_label_counts, label): label for label in CORE_LABELS
+            executor.submit(fetch_label_counts, label): label
+            for label in CORE_LABELS
         }
 
         # Collect results

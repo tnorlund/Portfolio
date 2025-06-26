@@ -3,12 +3,15 @@ from datetime import datetime
 import pytest
 
 from receipt_label.models.receipt import ReceiptLine
-from receipt_label.utils.validation import (validate_address, validate_amounts,
-                                            validate_business_name,
-                                            validate_datetime,
-                                            validate_phone_number,
-                                            validate_receipt_data,
-                                            validate_receipt_format)
+from receipt_label.utils.validation import (
+    validate_address,
+    validate_amounts,
+    validate_business_name,
+    validate_datetime,
+    validate_phone_number,
+    validate_receipt_data,
+    validate_receipt_format,
+)
 
 
 @pytest.mark.unit
@@ -16,7 +19,9 @@ class TestValidationUtils:
     def test_validate_business_name(self):
         """Test business name validation."""
         # Test exact match
-        is_valid, message, confidence = validate_business_name("Walmart", "Walmart")
+        is_valid, message, confidence = validate_business_name(
+            "Walmart", "Walmart"
+        )
         assert is_valid
         assert confidence == 1.0
 
@@ -28,7 +33,9 @@ class TestValidationUtils:
         assert confidence >= 0.8
 
         # Test different names
-        is_valid, message, confidence = validate_business_name("Walmart", "Target")
+        is_valid, message, confidence = validate_business_name(
+            "Walmart", "Target"
+        )
         assert not is_valid
         assert confidence < 0.8
 
@@ -101,7 +108,9 @@ class TestValidationUtils:
         assert confidence == 1.0
 
         # Test valid date and time
-        is_valid, message, confidence = validate_datetime("2024-03-15", "14:30")
+        is_valid, message, confidence = validate_datetime(
+            "2024-03-15", "14:30"
+        )
         assert is_valid
         assert confidence == 1.0
 
@@ -111,15 +120,19 @@ class TestValidationUtils:
         assert confidence == 0.0
 
         # Test valid date with invalid time
-        is_valid, message, confidence = validate_datetime("2024-03-15", "25:00")
+        is_valid, message, confidence = validate_datetime(
+            "2024-03-15", "25:00"
+        )
         assert not is_valid
         assert confidence == 0.0
 
         # Test with max age
-        old_date = (datetime.now().replace(year=datetime.now().year - 2)).strftime(
-            "%Y-%m-%d"
+        old_date = (
+            datetime.now().replace(year=datetime.now().year - 2)
+        ).strftime("%Y-%m-%d")
+        is_valid, message, confidence = validate_datetime(
+            old_date, max_age_days=365
         )
-        is_valid, message, confidence = validate_datetime(old_date, max_age_days=365)
         assert not is_valid
         assert confidence == 0.0
 
@@ -143,12 +156,16 @@ class TestValidationUtils:
         assert confidence == 0.0
 
         # Test negative amounts
-        is_valid, message, confidence = validate_amounts(-100.00, 10.00, -90.00)
+        is_valid, message, confidence = validate_amounts(
+            -100.00, 10.00, -90.00
+        )
         assert not is_valid
         assert confidence == 0.0
 
         # Test string inputs
-        is_valid, message, confidence = validate_amounts("100.00", "10.00", "110.00")
+        is_valid, message, confidence = validate_amounts(
+            "100.00", "10.00", "110.00"
+        )
         assert is_valid
         assert confidence == 1.0
 

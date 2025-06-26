@@ -2,10 +2,12 @@ from math import atan2, pi
 from typing import Generator, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities.util import (_format_float,
-                                          assert_valid_bounding_box,
-                                          assert_valid_point,
-                                          assert_valid_uuid)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    assert_valid_bounding_box,
+    assert_valid_point,
+    assert_valid_uuid,
+)
 
 
 class ReceiptWord:
@@ -238,8 +240,12 @@ class ReceiptWord:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -634,10 +640,12 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

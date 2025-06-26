@@ -8,8 +8,14 @@ import pulumi
 from dynamo_db import dynamodb_table  # pylint: disable=import-error
 from lambda_layer import dynamo_layer  # pylint: disable=import-error
 from lambda_layer import label_layer
-from pulumi import (AssetArchive, ComponentResource, Config, FileAsset, Output,
-                    ResourceOptions)
+from pulumi import (
+    AssetArchive,
+    ComponentResource,
+    Config,
+    FileAsset,
+    Output,
+    ResourceOptions,
+)
 from pulumi_aws.cloudwatch import EventRule, EventTarget
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
@@ -117,7 +123,8 @@ class ValidateMerchantStepFunctions(ComponentResource):
             f"{name}-{stack}-lambda-basic-execution",
             role=lambda_exec_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
         )
 
@@ -374,7 +381,8 @@ class ValidateMerchantStepFunctions(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
-                                    f"arn:aws:dynamodb:*:*:table/" f"{table_name}*"
+                                    f"arn:aws:dynamodb:*:*:table/"
+                                    f"{table_name}*"
                                 ),
                             }
                         ],
@@ -399,7 +407,9 @@ class ValidateMerchantStepFunctions(ComponentResource):
                         "States": {
                             "ListReceipts": {
                                 "Type": "Task",
-                                "Resource": arns[0],  # list_receipts_lambda.arn
+                                "Resource": arns[
+                                    0
+                                ],  # list_receipts_lambda.arn
                                 "Next": "ForEachReceipt",
                             },
                             "ForEachReceipt": {
@@ -408,7 +418,9 @@ class ValidateMerchantStepFunctions(ComponentResource):
                                 "MaxConcurrency": 5,
                                 "Parameters": {
                                     "image_id.$": "$$.Map.Item.Value.image_id",
-                                    "receipt_id.$": ("$$.Map.Item.Value.receipt_id"),
+                                    "receipt_id.$": (
+                                        "$$.Map.Item.Value.receipt_id"
+                                    ),
                                 },
                                 "Iterator": {
                                     "StartAt": "ValidateReceipt",

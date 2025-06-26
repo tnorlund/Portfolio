@@ -172,9 +172,13 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Optimized test runner")
-    parser.add_argument("package", help="Package to test (e.g., receipt_dynamo)")
     parser.add_argument(
-        "test_paths", nargs="*", help="Test paths or files to run (space-separated)"
+        "package", help="Package to test (e.g., receipt_dynamo)"
+    )
+    parser.add_argument(
+        "test_paths",
+        nargs="*",
+        help="Test paths or files to run (space-separated)",
     )
     parser.add_argument(
         "--test-type",
@@ -186,7 +190,10 @@ def main():
         "--verbose", "-v", action="store_true", help="Enable verbose output"
     )
     parser.add_argument(
-        "--coverage", "-c", action="store_true", help="Enable coverage reporting"
+        "--coverage",
+        "-c",
+        action="store_true",
+        help="Enable coverage reporting",
     )
     parser.add_argument(
         "--fail-fast", "-x", action="store_true", help="Stop on first failure"

@@ -82,7 +82,9 @@ def create_mock_anthropic_response(
         Mock object mimicking Anthropic response structure
     """
     response = Mock()
-    response.usage = Mock(input_tokens=input_tokens, output_tokens=output_tokens)
+    response.usage = Mock(
+        input_tokens=input_tokens, output_tokens=output_tokens
+    )
     response.model = model
     response.content = [Mock(text=content, type="text")]
     response.id = "msg_test123"
@@ -119,7 +121,9 @@ def create_mock_google_places_response(
 
 
 def assert_usage_metric_equal(
-    metric1: AIUsageMetric, metric2: AIUsageMetric, ignore_fields: Optional[list] = None
+    metric1: AIUsageMetric,
+    metric2: AIUsageMetric,
+    ignore_fields: Optional[list] = None,
 ) -> None:
     """Compare two AIUsageMetric objects for equality.
 
