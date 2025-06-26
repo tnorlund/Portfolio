@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     outputs:
       receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
       receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
