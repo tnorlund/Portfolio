@@ -13,6 +13,7 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
 )
+
 from receipt_label.embedding.word import poll as poll_batch
 from receipt_label.embedding.word import submit as submit_batch
 

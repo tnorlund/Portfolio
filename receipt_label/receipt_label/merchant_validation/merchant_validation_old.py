@@ -16,6 +16,7 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
     ReceiptWordTag,
 )
+
 from receipt_label.data.places_api import PlacesAPI
 from receipt_label.utils import get_clients
 
@@ -1064,7 +1065,7 @@ def query_records_by_place_id(place_id: str) -> list[ReceiptMetadata]:
         ]
 
     except Exception as e:
-        logger.error(f"Error querying by place_id {place_id}: {e}")
+        logger.error("Error querying by place_id %s: %s", place_id, e)
         return []
 
 
@@ -1180,4 +1181,4 @@ def persist_alias_updates(records: List[ReceiptMetadata]):
         # Use the batch update method for efficiency
         dynamo_client.updateReceiptMetadatas(records)
     except Exception as e:
-        logger.error(f"Error persisting alias updates: {e}")
+        logger.error("Error persisting alias updates: %s", e)
