@@ -70,6 +70,7 @@ class TestPerformanceBaseline:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -132,6 +133,7 @@ class TestPerformanceBaseline:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Complex metadata
@@ -166,6 +168,7 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -194,6 +197,7 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -221,9 +225,10 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
-        tracker.set_context(batch_id="large-batch-001")
+        tracker.set_tracking_context(batch_id="large-batch-001")
 
         # Simulate batch processing with varying token counts
         batch_sizes = [100, 500, 1000, 2000, 5000, 10000]
@@ -259,6 +264,7 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -320,6 +326,7 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -359,6 +366,7 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -418,6 +426,7 @@ class TestMemoryEfficiency:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -451,6 +460,7 @@ class TestMemoryEfficiency:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -528,6 +538,7 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -553,6 +564,7 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -596,6 +608,7 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion

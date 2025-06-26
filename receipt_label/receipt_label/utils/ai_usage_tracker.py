@@ -13,11 +13,14 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
-from .environment_config import AIUsageEnvironmentConfig, Environment, EnvironmentConfig
+from .environment_config import (
+    AIUsageEnvironmentConfig,
+    Environment,
+    EnvironmentConfig,
+)
 
 
 class AIUsageTracker:
@@ -33,7 +36,7 @@ class AIUsageTracker:
         user_id: Optional[str] = None,
         track_to_dynamo: bool = True,
         track_to_file: bool = False,
-        log_file: str = "/tmp/ai_usage.jsonl",
+        log_file: str = "/tmp/ai_usage.jsonl",  # nosec B108
         environment: Optional[Environment] = None,
         environment_config: Optional[EnvironmentConfig] = None,
         validate_table_environment: bool = True,
@@ -54,7 +57,8 @@ class AIUsageTracker:
         """
         # Environment configuration
         self.environment_config = (
-            environment_config or AIUsageEnvironmentConfig.get_config(environment)
+            environment_config
+            or AIUsageEnvironmentConfig.get_config(environment)
         )
 
         # Set up table name - if table_name is provided, use it as-is
@@ -62,7 +66,9 @@ class AIUsageTracker:
         if table_name:
             self.table_name = table_name
         else:
-            base_table_name = os.environ.get("DYNAMODB_TABLE_NAME", "AIUsageMetrics")
+            base_table_name = os.environ.get(
+                "DYNAMODB_TABLE_NAME", "AIUsageMetrics"
+            )
             self.table_name = AIUsageEnvironmentConfig.get_table_name(
                 base_table_name, self.environment_config.environment
             )
@@ -142,7 +148,9 @@ class AIUsageTracker:
         if self.track_to_dynamo and self.dynamo_client:
             try:
                 item = metric.to_dynamodb_item()
-                self.dynamo_client.put_item(TableName=self.table_name, Item=item)
+                self.dynamo_client.put_item(
+                    TableName=self.table_name, Item=item
+                )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -163,7 +171,7 @@ class AIUsageTracker:
                     "user_id": metric.user_id,
                     "job_id": metric.job_id,
                     "batch_id": metric.batch_id,
-                    "environment": metric.environment,
+                    "environment": self.environment_config.environment.value,  # Add environment from config
                     "error": metric.error,
                 }
                 with open(self.log_file, "a") as f:
@@ -184,7 +192,9 @@ class AIUsageTracker:
 
         return metadata
 
-    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_completion(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -222,7 +232,9 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(usage, "completion_tokens", None)
+                        output_tokens = getattr(
+                            usage, "completion_tokens", None
+                        )
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -230,7 +242,8 @@ class AIUsageTracker:
                             model=model,
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
-                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
@@ -257,7 +270,6 @@ class AIUsageTracker:
                     user_id=self.user_id,
                     job_id=self.current_job_id,
                     batch_id=self.current_batch_id,
-                    environment=self.environment_config.environment.value,
                     error=error,
                     metadata=metadata,
                 )
@@ -265,7 +277,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_embedding(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -310,7 +324,9 @@ class AIUsageTracker:
                     {
                         "function": func.__name__,
                         "input_count": (
-                            len(kwargs.get("input", [])) if "input" in kwargs else None
+                            len(kwargs.get("input", []))
+                            if "input" in kwargs
+                            else None
                         ),
                     }
                 )
@@ -327,7 +343,6 @@ class AIUsageTracker:
                     user_id=self.user_id,
                     job_id=self.current_job_id,
                     batch_id=self.current_batch_id,
-                    environment=self.environment_config.environment.value,
                     error=error,
                     metadata=metadata,
                 )
@@ -396,7 +411,6 @@ class AIUsageTracker:
                     user_id=self.user_id,
                     job_id=self.current_job_id,
                     github_pr=self.github_pr,
-                    environment=self.environment_config.environment.value,
                     error=error,
                     metadata=metadata,
                 )
@@ -451,7 +465,6 @@ class AIUsageTracker:
                         latency_ms=int((time.time() - start_time) * 1000),
                         user_id=self.user_id,
                         job_id=self.current_job_id,
-                        environment=self.environment_config.environment.value,
                         error=error,
                         metadata=metadata,
                     )
@@ -501,7 +514,6 @@ class AIUsageTracker:
             cost_usd=cost_usd,
             github_pr=pr_number,
             user_id="github-actions",
-            environment=self.environment_config.environment.value,
             metadata=metadata,
         )
         self._store_metric(metric)

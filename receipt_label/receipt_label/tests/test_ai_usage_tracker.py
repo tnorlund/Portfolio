@@ -37,6 +37,7 @@ class TestAIUsageTrackerInitialization:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             user_id="test-user",
             track_to_dynamo=True,
             track_to_file=True,
@@ -58,7 +59,7 @@ class TestAIUsageTrackerInitialization:
         tracker = AIUsageTracker()
 
         assert tracker.dynamo_client is None
-        assert tracker.table_name is None  # Would read from env if set
+        assert tracker.table_name == "AIUsageMetrics-development"  # Auto-generated with environment suffix
         assert tracker.user_id == "default"
         assert (
             tracker.track_to_dynamo is False
@@ -76,7 +77,7 @@ class TestAIUsageTrackerInitialization:
             },
         ):
             tracker = AIUsageTracker()
-            assert tracker.table_name == "env-table"
+            assert tracker.table_name == "env-table-development"  # Environment suffix added
             assert tracker.user_id == "env-user"
 
     def test_track_to_dynamo_requires_client(self):
@@ -92,7 +93,7 @@ class TestAIUsageTrackerContext:
     def test_set_context_all_fields(self):
         """Test setting all context fields."""
         tracker = AIUsageTracker()
-        tracker.set_context(
+        tracker.set_tracking_context(
             job_id="job-123",
             batch_id="batch-456",
             github_pr=789,
@@ -109,7 +110,7 @@ class TestAIUsageTrackerContext:
         tracker = AIUsageTracker(user_id="original-user")
         tracker.current_job_id = "original-job"
 
-        tracker.set_context(batch_id="new-batch")
+        tracker.set_tracking_context(batch_id="new-batch")
 
         assert tracker.current_job_id == "original-job"  # Unchanged
         assert tracker.current_batch_id == "new-batch"
@@ -118,9 +119,9 @@ class TestAIUsageTrackerContext:
     def test_set_context_none_values_ignored(self):
         """Test that None values don't overwrite existing context."""
         tracker = AIUsageTracker()
-        tracker.set_context(job_id="job-123", batch_id="batch-456")
+        tracker.set_tracking_context(job_id="job-123", batch_id="batch-456")
 
-        tracker.set_context(job_id=None, batch_id="batch-789")
+        tracker.set_tracking_context(job_id=None, batch_id="batch-789")
 
         assert tracker.current_job_id == "job-123"  # Not overwritten
         assert tracker.current_batch_id == "batch-789"  # Updated
@@ -136,6 +137,7 @@ class TestAIUsageTrackerStorage:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -165,6 +167,7 @@ class TestAIUsageTrackerStorage:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -262,6 +265,7 @@ class TestAIUsageTrackerStorage:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file,
@@ -301,10 +305,11 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             user_id="test-user",
         )
-        tracker.set_context(job_id="job-123", batch_id="batch-456")
+        tracker.set_tracking_context(job_id="job-123", batch_id="batch-456")
 
         # Create a mock response
         mock_response = create_mock_openai_response(
@@ -356,6 +361,7 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -379,6 +385,7 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -412,6 +419,7 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -447,6 +455,7 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             user_id="test-user",
         )
@@ -489,6 +498,7 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -511,6 +521,7 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -553,10 +564,11 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             user_id="test-user",
         )
-        tracker.set_context(github_pr=123)
+        tracker.set_tracking_context(github_pr=123)
 
         # Create a mock Anthropic response
         mock_response = create_mock_anthropic_response(
@@ -599,6 +611,7 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -621,6 +634,7 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -663,6 +677,7 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             user_id="test-user",
         )
@@ -702,6 +717,7 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -724,6 +740,7 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -774,6 +791,7 @@ class TestGitHubClaudeReview:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -804,6 +822,7 @@ class TestGitHubClaudeReview:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -851,6 +870,7 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -898,6 +918,7 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -958,11 +979,12 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
         # Set context
-        tracker.set_context(
+        tracker.set_tracking_context(
             job_id="job-123",
             batch_id="batch-456",
             user_id="context-user",
@@ -996,6 +1018,7 @@ class TestConcurrentTracking:
             table_name="table1",
             track_to_dynamo=True,
             user_id="user1",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         tracker2 = AIUsageTracker(
@@ -1003,11 +1026,12 @@ class TestConcurrentTracking:
             table_name="table2",
             track_to_dynamo=True,
             user_id="user2",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Set different contexts
-        tracker1.set_context(job_id="job1")
-        tracker2.set_context(job_id="job2")
+        tracker1.set_tracking_context(job_id="job1")
+        tracker2.set_tracking_context(job_id="job2")
 
         # Track metrics with each tracker
         metric1 = AIUsageMetric(
@@ -1050,6 +1074,7 @@ class TestConcurrentTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1081,6 +1106,7 @@ class TestLatencyTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1108,6 +1134,7 @@ class TestLatencyTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1138,6 +1165,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1157,6 +1185,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1177,6 +1206,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1200,6 +1230,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1224,6 +1255,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1265,6 +1297,7 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1302,6 +1335,7 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1338,6 +1372,7 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1375,6 +1410,7 @@ class TestBackendFallback:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file,
@@ -1412,6 +1448,7 @@ class TestBackendFallback:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             track_to_file=True,
             log_file="/invalid/path/file.jsonl",
@@ -1459,6 +1496,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1477,6 +1515,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 
@@ -1511,6 +1550,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
+            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
         )
 

@@ -37,12 +37,13 @@ class TestConcurrentTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         results = []
 
         def set_and_check_context(job_id):
-            tracker.set_context(job_id=job_id)
+            tracker.set_tracking_context(job_id=job_id)
             time.sleep(
                 0.01
             )  # Small delay to increase chance of race conditions
@@ -76,6 +77,7 @@ class TestConcurrentTracking:
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file,
+                validate_table_environment=False,  # Disable validation for test table
             )
 
             @tracker.track_openai_completion
@@ -139,6 +141,7 @@ class TestConcurrentTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -173,10 +176,11 @@ class TestBatchProcessing:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Set batch context
-        tracker.set_context(
+        tracker.set_tracking_context(
             job_id="job-batch-001",
             batch_id="batch-large-001",
             user_id="batch-user",
@@ -217,6 +221,7 @@ class TestBatchProcessing:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -247,9 +252,10 @@ class TestBatchProcessing:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
-        tracker.set_context(batch_id="mixed-batch-001")
+        tracker.set_tracking_context(batch_id="mixed-batch-001")
 
         # Track OpenAI
         @tracker.track_openai_completion
@@ -299,6 +305,7 @@ class TestMemoryManagement:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Create large metadata
@@ -351,7 +358,7 @@ class TestMemoryManagement:
         trackers = []
         for i in range(5):
             tracker = AIUsageTracker(user_id=f"user-{i}")
-            tracker.set_context(job_id=f"job-{i}")
+            tracker.set_tracking_context(job_id=f"job-{i}")
             trackers.append(tracker)
 
         # Verify each tracker maintains its own state
@@ -371,6 +378,7 @@ class TestErrorRecovery:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -410,6 +418,7 @@ class TestErrorRecovery:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -490,6 +499,7 @@ class TestPerformanceOptimization:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Create response with various data types
@@ -519,6 +529,7 @@ class TestPerformanceOptimization:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         timestamps = []
@@ -555,6 +566,7 @@ class TestAdvancedIntegration:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Apply multiple decorators
@@ -583,6 +595,7 @@ class TestAdvancedIntegration:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -616,6 +629,7 @@ class TestAdvancedIntegration:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         class CustomException(Exception):
@@ -642,6 +656,7 @@ class TestAdvancedIntegration:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="parent-user",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         child_tracker = AIUsageTracker(
@@ -649,11 +664,12 @@ class TestAdvancedIntegration:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="child-user",
+            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Set different contexts
-        parent_tracker.set_context(job_id="parent-job")
-        child_tracker.set_context(job_id="child-job")
+        parent_tracker.set_tracking_context(job_id="parent-job")
+        child_tracker.set_tracking_context(job_id="child-job")
 
         @parent_tracker.track_openai_completion
         def parent_call():

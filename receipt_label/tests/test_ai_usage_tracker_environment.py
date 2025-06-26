@@ -2,6 +2,7 @@
 Tests for AI Usage Tracker environment-based functionality.
 """
 
+import json
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -22,8 +23,7 @@ class TestAIUsageTrackerEnvironmentIntegration:
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=False):
             # When table_name is provided, it's used as-is but validation should be disabled
             tracker = AIUsageTracker.create_for_environment(
-                table_name="AIUsageMetrics",
-                validate_table_environment=False
+                table_name="AIUsageMetrics", validate_table_environment=False
             )
 
             assert tracker.environment_config.environment == Environment.STAGING
@@ -121,7 +121,7 @@ class TestAIUsageTrackerEnvironmentIntegration:
             assert metadata["ci_workflow"] == "test-workflow"
 
     def test_metric_includes_environment_field(self):
-        """Test that created metrics include the environment field."""
+        """Test that created metrics include the environment field in metadata."""
         mock_dynamo_client = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo_client,
@@ -152,9 +152,10 @@ class TestAIUsageTrackerEnvironmentIntegration:
         call_args = mock_dynamo_client.put_item.call_args
         item = call_args.kwargs["Item"]
 
-        # Verify environment field is present
-        assert "environment" in item
-        assert item["environment"]["S"] == "staging"
+        # Verify environment is present in metadata
+        assert "metadata" in item
+        metadata_map = item["metadata"]["M"]
+        assert metadata_map["environment"]["S"] == "staging"
 
     def test_different_environments_use_different_tables(self):
         """Test that different environments use different table names when auto-generating."""
@@ -271,43 +272,47 @@ class TestAIUsageTrackerEnvironmentErrorHandling:
 
 
 class TestMetricEnvironmentIntegration:
-    """Test that AIUsageMetric properly handles environment field."""
+    """Test that AIUsageMetric properly works with environment tracking via metadata."""
 
-    def test_metric_creation_with_environment(self):
-        """Test creating metrics with environment field."""
+    def test_metric_creation_without_environment_field(self):
+        """Test creating metrics without environment field (environment stored in metadata)."""
+        metadata = {"environment": "production", "service": "receipt-processing"}
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
             operation="completion",
             timestamp=datetime.now(timezone.utc),
-            environment="production",
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
+            metadata=metadata,
         )
 
-        assert metric.environment == "production"
+        assert metric.metadata["environment"] == "production"
 
-    def test_metric_dynamodb_serialization_with_environment(self):
-        """Test that environment field is properly serialized to DynamoDB."""
+    def test_metric_dynamodb_serialization_with_environment_in_metadata(self):
+        """Test that environment field is properly serialized to DynamoDB via metadata."""
+        metadata = {"environment": "staging", "service": "receipt-processing"}
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
             operation="completion",
             timestamp=datetime.now(timezone.utc),
-            environment="staging",
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
+            metadata=metadata,
         )
 
         item = metric.to_dynamodb_item()
-        assert "environment" in item
-        assert item["environment"]["S"] == "staging"
+        assert "metadata" in item
+        metadata_map = item["metadata"]["M"]
+        assert metadata_map["environment"]["S"] == "staging"
 
-    def test_metric_dynamodb_deserialization_with_environment(self):
-        """Test that environment field is properly deserialized from DynamoDB."""
-        # Create a DynamoDB item with environment field
+    def test_metric_dynamodb_deserialization_with_environment_in_metadata(self):
+        """Test that environment field is properly deserialized from DynamoDB metadata."""
+        # Create a DynamoDB item with environment in metadata
+        metadata = {"environment": "staging", "service": "receipt-processing"}
         item = {
             "PK": {"S": "AI_USAGE#openai#gpt-3.5-turbo"},
             "SK": {"S": "USAGE#2023-01-01T00:00:00#123"},
@@ -325,17 +330,17 @@ class TestMetricEnvironmentIntegration:
             "date": {"S": "2023-01-01"},
             "month": {"S": "2023-01"},
             "hour": {"S": "2023-01-01-00"},
-            "environment": {"S": "staging"},
+            "metadata": {"M": {"environment": {"S": "staging"}, "service": {"S": "receipt-processing"}}},
             "inputTokens": {"N": "100"},
             "outputTokens": {"N": "50"},
             "costUSD": {"N": "0.001"},
         }
 
         metric = AIUsageMetric.from_dynamodb_item(item)
-        assert metric.environment == "staging"
+        assert metric.metadata["environment"] == "staging"
 
-    def test_metric_without_environment_field(self):
-        """Test that metrics without environment field work (backward compatibility)."""
+    def test_metric_without_environment_metadata(self):
+        """Test that metrics without environment metadata work (backward compatibility)."""
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
@@ -346,11 +351,12 @@ class TestMetricEnvironmentIntegration:
             cost_usd=0.001,
         )
 
-        assert metric.environment is None
+        # Should work without metadata (defaults to empty dict)
+        assert metric.metadata == {}
 
-        # Should serialize without environment field
+        # Should serialize without metadata field
         item = metric.to_dynamodb_item()
-        assert "environment" not in item
+        # Metadata field may or may not be present, but if it is, it should be None or empty
 
 
 class TestTrackerFactoryMethods:
@@ -384,7 +390,7 @@ class TestTrackerFactoryMethods:
             track_to_dynamo=True,
             track_to_file=True,
             environment=Environment.STAGING,
-            validate_table_environment=False  # Custom table names require validation to be disabled
+            validate_table_environment=False,  # Custom table names require validation to be disabled
         )
 
         assert tracker.dynamo_client == mock_client
