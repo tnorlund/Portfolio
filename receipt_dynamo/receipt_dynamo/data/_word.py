@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import Word, itemToWord
 from receipt_dynamo.data._base import DynamoClientProtocol
 
