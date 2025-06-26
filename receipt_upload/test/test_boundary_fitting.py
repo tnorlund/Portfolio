@@ -243,7 +243,7 @@ class TestBarReceiptBoundaries:
 
 
 def create_boundary_line_from_theil_sen_fixed(
-    theil_result: Dict[str, float]
+    theil_result: Dict[str, float],
 ) -> Dict[str, float]:
     """Fixed version of create_boundary_line_from_theil_sen.
 

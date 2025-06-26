@@ -15,6 +15,8 @@ help:
 	@echo "  make clean           - Clean up temporary files"
 
 format:
+	@echo "Installing latest formatters to match CI..."
+	pip install --upgrade black isort
 	@echo "Running Black formatter..."
 	black .
 	@echo "Running isort..."
