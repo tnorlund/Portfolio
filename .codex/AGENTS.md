@@ -7,6 +7,32 @@
 - Enforce type annotations and check with `mypy`.
 - Run code quality analysis with `pylint` for comprehensive linting beyond basic style checks.
 
+### Boto3 Type Annotations
+
+This project uses boto3 type stubs for AWS SDK type safety without runtime overhead:
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+    from mypy_boto3_s3 import S3Client
+
+# In function/method:
+client: DynamoDBClient = boto3.client("dynamodb")
+```
+
+**Key Points**:
+- Type stubs are in `[dev]` dependencies only
+- TYPE_CHECKING imports are skipped at runtime
+- Provides full IDE autocomplete and type checking
+- Works in CI without dev dependencies
+
+**Adding New AWS Services**:
+1. Update `pyproject.toml`: `boto3-stubs[dynamodb,s3,NEW_SERVICE]`
+2. Import with TYPE_CHECKING guard
+3. Annotate: `client: NewServiceClient = boto3.client("service")`
+
 ## Testing
 
 ### Python Testing

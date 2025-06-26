@@ -20,9 +20,16 @@ pip install -e .
 ### Installing Dependencies
 
 ```bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # For development dependencies
+# Install package with test dependencies
+pip install -e ".[test]"
+
+# For development (includes type stubs for better IDE support)
+pip install -e ".[dev]"
 ```
+
+### Type Safety
+
+This package uses boto3 type stubs for improved developer experience. Type annotations are implemented using the TYPE_CHECKING pattern to avoid runtime dependencies. See [CODEX.md](../CODEX.md) for implementation details.
 
 ## Testing
 
