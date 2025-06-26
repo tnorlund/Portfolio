@@ -6,7 +6,7 @@ minimum area rectangles, and centroids.
 """
 
 from math import atan2, cos, degrees, radians, sin
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 
 def compute_hull_centroid(
