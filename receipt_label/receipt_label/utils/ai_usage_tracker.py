@@ -161,17 +161,12 @@ class AIUsageTracker:
                 if not is_basic_mock and hasattr(
                     self.dynamo_client, "put_ai_usage_metric"
                 ):
-                    try:
-                        self.dynamo_client.put_ai_usage_metric(metric)
-                        return
-                    except Exception:
-                        # Method failed, fall through to put_item
-                        pass
-
-                # Standard DynamoDB put_item call (for basic mocks and fallback)
-                self.dynamo_client.put_item(
-                    TableName=self.table_name, Item=item
-                )
+                    self.dynamo_client.put_ai_usage_metric(metric)
+                else:
+                    # Standard DynamoDB put_item call (for basic mocks)
+                    self.dynamo_client.put_item(
+                        TableName=self.table_name, Item=item
+                    )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
