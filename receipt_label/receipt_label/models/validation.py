@@ -66,7 +66,7 @@ class FieldValidation:
     reasoning: str = ""
     metadata: Dict = dataclass_field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Determine overall status based on the validation results
         if not self.results:
             self.status = ValidationStatus.INCOMPLETE
@@ -205,7 +205,7 @@ class ValidationAnalysis(MetadataMixin):
     receipt_id: Optional[int] = None
     image_id: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Update overall_status based on individual field validations
         self._update_overall_status()
 

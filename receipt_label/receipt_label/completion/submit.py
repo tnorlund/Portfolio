@@ -17,6 +17,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+
 from receipt_label.completion._format_prompt import _format_prompt, functions
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager

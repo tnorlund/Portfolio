@@ -690,7 +690,7 @@ class LineItemProcessor:
                 if len(env_key) > 8
                 else "***"
             )
-            logger.info(f"ENV variable OPENAI_API_KEY is set: {masked_key}")
+            logger.info("ENV variable OPENAI_API_KEY is set: %s", masked_key)
         else:
             logger.warning("ENV variable OPENAI_API_KEY is NOT set")
 
@@ -700,7 +700,7 @@ class LineItemProcessor:
                 if len(self.openai_api_key) > 8
                 else "***"
             )
-            logger.info(f"Constructor provided API key: {masked_key}")
+            logger.info("Constructor provided API key: %s", masked_key)
         else:
             logger.warning("No API key provided to constructor")
 
@@ -1276,29 +1276,29 @@ class LineItemProcessor:
                 word = financial_fields["total"]["words"][0]
                 total_display = f"{results.total} (found at L{word.line_id}W{word.word_id})"
 
-        logger.info(f"   Subtotal: {subtotal_display}")
-        logger.info(f"   Tax:      {tax_display}")
-        logger.info(f"   Total:    {total_display}")
+        logger.info("   Subtotal: %s", subtotal_display)
+        logger.info("   Tax:      %s", tax_display)
+        logger.info("   Total:    %s", total_display)
 
         # Line items section
-        logger.info(f"\n🛒 LINE ITEMS DETECTED: {len(results.line_items)}")
+        logger.info("\n🛒 LINE ITEMS DETECTED: %s", len(results.line_items))
 
         # Skip the rest if no line items
         if not results.line_items:
             logger.info("   No line items detected")
-            logger.info(f"{divider}\n")
+            logger.info("%s\n", divider)
             return
 
         # Item-by-item breakdown
         for i, item in enumerate(results.line_items):
-            logger.info(f"\n  🏷️  Item {i+1}: {item.description}")
+            logger.info("\n  🏷️  Item %s: %s", i + 1, item.description)
 
             # Show price and quantity information
             price_display = "N/A"
             if item.price:
                 if item.price.extended_price:
                     price_display = str(item.price.extended_price)
-            logger.info(f"      Price: {price_display}")
+            logger.info("      Price: %s", price_display)
 
             quantity_display = "N/A"
             if item.quantity:
@@ -1308,7 +1308,7 @@ class LineItemProcessor:
                     )
                 elif item.quantity.amount:
                     quantity_display = str(item.quantity.amount)
-            logger.info(f"      Quantity: {quantity_display}")
+            logger.info("      Quantity: %s", quantity_display)
 
             # Show labeled words for this item if available
             if word_labels:
@@ -1319,7 +1319,7 @@ class LineItemProcessor:
                 ]
 
                 if item_labels:
-                    logger.info(f"      Labeled Words:")
+                    logger.info("      Labeled Words:")
                     for (line_id, word_id), label in item_labels:
                         # Use the text from the label dict, or fall back to empty string
                         word_text = label.get("text", "")
@@ -1327,11 +1327,11 @@ class LineItemProcessor:
                             f"        • '{word_text}' → {label['label']} (L{line_id}W{word_id})"
                         )
                 else:
-                    logger.info(f"      No words labeled for this item")
+                    logger.info("      No words labeled for this item")
 
         # Receipt summary labels section
         if word_labels:
-            logger.info(f"\n🧾 RECEIPT SUMMARY LABELS:")
+            logger.info("\n🧾 RECEIPT SUMMARY LABELS:")
 
             # Check for subtotal labels
             subtotal_labels = [
@@ -1340,7 +1340,7 @@ class LineItemProcessor:
                 if label["label"] == SUBTOTAL_LABEL
             ]
             if subtotal_labels:
-                logger.info(f"   Subtotal: {len(subtotal_labels)} labels")
+                logger.info("   Subtotal: %s labels", len(subtotal_labels))
                 for (line_id, word_id), label in subtotal_labels[
                     :3
                 ]:  # Show up to 3
@@ -1353,7 +1353,7 @@ class LineItemProcessor:
                         f"      • ... and {len(subtotal_labels) - 3} more"
                     )
             else:
-                logger.info(f"   Subtotal: No labels found")
+                logger.info("   Subtotal: No labels found")
 
             # Check for tax labels
             tax_labels = [
@@ -1362,7 +1362,7 @@ class LineItemProcessor:
                 if label["label"] == TAX_LABEL
             ]
             if tax_labels:
-                logger.info(f"   Tax: {len(tax_labels)} labels")
+                logger.info("   Tax: %s labels", len(tax_labels))
                 for (line_id, word_id), label in tax_labels[
                     :3
                 ]:  # Show up to 3
@@ -1371,9 +1371,9 @@ class LineItemProcessor:
                         f"      • '{word_text}' (L{line_id}W{word_id})"
                     )
                 if len(tax_labels) > 3:
-                    logger.info(f"      • ... and {len(tax_labels) - 3} more")
+                    logger.info("      • ... and %s more", len(tax_labels) - 3)
             else:
-                logger.info(f"   Tax: No labels found")
+                logger.info("   Tax: No labels found")
 
             # Check for total labels
             total_labels = [
@@ -1382,7 +1382,7 @@ class LineItemProcessor:
                 if label["label"] == TOTAL_LABEL
             ]
             if total_labels:
-                logger.info(f"   Total: {len(total_labels)} labels")
+                logger.info("   Total: %s labels", len(total_labels))
                 for (line_id, word_id), label in total_labels[
                     :3
                 ]:  # Show up to 3
@@ -1395,13 +1395,13 @@ class LineItemProcessor:
                         f"      • ... and {len(total_labels) - 3} more"
                     )
             else:
-                logger.info(f"   Total: No labels found")
+                logger.info("   Total: No labels found")
 
         # Label statistics
         total_labels = len(word_labels) if word_labels else 0
-        logger.info(f"\n📊 LABEL STATISTICS:")
-        logger.info(f"   Total words labeled: {total_labels}")
-        logger.info(f"{divider}\n")
+        logger.info("\n📊 LABEL STATISTICS:")
+        logger.info("   Total words labeled: %s", total_labels)
+        logger.info("%s\n", divider)
 
     def _find_financial_summary_fields(
         self,
@@ -1845,7 +1845,7 @@ class LineItemProcessor:
         uncertainty_handler=None,
     ) -> LineItemAnalysis:
         """Process receipt line items."""
-        logger.info(f"Processing receipt {receipt.receipt_id} for line items")
+        logger.info("Processing receipt %s for line items", receipt.receipt_id)
 
         try:
             # Stage 1: Run pattern analysis to detect all currency amounts
@@ -2218,11 +2218,11 @@ class LineItemProcessor:
 
                         # Log what we've found
                         if subtotal is not None:
-                            logger.info(f"Identified subtotal: {subtotal}")
+                            logger.info("Identified subtotal: %s", subtotal)
                         if tax is not None:
-                            logger.info(f"Identified tax: {tax}")
+                            logger.info("Identified tax: %s", tax)
                         if total is not None:
-                            logger.info(f"Identified total: {total}")
+                            logger.info("Identified total: %s", total)
 
                         # Use the GPT results instead of initial results
                         initial_result = ProcessingResult(
@@ -2240,7 +2240,7 @@ class LineItemProcessor:
                     )
 
             except Exception as e:
-                logger.error(f"Error in GPT classification: {str(e)}")
+                logger.error("Error in GPT classification: %s", str(e))
                 logger.error(traceback.format_exc())
 
             # Create the final analysis
@@ -2268,7 +2268,7 @@ class LineItemProcessor:
                     ),
                 )
             except Exception as e:
-                logger.error(f"Error creating LineItemAnalysis: {str(e)}")
+                logger.error("Error creating LineItemAnalysis: %s", str(e))
                 logger.error(traceback.format_exc())
                 # Return a valid LineItemAnalysis object even in case of errors
                 return LineItemAnalysis(
@@ -2285,7 +2285,7 @@ class LineItemProcessor:
                 )
 
         except Exception as e:
-            logger.error(f"Error processing receipt: {str(e)}")
+            logger.error("Error processing receipt: %s", str(e))
             logger.error(traceback.format_exc())
             # Return a valid LineItemAnalysis object even in case of errors
             return LineItemAnalysis(
@@ -2325,7 +2325,7 @@ class LineItemProcessor:
             return self.process(receipt, receipt_lines, receipt_words)
 
         except Exception as e:
-            logger.error(f"Error analyzing line items: {str(e)}")
+            logger.error("Error analyzing line items: %s", str(e))
             logger.error(traceback.format_exc())
 
             # Return an empty analysis in case of errors
@@ -2384,6 +2384,6 @@ class LineItemProcessor:
 
             return llm_updates
         except Exception as e:
-            logger.error(f"Error during LLM processing: {str(e)}")
+            logger.error("Error during LLM processing: %s", str(e))
             logger.error(traceback.format_exc())
             return {}
