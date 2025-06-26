@@ -29,13 +29,13 @@ class EventType(Enum):
     PROCESSING_STARTED = "processing_started"
     PROCESSING_COMPLETED = "processing_completed"
     PROCESSING_FAILED = "processing_failed"
-    
+
     # Tool events
     TOOL_STARTED = "tool_started"
     TOOL_PROGRESS = "tool_progress"
     TOOL_COMPLETED = "tool_completed"
     TOOL_FAILED = "tool_failed"
-    
+
     # Result events
     FIELD_LABELED = "field_labeled"
     LINE_ITEM_FOUND = "line_item_found"
@@ -91,49 +91,49 @@ AsyncEventHandler = Callable[[StreamEvent], asyncio.Task]
 
 class EventEmitter:
     """Manages event streaming and distribution."""
-    
+
     def __init__(self):
         self.handlers: Dict[EventType, List[EventHandler]] = defaultdict(list)
         self.async_handlers: Dict[EventType, List[AsyncEventHandler]] = defaultdict(list)
         self.logger = logging.getLogger("event_emitter")
         self._buffer: List[StreamEvent] = []
         self._buffering = False
-    
+
     def on(self, event_type: EventType, handler: Union[EventHandler, AsyncEventHandler]):
         """Register an event handler."""
         if asyncio.iscoroutinefunction(handler):
             self.async_handlers[event_type].append(handler)
         else:
             self.handlers[event_type].append(handler)
-    
+
     def emit(self, event: StreamEvent):
         """Emit an event to all registered handlers."""
         if self._buffering:
             self._buffer.append(event)
             return
-        
+
         # Sync handlers
         for handler in self.handlers[event.event_type]:
             try:
                 handler(event)
             except Exception as e:
                 self.logger.error(f"Error in handler: {e}")
-        
+
         # Async handlers
         for handler in self.async_handlers[event.event_type]:
             asyncio.create_task(self._call_async_handler(handler, event))
-    
+
     async def _call_async_handler(self, handler: AsyncEventHandler, event: StreamEvent):
         """Call async handler with error handling."""
         try:
             await handler(event)
         except Exception as e:
             self.logger.error(f"Error in async handler: {e}")
-    
+
     def start_buffering(self):
         """Start buffering events instead of emitting."""
         self._buffering = True
-    
+
     def flush_buffer(self):
         """Emit all buffered events."""
         self._buffering = False
@@ -152,17 +152,17 @@ emitter = EventEmitter()
 
 class Tool(ABC, Generic[InputType, OutputType]):
     """Updated base class with streaming support."""
-    
+
     def __init__(self, name: str, config: Optional[Dict[str, Any]] = None):
         self.name = name
         self.config = config or {}
         self.logger = logging.getLogger(f"tool.{name}")
         self.emitter = emitter  # Use global emitter
-    
+
     def __call__(self, context: ReceiptContext) -> ReceiptContext:
         """Execute the tool with streaming updates."""
         start_time = time.time()
-        
+
         # Emit start event
         self.emitter.emit(ToolEvent(
             event_id=str(uuid.uuid4()),
@@ -171,15 +171,15 @@ class Tool(ABC, Generic[InputType, OutputType]):
             tool_name=self.name,
             status="started"
         ))
-        
+
         try:
             # Validate input
             if not self.validate_input(context):
                 raise ValueError(f"Invalid input for tool {self.name}")
-            
+
             # Execute tool with progress tracking
             result = self.execute_with_progress(context)
-            
+
             # Emit completion
             duration_ms = (time.time() - start_time) * 1000
             self.emitter.emit(ToolEvent(
@@ -190,9 +190,9 @@ class Tool(ABC, Generic[InputType, OutputType]):
                 status="completed",
                 duration_ms=duration_ms
             ))
-            
+
             return result
-            
+
         except Exception as e:
             # Emit failure
             self.emitter.emit(ToolEvent(
@@ -205,12 +205,12 @@ class Tool(ABC, Generic[InputType, OutputType]):
                 duration_ms=(time.time() - start_time) * 1000
             ))
             raise
-    
+
     def execute_with_progress(self, context: ReceiptContext) -> ReceiptContext:
         """Execute with progress updates."""
         # Default implementation without progress
         return self.execute(context)
-    
+
     def emit_progress(self, context: ReceiptContext, progress: float, message: str = ""):
         """Emit progress update."""
         self.emitter.emit(ToolEvent(
@@ -237,34 +237,34 @@ import uuid
 
 class ConnectionManager:
     """Manages WebSocket connections for streaming."""
-    
+
     def __init__(self):
         # Map receipt_id to set of connections
         self.active_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
         # Map connection to receipt_ids
         self.connection_receipts: Dict[WebSocket, Set[str]] = defaultdict(set)
-    
+
     async def connect(self, websocket: WebSocket, receipt_id: str):
         """Accept new connection."""
         await websocket.accept()
         self.active_connections[receipt_id].add(websocket)
         self.connection_receipts[websocket].add(receipt_id)
-    
+
     def disconnect(self, websocket: WebSocket):
         """Remove connection."""
         # Remove from all receipt subscriptions
         for receipt_id in self.connection_receipts[websocket]:
             self.active_connections[receipt_id].discard(websocket)
         del self.connection_receipts[websocket]
-    
+
     async def send_event(self, receipt_id: str, event: StreamEvent):
         """Send event to all connections watching this receipt."""
         if receipt_id not in self.active_connections:
             return
-        
+
         # Serialize event
         message = event.json()
-        
+
         # Send to all connections
         disconnected = set()
         for connection in self.active_connections[receipt_id]:
@@ -272,7 +272,7 @@ class ConnectionManager:
                 await connection.send_text(message)
             except:
                 disconnected.add(connection)
-        
+
         # Clean up disconnected
         for conn in disconnected:
             self.disconnect(conn)
@@ -313,7 +313,7 @@ app.add_middleware(
 async def websocket_endpoint(websocket: WebSocket, receipt_id: str):
     """WebSocket endpoint for real-time receipt processing updates."""
     await manager.connect(websocket, receipt_id)
-    
+
     try:
         # Send initial connection event
         await websocket.send_json({
@@ -321,14 +321,14 @@ async def websocket_endpoint(websocket: WebSocket, receipt_id: str):
             "receipt_id": receipt_id,
             "message": "Connected to receipt processing stream"
         })
-        
+
         # Keep connection alive
         while True:
             # Wait for client messages (ping/pong)
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
-                
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -337,7 +337,7 @@ async def label_receipt_streaming(receipt_id: str, request: LabelingRequest):
     """Start receipt labeling with streaming updates."""
     # Start processing in background
     asyncio.create_task(process_receipt_async(receipt_id, request))
-    
+
     # Return immediately
     return {
         "receipt_id": receipt_id,
@@ -365,20 +365,20 @@ def setup_tracing(service_name: str = "receipt-labeling"):
     # Set up the tracer provider
     provider = TracerProvider()
     trace.set_tracer_provider(provider)
-    
+
     # Configure OTLP exporter
     otlp_exporter = OTLPSpanExporter(
         endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
         insecure=True
     )
-    
+
     # Add span processor
     span_processor = BatchSpanProcessor(otlp_exporter)
     provider.add_span_processor(span_processor)
-    
+
     # Instrument FastAPI
     FastAPIInstrumentor.instrument_app(app)
-    
+
     return trace.get_tracer(service_name)
 
 # Global tracer
@@ -387,19 +387,19 @@ tracer = setup_tracing()
 # Traced tool wrapper
 class TracedTool(Tool):
     """Tool wrapper with distributed tracing."""
-    
+
     def execute_with_progress(self, context: ReceiptContext) -> ReceiptContext:
         """Execute with tracing."""
         with tracer.start_as_current_span(f"tool.{self.name}") as span:
             # Add attributes
             span.set_attribute("receipt.id", context.receipt_id)
             span.set_attribute("tool.name", self.name)
-            
+
             try:
                 result = super().execute_with_progress(context)
                 span.set_status(Status(StatusCode.OK))
                 return result
-                
+
             except Exception as e:
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
@@ -422,45 +422,45 @@ interface StreamEvent {
 class ReceiptProcessingStream {
   private ws: WebSocket | null = null;
   private eventHandlers: Map<string, ((event: StreamEvent) => void)[]> = new Map();
-  
+
   connect(receiptId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL}/ws/receipt/${receiptId}`;
       this.ws = new WebSocket(wsUrl);
-      
+
       this.ws.onopen = () => {
         console.log('Connected to receipt processing stream');
         resolve();
       };
-      
+
       this.ws.onmessage = (event) => {
         const streamEvent: StreamEvent = JSON.parse(event.data);
         this.handleEvent(streamEvent);
       };
-      
+
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         reject(error);
       };
-      
+
       this.ws.onclose = () => {
         console.log('Disconnected from stream');
       };
     });
   }
-  
+
   on(eventType: string, handler: (event: StreamEvent) => void) {
     if (!this.eventHandlers.has(eventType)) {
       this.eventHandlers.set(eventType, []);
     }
     this.eventHandlers.get(eventType)!.push(handler);
   }
-  
+
   private handleEvent(event: StreamEvent) {
     const handlers = this.eventHandlers.get(event.event_type) || [];
     handlers.forEach(handler => handler(event));
   }
-  
+
   disconnect() {
     if (this.ws) {
       this.ws.close();
@@ -474,10 +474,10 @@ export function ReceiptProcessingView({ receiptId }: { receiptId: string }) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [currentTool, setCurrentTool] = useState<string>('');
   const [progress, setProgress] = useState<number>(0);
-  
+
   useEffect(() => {
     const stream = new ReceiptProcessingStream();
-    
+
     // Connect to stream
     stream.connect(receiptId).then(() => {
       // Listen for events
@@ -485,19 +485,19 @@ export function ReceiptProcessingView({ receiptId }: { receiptId: string }) {
         setCurrentTool(event.tool_name);
         setProgress(0);
       });
-      
+
       stream.on('tool_progress', (event) => {
         setProgress(event.progress || 0);
       });
-      
+
       stream.on('field_labeled', (event) => {
         setEvents(prev => [...prev, event]);
       });
     });
-    
+
     return () => stream.disconnect();
   }, [receiptId]);
-  
+
   return (
     <div>
       <h2>Processing Receipt</h2>
@@ -549,20 +549,20 @@ tool_success_rate = Gauge(
 # Instrument tools
 class MetricsTool(TracedTool):
     """Tool with metrics collection."""
-    
+
     def __call__(self, context: ReceiptContext) -> ReceiptContext:
         active_processing.inc()
         start_time = time.time()
-        
+
         try:
             result = super().__call__(context)
             receipt_processing_total.labels(status='success').inc()
             return result
-            
+
         except Exception as e:
             receipt_processing_total.labels(status='failure').inc()
             raise
-            
+
         finally:
             duration = time.time() - start_time
             receipt_processing_duration.labels(tool=self.name).observe(duration)
@@ -638,16 +638,16 @@ async def test_websocket_streaming():
                 "http://localhost:8000/api/label-receipt/test-123",
                 json={"image_url": "s3://test.jpg"}
             )
-        
+
         # Receive events
         events = []
         async for message in ws:
             event = json.loads(message)
             events.append(event)
-            
+
             if event["event_type"] == "processing_completed":
                 break
-        
+
         # Verify event sequence
         event_types = [e["event_type"] for e in events]
         assert "processing_started" in event_types
