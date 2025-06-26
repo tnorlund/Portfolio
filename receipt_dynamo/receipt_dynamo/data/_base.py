@@ -1,10 +1,14 @@
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-import boto3
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+else:
+    # Runtime fallback
+    DynamoDBClient = object
 
 
 class DynamoClientProtocol(Protocol):
     """Protocol defining attributes shared by DynamoDB mixin classes."""
 
     table_name: str
-    _client: boto3.client
+    _client: DynamoDBClient
