@@ -9,6 +9,7 @@ from .address import (
     parse_address,
 )
 from .ai_usage_tracker import AIUsageTracker
+from .ai_usage_tracker_resilient import ResilientAIUsageTracker
 from .client_manager import ClientConfig, ClientManager
 from .clients import get_client_manager, get_clients
 from .cost_calculator import AICostCalculator
@@ -61,6 +62,7 @@ __all__ = [
     # AI cost tracking
     "AICostCalculator",
     "AIUsageTracker",
+    "ResilientAIUsageTracker",
 ]
 
 
