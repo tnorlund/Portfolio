@@ -103,50 +103,25 @@ jobs:
     needs: [format-check, quick-tests]
     if: always()
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
     steps:
-      - name: Comment status
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const formatted = '${{ needs.format-check.outputs.formatted }}' === 'true';
-            const testsPass = '${{ needs.quick-tests.result }}' === 'success';
+      - name: Log status
+        run: |
+          formatted='${{ needs.format-check.outputs.formatted }}'
+          tests_result='${{ needs.quick-tests.result }}'
 
-            let comment = '## PR Status\n\n';
-            comment += formatted ? '✅ Code is properly formatted\n' : '❌ Code needs formatting (run `make format`)\n';
-            comment += testsPass ? '✅ Tests pass\n' : '❌ Tests failed\n';
+          echo "=== PR Status Summary ==="
+          if [[ "$formatted" == "true" ]]; then
+            echo "✅ Code is properly formatted"
+          else
+            echo "❌ Code needs formatting (run 'make format')"
+          fi
 
-            // Find and update existing comment or create new
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' && comment.body.includes('## PR Status')
-            );
-
-            if (botComment) {
-              console.log(`Updating existing PR status comment (ID: ${botComment.id})`);
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: comment
-              });
-            } else {
-              console.log('Creating new PR status comment');
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: comment
-              });
-            }
+          if [[ "$tests_result" == "success" ]]; then
+            echo "✅ Tests pass"
+          else
+            echo "❌ Tests failed"
+          fi
+          echo "========================="
 
       - name: Set status
         run: |
