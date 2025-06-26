@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 import boto3
+from mypy_boto3_s3 import S3Client
 
 from receipt_dynamo.data._ocr import apple_vision_ocr
 from receipt_dynamo.data._pulumi import load_env
@@ -105,7 +106,7 @@ def refine_receipt_ocr(
 
     # Create clients from environment
     client = DynamoClient(env["dynamodb_table_name"])
-    s3_client = boto3.client("s3")
+    s3_client: S3Client = boto3.client("s3")
 
     if debug:
         print(f"\n--- Processing receipt {image_id}_{receipt_id} ---")

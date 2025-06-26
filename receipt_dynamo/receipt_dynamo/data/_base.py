@@ -1,10 +1,10 @@
 from typing import Protocol
 
-import boto3
+from mypy_boto3_dynamodb import DynamoDBClient
 
 
 class DynamoClientProtocol(Protocol):
     """Protocol defining attributes shared by DynamoDB mixin classes."""
 
     table_name: str
-    _client: boto3.client
+    _client: DynamoDBClient

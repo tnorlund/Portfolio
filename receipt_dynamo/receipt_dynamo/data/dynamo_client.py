@@ -1,4 +1,5 @@
 import boto3
+from mypy_boto3_dynamodb import DynamoDBClient
 
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
@@ -103,11 +104,13 @@ class DynamoClient(
             region (str, optional): The AWS region where the DynamoDB table is located. Defaults to "us-east-1".
 
         Attributes:
-            _client (boto3.client): The Boto3 DynamoDB client.
+            _client (DynamoDBClient): The Boto3 DynamoDB client.
             table_name (str): The name of the DynamoDB table.
         """
 
-        self._client = boto3.client("dynamodb", region_name=region)
+        self._client: DynamoDBClient = boto3.client(
+            "dynamodb", region_name=region
+        )
         self.table_name = table_name
         # Ensure the table already exists
         try:
