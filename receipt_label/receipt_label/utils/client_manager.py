@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from openai import OpenAI
-from pinecone import Index, Pinecone
+from pinecone import Pinecone
 
 from receipt_dynamo import DynamoClient
 
