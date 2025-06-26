@@ -2,6 +2,39 @@
 
 A Python package for accessing DynamoDB for receipt data. This package provides a robust interface for interacting with receipt data stored in AWS DynamoDB.
 
+## Package Responsibilities
+
+**IMPORTANT**: This package is the ONLY place where DynamoDB-specific logic should exist in the codebase.
+
+### What belongs in receipt_dynamo:
+- ✅ ALL DynamoDB client implementations
+- ✅ ALL DynamoDB operations (queries, writes, batch operations)
+- ✅ ALL DynamoDB resilience patterns (circuit breakers, retries, batching)
+- ✅ Entity definitions and DynamoDB item conversions
+- ✅ DynamoDB-specific error handling and recovery
+
+### What does NOT belong here:
+- ❌ Business logic (belongs in receipt_label)
+- ❌ AI service integrations (belongs in receipt_label)
+- ❌ OCR processing (belongs in receipt_ocr)
+- ❌ Any imports from receipt_label or receipt_ocr
+
+### Example: Resilient DynamoDB Operations
+All resilience patterns for DynamoDB are implemented in this package:
+```python
+from receipt_dynamo import ResilientDynamoClient
+
+# This client includes circuit breaker, retry logic, and batching
+client = ResilientDynamoClient(
+    table_name="my-table",
+    circuit_breaker_threshold=5,
+    max_retry_attempts=3,
+    batch_size=25
+)
+```
+
+Other packages should use these high-level interfaces instead of implementing their own DynamoDB logic.
+
 ## Package Structure
 
 The package has been moved from `infra/lambda_layer/python/dynamo` to the top-level `receipt_dynamo` directory and renamed from `dynamo` to `receipt_dynamo`.

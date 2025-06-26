@@ -176,7 +176,7 @@ This design prevents "formatting thrash" where developers push unformatted code 
 
 **Scenario**: Your PR fails due to formatting, you start fixing it, then find more files need formatting, and suddenly you're reformatting half the codebase.
 
-**Solution**: 
+**Solution**:
 - STOP and check which files are actually part of your PR
 - Only format files you've modified
 - Let other files remain as they are
@@ -194,4 +194,88 @@ git push
 # If CI still complains about formatting in OTHER files:
 # IGNORE IT - those aren't your responsibility
 ```
+
+# Package Architecture and Boundaries
+
+## CRITICAL: Maintain Strict Package Separation
+
+**IMPORTANT**: This project follows a strict separation of concerns between packages. Each package has a specific responsibility and MUST NOT contain logic that belongs in another package.
+
+### Package Responsibilities
+
+1. **receipt_dynamo** - DynamoDB Data Layer
+   - ALL DynamoDB-specific logic (queries, writes, batch operations)
+   - ALL resilience patterns for DynamoDB (circuit breakers, retries, batching)
+   - Entity definitions and DynamoDB item conversions
+   - DynamoDB client implementations
+   - DO NOT: Import from receipt_label or implement business logic
+
+2. **receipt_label** - Business Logic Layer
+   - Receipt labeling and analysis logic
+   - AI service integrations (OpenAI, Anthropic) for labeling
+   - Places API integration for location data
+   - Uses receipt_dynamo as a data layer through high-level interfaces
+   - DO NOT: Implement DynamoDB operations directly
+
+3. **receipt_ocr** - OCR Processing Layer
+   - OCR text extraction logic
+   - Image processing
+   - Text detection algorithms
+   - DO NOT: Implement database operations or labeling logic
+
+### Examples of Violations to Avoid
+
+❌ **WRONG**: Implementing DynamoDB retry logic in receipt_label
+```python
+# receipt_label/utils/some_tracker.py
+def put_with_retry(self, item):
+    for attempt in range(3):
+        try:
+            self.dynamo_client.put_item(...)  # DynamoDB logic in wrong package!
+        except:
+            time.sleep(2 ** attempt)
+```
+
+✅ **CORRECT**: Use high-level interfaces from receipt_dynamo
+```python
+# receipt_label/utils/some_tracker.py
+def store(self, item):
+    self.dynamo_client.put_ai_usage_metric(item)  # Delegates to receipt_dynamo
+```
+
+❌ **WRONG**: Creating resilient DynamoDB patterns in receipt_label
+```python
+# receipt_label/utils/resilient_tracker.py
+class ResilientTracker:
+    def __init__(self):
+        self.circuit_breaker = CircuitBreaker()  # Should be in receipt_dynamo!
+```
+
+✅ **CORRECT**: Import resilient implementations from receipt_dynamo
+```python
+# receipt_label/utils/resilient_tracker.py
+from receipt_dynamo import ResilientDynamoClient
+
+class ResilientTracker:
+    def __init__(self):
+        self.dynamo_client = ResilientDynamoClient()  # Use receipt_dynamo's implementation
+```
+
+### Checking for Violations
+
+Before implementing any feature:
+1. Ask: "Which package owns this responsibility?"
+2. If it's database/DynamoDB related → receipt_dynamo
+3. If it's labeling/analysis related → receipt_label
+4. If it's OCR/image processing → receipt_ocr
+5. Never mix responsibilities between packages
+
+### Code Review Checklist
+
+When reviewing code, check for:
+- [ ] No direct DynamoDB operations in receipt_label
+- [ ] No business logic in receipt_dynamo
+- [ ] All resilience patterns for DynamoDB are in receipt_dynamo
+- [ ] receipt_label only uses high-level interfaces from receipt_dynamo
+- [ ] No circular dependencies between packages
 EOF < /dev/null

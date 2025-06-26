@@ -120,6 +120,61 @@
 - `receipt_dynamo/tests`: Contains unit and integration tests for both packages.
 - `receipt_label/`: Processes receipts to extract, label, and validate data using ML and external APIs.
 
+## Package Architecture Rules
+
+### CRITICAL: Maintain Strict Separation of Concerns
+
+Each package has specific responsibilities that MUST NOT be violated:
+
+1. **receipt_dynamo** - Data Layer Only
+   - ✅ DO: Implement ALL DynamoDB operations (queries, writes, batch operations)
+   - ✅ DO: Implement ALL DynamoDB resilience patterns (circuit breakers, retries, batching)
+   - ✅ DO: Define entities and item conversions
+   - ❌ DON'T: Import from receipt_label
+   - ❌ DON'T: Implement business logic or AI service integrations
+
+2. **receipt_label** - Business Logic Only
+   - ✅ DO: Implement labeling and analysis logic
+   - ✅ DO: Integrate with AI services (OpenAI, Anthropic)
+   - ✅ DO: Use receipt_dynamo's high-level interfaces
+   - ❌ DON'T: Implement ANY DynamoDB operations directly
+   - ❌ DON'T: Create DynamoDB resilience patterns (use receipt_dynamo's implementations)
+
+### Common Architecture Violations to Avoid
+
+❌ **NEVER DO THIS**: Put DynamoDB logic in receipt_label
+```python
+# receipt_label/utils/tracker.py
+def put_with_retry(self, item):
+    # This retry logic belongs in receipt_dynamo!
+    for attempt in range(3):
+        try:
+            self.dynamo_client.put_item(...)
+        except:
+            time.sleep(2 ** attempt)
+```
+
+✅ **ALWAYS DO THIS**: Use receipt_dynamo's interfaces
+```python
+# receipt_label/utils/tracker.py
+from receipt_dynamo import ResilientDynamoClient
+
+def __init__(self):
+    # Use the resilient client from receipt_dynamo
+    self.dynamo_client = ResilientDynamoClient()
+
+def store(self, item):
+    # Delegate to receipt_dynamo's implementation
+    self.dynamo_client.put_ai_usage_metric(item)
+```
+
+### Before Writing Any Code
+
+Ask yourself:
+1. Is this database/DynamoDB related? → Put it in receipt_dynamo
+2. Is this labeling/analysis related? → Put it in receipt_label
+3. Am I importing the wrong direction? → receipt_label can import receipt_dynamo, but NOT vice versa
+
 ## receipt_label Package Development
 
 ### Key Concepts
