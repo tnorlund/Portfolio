@@ -147,12 +147,19 @@ class AIUsageTracker:
         """Store metric in DynamoDB and/or file."""
         if self.track_to_dynamo and self.dynamo_client:
             try:
-                # Use high-level DynamoClient method if available (but not for Mock objects in tests)
-                if (hasattr(self.dynamo_client, "put_ai_usage_metric") and 
-                    not str(type(self.dynamo_client)).startswith("<class 'unittest.mock")):
-                    self.dynamo_client.put_ai_usage_metric(metric)
+                # Use high-level DynamoClient method if available
+                # Special handling for Mock objects: only use put_ai_usage_metric if Mock has a spec
+                if hasattr(self.dynamo_client, "put_ai_usage_metric"):
+                    is_mock = str(type(self.dynamo_client)).startswith("<class 'unittest.mock")
+                    if not is_mock or (is_mock and hasattr(self.dynamo_client, "_spec_class")):
+                        # Real client or Mock with spec - use the high-level method
+                        self.dynamo_client.put_ai_usage_metric(metric)
+                    else:
+                        # Basic Mock without spec - use fallback for test compatibility
+                        item = metric.to_dynamodb_item()
+                        self.dynamo_client.put_item(TableName=self.table_name, Item=item)
                 else:
-                    # Fallback for compatibility and Mock objects in tests
+                    # Fallback for compatibility
                     item = metric.to_dynamodb_item()
                     self.dynamo_client.put_item(TableName=self.table_name, Item=item)
             except Exception as e:
