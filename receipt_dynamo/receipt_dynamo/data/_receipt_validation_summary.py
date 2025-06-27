@@ -79,20 +79,22 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} already exists"
+                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not add receipt validation summary to DynamoDB: {e}")
+                raise DynamoDBError(f"Could not add receipt validation summary to DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise DynamoDBError("Could not add receipt validation summary to DynamoDB: {e}") def update_receipt_validation_summary(
+                raise DynamoDBError(f"Could not add receipt validation summary to DynamoDB: {e}")
+
+    def update_receipt_validation_summary(
         self, summary: ReceiptValidationSummary
     ):
         """Updates an existing ReceiptValidationSummary in the database.
@@ -122,18 +124,20 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
+                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise DynamoDBError("Could not update ReceiptValidationSummary in the database: {e}") fupdate_receipt_validation_summariesationSummaries(
+                raise DynamoDBError(f"Could not update ReceiptValidationSummary in the database: {e}")
+
+    def update_receipt_validation_summaries(
         self, summaries: list[ReceiptValidationSummary]
     ):
         """Updates a list of ReceiptValidationSummaries in the database.
@@ -181,7 +185,7 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                             "One or more ReceiptValidationSummaries do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") fromdelete_receipt_validation_summarytionSummary(
+                    raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}") fromdelete_receipt_validation_summarytionSummary(
         self, summary: ReceiptValidationSummary
     ):
         """Deletes a ReceiptValidationSummary from DynamoDB.
@@ -212,18 +216,18 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
+                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise DynamoDBError("Could not delete ReceiptValidationSummary from the database: {e}")
+                raise DynamoDBError(f"Could not delete ReceiptValidationSummary from the database: {e}")
 get_receipt_validation_summarynSummary(
         self, receipt_id: int, image_id: str
     ) -> ReceiptValidationSummary | None:
@@ -256,9 +260,9 @@ get_receipt_validation_summarynSummary(
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": "IMAGE#{image_id}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"
                     },
                 },
             )
@@ -355,17 +359,17 @@ get_receipt_validation_summarynSummary(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not list receipt validation summaries from DynamoDB: {e}")
+                raise DynamoDBError(f"Could not list receipt validation summaries from DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "One or more parameters given were invalid: {e}"
+                    f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             else:
-                raise OperationError("Error listing receipt validation summaries: {e}")
+                raise OperationError(f"Error listing receipt validation summaries: {e}")
     def list_receipt_validation_summaries_by_status(
         self,
         status: str,
@@ -411,7 +415,7 @@ get_receipt_validation_summarynSummary(
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "GSI3PK"},
                 "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "VALIDATION_STATUS#{status}"},
+                    ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
                 },
             }
 
@@ -449,14 +453,14 @@ get_receipt_validation_summarynSummary(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not list receipt validation summaries from DynamoDB: {e}")
+                raise DynamoDBError(f"Could not list receipt validation summaries from DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "One or more parameters given were invalid: {e}"
+                    f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             else:
-                raise OperationError("Error listing receipt validation summaries by status: {e}")
+                raise OperationError(f"Error listing receipt validation summaries by status: {e}")
