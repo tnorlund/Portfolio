@@ -73,9 +73,7 @@ class SpatialPattern:
         assert_type("data", data, dict)
 
         return cls(
-            pattern_type=str(
-                data.get("pattern_type", data.get("type", "generic"))
-            ),
+            pattern_type=str(data.get("pattern_type", data.get("type", "generic"))),
             description=str(data.get("description", "")),
             metadata=data.get("metadata", {}),
         )
@@ -173,9 +171,7 @@ class ContentPattern:
             examples = [str(ex) for ex in examples]
 
         return cls(
-            pattern_type=str(
-                data.get("pattern_type", data.get("type", "generic"))
-            ),
+            pattern_type=str(data.get("pattern_type", data.get("type", "generic"))),
             description=str(data.get("description", "")),
             examples=examples,
             metadata=data.get("metadata", {}),
@@ -302,9 +298,7 @@ class ReceiptSection:
 
         # Calculate start and end lines if not provided
         if line_ids:
-            self.start_line = (
-                start_line if start_line is not None else min(line_ids)
-            )
+            self.start_line = start_line if start_line is not None else min(line_ids)
             self.end_line = end_line if end_line is not None else max(line_ids)
         else:
             self.start_line = start_line
@@ -356,9 +350,7 @@ class ReceiptSection:
             elif isinstance(pattern, str):
                 # For backward compatibility with old data format
                 content_patterns.append(
-                    ContentPattern(
-                        pattern_type="legacy", description=str(pattern)
-                    )
+                    ContentPattern(pattern_type="legacy", description=str(pattern))
                 )
             elif isinstance(pattern, ContentPattern):
                 content_patterns.append(pattern)
@@ -377,9 +369,7 @@ class ReceiptSection:
             elif isinstance(pattern, str):
                 # For backward compatibility with old data format
                 spatial_patterns.append(
-                    SpatialPattern(
-                        pattern_type="legacy", description=str(pattern)
-                    )
+                    SpatialPattern(pattern_type="legacy", description=str(pattern))
                 )
             elif isinstance(pattern, SpatialPattern):
                 spatial_patterns.append(pattern)
@@ -444,9 +434,7 @@ class ReceiptSection:
 
     def __repr__(self) -> str:
         """Return a string representation of the ReceiptSection."""
-        return (
-            f"ReceiptSection(name={self.name!r}, lines={len(self.line_ids)})"
-        )
+        return f"ReceiptSection(name={self.name!r}, lines={len(self.line_ids)})"
 
 
 class ReceiptStructureAnalysis:
@@ -503,9 +491,7 @@ class ReceiptStructureAnalysis:
         try:
             receipt_id = int(receipt_id)
         except (ValueError, TypeError):
-            raise ValueError(
-                f"receipt_id must be convertible to int, got {receipt_id}"
-            )
+            raise ValueError(f"receipt_id must be convertible to int, got {receipt_id}")
 
         assert_type("image_id", image_id, str)
         assert_type("sections", sections, list)
@@ -533,9 +519,7 @@ class ReceiptStructureAnalysis:
                 validated_sections.append(ReceiptSection.from_dict(section))
             else:
                 raise TypeError(
-                    format_type_error(
-                        f"sections[{i}]", section, (ReceiptSection, dict)
-                    )
+                    format_type_error(f"sections[{i}]", section, (ReceiptSection, dict))
                 )
 
         self.receipt_id = receipt_id
@@ -551,9 +535,7 @@ class ReceiptStructureAnalysis:
         if processing_metrics is None:
             self.processing_metrics = {
                 "section_count": len(self.sections),
-                "section_types": list(
-                    set(section.name for section in self.sections)
-                ),
+                "section_types": list(set(section.name for section in self.sections)),
                 "pattern_counts": {
                     "spatial_patterns": sum(
                         len(s.spatial_patterns) for s in self.sections
@@ -583,9 +565,7 @@ class ReceiptStructureAnalysis:
         # Sort sections by start line for consistent order
         self.sections.sort(
             key=lambda section: (
-                section.start_line
-                if section.start_line is not None
-                else float("inf")
+                section.start_line if section.start_line is not None else float("inf")
             )
         )
 
@@ -640,9 +620,7 @@ class ReceiptStructureAnalysis:
                 "M": {
                     "name": {"S": section.name},
                     "line_ids": {
-                        "L": [
-                            {"N": str(line_id)} for line_id in section.line_ids
-                        ]
+                        "L": [{"N": str(line_id)} for line_id in section.line_ids]
                     },
                     "reasoning": {"S": section.reasoning},
                     "start_line": {"N": str(section.start_line)},
@@ -651,16 +629,12 @@ class ReceiptStructureAnalysis:
                         "L": [
                             {
                                 "M": {
-                                    "pattern_type": {
-                                        "S": pattern.pattern_type
-                                    },
+                                    "pattern_type": {"S": pattern.pattern_type},
                                     "description": {"S": pattern.description},
                                     "metadata": {
                                         "M": {
                                             k: {"S": str(v)}
-                                            for k, v in (
-                                                pattern.metadata or {}
-                                            ).items()
+                                            for k, v in (pattern.metadata or {}).items()
                                         }
                                     },
                                 }
@@ -672,22 +646,17 @@ class ReceiptStructureAnalysis:
                         "L": [
                             {
                                 "M": {
-                                    "pattern_type": {
-                                        "S": pattern.pattern_type
-                                    },
+                                    "pattern_type": {"S": pattern.pattern_type},
                                     "description": {"S": pattern.description},
                                     "examples": {
                                         "L": [
-                                            {"S": ex}
-                                            for ex in (pattern.examples or [])
+                                            {"S": ex} for ex in (pattern.examples or [])
                                         ]
                                     },
                                     "metadata": {
                                         "M": {
                                             k: {"S": str(v)}
-                                            for k, v in (
-                                                pattern.metadata or {}
-                                            ).items()
+                                            for k, v in (pattern.metadata or {}).items()
                                         }
                                     },
                                 }
@@ -751,9 +720,7 @@ class ReceiptStructureAnalysis:
             "overall_reasoning": {"S": self.overall_reasoning},
             "version": {"S": self.version},
             "metadata": {
-                "M": {
-                    k: {"S": str(v)} for k, v in (self.metadata or {}).items()
-                }
+                "M": {k: {"S": str(v)} for k, v in (self.metadata or {}).items()}
             },
             "timestamp_added": {"S": self.timestamp_added.isoformat()},
             "processing_metrics": metrics_dict,
@@ -762,9 +729,7 @@ class ReceiptStructureAnalysis:
         }
 
         if self.timestamp_updated:
-            item["timestamp_updated"] = {
-                "S": self.timestamp_updated.isoformat()
-            }
+            item["timestamp_updated"] = {"S": self.timestamp_updated.isoformat()}
 
         return item
 
@@ -782,9 +747,7 @@ class ReceiptStructureAnalysis:
                 return section
         return None
 
-    def get_sections_with_pattern(
-        self, pattern_type: str
-    ) -> List[ReceiptSection]:
+    def get_sections_with_pattern(self, pattern_type: str) -> List[ReceiptSection]:
         """Find sections that contain a specific pattern type."""
         matching_sections = []
         for section in self.sections:
@@ -835,17 +798,13 @@ class ReceiptStructureAnalysis:
                 section_summary.append(f"  Reasoning: {section.reasoning}")
 
             if section.spatial_patterns:
-                pattern_texts = [
-                    p.description for p in section.spatial_patterns
-                ]
+                pattern_texts = [p.description for p in section.spatial_patterns]
                 section_summary.append(
                     f"  Spatial patterns: {', '.join(pattern_texts[:3])}"
                 )
 
             if section.content_patterns:
-                pattern_texts = [
-                    p.description for p in section.content_patterns
-                ]
+                pattern_texts = [p.description for p in section.content_patterns]
                 section_summary.append(
                     f"  Content patterns: {', '.join(pattern_texts[:3])}"
                 )
@@ -912,7 +871,7 @@ class ReceiptStructureAnalysis:
         )
 
 
-def itemToReceiptStructureAnalysis(
+def item_to_receipt_structure_analysis(
     item: Dict[str, Any],
 ) -> ReceiptStructureAnalysis:
     """
@@ -928,13 +887,9 @@ def itemToReceiptStructureAnalysis(
         ValueError: If required data is missing or invalid
     """
     if not item:
-        raise ValueError(
-            "Cannot create ReceiptStructureAnalysis from empty item"
-        )
+        raise ValueError("Cannot create ReceiptStructureAnalysis from empty item")
 
-    receipt_id = (
-        item["SK"].get("S", "").split("#")[1] if "SK" in item else None
-    )
+    receipt_id = item["SK"].get("S", "").split("#")[1] if "SK" in item else None
     if receipt_id is None:
         raise ValueError("receipt_id is required but was not found in item")
 
@@ -946,9 +901,7 @@ def itemToReceiptStructureAnalysis(
     sections = []
     sections_attr = item.get("sections", {"L": []})
     sections_list = (
-        sections_attr.get("L", [])
-        if isinstance(sections_attr, dict)
-        else sections_attr
+        sections_attr.get("L", []) if isinstance(sections_attr, dict) else sections_attr
     )
 
     for section_dict in sections_list:
@@ -970,37 +923,29 @@ def itemToReceiptStructureAnalysis(
                 section_data["line_ids"] = line_ids
 
                 # Extract reasoning
-                section_data["reasoning"] = section_map.get(
-                    "reasoning", {}
-                ).get("S", "")
+                section_data["reasoning"] = section_map.get("reasoning", {}).get(
+                    "S", ""
+                )
 
                 # Extract start_line and end_line
-                start_line_attr = section_map.get("start_line", {}).get(
-                    "N", "0"
-                )
+                start_line_attr = section_map.get("start_line", {}).get("N", "0")
                 section_data["start_line"] = (
                     int(start_line_attr) if start_line_attr else 0
                 )
 
                 end_line_attr = section_map.get("end_line", {}).get("N", "0")
-                section_data["end_line"] = (
-                    int(end_line_attr) if end_line_attr else 0
-                )
+                section_data["end_line"] = int(end_line_attr) if end_line_attr else 0
 
                 # Extract and process spatial patterns
                 spatial_patterns = []
-                spatial_patterns_attr = section_map.get(
-                    "spatial_patterns", {}
-                ).get("L", [])
+                spatial_patterns_attr = section_map.get("spatial_patterns", {}).get(
+                    "L", []
+                )
                 for sp in spatial_patterns_attr:
                     if isinstance(sp, dict) and "M" in sp:
                         sp_map = sp["M"]
-                        pattern_type = sp_map.get("pattern_type", {}).get(
-                            "S", ""
-                        )
-                        description = sp_map.get("description", {}).get(
-                            "S", ""
-                        )
+                        pattern_type = sp_map.get("pattern_type", {}).get("S", "")
+                        description = sp_map.get("description", {}).get("S", "")
 
                         # Extract metadata
                         metadata = {}
@@ -1019,18 +964,14 @@ def itemToReceiptStructureAnalysis(
 
                 # Extract and process content patterns
                 content_patterns = []
-                content_patterns_attr = section_map.get(
-                    "content_patterns", {}
-                ).get("L", [])
+                content_patterns_attr = section_map.get("content_patterns", {}).get(
+                    "L", []
+                )
                 for cp in content_patterns_attr:
                     if isinstance(cp, dict) and "M" in cp:
                         cp_map = cp["M"]
-                        pattern_type = cp_map.get("pattern_type", {}).get(
-                            "S", ""
-                        )
-                        description = cp_map.get("description", {}).get(
-                            "S", ""
-                        )
+                        pattern_type = cp_map.get("pattern_type", {}).get("S", "")
+                        description = cp_map.get("description", {}).get("S", "")
 
                         # Extract examples
                         examples = []
@@ -1127,9 +1068,7 @@ def itemToReceiptStructureAnalysis(
                     elif "S" in v:
                         processing_metrics[k] = v["S"]
                     elif "L" in v:
-                        processing_metrics[k] = [
-                            item.get("S", "") for item in v["L"]
-                        ]
+                        processing_metrics[k] = [item.get("S", "") for item in v["L"]]
                     elif "M" in v:
                         processing_metrics[k] = {
                             sub_k: (
@@ -1168,9 +1107,7 @@ def itemToReceiptStructureAnalysis(
                     entry_map = entry["M"]
                     entry_data = {
                         "event": entry_map.get("event", {}).get("S", ""),
-                        "timestamp": entry_map.get("timestamp", {}).get(
-                            "S", ""
-                        ),
+                        "timestamp": entry_map.get("timestamp", {}).get("S", ""),
                         "details": entry_map.get("details", {}).get("S", ""),
                     }
                     processing_history.append(entry_data)

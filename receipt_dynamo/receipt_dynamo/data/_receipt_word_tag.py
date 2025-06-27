@@ -1,8 +1,9 @@
 # _receipt_word_tag.py
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptWordTag, itemToReceiptWordTag
+from receipt_dynamo import ReceiptWordTag, item_to_receipt_word_tag
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import OperationError
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -20,7 +21,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
       GSI1SK = "IMAGE#<image_id>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>"
     """
 
-    def addReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
+    def add_receipt_word_tag(self, receipt_word_tag: ReceiptWordTag):
         """
         Adds a ReceiptWordTag to the database with a conditional check
         that it does not already exist.
@@ -38,22 +39,19 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptWordTag already exists for "
-                    f"image_id={receipt_word_tag.image_id}, "
-                    f"receipt_id={receipt_word_tag.receipt_id}, "
-                    f"word_id={receipt_word_tag.word_id}, "
-                    f"tag={receipt_word_tag.tag}"
-                    f"timestamp_added={receipt_word_tag.timestamp_added}"
+                    "ReceiptWordTag already exists for "
+                    "image_id={receipt_word_tag.image_id}, "
+                    "receipt_id={receipt_word_tag.receipt_id}, "
+                    "word_id={receipt_word_tag.word_id}, "
+                    "tag={receipt_word_tag.tag}"
+                    "timestamp_added={receipt_word_tag.timestamp_added}"
                 ) from e
             else:
-                raise Exception(f"Error adding ReceiptWordTag: {e}")
+                raise OperationError("Error adding ReceiptWordTag: {e}") from e
 
-    def addReceiptWordTags(self, receipt_word_tags: list[ReceiptWordTag]):
+    def add_receipt_word_tags(self, receipt_word_tags: list[ReceiptWordTag]):
         """
         Adds multiple ReceiptWordTag items in batches (up to 25 at a time).
 
@@ -76,16 +74,14 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
-                f"Could not add ReceiptWordTags to the database: {e}"
+                "Could not add ReceiptWordTags to the database: {e}"
             ) from e
 
-    def updateReceiptWordTag(self, receipt_word_tag: ReceiptWordTag):
+    def update_receipt_word_tag(self, receipt_word_tag: ReceiptWordTag):
         """
         Updates an existing ReceiptWordTag in DynamoDB.
         (Currently does NOT check if the item exists.)
@@ -99,9 +95,9 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 Item=receipt_word_tag.to_item(),
             )
         except ClientError as e:
-            raise Exception(f"Error updating ReceiptWordTag: {e}")
+            raise OperationError("Error updating ReceiptWordTag: {e}") from e
 
-    def deleteReceiptWordTag(
+    def delete_receipt_word_tag(
         self,
         image_id: int,
         receipt_id: int,
@@ -138,19 +134,16 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptWordTag not found for image_id={image_id}, "
-                    f"receipt_id={receipt_id}, line_id={line_id}, "
-                    f"word_id={word_id}, tag={tag}"
+                    "ReceiptWordTag not found for image_id={image_id}, "
+                    "receipt_id={receipt_id}, line_id={line_id}, "
+                    "word_id={word_id}, tag={tag}"
                 ) from e
             else:
-                raise Exception(f"Error deleting ReceiptWordTag: {e}")
+                raise OperationError("Error deleting ReceiptWordTag: {e}") from e
 
-    def deleteReceiptWordTags(self, receipt_word_tags: list[ReceiptWordTag]):
+    def delete_receipt_word_tags(self, receipt_word_tags: list[ReceiptWordTag]):
         """
         Deletes multiple ReceiptWordTag items in batches (up to 25).
 
@@ -160,35 +153,31 @@ class _ReceiptWordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
                 "Could not delete ReceiptWordTags from the database"
             ) from e
 
-    def deleteReceiptWordTagsFromImage(self, image_id: int):
+    def delete_receipt_word_tags_from_image(self, image_id: int):
         """
         Deletes all ReceiptWordTag items for a given image by first listing them
-        and then calling deleteReceiptWordTags.
+        and then calling delete_receipt_word_tags.
 
         Args:
             image_id (int): The image ID.
         """
-        tags = self.listReceiptWordTagsFromImage(image_id)
-        self.deleteReceiptWordTags(tags)
+        tags = self.list_receipt_word_tags_from_image(image_id)
+        self.delete_receipt_word_tags(tags)
 
-    def getReceiptWordTag(
+    def get_receipt_word_tag(
         self,
         image_id: int,
         receipt_id: int,
@@ -225,18 +214,18 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key=rwt.key(),
             )
-            return itemToReceiptWordTag(response["Item"])
+            return item_to_receipt_word_tag(response["Item"])
         except KeyError:
             # No "Item" or missing fields
             raise ValueError(
-                f"ReceiptWordTag not found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}, "
-                f"word_id={word_id}, tag={tag}"
+                "ReceiptWordTag not found for image_id={image_id}, "
+                "receipt_id={receipt_id}, line_id={line_id}, "
+                "word_id={word_id}, tag={tag}"
             )
         except ClientError as e:
-            raise Exception(f"Error getting ReceiptWordTag: {e}")
+            raise OperationError("Error getting ReceiptWordTag: {e}") from e
 
-    def getReceiptWordTags(
+    def get_receipt_word_tags(
         self, tag: str, limit: int = None, lastEvaluatedKey: dict = None
     ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
@@ -274,7 +263,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 "FilterExpression": "#t = :typeVal",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
+                    ":gsi1pk": {"S": "TAG#{tag:_>40}"},
                     ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                 },
                 "Limit": batch_limit,
@@ -292,9 +281,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 response = self._client.query(**base_params)
                 items = response.get("Items", [])
                 # Append the filtered items.
-                receipt_tags.extend(
-                    [itemToReceiptWordTag(item) for item in items]
-                )
+                receipt_tags.extend([item_to_receipt_word_tag(item) for item in items])
                 last_key = response.get("LastEvaluatedKey", None)
 
                 # If a limit was provided and we have reached/exceeded it,
@@ -315,11 +302,9 @@ class _ReceiptWordTag(DynamoClientProtocol):
 
             return receipt_tags, last_key
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def listReceiptWordTags(
+    def list_receipt_word_tags(
         self, limit: int = None, lastEvaluatedKey: dict = None
     ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
@@ -345,9 +330,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_WORD_TAG"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_TAG"}},
             }
 
             if lastEvaluatedKey is not None:
@@ -358,26 +341,18 @@ class _ReceiptWordTag(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             receipt_tags.extend(
-                [
-                    itemToReceiptWordTag(item)
-                    for item in response.get("Items", [])
-                ]
+                [item_to_receipt_word_tag(item) for item in response.get("Items", [])]
             )
 
             if limit is None:
                 # If no limit is provided, continue paginating until all items
                 # are retrieved.
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     receipt_tags.extend(
                         [
-                            itemToReceiptWordTag(item)
+                            item_to_receipt_word_tag(item)
                             for item in response.get("Items", [])
                         ]
                     )
@@ -388,13 +363,9 @@ class _ReceiptWordTag(DynamoClientProtocol):
             return receipt_tags, last_evaluated_key
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def listReceiptWordTagsFromImage(
-        self, image_id: int
-    ) -> list[ReceiptWordTag]:
+    def list_receipt_word_tags_from_image(self, image_id: int) -> list[ReceiptWordTag]:
         """
         Lists all ReceiptWordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
@@ -409,14 +380,14 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 FilterExpression="contains(#sk, :tag_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":pk_val": {"S": "IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
                     # Only SKs that include '#TAG#'
                     ":tag_val": {"S": "#TAG#"},
                 },
             )
             for item in response.get("Items", []):
-                receipt_word_tags.append(itemToReceiptWordTag(item))
+                receipt_word_tags.append(item_to_receipt_word_tag(item))
 
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -425,18 +396,16 @@ class _ReceiptWordTag(DynamoClientProtocol):
                     FilterExpression="contains(#sk, :tag_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
+                        ":pk_val": {"S": "IMAGE#{image_id}"},
                         ":sk_val": {"S": "RECEIPT#"},
                         ":tag_val": {"S": "#TAG#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 for item in response.get("Items", []):
-                    receipt_word_tags.append(itemToReceiptWordTag(item))
+                    receipt_word_tags.append(item_to_receipt_word_tag(item))
 
             return receipt_word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list ReceiptWordTags from the database"
-            ) from e
+            raise ValueError("Could not list ReceiptWordTags from the database") from e

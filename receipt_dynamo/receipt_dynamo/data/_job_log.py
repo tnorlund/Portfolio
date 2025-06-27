@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.job_log import JobLog, itemToJobLog
+from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 
 class _JobLog(DynamoClientProtocol):
@@ -13,7 +13,7 @@ class _JobLog(DynamoClientProtocol):
     This class offers methods to add, get, delete, and list job logs.
     """
 
-    def addJobLog(self, job_log: JobLog):
+    def add_job_log(self, job_log: JobLog):
         """Adds a job log entry to the DynamoDB table.
 
         Args:
@@ -26,9 +26,7 @@ class _JobLog(DynamoClientProtocol):
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(
-                f"job_log must be a JobLog instance, got {type(job_log)}"
-            )
+            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
 
         try:
             self._client.put_item(
@@ -37,16 +35,13 @@ class _JobLog(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists"
                 )
             raise
 
-    def addJobLogs(self, job_logs: List[JobLog]):
+    def add_job_logs(self, job_logs: List[JobLog]):
         """Adds multiple job logs to the DynamoDB table in a batch.
 
         Args:
@@ -57,7 +52,7 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_logs is None:
-            raise ValueError("job_logs cannot be None")
+            raise ValueError("job_logs cannot be None") from e
         if not isinstance(job_logs, list):
             raise ValueError(f"job_logs must be a list, got {type(job_logs)}")
         if not all(isinstance(log, JobLog) for log in job_logs):
@@ -77,9 +72,7 @@ class _JobLog(DynamoClientProtocol):
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -88,9 +81,7 @@ class _JobLog(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
@@ -104,7 +95,7 @@ class _JobLog(DynamoClientProtocol):
                     "BatchWriteItem",
                 )
 
-    def getJobLog(self, job_id: str, timestamp: str) -> JobLog:
+    def get_job_log(self, job_id: str, timestamp: str) -> JobLog:
         """Gets a job log entry from the DynamoDB table.
 
         Args:
@@ -119,9 +110,9 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise ValueError("job_id cannot be None") from e
         if timestamp is None:
-            raise ValueError("timestamp cannot be None")
+            raise ValueError("timestamp cannot be None") from e
 
         response = self._client.get_item(
             TableName=self.table_name,
@@ -137,9 +128,9 @@ class _JobLog(DynamoClientProtocol):
                 f"Job log with job_id {job_id} and timestamp {timestamp} not found"
             )
 
-        return itemToJobLog(item)
+        return item_to_job_log(item)
 
-    def listJobLogs(
+    def list_job_logs(
         self,
         job_id: str,
         limit: Optional[int] = None,
@@ -160,7 +151,7 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise ValueError("job_id cannot be None") from e
 
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
@@ -186,12 +177,12 @@ class _JobLog(DynamoClientProtocol):
         response = self._client.query(**query_params)
 
         # Process results
-        job_logs = [itemToJobLog(item) for item in response.get("Items", [])]
+        job_logs = [item_to_job_log(item) for item in response.get("Items", [])]
         last_evaluated_key = response.get("LastEvaluatedKey")
 
         return job_logs, last_evaluated_key
 
-    def deleteJobLog(self, job_log: JobLog):
+    def delete_job_log(self, job_log: JobLog):
         """Deletes a job log entry from the DynamoDB table.
 
         Args:
@@ -202,11 +193,9 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_log is None:
-            raise ValueError("job_log cannot be None")
+            raise ValueError("job_log cannot be None") from e
         if not isinstance(job_log, JobLog):
-            raise ValueError(
-                f"job_log must be a JobLog instance, got {type(job_log)}"
-            )
+            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
 
         try:
             self._client.delete_item(
@@ -218,10 +207,7 @@ class _JobLog(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
                 )

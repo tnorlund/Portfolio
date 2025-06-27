@@ -82,9 +82,7 @@ class ReceiptValidationResult:
         elif isinstance(validation_timestamp, str):
             self.validation_timestamp = validation_timestamp
         else:
-            raise ValueError(
-                "validation_timestamp must be a datetime or string"
-            )
+            raise ValueError("validation_timestamp must be a datetime or string")
 
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary or None")
@@ -131,9 +129,7 @@ class ReceiptValidationResult:
         elif isinstance(value, bool):
             return {"BOOL": value}
         elif isinstance(value, dict):
-            return {
-                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
-            }
+            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -192,9 +188,7 @@ class ReceiptValidationResult:
             else None
         )
         actual_value = (
-            item.get("actual_value", {}).get("S")
-            if "actual_value" in item
-            else None
+            item.get("actual_value", {}).get("S") if "actual_value" in item else None
         )
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
@@ -269,7 +263,7 @@ class ReceiptValidationResult:
         )
 
 
-def itemToReceiptValidationResult(
+def item_to_receipt_validation_result(
     item: Dict[str, Any],
 ) -> ReceiptValidationResult:
     """Convert a DynamoDB item to a ReceiptValidationResult object.
