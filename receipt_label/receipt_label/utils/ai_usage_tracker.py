@@ -243,6 +243,9 @@ class AIUsageTracker:
             error = None
             response = None
 
+            # Extract metadata BEFORE calling the function
+            extracted_metadata = kwargs.pop("metadata", None)
+
             try:
                 response = func(*args, **kwargs)
                 return response
@@ -282,18 +285,17 @@ class AIUsageTracker:
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
 
-                # Include metadata from kwargs (added by context manager)
-                if "metadata" in kwargs:
-                    context_metadata = kwargs.get("metadata", {})
+                # Include metadata from extracted metadata (added by context manager)
+                if extracted_metadata:
                     # Extract context fields
-                    if context_metadata.get("operation_type"):
-                        metadata["operation_type"] = context_metadata[
+                    if extracted_metadata.get("operation_type"):
+                        metadata["operation_type"] = extracted_metadata[
                             "operation_type"
                         ]
-                    if context_metadata.get("job_id"):
-                        self.current_job_id = context_metadata["job_id"]
-                    if context_metadata.get("batch_id"):
-                        self.current_batch_id = context_metadata["batch_id"]
+                    if extracted_metadata.get("job_id"):
+                        self.current_job_id = extracted_metadata["job_id"]
+                    if extracted_metadata.get("batch_id"):
+                        self.current_batch_id = extracted_metadata["batch_id"]
 
                 metadata.update(
                     {
@@ -337,6 +339,9 @@ class AIUsageTracker:
             error = None
             response = None
 
+            # Extract metadata BEFORE calling the function
+            extracted_metadata = kwargs.pop("metadata", None)
+
             try:
                 response = func(*args, **kwargs)
                 return response
@@ -368,6 +373,19 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
+
+                # Include metadata from extracted metadata (added by context manager)
+                if extracted_metadata:
+                    # Extract context fields
+                    if extracted_metadata.get("operation_type"):
+                        metadata["operation_type"] = extracted_metadata[
+                            "operation_type"
+                        ]
+                    if extracted_metadata.get("job_id"):
+                        self.current_job_id = extracted_metadata["job_id"]
+                    if extracted_metadata.get("batch_id"):
+                        self.current_batch_id = extracted_metadata["batch_id"]
+
                 metadata.update(
                     {
                         "function": func.__name__,
@@ -670,6 +688,7 @@ class AIUsageTracker:
                                             }
                                         )
 
+                                    # The decorator will extract and remove metadata
                                     @self._tracker.track_openai_completion
                                     def _create(**kw):
                                         return self._completions.create(**kw)

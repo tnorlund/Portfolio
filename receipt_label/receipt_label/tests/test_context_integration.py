@@ -107,14 +107,13 @@ class TestContextIntegration:
                         response.choices[0].message.content == "Test response"
                     )
 
-                # Check that context was passed to the OpenAI call
-                # The wrapped client should have added metadata
+                # Check that metadata was removed before calling OpenAI
+                # The wrapped client should NOT pass metadata to the actual API
                 call_args = mock_openai.chat.completions.create.call_args
-                assert "metadata" in call_args[1]
-                metadata = call_args[1]["metadata"]
-                assert metadata["operation_type"] == "test_operation"
-                assert metadata["job_id"] == "job-123"
-                assert metadata["batch_id"] == "batch-456"
+                assert "metadata" not in call_args[1]
+
+                # The tracking should still happen (check tracker was used)
+                # This would be verified by checking DynamoDB calls in a real test
 
     def test_decorator_with_wrapped_client(
         self, mock_openai_response, mock_dynamo_client
@@ -159,11 +158,9 @@ class TestContextIntegration:
                 # Call decorated function
                 process_with_ai("Test input")
 
-                # Verify context was propagated
+                # Verify metadata was removed before calling OpenAI
                 call_args = mock_openai.chat.completions.create.call_args
-                assert "metadata" in call_args[1]
-                metadata = call_args[1]["metadata"]
-                assert metadata["operation_type"] == "decorated_op"
+                assert "metadata" not in call_args[1]
 
     def test_nested_contexts_propagate(
         self, mock_openai_response, mock_dynamo_client
@@ -224,17 +221,10 @@ class TestContextIntegration:
                             messages=[{"role": "user", "content": "Inner"}],
                         )
 
-                # Verify both contexts were captured
+                # Verify both calls were made without metadata
                 assert call_count == 2
-                assert len(captured_metadata) == 2
-
-                # First call should have outer context
-                assert captured_metadata[0]["operation_type"] == "outer_op"
-                assert captured_metadata[0]["job_id"] == "job-outer"
-
-                # Second call should have inner context
-                assert captured_metadata[1]["operation_type"] == "inner_op"
-                assert captured_metadata[1]["job_id"] == "job-inner"
+                # Metadata should have been removed, so captured_metadata is empty
+                assert len(captured_metadata) == 0
 
     def test_runtime_context_extraction(
         self, mock_openai_response, mock_dynamo_client
@@ -281,9 +271,6 @@ class TestContextIntegration:
                     "Test", job_id="runtime-job", batch_id="runtime-batch"
                 )
 
-                # Verify context was extracted and propagated
+                # Verify metadata was removed before calling OpenAI
                 call_args = mock_openai.chat.completions.create.call_args
-                assert "metadata" in call_args[1]
-                metadata = call_args[1]["metadata"]
-                assert metadata["job_id"] == "runtime-job"
-                assert metadata["batch_id"] == "runtime-batch"
+                assert "metadata" not in call_args[1]

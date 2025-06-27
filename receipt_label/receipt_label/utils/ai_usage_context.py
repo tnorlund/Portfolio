@@ -210,9 +210,9 @@ def ai_usage_tracked(
 
             # Extract any tracking-related kwargs from function call
             tracking_context = {}
-            for key in list(kwargs.keys()):
-                if key in ["job_id", "batch_id", "user_id", "github_pr"]:
-                    tracking_context[key] = kwargs.pop(key)
+            for key in ["job_id", "batch_id", "user_id", "github_pr"]:
+                if key in kwargs:
+                    tracking_context[key] = kwargs[key]
 
             # Merge with decorator context
             merged_context = {**context_kwargs, **tracking_context}
@@ -234,9 +234,9 @@ def ai_usage_tracked(
 
             # Extract any tracking-related kwargs from function call
             tracking_context = {}
-            for key in list(kwargs.keys()):
-                if key in ["job_id", "batch_id", "user_id", "github_pr"]:
-                    tracking_context[key] = kwargs.pop(key)
+            for key in ["job_id", "batch_id", "user_id", "github_pr"]:
+                if key in kwargs:
+                    tracking_context[key] = kwargs[key]
 
             # Merge with decorator context
             merged_context = {**context_kwargs, **tracking_context}
