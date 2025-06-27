@@ -185,7 +185,9 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                             "One or more ReceiptValidationSummaries do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}") fromdelete_receipt_validation_summarytionSummary(
+                    raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}") from e
+
+    def delete_receipt_validation_summary(
         self, summary: ReceiptValidationSummary
     ):
         """Deletes a ReceiptValidationSummary from DynamoDB.
@@ -228,7 +230,8 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(f"Could not delete ReceiptValidationSummary from the database: {e}")
-get_receipt_validation_summarynSummary(
+
+    def get_receipt_validation_summary(
         self, receipt_id: int, image_id: str
     ) -> ReceiptValidationSummary | None:
         """Gets a ReceiptValidationSummary by receipt_id and image_id.
@@ -281,8 +284,9 @@ get_receipt_validation_summarynSummary(
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not retrieve ReceiptValidationSummary from the database")
-   list_receipt_validation_summariesaries(
+                raise DynamoDBError(f"Could not retrieve ReceiptValidationSummary from the database: {e}")
+
+    def list_receipt_validation_summaries(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Lists all ReceiptValidationSummaries with pagination support.

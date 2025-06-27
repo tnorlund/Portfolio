@@ -155,7 +155,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not add receipt structure analyses to Dynamoupdate_receipt_structure_analysisiptStructureAnalysis(
+                raise DynamoDBError(f"Could not add receipt structure analyses to DynamoDB: {e}")
+
+    def update_receipt_structure_analysis(
         self, analysis: ReceiptStructureAnalysis
     ):
         """Updates an existing ReceiptStructureAnalysis in the database.
@@ -198,7 +200,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not update receipt structure analysis in the database"update_receipt_structure_analysesStructureAnalyses(
+                raise DynamoDBError(f"Could not update receipt structure analysis in the database: {e}")
+
+    def update_receipt_structure_analyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Updates multiple ReceiptStructureAnalyses in the database.
@@ -335,7 +339,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not delete receipt structure analysis from the database") fromdelete_receipt_structure_analysesureAnalyses(
+                raise DynamoDBError(f"Could not delete receipt structure analysis from the database: {e}")
+
+    def delete_receipt_structure_analyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Deletes multiple ReceiptStructureAnalyses in batch.
@@ -403,8 +409,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not delete receipt structure analyses from DynamoDB")
-get_receipt_structure_analysisAnalysis(
+                raise DynamoDBError(f"Could not delete receipt structure analyses from DynamoDB: {e}")
+
+    def get_receipt_structure_analysis(
         self,
         receipt_id: int,
         image_id: str,
@@ -426,11 +433,11 @@ get_receipt_structure_analysisAnalysis(
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                "receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
-                "image_id must be a string, got {type(image_id).__name__}"
+                f"image_id must be a string, got {type(image_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(
@@ -597,14 +604,14 @@ get_receipt_structure_analysisAnalysis(
         Raises:
             ValueError: If the receipt_id or image_id are invalid.
             Exception: If the ReceiptStructureAnalyses cannot be retrieved from DynamoDB.
-
+        """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                "receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
-                "image_id must be a string, got {type(image_id).__name__}"
+                f"image_id must be a string, got {type(image_id).__name__}"
             )
 
         try:
