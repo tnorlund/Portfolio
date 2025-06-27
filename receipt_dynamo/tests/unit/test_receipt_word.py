@@ -699,7 +699,7 @@ def test_receipt_word_distance_and_angle(example_receipt_word):
         angle_radians=5.0,
         confidence=0.9,
     )
-    result = example_receipt_word.distance_and_angle_from_receipt_word(
+    result = example_receipt_word.distance_and_angle_from__receipt_word(
         other_receipt_word
     )
     expected = (26.637614382673235, 0.5098332286596837)
