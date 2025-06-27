@@ -83,13 +83,13 @@ class _ReceiptLetter(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError("Could not add receipt letter to DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError("Could not add receipt letter to DynamoDB: {e}")add_receipt_lettersddReceiptLetters(self, letters: list[ReceiptLetter]):
         """Adds multiple ReceiptLetters to DynamoDB in batches.
@@ -131,13 +131,13 @@ class _ReceiptLetter(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError("Could not add ReceiptLetters to the database: {e}") fupdate_receipt_lettereReceiptLetter(self, letter: ReceiptLetter):
         """Updates an existing ReceiptLetter in the database.
@@ -170,13 +170,13 @@ class _ReceiptLetter(DynamoClientProtocol):
                     "ReceiptLetter with ID {letter.letter_id} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError("Could not update ReceiptLetter in the database: {e}") froupdate_receipt_lettersceiptLetters(self, letters: list[ReceiptLetter]):
         """Updates multiple ReceiptLetters in the database.
@@ -223,7 +223,7 @@ class _ReceiptLetter(DynamoClientProtocol):
                             "One or more ReceiptLetters do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from delete_receipt_lettereiptLetter(
+                    raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}") from delete_receipt_lettereiptLetter(
         self,
         letter: ReceiptLetter,
     ):
@@ -261,16 +261,17 @@ class _ReceiptLetter(DynamoClientProtocol):
                     "ReceiptLetter with ID {letter.letter_id} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise DynamoDBError("Could not delete ReceiptLetter from the database: {e}")
-def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
+                raise DynamoDBError(f"Could not delete ReceiptLetter from the database: {e}") from e
+
+    def delete_receipt_letters(self, letters: list[ReceiptLetter]):
         """Deletes multiple ReceiptLetters in batch.
 
         Args:
@@ -310,15 +311,15 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "One or more parameters given were invalid: {e}"
+                    f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError("Could not delete ReceiptLetters from the database: {e}")
   get_receipt_letterLetter(
@@ -329,23 +330,7 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
         word_id: int,
         letter_id: int,
     ) -> ReceiptLetter:
-        """Retrieves a single ReceiptLetter by IDs.
-
-        Args:
-            receipt_id (int): The receipt ID.
-            image_id (str): The image ID.
-            line_id (int): The line ID.
-            word_id (int): The word ID.
-            letter_id (int): The letter ID.
-
-        Raises:
-            ValueError: If the receipt ID is None or not an integer.
-            ValueError: If the image ID is None or not a valid UUID.
-            ValueError: If the line ID is None or not an integer.
-            ValueError: If the word ID is None or not an integer.
-            ValueError: If the letter ID is None or not an integer.
-            Exception: If the receipt letter cannot be retrieved from DynamoDB.
-        """
+        \"\"\"Retrieves a single ReceiptLetter by IDs.\"\"\"
         if receipt_id is None:
             raise ValueError(
                 "receipt_id parameter is required and cannot be None."
@@ -379,12 +364,9 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": "IMAGE#{image_id}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": "RECEIPT#{receipt_id:05d}#"
-                        "LINE#{line_id:05d}#"
-                        "WORD#{word_id:05d}#"
-                        "LETTER#{letter_id:05d}"
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                     },
                 },
             )
@@ -397,20 +379,20 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise OperationError("Validation error: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise OperationError("Error getting receipt letter: {e}")
 
     def list_receipt_letters(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptLetter], dict | None]:
-        """Returns all ReceiptLetters from the table."""
+        \"\"\"Returns all ReceiptLetters from the table.\"\"\"
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
         if lastEvaluatedKey is not None and not isinstance(
@@ -457,21 +439,22 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not list receipt letters from DynamoDB: {e}")
+                raise DynamoDBError(f"Could not list receipt letters from DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "One or more parameters given were invalid: {e}"
+                    f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             else:
-                raise OperationError("Error listing receipt letters: {e}")
+                raise OperationError(f"Error listing receipt letters: {e}") from e
+
     def list_receipt_letters_from_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
-        """Returns all ReceiptLetters for a given word."""
+        \"\"\"Returns all ReceiptLetters for a given word.\"\"\"
         if receipt_id is None:
             raise ValueError(
                 "receipt_id parameter is required and cannot be None."
@@ -502,12 +485,12 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
-                    ":pkVal": {"S": "IMAGE#{image_id}"},
+                    ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
                         "S": (
-                            "RECEIPT#{receipt_id:05d}"
-                            "#LINE#{line_id:05d}"
-                            "#WORD#{word_id:05d}"
+                            f"RECEIPT#{receipt_id:05d}"
+                            f"#LINE#{line_id:05d}"
+                            f"#WORD#{word_id:05d}"
                             "#LETTER#"
                         )
                     },
@@ -522,12 +505,12 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
-                        ":pkVal": {"S": "IMAGE#{image_id}"},
+                        ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
                             "S": (
-                                "RECEIPT#{receipt_id:05d}"
-                                "#LINE#{line_id:05d}"
-                                "#WORD#{word_id:05d}"
+                                f"RECEIPT#{receipt_id:05d}"
+                                f"#LINE#{line_id:05d}"
+                                f"#WORD#{word_id:05d}"
                                 "#LETTER#"
                             )
                         },
@@ -542,12 +525,12 @@ def delete_receipt_letterst(self, letters: list[ReceiptLetter]):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {e}")
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise DynamoDBError("Could not list ReceiptLetters from the database: {e}")
+                raise DynamoDBError(f"Could not list ReceiptLetters from the database: {e}") from e
