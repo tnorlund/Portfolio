@@ -1,6 +1,6 @@
 import pytest
 
-from receipt_dynamo import Job, itemToJob
+from receipt_dynamo import Job, item_to_job
 from receipt_dynamo.entities.job import _parse_dynamodb_map
 
 
@@ -148,9 +148,7 @@ def test_job_init_invalid_created_at():
 @pytest.mark.unit
 def test_job_init_invalid_created_by():
     """Test the Job constructor with invalid created_by."""
-    with pytest.raises(
-        ValueError, match="created_by must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -162,9 +160,7 @@ def test_job_init_invalid_created_by():
             {"model": "layoutlm"},
         )
 
-    with pytest.raises(
-        ValueError, match="created_by must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -570,24 +566,24 @@ def test_job_eq():
 
 @pytest.mark.unit
 def test_itemToJob(example_job, example_job_minimal):
-    """Test the itemToJob() function."""
+    """Test the item_to_job() function."""
     # Test with full job
     item = example_job.to_item()
-    job = itemToJob(item)
+    job = item_to_job(item)
     assert job == example_job
 
     # Test with minimal job
     item = example_job_minimal.to_item()
-    job = itemToJob(item)
+    job = item_to_job(item)
     assert job == example_job_minimal
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToJob({"PK": {"S": "JOB#id"}, "SK": {"S": "JOB"}})
+        item_to_job({"PK": {"S": "JOB#id"}, "SK": {"S": "JOB"}})
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to Job"):
-        itemToJob(
+        item_to_job(
             {
                 "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "JOB"},
