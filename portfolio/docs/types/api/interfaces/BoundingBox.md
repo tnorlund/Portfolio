@@ -6,7 +6,7 @@
 
 # Interface: BoundingBox
 
-Defined in: [types/api.ts:85](https://github.com/tnorlund/Portfolio/blob/be4a4fcb1f00a4ba4a25ebea5eba0866cd1ced33/portfolio/types/api.ts#L85)
+Defined in: [types/api.ts:85](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/types/api.ts#L85)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:85](https://github.com/tnorlund/Portfolio/blob/be4a4fc
 
 > **height**: `number`
 
-Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/be4a4fcb1f00a4ba4a25ebea5eba0866cd1ced33/portfolio/types/api.ts#L89)
+Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/types/api.ts#L89)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:89](https://github.com/tnorlund/Portfolio/blob/be4a4fc
 
 > **width**: `number`
 
-Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/be4a4fcb1f00a4ba4a25ebea5eba0866cd1ced33/portfolio/types/api.ts#L88)
+Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/types/api.ts#L88)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:88](https://github.com/tnorlund/Portfolio/blob/be4a4fc
 
 > **x**: `number`
 
-Defined in: [types/api.ts:86](https://github.com/tnorlund/Portfolio/blob/be4a4fcb1f00a4ba4a25ebea5eba0866cd1ced33/portfolio/types/api.ts#L86)
+Defined in: [types/api.ts:86](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/types/api.ts#L86)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:86](https://github.com/tnorlund/Portfolio/blob/be4a4fc
 
 > **y**: `number`
 
-Defined in: [types/api.ts:87](https://github.com/tnorlund/Portfolio/blob/be4a4fcb1f00a4ba4a25ebea5eba0866cd1ced33/portfolio/types/api.ts#L87)
+Defined in: [types/api.ts:87](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/types/api.ts#L87)
