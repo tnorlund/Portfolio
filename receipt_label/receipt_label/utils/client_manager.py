@@ -6,12 +6,12 @@ This module provides a cleaner way to manage external service clients
 """
 
 import os
+import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
@@ -34,8 +34,23 @@ class ClientConfig:
     @classmethod
     def from_env(cls) -> "ClientConfig":
         """Load configuration from environment variables."""
+        # Standardize on DYNAMODB_TABLE_NAME with backward compatibility
+        dynamo_table = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not dynamo_table:
+            dynamo_table = os.environ.get("DYNAMO_TABLE_NAME")
+            if dynamo_table:
+                warnings.warn(
+                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            else:
+                raise KeyError(
+                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"
+                )
+
         return cls(
-            dynamo_table=os.environ["DYNAMO_TABLE_NAME"],
+            dynamo_table=dynamo_table,
             openai_api_key=os.environ["OPENAI_API_KEY"],
             pinecone_api_key=os.environ["PINECONE_API_KEY"],
             pinecone_index_name=os.environ["PINECONE_INDEX_NAME"],

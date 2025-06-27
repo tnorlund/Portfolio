@@ -23,9 +23,9 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
@@ -44,7 +44,7 @@ from utils.ai_usage_helpers import (
 def integration_env():
     """Environment variables for integration testing."""
     env_vars = {
-        "DYNAMO_TABLE_NAME": "integration-test-table",
+        "DYNAMODB_TABLE_NAME": "integration-test-table",
         "OPENAI_API_KEY": "test-openai-key",
         "ANTHROPIC_API_KEY": "test-anthropic-key",
         "GOOGLE_PLACES_API_KEY": "test-google-key",

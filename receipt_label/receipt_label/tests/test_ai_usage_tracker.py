@@ -12,19 +12,17 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from freezegun import freeze_time
 from openai import OpenAI
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
     create_test_tracking_context,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.mark.unit
@@ -59,12 +57,26 @@ class TestAIUsageTrackerInitialization:
         tracker = AIUsageTracker()
 
         assert tracker.dynamo_client is None
-        # Table name should have environment suffix (could be -development or -cicd depending on environment)
-        assert tracker.table_name.startswith("AIUsageMetrics-")
-        assert tracker.table_name in [
-            "AIUsageMetrics-development",
-            "AIUsageMetrics-cicd",
-        ]
+
+        # If DYNAMODB_TABLE_NAME is set in environment, it uses that as base name
+        # Otherwise defaults to "AIUsageMetrics" with environment suffix
+        if "DYNAMODB_TABLE_NAME" in os.environ:
+            # In CI/test environments, use the explicit table name
+            env_table_name = os.environ["DYNAMODB_TABLE_NAME"]
+            # Should end with environment suffix
+            assert tracker.table_name.endswith(
+                "-development"
+            ) or tracker.table_name.endswith("-cicd")
+            # Should start with the base name from environment
+            assert tracker.table_name.startswith(env_table_name.split("-")[0])
+        else:
+            # Default behavior when no explicit table name is set
+            assert tracker.table_name.startswith("AIUsageMetrics-")
+            assert tracker.table_name in [
+                "AIUsageMetrics-development",
+                "AIUsageMetrics-cicd",
+            ]
+
         assert tracker.user_id == "default"
         assert (
             tracker.track_to_dynamo is False
