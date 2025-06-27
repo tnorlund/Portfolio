@@ -3,9 +3,16 @@ from typing import Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
-    itemToJobCheckpoint,
+    item_to_job_checkpoint,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -13,9 +20,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -24,7 +29,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 
 class _JobCheckpoint(DynamoClientProtocol):
-    def addJobCheckpoint(self, job_checkpoint: JobCheckpoint):
+    def add_job_checkpoint(self, job_checkpoint: JobCheckpoint):
         """Adds a job checkpoint to the database
 
         Args:
@@ -34,9 +39,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             ValueError: When a job checkpoint with the same timestamp already exists
         """
         if job_checkpoint is None:
-            raise ValueError(
-                "JobCheckpoint parameter is required and cannot be None."
-            )
+            raise ValueError("JobCheckpoint parameter is required and cannot be None.")
         if not isinstance(job_checkpoint, JobCheckpoint):
             raise ValueError(
                 "job_checkpoint must be an instance of the JobCheckpoint class."
@@ -54,19 +57,21 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"JobCheckpoint with timestamp {job_checkpoint.timestamp} for job {job_checkpoint.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add job checkpoint to DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add job checkpoint to DynamoDB: {e}"
                 ) from e
 
-    def getJobCheckpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
+    def get_job_checkpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
         """Gets a specific job checkpoint by job ID and timestamp
 
         Args:
@@ -84,9 +89,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
             response = self._client.get_item(
@@ -102,19 +105,21 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
                 )
 
-            return itemToJobCheckpoint(response["Item"])
+            return item_to_job_checkpoint(response["Item"])
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not get job checkpoint: {e}") from e
+                raise ReceiptDynamoError(f"Could not get job checkpoint: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error getting job checkpoint: {e}") from e
+                raise OperationError(f"Error getting job checkpoint: {e}") from e
 
-    def updateBestCheckpoint(self, job_id: str, timestamp: str):
+    def update_best_checkpoint(self, job_id: str, timestamp: str):
         """Updates the 'is_best' flag for checkpoints in a job
 
         Sets is_best=True for the specified checkpoint and is_best=False for all others
@@ -131,13 +136,11 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         # First verify the checkpoint exists
         try:
-            self.getJobCheckpoint(job_id, timestamp)
+            self.get_job_checkpoint(job_id, timestamp)
         except ValueError:
             raise ValueError(
                 f"Cannot update best checkpoint: No checkpoint found with job ID {job_id} and timestamp {timestamp}"
@@ -145,7 +148,7 @@ class _JobCheckpoint(DynamoClientProtocol):
 
         try:
             # First, set all checkpoints for this job to is_best=False
-            checkpoints, _ = self.listJobCheckpoints(job_id)
+            checkpoints, _ = self.list_job_checkpoints(job_id)
             for checkpoint in checkpoints:
                 if checkpoint.timestamp != timestamp and checkpoint.is_best:
                     self._client.update_item(
@@ -155,9 +158,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                             "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},
                         },
                         UpdateExpression="SET is_best = :is_best",
-                        ExpressionAttributeValues={
-                            ":is_best": {"BOOL": False}
-                        },
+                        ExpressionAttributeValues={":is_best": {"BOOL": False}},
                     )
 
             # Then set the specified checkpoint to is_best=True
@@ -178,17 +179,19 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise ReceiptDynamoError(
                     f"Could not update best checkpoint: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error updating best checkpoint: {e}") from e
+                raise OperationError(f"Error updating best checkpoint: {e}") from e
 
-    def listJobCheckpoints(
+    def list_job_checkpoints(
         self,
         job_id: str,
         limit: int = None,
@@ -248,7 +251,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                 response = self._client.query(**query_params)
                 for item in response["Items"]:
                     if item.get("TYPE", {}).get("S") == "JOB_CHECKPOINT":
-                        checkpoints.append(itemToJobCheckpoint(item))
+                        checkpoints.append(item_to_job_checkpoint(item))
 
                 if limit is not None and len(checkpoints) >= limit:
                     checkpoints = checkpoints[:limit]
@@ -256,9 +259,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -267,21 +268,23 @@ class _JobCheckpoint(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list job checkpoints from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error listing job checkpoints: {e}") from e
+                raise OperationError(f"Error listing job checkpoints: {e}") from e
 
-    def getBestCheckpoint(self, job_id: str) -> Optional[JobCheckpoint]:
+    def get_best_checkpoint(self, job_id: str) -> Optional[JobCheckpoint]:
         """
         Retrieve the best checkpoint for a job from the database.
 
@@ -315,25 +318,27 @@ class _JobCheckpoint(DynamoClientProtocol):
 
             for item in response["Items"]:
                 if item.get("TYPE", {}).get("S") == "JOB_CHECKPOINT":
-                    return itemToJobCheckpoint(item)
+                    return item_to_job_checkpoint(item)
 
             return None
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not get best checkpoint: {e}") from e
+                raise ReceiptDynamoError(f"Could not get best checkpoint: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error getting best checkpoint: {e}") from e
+                raise OperationError(f"Error getting best checkpoint: {e}") from e
 
-    def deleteJobCheckpoint(self, job_id: str, timestamp: str):
+    def delete_job_checkpoint(self, job_id: str, timestamp: str):
         """
         Delete a job checkpoint from the database.
 
@@ -349,9 +354,7 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
-                "Timestamp is required and must be a non-empty string."
-            )
+            raise ValueError("Timestamp is required and must be a non-empty string.")
 
         try:
             self._client.delete_item(
@@ -364,15 +367,17 @@ class _JobCheckpoint(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not delete job checkpoint: {e}") from e
+                raise ReceiptDynamoError(f"Could not delete job checkpoint: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Error deleting job checkpoint: {e}") from e
+                raise OperationError(f"Error deleting job checkpoint: {e}") from e
 
-    def listAllJobCheckpoints(
+    def list_all_job_checkpoints(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
@@ -424,7 +429,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                 response = self._client.query(**query_params)
                 for item in response["Items"]:
                     if item.get("TYPE", {}).get("S") == "JOB_CHECKPOINT":
-                        checkpoints.append(itemToJobCheckpoint(item))
+                        checkpoints.append(item_to_job_checkpoint(item))
 
                 if limit is not None and len(checkpoints) >= limit:
                     checkpoints = checkpoints[:limit]
@@ -432,9 +437,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -443,18 +446,18 @@ class _JobCheckpoint(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list all job checkpoints from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
-                    f"Error listing all job checkpoints: {e}"
-                ) from e
+                raise OperationError(f"Error listing all job checkpoints: {e}") from e

@@ -1,8 +1,14 @@
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptLine, itemToReceiptLine
+from receipt_dynamo import ReceiptLine, item_to_receipt_line
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    OperationError,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 CHUNK_SIZE = 25
@@ -14,25 +20,25 @@ class _ReceiptLine(DynamoClientProtocol):
 
     Methods
     -------
-    addReceiptLine(line: ReceiptLine)
+    add_receipt_line(line: ReceiptLine)
         Adds a receipt-line to the database.
-    addReceiptLines(lines: list[ReceiptLine])
+    add_receipt_lines(lines: list[ReceiptLine])
         Adds multiple receipt-lines in batch.
-    updateReceiptLine(line: ReceiptLine)
+    update_receipt_line(line: ReceiptLine)
         Updates an existing receipt-line.
-    deleteReceiptLine(receipt_id: int, image_id: str, line_id: int)
+    delete_receipt_line(receipt_id: int, image_id: str, line_id: int)
         Deletes a specific receipt-line by IDs.
-    deleteReceiptLines(lines: list[ReceiptLine])
+    delete_receipt_lines(lines: list[ReceiptLine])
         Deletes multiple receipt-lines in batch.
-    getReceiptLine(receipt_id: int, image_id: str, line_id: int) -> ReceiptLine
+    get_receipt_line(receipt_id: int, image_id: str, line_id: int) -> ReceiptLine
         Retrieves a single receipt-line by IDs.
-    listReceiptLines() -> list[ReceiptLine]
+    list_receipt_lines() -> list[ReceiptLine]
         Returns all ReceiptLines from the table.
-    listReceiptLinesFromReceipt(receipt_id: int, image_id: str) -> list[ReceiptLine]
+    list_receipt_lines_from_receipt(receipt_id: int, image_id: str) -> list[ReceiptLine]
         Returns all lines under a specific receipt/image.
     """
 
-    def addReceiptLine(self, line: ReceiptLine):
+    def add_receipt_line(self, line: ReceiptLine):
         """Adds a single ReceiptLine to DynamoDB."""
         try:
             self._client.put_item(
@@ -46,12 +52,12 @@ class _ReceiptLine(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} already exists"
+                    "ReceiptLine with ID {line.line_id} already exists"
                 )
             else:
-                raise
+                raise DynamoDBError("Could not add receipt line to database: {e}")
 
-    def addReceiptLines(self, lines: list[ReceiptLine]):
+    def add_receipt_lines(self, lines: list[ReceiptLine]):
         """Adds multiple ReceiptLines to DynamoDB in batches of CHUNK_SIZE."""
         if lines is None:
             raise ValueError("lines parameter is required and cannot be None.")
@@ -81,7 +87,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 "Could not add ReceiptLines to the database"
             ) from e
 
-    def updateReceiptLine(self, line: ReceiptLine):
+    def update_receipt_line(self, line: ReceiptLine):
         """Updates an existing ReceiptLine in DynamoDB."""
         try:
             self._client.put_item(
@@ -95,12 +101,12 @@ class _ReceiptLine(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} does not exist"
+                    "ReceiptLine with ID {line.line_id} does not exist"
                 )
             else:
-                raise
+                raise DynamoDBError("Could not update receipt line in database: {e}")
 
-    def updateReceiptLines(self, lines: list[ReceiptLine]):
+    def update_receipt_lines(self, lines: list[ReceiptLine]):
         """Updates multiple existing ReceiptLines in DynamoDB."""
         if lines is None:
             raise ValueError("lines parameter is required and cannot be None.")
@@ -140,18 +146,18 @@ class _ReceiptLine(DynamoClientProtocol):
                     raise ValueError("Access denied")
                 else:
                     raise ValueError(
-                        f"Could not update ReceiptLines in the database: {e}"
-                    )
+                        "Could not update ReceiptLines in the database: {e}"
+                    ) from e
 
-    def deleteReceiptLine(self, receipt_id: int, image_id: str, line_id: int):
+    def delete_receipt_line(self, receipt_id: int, image_id: str, line_id: int):
         """Deletes a single ReceiptLine by IDs."""
         try:
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
                     },
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -161,11 +167,11 @@ class _ReceiptLine(DynamoClientProtocol):
                 e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"
             ):
-                raise ValueError(f"ReceiptLine with ID {line_id} not found")
+                raise ValueError("ReceiptLine with ID {line_id} not found")
             else:
                 raise
 
-    def deleteReceiptLines(self, lines: list[ReceiptLine]):
+    def delete_receipt_lines(self, lines: list[ReceiptLine]):
         """Deletes multiple ReceiptLines in batch."""
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
@@ -187,25 +193,23 @@ class _ReceiptLine(DynamoClientProtocol):
                 "Could not delete ReceiptLines from the database"
             ) from e
 
-    def getReceiptLine(
-        self, receipt_id: int, image_id: str, line_id: int
-    ) -> ReceiptLine:
+    def get_receipt_line(self, receipt_id: int, image_id: str, line_id: int) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        "S": "RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
                     },
                 },
             )
-            return itemToReceiptLine(response["Item"])
-        except KeyError:
-            raise ValueError(f"ReceiptLine with ID {line_id} not found")
+            return item_to_receipt_line(response["Item"])
+        except KeyError as e:
+            raise ValueError("ReceiptLine with ID {line_id} not found")
 
-    def getReceiptLinesByIndices(
+    def get_receipt_lines_by_indices(
         self, indices: list[tuple[str, int, int]]
     ) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their indices."""
@@ -236,15 +240,16 @@ class _ReceiptLine(DynamoClientProtocol):
         for index in indices:
             keys.append(
                 {
-                    "PK": {"S": f"IMAGE#{index[0]}"},
-                    "SK": {"S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}"},
+                    "PK": {"S": "IMAGE#{index[0]}"},
+                    "SK": {"S": "RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}"},
                 }
             )
 
         # Get the receipt lines
-        return self.getReceiptLinesByKeys(keys)
+        return self.get_receipt_lines_by_keys(keys)
 
-    def getReceiptLinesByKeys(self, keys: list[dict]) -> list[ReceiptLine]:
+    def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
+
         """Retrieves multiple ReceiptLines by their keys."""
         if keys is None:
             raise ValueError("keys parameter is required and cannot be None.")
@@ -295,10 +300,10 @@ class _ReceiptLine(DynamoClientProtocol):
                     f"Could not get ReceiptLines from the database: {e}"
                 ) from e
 
-        return [itemToReceiptLine(result) for result in results]
+        return [item_to_receipt_line(result) for result in results]
 
-    def listReceiptLines(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+    def list_receipt_lines(
+        self, limit: int = None, last_evaluated_key: dict | None = None
     ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table."""
         if limit is not None and not isinstance(limit, int):
@@ -322,7 +327,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             receipt_lines.extend(
-                [itemToReceiptLine(item) for item in response["Items"]]
+                [item_to_receipt_line(item) for item in response["Items"]]
             )
 
             if limit is None:
@@ -333,7 +338,7 @@ class _ReceiptLine(DynamoClientProtocol):
                     ]
                     response = self._client.query(**query_params)
                     receipt_lines.extend(
-                        [itemToReceiptLine(item) for item in response["Items"]]
+                        [item_to_receipt_line(item) for item in response["Items"]]
                     )
                 # No further pages left. LEK is None.
                 last_evaluated_key = None
@@ -345,21 +350,18 @@ class _ReceiptLine(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipt lines from DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError("Could not list receipt lines from DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
+                    "One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError("Internal server error: {e}")
             else:
-                raise Exception(f"Error listing receipt lines: {e}") from e
-
-    def listReceiptLinesByEmbeddingStatus(
+                raise OperationError("Error listing receipt lines: {e}")
+    def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table with a given embedding status."""
@@ -386,12 +388,12 @@ class _ReceiptLine(DynamoClientProtocol):
                 KeyConditionExpression="#gsi1pk = :status",
                 ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
                 ExpressionAttributeValues={
-                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                    ":status": {"S": "EMBEDDING_STATUS#{status_str}"}
                 },
             )
             # First page
             for item in response.get("Items", []):
-                receipt_lines.append(itemToReceiptLine(item))
+                receipt_lines.append(item_to_receipt_line(item))
             # Handle pagination
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
@@ -400,33 +402,31 @@ class _ReceiptLine(DynamoClientProtocol):
                     KeyConditionExpression="#gsi1pk = :status",
                     ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
                     ExpressionAttributeValues={
-                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                        ":status": {"S": "EMBEDDING_STATUS#{status_str}"}
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 for item in response.get("Items", []):
-                    receipt_lines.append(itemToReceiptLine(item))
+                    receipt_lines.append(item_to_receipt_line(item))
             return receipt_lines
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipt lines from DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError("Could not list receipt lines from DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
+                    "One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError("Internal server error: {e}")
             else:
                 raise ValueError(
-                    f"Could not list ReceiptLines from the database: {e}"
+                    "Could not list ReceiptLines from the database: {e}"
                 ) from e
 
-    def listReceiptLinesFromReceipt(
+    def list_receipt_lines_from_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
@@ -436,12 +436,12 @@ class _ReceiptLine(DynamoClientProtocol):
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                 ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                    ":pk": {"S": "IMAGE#{image_id}"},
+                    ":sk": {"S": "RECEIPT#{receipt_id:05d}#LINE#"},
                 },
             )
             receipt_lines.extend(
-                [itemToReceiptLine(item) for item in response["Items"]]
+                [item_to_receipt_line(item) for item in response["Items"]]
             )
 
             while "LastEvaluatedKey" in response:
@@ -449,13 +449,13 @@ class _ReceiptLine(DynamoClientProtocol):
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
                     ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                        ":pk": {"S": "IMAGE#{image_id}"},
+                        ":sk": {"S": "RECEIPT#{receipt_id:05d}#LINE#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
                 receipt_lines.extend(
-                    [itemToReceiptLine(item) for item in response["Items"]]
+                    [item_to_receipt_line(item) for item in response["Items"]]
                 )
 
             return receipt_lines

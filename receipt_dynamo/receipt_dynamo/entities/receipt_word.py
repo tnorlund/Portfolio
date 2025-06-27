@@ -240,12 +240,8 @@ class ReceiptWord:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
+                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
+                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
                 }
             },
             "top_right": {
@@ -498,7 +494,7 @@ class ReceiptWord:
         ) / 4
         return x, y
 
-    def distance_and_angle_from_ReceiptWord(
+    def distance_and_angle_from__receipt_word(
         self, other: "ReceiptWord"
     ) -> Tuple[float, float]:
         """
@@ -592,7 +588,7 @@ class ReceiptWord:
         return differences
 
 
-def itemToReceiptWord(item: dict) -> ReceiptWord:
+def item_to_receipt_word(item: dict) -> ReceiptWord:
     """
     Converts a DynamoDB item to a ReceiptWord object.
 
@@ -640,12 +636,10 @@ def itemToReceiptWord(item: dict) -> ReceiptWord:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])
