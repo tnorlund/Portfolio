@@ -31,7 +31,7 @@ def clean_env_vars() -> Iterator[Dict[str, str]]:
 
     # Define the test environment defaults
     test_env = {
-        "DYNAMO_TABLE_NAME": "test-table",
+        "DYNAMODB_TABLE_NAME": "test-table",
         "OPENAI_API_KEY": "test-openai-key",
         "PINECONE_API_KEY": "test-pinecone-key",
         "PINECONE_INDEX_NAME": "test-index",
