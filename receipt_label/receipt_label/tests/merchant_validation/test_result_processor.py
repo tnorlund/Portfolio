@@ -13,8 +13,8 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
-
 from receipt_dynamo.constants import ValidationMethod
+
 from receipt_label.merchant_validation.result_processor import (
     _validate_match_quality,
     build_receipt_metadata_from_partial_result,
@@ -418,11 +418,11 @@ def test_sanitize_metadata_strings_empty():
 def test_environment_isolation(clean_env_vars):
     """Demonstrate that environment variables are properly isolated in tests."""
     # Store original value
-    original_table_name = os.environ.get("DYNAMO_TABLE_NAME")
+    original_table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 
     # Test can modify environment
-    os.environ["DYNAMO_TABLE_NAME"] = "modified-table"
-    assert os.environ["DYNAMO_TABLE_NAME"] == "modified-table"
+    os.environ["DYNAMODB_TABLE_NAME"] = "modified-table"
+    assert os.environ["DYNAMODB_TABLE_NAME"] == "modified-table"
 
     # After this test, clean_env_vars fixture will restore original environment
     # This prevents test pollution between tests
