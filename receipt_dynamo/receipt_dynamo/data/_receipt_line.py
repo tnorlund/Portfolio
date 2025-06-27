@@ -297,12 +297,12 @@ class _ReceiptLine(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedKeys", {})
             except ClientError as e:
                 raise ValueError(
-                    "Could not get ReceiptLines from the database: {e}"
+                    f"Could not get ReceiptLines from the database: {e}"
                 ) from e
 
         return [item_to_receipt_line(result) for result in results]
 
-    list_receipt_linesines(
+    def list_receipt_lines(
         self, limit: int = None, last_evaluated_key: dict | None = None
     ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table."""

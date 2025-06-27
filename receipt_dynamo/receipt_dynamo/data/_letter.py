@@ -221,9 +221,9 @@ class _Letter(DynamoClientProtocol):
                     TableName=self.table_name,
                     KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
-                        ":pkVal": {"S": "IMAGE#{image_id}"},
+                        ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
-                            "S": "LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
+                            "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
