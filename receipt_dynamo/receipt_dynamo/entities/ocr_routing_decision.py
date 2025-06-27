@@ -90,7 +90,7 @@ class OCRRoutingDecision:
         )
 
 
-def itemToOCRRoutingDecision(item: dict) -> OCRRoutingDecision:
+def item_to_ocr_routing_decision(item: dict) -> OCRRoutingDecision:
     """Converts a DynamoDB item to a OCRRoutingDecision object.
 
     Args:
@@ -146,6 +146,4 @@ def itemToOCRRoutingDecision(item: dict) -> OCRRoutingDecision:
             status=status,
         )
     except Exception as e:
-        raise ValueError(
-            f"Invalid item format\nitem: {item}\nerror: {e}"
-        ) from e
+        raise ValueError(f"Invalid item format\nitem: {item}\nerror: {e}") from e

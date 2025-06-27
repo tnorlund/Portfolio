@@ -1,36 +1,42 @@
-from typing import Dict, List, Optional, Tuple
-
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
-    itemToReceiptChatGPTValidation,
+    item_to_receipt_chat_gpt_validation,
 )
 from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
-    itemToReceiptLabelAnalysis,
+    item_to_receipt_label_analysis,
 )
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
-    itemToReceiptLineItemAnalysis,
+    item_to_receipt_line_item_analysis,
 )
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptStructureAnalysis,
-    itemToReceiptStructureAnalysis,
+    item_to_receipt_structure_analysis,
 )
 from receipt_dynamo.entities.receipt_validation_category import (
     ReceiptValidationCategory,
-    itemToReceiptValidationCategory,
+    item_to_receipt_validation_category,
 )
 from receipt_dynamo.entities.receipt_validation_result import (
     ReceiptValidationResult,
-    itemToReceiptValidationResult,
+    item_to_receipt_validation_result,
 )
 from receipt_dynamo.entities.receipt_validation_summary import (
     ReceiptValidationSummary,
-    itemToReceiptValidationSummary,
+    item_to_receipt_validation_summary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -38,9 +44,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -49,9 +53,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 
 class _ReceiptLabelAnalysis(DynamoClientProtocol):
-    def addReceiptLabelAnalysis(
-        self, receipt_label_analysis: ReceiptLabelAnalysis
-    ):
+    def add_receipt_label_analysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
         """Adds a receipt label analysis to the database
 
         Args:
@@ -81,19 +83,21 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     f"Receipt label analysis for Image ID '{receipt_label_analysis.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add receipt label analysis to DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add receipt label analysis to DynamoDB: {e}"
                 ) from e
 
-    def addReceiptLabelAnalyses(
+    def add_receipt_label_analyses(
         self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Adds a list of receipt label analyses to the database
@@ -123,8 +127,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             for i in range(0, len(receipt_label_analyses), 25):
                 chunk = receipt_label_analyses[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": analysis.to_item()}}
-                    for analysis in chunk
+                    {"PutRequest": {"Item": analysis.to_item()}} for analysis in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -133,26 +136,26 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error adding receipt label analyses: {e}")
+                raise ValueError(f"Error adding receipt label analyses: {e}") from e
 
-    def updateReceiptLabelAnalysis(
+    def update_receipt_label_analysis(
         self, receipt_label_analysis: ReceiptLabelAnalysis
     ):
         """Updates a receipt label analysis in the database
@@ -185,19 +188,21 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     f"Receipt label analysis for Image ID '{receipt_label_analysis.image_id}' does not exist"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error updating receipt label analysis: {e}")
+                raise ValueError(f"Error updating receipt label analysis: {e}") from e
 
-    def updateReceiptLabelAnalyses(
+    def update_receipt_label_analyses(
         self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Updates a list of receipt label analyses in the database using transactions.
@@ -255,23 +260,11 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                         "One or more receipt label analyses do not exist"
                     ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
+                    raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
-                    raise Exception(f"Internal server error: {e}") from e
-                elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise Exception(f"Access denied: {e}") from e
-                else:
-                    raise ValueError(
-                        f"Error updating receipt label analyses: {e}"
-                    ) from e
 
-    def deleteReceiptLabelAnalysis(
+    def delete_receipt_label_analysis(
         self, receipt_label_analysis: ReceiptLabelAnalysis
     ):
         """Deletes a receipt label analysis from the database
@@ -303,21 +296,21 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     f"Receipt label analysis for Image ID '{receipt_label_analysis.image_id}' does not exist"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error deleting receipt label analysis: {e}"
-                ) from e
+                raise ValueError(f"Error deleting receipt label analysis: {e}") from e
 
-    def deleteReceiptLabelAnalyses(
+    def delete_receipt_label_analyses(
         self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Deletes a list of receipt label analyses from the database using transactions.
@@ -375,21 +368,21 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     "One or more receipt label analyses do not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error deleting receipt label analyses: {e}"
-                ) from e
+                raise ValueError(f"Error deleting receipt label analyses: {e}") from e
 
-    def getReceiptLabelAnalysis(
+    def get_receipt_label_analysis(
         self, image_id: str, receipt_id: int
     ) -> ReceiptLabelAnalysis:
         """Retrieves a receipt label analysis from the database.
@@ -424,7 +417,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 },
             )
             if "Item" in response:
-                return itemToReceiptLabelAnalysis(response["Item"])
+                return item_to_receipt_label_analysis(response["Item"])
             else:
                 raise ValueError(
                     f"Receipt label analysis for Image ID '{image_id}' and Receipt ID {receipt_id} does not exist."
@@ -432,26 +425,28 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(f"Validation error: {e}") from e
+                raise OperationError(f"Validation error: {e}") from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise Exception(
+                raise OperationError(
                     f"Error getting receipt label analysis: {e}"
                 ) from e
 
-    def listReceiptLabelAnalyses(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+    def list_receipt_label_analyses(
+        self, limit: int = None, last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analysis records from the database with support for precise pagination.
 
         Parameters:
             limit (int, optional): The maximum number of receipt label analysis items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -460,17 +455,17 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
 
         Raises:
             ValueError: If the limit is not an integer or is less than or equal to 0.
-            ValueError: If the lastEvaluatedKey is not a dictionary.
+            ValueError: If the last_evaluated_key is not a dictionary.
             Exception: If the underlying database query fails.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         analyses = []
         try:
@@ -479,12 +474,10 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LABEL_ANALYSIS"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -493,10 +486,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [
-                        itemToReceiptLabelAnalysis(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -505,9 +495,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -516,34 +504,36 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list receipt label analyses from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list receipt label analyses from the database: {e}"
                 ) from e
 
-    def getReceiptLabelAnalysesByImage(
+    def get_receipt_label_analyses_by_image(
         self,
         image_id: str,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific image from the database with support for pagination.
 
         Parameters:
             image_id (str): The ID of the image to retrieve analyses for.
             limit (int, optional): The maximum number of receipt label analysis items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -553,7 +543,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         Raises:
             ValueError: If the image_id is not a string or not a valid UUID.
             ValueError: If the limit is not an integer or is less than or equal to 0.
-            ValueError: If the lastEvaluatedKey is not a dictionary.
+            ValueError: If the last_evaluated_key is not a dictionary.
             Exception: If the underlying database query fails.
         """
         if image_id is None:
@@ -568,10 +558,10 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         analyses = []
         try:
@@ -579,12 +569,10 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "PK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": f"IMAGE#{image_id}"}
-                },
+                "ExpressionAttributeValues": {":pk_val": {"S": f"IMAGE#{image_id}"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -600,7 +588,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                         and "S" in item["SK"]
                         and "#ANALYSIS#LABELS" in item["SK"]["S"]
                     ):
-                        analyses.append(itemToReceiptLabelAnalysis(item))
+                        analyses.append(item_to_receipt_label_analysis(item))
 
                 if limit is not None and len(analyses) >= limit:
                     analyses = analyses[:limit]
@@ -608,9 +596,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -619,28 +605,30 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise ReceiptDynamoError(
                     f"Could not get receipt label analyses for image '{image_id}': {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise ReceiptDynamoError(
                     f"Could not get receipt label analyses for image '{image_id}': {e}"
                 ) from e
 
-    def getReceiptLabelAnalysesByReceipt(
+    def get_receipt_label_analyses_by_receipt(
         self,
         image_id: str,
         receipt_id: int,
         limit: int = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific receipt from the database with support for pagination.
 
@@ -648,7 +636,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             image_id (str): The ID of the image the receipt belongs to.
             receipt_id (int): The ID of the receipt to retrieve analyses for.
             limit (int, optional): The maximum number of receipt label analysis items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -659,7 +647,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             ValueError: If the image_id is not a string or not a valid UUID.
             ValueError: If the receipt_id is not a positive integer.
             ValueError: If the limit is not an integer or is less than or equal to 0.
-            ValueError: If the lastEvaluatedKey is not a dictionary.
+            ValueError: If the last_evaluated_key is not a dictionary.
             Exception: If the underlying database query fails.
         """
         if image_id is None:
@@ -670,21 +658,17 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         # Validate image_id as a UUID
         assert_valid_uuid(image_id)
 
-        if (
-            receipt_id is None
-            or not isinstance(receipt_id, int)
-            or receipt_id <= 0
-        ):
+        if receipt_id is None or not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("Receipt ID must be a positive integer")
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         analyses = []
         try:
@@ -694,13 +678,11 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
-                    },
+                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -709,10 +691,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [
-                        itemToReceiptLabelAnalysis(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -721,9 +700,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -732,23 +709,25 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise ReceiptDynamoError(
                     f"Could not get receipt label analyses for image '{image_id}' and receipt '{receipt_id}': {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise ReceiptDynamoError(
                     f"Could not get receipt label analyses for image '{image_id}' and receipt '{receipt_id}': {e}"
                 ) from e
 
-    def getReceiptAnalysis(
+    def get_receipt_analysis(
         self,
         image_id: str,
         receipt_id: int,
@@ -781,9 +760,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             raise ValueError("Receipt ID must be a positive integer.")
 
         # Create a ReceiptAnalysis object to store all analyses
-        receipt_analysis = ReceiptAnalysis(
-            image_id=image_id, receipt_id=receipt_id
-        )
+        receipt_analysis = ReceiptAnalysis(image_id=image_id, receipt_id=receipt_id)
 
         try:
             # Query for all analysis items for this receipt in a single operation
@@ -806,33 +783,29 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 try:
                     if item_type == "RECEIPT_LABEL_ANALYSIS":
                         receipt_analysis.label_analysis = (
-                            itemToReceiptLabelAnalysis(item)
+                            item_to_receipt_label_analysis(item)
                         )
                     elif item_type == "RECEIPT_STRUCTURE_ANALYSIS":
                         receipt_analysis.structure_analysis = (
-                            itemToReceiptStructureAnalysis(item)
+                            item_to_receipt_structure_analysis(item)
                         )
                     elif item_type == "RECEIPT_LINE_ITEM_ANALYSIS":
                         receipt_analysis.line_item_analysis = (
-                            itemToReceiptLineItemAnalysis(item)
+                            item_to_receipt_line_item_analysis(item)
                         )
                     elif item_type == "RECEIPT_VALIDATION_SUMMARY":
                         receipt_analysis.validation_summary = (
-                            itemToReceiptValidationSummary(item)
+                            item_to_receipt_validation_summary(item)
                         )
                     elif item_type == "RECEIPT_VALIDATION_CATEGORY":
-                        category = itemToReceiptValidationCategory(item)
+                        category = item_to_receipt_validation_category(item)
                         receipt_analysis.validation_categories.append(category)
                     elif item_type == "RECEIPT_VALIDATION_RESULT":
-                        result = itemToReceiptValidationResult(item)
+                        result = item_to_receipt_validation_result(item)
                         receipt_analysis.validation_results.append(result)
                     elif item_type == "RECEIPT_CHATGPT_VALIDATION":
-                        chatgpt_validation = itemToReceiptChatGPTValidation(
-                            item
-                        )
-                        receipt_analysis.chatgpt_validations.append(
-                            chatgpt_validation
-                        )
+                        chatgpt_validation = item_to_receipt_chat_gpt_validation(item)
+                        receipt_analysis.chatgpt_validations.append(chatgpt_validation)
                 except Exception as e:
                     # Skip if conversion fails, but log the error
                     print(f"Error converting {item_type}: {str(e)}")
@@ -843,12 +816,14 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(f"Validation error: {e}") from e
+                raise OperationError(f"Validation error: {e}") from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting receipt analysis: {e}") from e
+                raise OperationError(f"Error getting receipt analysis: {e}") from e

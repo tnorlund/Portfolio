@@ -2,8 +2,12 @@ from typing import Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import Word, itemToWord
+from receipt_dynamo import Word, item_to_word
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
+    OperationError,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -16,12 +20,12 @@ class _Word(DynamoClientProtocol):
 
     Methods
     -------
-    addWord(word: Word)
+    add_word(word: Word)
         Adds a word to the database.
 
     """
 
-    def addWord(self, word: Word):
+    def add_word(self, word: Word):
         """Adds a word to the database
 
         Args:
@@ -39,7 +43,7 @@ class _Word(DynamoClientProtocol):
         except ClientError:
             raise ValueError(f"Word with ID {word.word_id} already exists")
 
-    def addWords(self, words: list[Word]):
+    def add_words(self, words: list[Word]):
         """Adds a list of words to the database
 
         Args:
@@ -61,14 +65,12 @@ class _Word(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add words to the database")
 
-    def updateWord(self, word: Word):
+    def update_word(self, word: Word):
         """Updates a word in the database
 
         Args:
@@ -84,15 +86,12 @@ class _Word(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(f"Word with ID {word.word_id} not found")
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Word with ID {word.word_id} not found") from e
             else:
-                raise Exception(f"Error updating word: {e}")
+                raise OperationError(f"Error updating word: {e}") from e
 
-    def updateWords(self, words: list[Word]):
+    def update_words(self, words: list[Word]):
         """
         Updates multiple Word items in the database.
 
@@ -145,21 +144,11 @@ class _Word(DynamoClientProtocol):
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more words do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
+                    raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
-                    raise Exception(f"Internal server error: {e}") from e
-                elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise Exception(f"Access denied: {e}") from e
-                else:
-                    raise ValueError(f"Error updating words: {e}") from e
 
-    def deleteWord(self, image_id: str, line_id: int, word_id: int):
+    def delete_word(self, image_id: str, line_id: int, word_id: int):
         """Deletes a word from the database
 
         Args:
@@ -176,10 +165,10 @@ class _Word(DynamoClientProtocol):
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
-        except ClientError:
-            raise ValueError(f"Word with ID {word_id} not found")
+        except ClientError as e:
+            raise ValueError(f"Word with ID {word_id} not found") from e
 
-    def deleteWords(self, words: list[Word]):
+    def delete_words(self, words: list[Word]):
         """Deletes a list of words from the database"""
         try:
             for i in range(0, len(words), CHUNK_SIZE):
@@ -194,24 +183,22 @@ class _Word(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete words from the database")
 
-    def deleteWordsFromLine(self, image_id: int, line_id: int):
+    def delete_words_from_line(self, image_id: int, line_id: int):
         """Deletes all words from a line
 
         Args:
             image_id (int): The ID of the image the line belongs to
             line_id (int): The ID of the line to delete words from
         """
-        words = self.listWordsFromLine(image_id, line_id)
-        self.deleteWords(words)
+        words = self.list_words_from_line(image_id, line_id)
+        self.delete_words(words)
 
-    def getWord(self, image_id: int, line_id: int, word_id: int) -> Word:
+    def get_word(self, image_id: int, line_id: int, word_id: int) -> Word:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -220,11 +207,11 @@ class _Word(DynamoClientProtocol):
                     "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
                 },
             )
-            return itemToWord(response["Item"])
+            return item_to_word(response["Item"])
         except KeyError:
             raise ValueError(f"Word with ID {word_id} not found")
 
-    def getWords(self, keys: list[dict]) -> list[Word]:
+    def get_words(self, keys: list[dict]) -> list[Word]:
         """Get a list of words using a list of keys"""
         # Check the validity of the keys
         for key in keys:
@@ -256,19 +243,17 @@ class _Word(DynamoClientProtocol):
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
+                response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
 
-        return [itemToWord(result) for result in results]
+        return [item_to_word(result) for result in results]
 
-    def listWords(
+    def list_words(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> list[Word]:
         words = []
         try:
@@ -279,29 +264,25 @@ class _Word(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "WORD"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
-            words.extend([itemToWord(item) for item in response["Items"]])
+            words.extend([item_to_word(item) for item in response["Items"]])
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    words.extend(
-                        [itemToWord(item) for item in response["Items"]]
-                    )
-                lastEvaluatedKey = None
+                    words.extend([item_to_word(item) for item in response["Items"]])
+                last_evaluated_key = None
             else:
-                lastEvaluatedKey = response.get("LastEvaluatedKey", None)
-            return words, lastEvaluatedKey
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+            return words, last_evaluated_key
         except ClientError as e:
             raise ValueError("Could not list words from the database") from e
 
-    def listWordsFromLine(self, image_id: int, line_id: int) -> list[Word]:
+    def list_words_from_line(self, image_id: int, line_id: int) -> list[Word]:
         words = []
         try:
             response = self._client.query(
@@ -312,7 +293,7 @@ class _Word(DynamoClientProtocol):
                     ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
                 },
             )
-            words.extend([itemToWord(item) for item in response["Items"]])
+            words.extend([item_to_word(item) for item in response["Items"]])
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
@@ -323,7 +304,7 @@ class _Word(DynamoClientProtocol):
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                words.extend([itemToWord(item) for item in response["Items"]])
+                words.extend([item_to_word(item) for item in response["Items"]])
             return words
         except ClientError as e:
             raise ValueError("Could not list words from the database") from e

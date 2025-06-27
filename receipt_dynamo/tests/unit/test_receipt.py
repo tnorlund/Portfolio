@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo import Receipt, itemToReceipt
+from receipt_dynamo import Receipt, item_to_receipt
 
 
 @pytest.fixture
@@ -319,9 +319,7 @@ def test_receipt_gsi2_key_generation(example_receipt):
     """Test that the GSI2 key is correctly generated."""
     assert example_receipt.gsi2_key() == {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
 
@@ -343,9 +341,7 @@ def test_receipt_to_item(example_receipt):
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "RECEIPT#00001"},
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI3SK": {"S": "RECEIPT#00001"},
         "TYPE": {"S": "RECEIPT"},
@@ -445,24 +441,24 @@ def test_receipt_eq(example_receipt):
 
 @pytest.mark.unit
 def test_item_to_receipt_valid_input(example_receipt):
-    """Test itemToReceipt with a valid DynamoDB item."""
-    itemToReceipt(example_receipt.to_item()) == example_receipt
+    """Test item_to_receipt with a valid DynamoDB item."""
+    item_to_receipt(example_receipt.to_item()) == example_receipt
 
 
 @pytest.mark.unit
 def test_item_to_receipt_missing_keys():
-    """itemToReceipt raises ValueError when required keys are missing."""
+    """item_to_receipt raises ValueError when required keys are missing."""
     incomplete_item = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001"},
     }
     with pytest.raises(ValueError, match="Invalid item format\nmissing keys"):
-        itemToReceipt(incomplete_item)
+        item_to_receipt(incomplete_item)
 
 
 @pytest.mark.unit
 def test_item_to_receipt_invalid_format():
-    """itemToReceipt raises ValueError when keys are incorrectly formatted."""
+    """item_to_receipt raises ValueError when keys are incorrectly formatted."""
     invalid_item = {
         "PK": {"S": "IMAGE#00001"},
         "SK": {"S": "RECEIPT#00001"},
@@ -477,4 +473,4 @@ def test_item_to_receipt_invalid_format():
         "bottom_right": {"M": {"x": {"N": "200.0"}, "y": {"N": "100.0"}}},
     }
     with pytest.raises(ValueError, match="Error converting item to Receipt"):
-        itemToReceipt(invalid_item)
+        item_to_receipt(invalid_item)

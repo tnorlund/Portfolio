@@ -5,7 +5,7 @@ import pytest
 from receipt_dynamo.constants import BatchStatus, PassNumber, ValidationStatus
 from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
-    itemToCompletionBatchResult,
+    item_to_completion_batch_result,
 )
 
 
@@ -35,7 +35,7 @@ def test_completion_batch_result_valid(example_completion_batch_result):
 @pytest.mark.unit
 def test_completion_batch_result_roundtrip(example_completion_batch_result):
     item = example_completion_batch_result.to_item()
-    restored = itemToCompletionBatchResult(item)
+    restored = item_to_completion_batch_result(item)
     assert restored == example_completion_batch_result
 
 
@@ -51,16 +51,12 @@ def test_completion_batch_result_repr(example_completion_batch_result):
 
 @pytest.mark.unit
 def test_completion_batch_result_str(example_completion_batch_result):
-    assert str(example_completion_batch_result) == repr(
-        example_completion_batch_result
-    )
+    assert str(example_completion_batch_result) == repr(example_completion_batch_result)
 
 
 @pytest.mark.unit
 def test_completion_batch_result_eq_and_hash(example_completion_batch_result):
-    clone = itemToCompletionBatchResult(
-        example_completion_batch_result.to_item()
-    )
+    clone = item_to_completion_batch_result(example_completion_batch_result.to_item())
     assert clone == example_completion_batch_result
     assert hash(clone) == hash(example_completion_batch_result)
     assert example_completion_batch_result != "not-a-batch"
@@ -136,7 +132,7 @@ def test_completion_batch_result_invalid_status_value():
 @pytest.mark.unit
 def test_completion_batch_result_missing_required_keys():
     with pytest.raises(ValueError, match="missing keys"):
-        itemToCompletionBatchResult({})
+        item_to_completion_batch_result({})
 
 
 @pytest.mark.unit
@@ -152,4 +148,4 @@ def test_completion_batch_result_invalid_date_format():
     with pytest.raises(
         ValueError, match="Error converting item to CompletionBatchResult"
     ):
-        itemToCompletionBatchResult(item)
+        item_to_completion_batch_result(item)

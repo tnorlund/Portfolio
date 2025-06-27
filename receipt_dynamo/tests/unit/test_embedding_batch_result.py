@@ -3,7 +3,7 @@ import pytest
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.embedding_batch_result import (
     EmbeddingBatchResult,
-    itemToEmbeddingBatchResult,
+    item_to_embedding_batch_result,
 )
 
 
@@ -38,7 +38,7 @@ def test_embedding_batch_result_to_item_and_back(
     example_embedding_batch_result,
 ):
     item = example_embedding_batch_result.to_item()
-    restored = itemToEmbeddingBatchResult(item)
+    restored = item_to_embedding_batch_result(item)
     assert restored == example_embedding_batch_result
 
 
@@ -57,9 +57,7 @@ def test_embedding_batch_result_repr(example_embedding_batch_result):
 
 @pytest.mark.unit
 def test_embedding_batch_result_str(example_embedding_batch_result):
-    assert str(example_embedding_batch_result) == repr(
-        example_embedding_batch_result
-    )
+    assert str(example_embedding_batch_result) == repr(example_embedding_batch_result)
 
 
 # === ITERATION ===
@@ -123,9 +121,7 @@ def test_embedding_batch_result_invalid_field(field, value, expected_error):
 
 @pytest.mark.unit
 def test_receipt_id_must_be_positive():
-    with pytest.raises(
-        ValueError, match="receipt_id must be greater than zero"
-    ):
+    with pytest.raises(ValueError, match="receipt_id must be greater than zero"):
         EmbeddingBatchResult(
             batch_id="dc7e61ba-5722-43a2-8e99-9df9f54287a9",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -243,7 +239,7 @@ def test_embedding_batch_result_hash_includes_status(
 @pytest.mark.unit
 def test_embedding_batch_result_missing_status_key():
     with pytest.raises(ValueError, match="missing keys"):
-        itemToEmbeddingBatchResult(
+        item_to_embedding_batch_result(
             {
                 "PK": {"S": "BATCH#abc"},
                 "GSI3SK": {
@@ -266,7 +262,7 @@ def test_item_to_embedding_batch_result_success(
     item["GSI3SK"] = {
         "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#1#LINE#2#WORD#3#LABEL#ITEM"
     }
-    result = itemToEmbeddingBatchResult(item)
+    result = item_to_embedding_batch_result(item)
     assert isinstance(result, EmbeddingBatchResult)
 
 
@@ -285,13 +281,13 @@ def test_embedding_batch_result_deserialization_raises():
     with pytest.raises(
         ValueError, match="Error converting item to EmbeddingBatchResult"
     ):
-        itemToEmbeddingBatchResult(item)
+        item_to_embedding_batch_result(item)
 
 
 @pytest.mark.unit
 def test_embedding_batch_result_malformed_sk_parsing():
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToEmbeddingBatchResult(
+        item_to_embedding_batch_result(
             {
                 "batch_id": "bad",
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -323,7 +319,7 @@ def test_embedding_batch_result_deserialization_without_error_message():
         "error_message": {"NULL": True},
         "view": {"S": "WORD"},
     }
-    result = itemToEmbeddingBatchResult(item)
+    result = item_to_embedding_batch_result(item)
     assert result.error_message is None
 
 
@@ -343,5 +339,5 @@ def test_embedding_batch_result_deserialization_with_error_message():
         "error_message": {"S": "Here is an error message"},
         "view": {"S": "WORD"},
     }
-    result = itemToEmbeddingBatchResult(item)
+    result = item_to_embedding_batch_result(item)
     assert result.error_message == "Here is an error message"
