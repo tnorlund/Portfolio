@@ -16,9 +16,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
