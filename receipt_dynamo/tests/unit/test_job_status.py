@@ -1,6 +1,6 @@
 import pytest
 
-from receipt_dynamo import JobStatus, itemToJobStatus
+from receipt_dynamo import JobStatus, item_to_job_status
 
 
 @pytest.fixture
@@ -42,10 +42,7 @@ def test_job_status_init_valid(example_job_status):
 @pytest.mark.unit
 def test_job_status_init_minimal(example_job_status_minimal):
     """Test the JobStatus constructor with minimal parameters."""
-    assert (
-        example_job_status_minimal.job_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_job_status_minimal.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_job_status_minimal.status == "pending"
     assert example_job_status_minimal.updated_at == "2021-01-01T00:00:00"
     assert example_job_status_minimal.progress is None
@@ -103,9 +100,7 @@ def test_job_status_init_invalid_updated_at():
 @pytest.mark.unit
 def test_job_status_init_invalid_progress():
     """Test the JobStatus constructor with invalid progress."""
-    with pytest.raises(
-        ValueError, match="progress must be a number between 0 and 100"
-    ):
+    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -113,9 +108,7 @@ def test_job_status_init_invalid_progress():
             progress=-10,
         )
 
-    with pytest.raises(
-        ValueError, match="progress must be a number between 0 and 100"
-    ):
+    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -123,9 +116,7 @@ def test_job_status_init_invalid_progress():
             progress=101,
         )
 
-    with pytest.raises(
-        ValueError, match="progress must be a number between 0 and 100"
-    ):
+    with pytest.raises(ValueError, match="progress must be a number between 0 and 100"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "running",
@@ -341,26 +332,24 @@ def test_job_status_eq():
 
 @pytest.mark.unit
 def test_itemToJobStatus(example_job_status, example_job_status_minimal):
-    """Test the itemToJobStatus() function."""
+    """Test the item_to_job_status() function."""
     # Test with full job status
     item = example_job_status.to_item()
-    job_status = itemToJobStatus(item)
+    job_status = item_to_job_status(item)
     assert job_status == example_job_status
 
     # Test with minimal job status
     item = example_job_status_minimal.to_item()
-    job_status = itemToJobStatus(item)
+    job_status = item_to_job_status(item)
     assert job_status == example_job_status_minimal
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToJobStatus(
-            {"PK": {"S": "JOB#id"}, "SK": {"S": "STATUS#timestamp"}}
-        )
+        item_to_job_status({"PK": {"S": "JOB#id"}, "SK": {"S": "STATUS#timestamp"}})
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to JobStatus"):
-        itemToJobStatus(
+        item_to_job_status(
             {
                 "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "STATUS#2021-01-01T00:00:00"},

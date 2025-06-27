@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.instance import Instance, itemToInstance
+from receipt_dynamo.entities.instance import Instance, item_to_instance
 
 # ###############################
 # # Instance Metadata Summary
@@ -67,9 +67,7 @@ def test_instance_init_datetime():
 @pytest.mark.unit
 def test_instance_init_invalid_id():
     """Test the Instance constructor with invalid instance_id."""
-    with pytest.raises(
-        ValueError, match="instance_id must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="instance_id must be a non-empty string"):
         Instance(
             instance_id=None,
             instance_type="g4dn.xlarge",
@@ -86,9 +84,7 @@ def test_instance_init_invalid_id():
 @pytest.mark.unit
 def test_instance_init_invalid_instance_type():
     """Test the Instance constructor with invalid instance_type."""
-    with pytest.raises(
-        ValueError, match="instance_type must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="instance_type must be a non-empty string"):
         Instance(
             instance_id="i-09ee977b7e1673d46",
             instance_type=None,
@@ -105,9 +101,7 @@ def test_instance_init_invalid_instance_type():
 @pytest.mark.unit
 def test_instance_init_invalid_gpu_count():
     """Test the Instance constructor with invalid gpu_count."""
-    with pytest.raises(
-        ValueError, match="gpu_count must be a non-negative integer"
-    ):
+    with pytest.raises(ValueError, match="gpu_count must be a non-negative integer"):
         Instance(
             instance_id="i-09ee977b7e1673d46",
             instance_type="g4dn.xlarge",
@@ -375,19 +369,19 @@ def test_instance_eq():
 
 @pytest.mark.unit
 def test_itemToInstance(example_instance):
-    """Test the itemToInstance() function."""
+    """Test the item_to_instance() function."""
     # Test with a valid item
     item = example_instance.to_item()
-    instance = itemToInstance(item)
+    instance = item_to_instance(item)
     assert instance == example_instance
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToInstance({"PK": {"S": "INSTANCE#id"}, "SK": {"S": "INSTANCE"}})
+        item_to_instance({"PK": {"S": "INSTANCE#id"}, "SK": {"S": "INSTANCE"}})
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to Instance"):
-        itemToInstance(
+        item_to_instance(
             {
                 "PK": {"S": "INSTANCE#i-09ee977b7e1673d46"},
                 "SK": {"S": "INSTANCE"},

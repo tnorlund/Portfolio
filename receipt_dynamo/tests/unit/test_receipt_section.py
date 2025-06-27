@@ -8,7 +8,7 @@ from receipt_dynamo.constants import SectionType
 # Fix circular import by importing directly from the entity module
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
-    itemToReceiptSection,
+    item_to_receipt_section,
 )
 
 
@@ -28,10 +28,7 @@ def example_receipt_section():
 def test_receipt_section_init_valid(example_receipt_section):
     """Test that a ReceiptSection can be created with valid parameters."""
     assert example_receipt_section.receipt_id == 1
-    assert (
-        example_receipt_section.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_section.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_section.section_type == "HEADER"
     assert example_receipt_section.line_ids == [1, 2, 3, 4]
     assert example_receipt_section.created_at == datetime(2023, 1, 1, 12, 0, 0)
@@ -150,9 +147,7 @@ def test_receipt_section_init_invalid_line_ids():
             created_at=datetime(2023, 1, 1, 12, 0, 0),
         )
 
-    with pytest.raises(
-        ValueError, match="line_ids must contain only integers"
-    ):
+    with pytest.raises(ValueError, match="line_ids must contain only integers"):
         ReceiptSection(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -244,14 +239,14 @@ def test_receipt_section_iter(example_receipt_section):
 
 @pytest.mark.unit
 def test_item_to_receipt_section(example_receipt_section):
-    """Test that itemToReceiptSection correctly converts a DynamoDB item to a ReceiptSection."""
+    """Test that item_to_receipt_section correctly converts a DynamoDB item to a ReceiptSection."""
     item = example_receipt_section.to_item()
-    section = itemToReceiptSection(item)
+    section = item_to_receipt_section(item)
     assert section == example_receipt_section
 
     # Test with missing keys
     with pytest.raises(ValueError, match="Item is missing required keys"):
-        itemToReceiptSection({})
+        item_to_receipt_section({})
 
     # Test with invalid item
     invalid_item = {
@@ -262,7 +257,5 @@ def test_item_to_receipt_section(example_receipt_section):
         "line_ids": {"L": [{"N": "1"}, {"N": "2"}]},
         "created_at": {"S": "2023-01-01T12:00:00"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to ReceiptSection"
-    ):
-        itemToReceiptSection(invalid_item)
+    with pytest.raises(ValueError, match="Error converting item to ReceiptSection"):
+        item_to_receipt_section(invalid_item)

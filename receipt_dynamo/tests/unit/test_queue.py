@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities import Queue, itemToQueue
+from receipt_dynamo.entities import Queue, item_to_queue
 
 
 @pytest.fixture
@@ -42,28 +42,18 @@ def test_queue_init_valid(example_queue):
 @pytest.mark.unit
 def test_queue_init_invalid_queue_name():
     """Queue constructor raises a ValueError with an invalid queue_name."""
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
-        Queue(
-            queue_name="", description="Test queue", created_at=datetime.now()
-        )
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
+        Queue(queue_name="", description="Test queue", created_at=datetime.now())
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         Queue(
             queue_name=None,
             description="Test queue",
             created_at=datetime.now(),
         )
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
-        Queue(
-            queue_name=123, description="Test queue", created_at=datetime.now()
-        )
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
+        Queue(queue_name=123, description="Test queue", created_at=datetime.now())
 
 
 @pytest.mark.unit
@@ -305,27 +295,27 @@ def test_queue_eq():
 
 @pytest.mark.unit
 def test_itemToQueue(example_queue, example_queue_minimal):
-    """itemToQueue converts a DynamoDB item to a Queue object."""
+    """item_to_queue converts a DynamoDB item to a Queue object."""
     # Test full queue
     item = example_queue.to_item()
-    queue = itemToQueue(item)
+    queue = item_to_queue(item)
     assert queue == example_queue
 
     # Test minimal queue
     item = example_queue_minimal.to_item()
-    queue = itemToQueue(item)
+    queue = item_to_queue(item)
     assert queue == example_queue_minimal
 
     # Test invalid item
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToQueue({})
+        item_to_queue({})
 
     # Test missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToQueue({"PK": {"S": "QUEUE#test-queue"}})
+        item_to_queue({"PK": {"S": "QUEUE#test-queue"}})
 
     # Test error handling for missing/invalid values
     item = example_queue.to_item()
     del item["priority"]
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToQueue(item)
+        item_to_queue(item)

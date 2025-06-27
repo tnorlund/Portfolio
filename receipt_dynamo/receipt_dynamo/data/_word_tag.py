@@ -3,8 +3,12 @@ from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import WordTag, itemToWordTag
+from receipt_dynamo import WordTag, item_to_word_tag
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
+    OperationError,
+)
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -31,7 +35,7 @@ class _WordTag(DynamoClientProtocol):
         self._client = client
         self.table_name = table_name
 
-    def addWordTag(self, word_tag: WordTag):
+    def add_word_tag(self, word_tag: WordTag):
         """
         Adds a WordTag to the database with a conditional check that it does not already exist.
 
@@ -49,18 +53,15 @@ class _WordTag(DynamoClientProtocol):
             )
         except ClientError as e:
             # Check if it's a ConditionalCheckFailed (duplicate item)
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"WordTag for image_id={word_tag.image_id}, "
                     f"word_id={word_tag.word_id}, tag={word_tag.tag} already exists."
                 ) from e
             else:
-                raise Exception(f"Error adding WordTag: {e}")
+                raise OperationError(f"Error adding WordTag: {e}") from e
 
-    def addWordTags(self, word_tags: list[WordTag]):
+    def add_word_tags(self, word_tags: list[WordTag]):
         """
         Adds a list of WordTag objects to the database in batches of up to 25.
 
@@ -74,23 +75,19 @@ class _WordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"PutRequest": {"Item": wt.to_item()}} for wt in chunk
-                ]
+                request_items = [{"PutRequest": {"Item": wt.to_item()}} for wt in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 # Handle unprocessed items if they exist
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError("Could not add WordTags to the database") from e
 
-    def updateWordTag(self, word_tag: WordTag):
+    def update_word_tag(self, word_tag: WordTag):
         """
         Updates an existing WordTag in the database with a conditional check that it already exists.
 
@@ -106,11 +103,9 @@ class _WordTag(DynamoClientProtocol):
                 Item=word_tag.to_item(),
             )
         except ClientError as e:
-            raise Exception(f"Error updating WordTag: {e}")
+            raise OperationError(f"Error updating WordTag: {e}") from e
 
-    def deleteWordTag(
-        self, image_id: int, line_id: int, word_id: int, tag: str
-    ):
+    def delete_word_tag(self, image_id: int, line_id: int, word_id: int, tag: str):
         """
         Deletes a single WordTag from the database, ensuring it exists.
 
@@ -140,18 +135,15 @@ class _WordTag(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"WordTag not found for image_id={image_id}, "
                     f"tag={tag}, word_id={word_id}"
                 ) from e
             else:
-                raise Exception(f"Error deleting WordTag: {e}")
+                raise OperationError(f"Error deleting WordTag: {e}") from e
 
-    def deleteWordTags(self, word_tags: list[WordTag]):
+    def delete_word_tags(self, word_tags: list[WordTag]):
         """
         Deletes multiple WordTag items (in batches of 25).
 
@@ -161,35 +153,29 @@ class _WordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [
-                    {"DeleteRequest": {"Key": wt.key()}} for wt in chunk
-                ]
+                request_items = [{"DeleteRequest": {"Key": wt.key()}} for wt in chunk]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
-                "Could not delete WordTags from the database"
-            ) from e
+            raise ValueError("Could not delete WordTags from the database") from e
 
-    def deleteWordTagsFromImage(self, image_id: str):
+    def delete_word_tags_from_image(self, image_id: str):
         """
         Deletes all WordTag items for a given image.
-        Internally uses listWordTagsFromImage(...) then deleteWordTags(...).
+        Internally uses list_word_tags_from_image(...) then delete_word_tags(...).
 
         Args:
             image_id (int): The image ID.
         """
-        tags = self.listWordTagsFromImage(image_id)
-        self.deleteWordTags(tags)
+        tags = self.list_word_tags_from_image(image_id)
+        self.delete_word_tags(tags)
 
-    def getWordTag(
+    def get_word_tag(
         self,
         image_id: int,
         line_id: int,
@@ -224,16 +210,16 @@ class _WordTag(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key=word_tag.key(),
             )
-            return itemToWordTag(response["Item"])
+            return item_to_word_tag(response["Item"])
         except KeyError:
             # Means response had no "Item" or missing fields
             raise ValueError(
                 f"WordTag not found for image_id={image_id}, tag={tag}, word_id={word_id}"
             )
         except ClientError as e:
-            raise Exception(f"Error getting WordTag: {e}")
+            raise OperationError(f"Error getting WordTag: {e}") from e
 
-    def getWordTags(self, tag: str) -> list[WordTag]:
+    def get_word_tags(self, tag: str) -> list[WordTag]:
         """
         Retrieves all WordTag items with a given tag from the database,
         using GSI1 (where GSI1PK = "TAG#<padded_tag>").
@@ -245,13 +231,9 @@ class _WordTag(DynamoClientProtocol):
                 TableName=self.table_name,
                 IndexName="GSI1",  # Make sure this is the correct GSI name
                 KeyConditionExpression="GSI1PK = :gsi1pk",
-                ExpressionAttributeValues={
-                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
-                },
+                ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
             )
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+            word_tags.extend([item_to_word_tag(item) for item in response["Items"]])
 
             # Paginate if necessary
             while "LastEvaluatedKey" in response:
@@ -259,26 +241,20 @@ class _WordTag(DynamoClientProtocol):
                     TableName=self.table_name,
                     IndexName="GSI1",
                     KeyConditionExpression="GSI1PK = :gsi1pk",
-                    ExpressionAttributeValues={
-                        ":gsi1pk": {"S": f"TAG#{tag:_>40}"}
-                    },
+                    ExpressionAttributeValues={":gsi1pk": {"S": f"TAG#{tag:_>40}"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                word_tags.extend(
-                    [itemToWordTag(item) for item in response["Items"]]
-                )
+                word_tags.extend([item_to_word_tag(item) for item in response["Items"]])
 
             return word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list WordTags from the database"
-            ) from e
+            raise ValueError("Could not list WordTags from the database") from e
 
-    def listWordTags(
+    def list_word_tags(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[WordTag], Optional[Dict]]:
         """
         Lists WordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
@@ -286,7 +262,7 @@ class _WordTag(DynamoClientProtocol):
 
         Parameters:
             limit (Optional[int]): The maximum number of WordTags to return in one query.
-            lastEvaluatedKey (Optional[Dict]): The key from which to continue a previous paginated query.
+            last_evaluated_key (Optional[Dict]): The key from which to continue a previous paginated query.
 
         Returns:
             Tuple[List[WordTag], Optional[Dict]]: A tuple containing:
@@ -305,30 +281,23 @@ class _WordTag(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "WORD_TAG"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             if limit is not None:
                 query_params["Limit"] = limit
 
             response = self._client.query(**query_params)
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+            word_tags.extend([item_to_word_tag(item) for item in response["Items"]])
 
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved.
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     word_tags.extend(
-                        [itemToWordTag(item) for item in response["Items"]]
+                        [item_to_word_tag(item) for item in response["Items"]]
                     )
                 last_evaluated_key = None
             else:
@@ -339,7 +308,7 @@ class _WordTag(DynamoClientProtocol):
         except ClientError as e:
             raise ValueError(f"Could not list WordTags from the database: {e}")
 
-    def listWordTagsFromImage(self, image_id: str) -> list[WordTag]:
+    def list_word_tags_from_image(self, image_id: str) -> list[WordTag]:
         """
         Lists all WordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"
@@ -359,9 +328,7 @@ class _WordTag(DynamoClientProtocol):
                     ":tag_marker": {"S": "#TAG#"},
                 },
             )
-            word_tags.extend(
-                [itemToWordTag(item) for item in response["Items"]]
-            )
+            word_tags.extend([item_to_word_tag(item) for item in response["Items"]])
 
             # Handle pagination
             while "LastEvaluatedKey" in response:
@@ -377,17 +344,13 @@ class _WordTag(DynamoClientProtocol):
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                word_tags.extend(
-                    [itemToWordTag(item) for item in response["Items"]]
-                )
+                word_tags.extend([item_to_word_tag(item) for item in response["Items"]])
             return word_tags
 
         except ClientError as e:
-            raise ValueError(
-                "Could not list WordTags from the database"
-            ) from e
+            raise ValueError("Could not list WordTags from the database") from e
 
-    def updateWordTags(self, word_tags: list[WordTag]):
+    def update_word_tags(self, word_tags: list[WordTag]):
         """
         Updates multiple WordTag items in the database.
 
@@ -412,9 +375,7 @@ class _WordTag(DynamoClientProtocol):
             - or any other unexpected errors.
         """
         if word_tags is None:
-            raise ValueError(
-                "WordTags parameter is required and cannot be None."
-            )
+            raise ValueError("WordTags parameter is required and cannot be None.")
         if not isinstance(word_tags, list):
             raise ValueError("WordTags must be provided as a list.")
         if not all(isinstance(tag, WordTag) for tag in word_tags):
@@ -440,20 +401,8 @@ class _WordTag(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "TransactionCanceledException":
-                    raise ValueError(
-                        "One or more word tags do not exist"
-                    ) from e
+                    raise ValueError("One or more word tags do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
+                    raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
-                    raise Exception(f"Internal server error: {e}") from e
-                elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise Exception(f"Access denied: {e}") from e
-                else:
-                    raise ValueError(f"Error updating word tags: {e}") from e

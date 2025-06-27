@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.job_log import JobLog, itemToJobLog
+from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 
 @pytest.fixture
@@ -41,10 +41,7 @@ def test_job_log_init_valid(example_job_log, example_job_log_minimal):
     assert example_job_log.exception == "Sample exception traceback"
 
     # Test minimal job log
-    assert (
-        example_job_log_minimal.job_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_job_log_minimal.job_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_job_log_minimal.timestamp == "2021-01-01T12:30:45"
     assert example_job_log_minimal.log_level == "INFO"
     assert example_job_log_minimal.message == "This is a test log message"
@@ -179,9 +176,7 @@ def test_job_log_gsi1_key(example_job_log):
     """Test the JobLog.gsi1_key() method."""
     assert example_job_log.gsi1_key() == {
         "GSI1PK": {"S": "LOG"},
-        "GSI1SK": {
-            "S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3#2021-01-01T12:30:45"
-        },
+        "GSI1SK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3#2021-01-01T12:30:45"},
     }
 
 
@@ -342,24 +337,24 @@ def test_job_log_eq():
 
 @pytest.mark.unit
 def test_itemToJobLog(example_job_log, example_job_log_minimal):
-    """Test the itemToJobLog() function."""
+    """Test the item_to_job_log() function."""
     # Test with full job log
     item = example_job_log.to_item()
-    job_log = itemToJobLog(item)
+    job_log = item_to_job_log(item)
     assert job_log == example_job_log
 
     # Test with minimal job log
     item = example_job_log_minimal.to_item()
-    job_log = itemToJobLog(item)
+    job_log = item_to_job_log(item)
     assert job_log == example_job_log_minimal
 
     # Test with missing required keys
     with pytest.raises(ValueError, match="Invalid item format"):
-        itemToJobLog({"PK": {"S": "JOB#id"}, "SK": {"S": "LOG#timestamp"}})
+        item_to_job_log({"PK": {"S": "JOB#id"}, "SK": {"S": "LOG#timestamp"}})
 
     # Test with invalid item format
     with pytest.raises(ValueError, match="Error converting item to JobLog"):
-        itemToJobLog(
+        item_to_job_log(
             {
                 "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "LOG#2021-01-01T12:30:45"},

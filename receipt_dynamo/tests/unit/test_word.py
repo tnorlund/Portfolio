@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from receipt_dynamo import Word, itemToWord
+from receipt_dynamo import Word, item_to_word
 
 
 @pytest.fixture
@@ -213,9 +213,7 @@ def test_word_init_invalid_bounding_box():
             5.0,
             0.90,
         )
-    with pytest.raises(
-        ValueError, match="bounding_box must contain the key 'x'"
-    ):
+    with pytest.raises(ValueError, match="bounding_box must contain the key 'x'"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -270,9 +268,7 @@ def test_word_init_invalid_corners():
 @pytest.mark.unit
 def test_word_init_invalid_angle():
     """Test that Word raises a ValueError if the angle is not a float"""
-    with pytest.raises(
-        ValueError, match="angle_degrees must be float, int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_degrees must be float, int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -287,9 +283,7 @@ def test_word_init_invalid_angle():
             5.0,
             0.90,
         )
-    with pytest.raises(
-        ValueError, match="angle_radians must be float, int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_radians must be float, int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -637,18 +631,10 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
 
         word.rotate(angle, 0, 0, use_radians=use_radians)
 
-        assert word.top_right["x"] == pytest.approx(
-            expected_top_right["x"], rel=1e-6
-        )
-        assert word.top_right["y"] == pytest.approx(
-            expected_top_right["y"], rel=1e-6
-        )
-        assert word.top_left["x"] == pytest.approx(
-            expected_top_left["x"], rel=1e-6
-        )
-        assert word.top_left["y"] == pytest.approx(
-            expected_top_left["y"], rel=1e-6
-        )
+        assert word.top_right["x"] == pytest.approx(expected_top_right["x"], rel=1e-6)
+        assert word.top_right["y"] == pytest.approx(expected_top_right["y"], rel=1e-6)
+        assert word.top_left["x"] == pytest.approx(expected_top_left["x"], rel=1e-6)
+        assert word.top_left["y"] == pytest.approx(expected_top_left["y"], rel=1e-6)
         assert word.bottom_right["x"] == pytest.approx(
             expected_bottom_right["x"], rel=1e-6
         )
@@ -681,12 +667,8 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             "height": max(ys) - min(ys),
         }
 
-        assert word.bounding_box["x"] == pytest.approx(
-            expected_bb["x"], rel=1e-6
-        )
-        assert word.bounding_box["y"] == pytest.approx(
-            expected_bb["y"], rel=1e-6
-        )
+        assert word.bounding_box["x"] == pytest.approx(expected_bb["x"], rel=1e-6)
+        assert word.bounding_box["y"] == pytest.approx(expected_bb["y"], rel=1e-6)
         assert word.bounding_box["width"] == pytest.approx(
             expected_bb["width"], rel=1e-6
         )
@@ -696,18 +678,12 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
 
         if use_radians:
             expected_angle_radians = orig_angle_radians + angle
-            expected_angle_degrees = orig_angle_degrees + (
-                angle * 180.0 / math.pi
-            )
+            expected_angle_degrees = orig_angle_degrees + (angle * 180.0 / math.pi)
         else:
             expected_angle_degrees = orig_angle_degrees + angle
             expected_angle_radians = orig_angle_radians + math.radians(angle)
-        assert word.angle_radians == pytest.approx(
-            expected_angle_radians, abs=1e-9
-        )
-        assert word.angle_degrees == pytest.approx(
-            expected_angle_degrees, abs=1e-9
-        )
+        assert word.angle_radians == pytest.approx(expected_angle_radians, abs=1e-9)
+        assert word.angle_degrees == pytest.approx(expected_angle_degrees, abs=1e-9)
 
 
 @pytest.mark.parametrize(
@@ -1222,7 +1198,7 @@ def test_word_eq():
 @pytest.mark.unit
 def test_word_hash(example_word):
     """Test the Word __hash__ method and set notation."""
-    duplicate_word = itemToWord(example_word.to_item())
+    duplicate_word = item_to_word(example_word.to_item())
     assert hash(example_word) == hash(duplicate_word)
     word_set = {example_word, duplicate_word}
     assert len(word_set) == 1
@@ -1246,12 +1222,12 @@ def test_word_hash(example_word):
 
 @pytest.mark.unit
 def test_item_to_word(example_word):
-    """Test the itemToWord function"""
-    itemToWord(example_word.to_item()) == example_word
+    """Test the item_to_word function"""
+    item_to_word(example_word.to_item()) == example_word
     with pytest.raises(ValueError, match="^Item is missing required keys: "):
-        itemToWord({})
+        item_to_word({})
     with pytest.raises(ValueError, match="^Error converting item to Word: "):
-        itemToWord(
+        item_to_word(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "LINE#00002#WORD#00003"},

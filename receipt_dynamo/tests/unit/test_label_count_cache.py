@@ -4,7 +4,7 @@ import pytest
 
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
-    itemToLabelCountCache,
+    item_to_label_count_cache,
 )
 
 
@@ -76,5 +76,5 @@ def test_init_invalid_last_updated() -> None:
 @pytest.mark.unit
 def test_to_item_and_back(sample_cache: LabelCountCache) -> None:
     item = sample_cache.to_item()
-    restored = itemToLabelCountCache(item)
+    restored = item_to_label_count_cache(item)
     assert restored == sample_cache

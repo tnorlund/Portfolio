@@ -6,7 +6,7 @@ import pytest
 from receipt_dynamo.constants import MerchantValidationStatus
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
-    itemToReceiptMetadata,
+    item_to_receipt_metadata,
 )
 
 
@@ -79,8 +79,7 @@ def test_key_and_gsi_keys(example_receipt_metadata):
 
     gsi1 = m.gsi1_key()
     assert (
-        gsi1["GSI1PK"]["S"]
-        == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
+        gsi1["GSI1PK"]["S"] == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
     )
     assert "IMAGE#" in gsi1["GSI1SK"]["S"]
     assert "RECEIPT#" in gsi1["GSI1SK"]["S"]
@@ -99,7 +98,7 @@ def test_key_and_gsi_keys(example_receipt_metadata):
 def test_to_item_and_back(example_receipt_metadata):
     m = example_receipt_metadata
     item = m.to_item()
-    restored = itemToReceiptMetadata(item)
+    restored = item_to_receipt_metadata(item)
     # Compare essential fields
     assert restored.image_id == m.image_id
     assert restored.receipt_id == m.receipt_id
@@ -160,7 +159,7 @@ def test_invalid_field_validation(field, value, error):
 def test_item_to_receipt_metadata_missing_keys():
     item = {"PK": {"S": "IMAGE#id"}}
     with pytest.raises(ValueError, match="missing keys"):
-        itemToReceiptMetadata(item)
+        item_to_receipt_metadata(item)
 
 
 @pytest.mark.unit
@@ -168,7 +167,7 @@ def test_item_to_receipt_metadata_parse_error(example_receipt_metadata):
     item = example_receipt_metadata.to_item()
     item["SK"]["S"] = "BADFORMAT"
     with pytest.raises(ValueError, match="Invalid SK format:"):
-        itemToReceiptMetadata(item)
+        item_to_receipt_metadata(item)
 
 
 @pytest.mark.unit

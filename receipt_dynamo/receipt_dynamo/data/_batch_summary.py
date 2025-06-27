@@ -14,7 +14,7 @@ and GSI lookups by status.
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
-    itemToBatchSummary,
+    item_to_batch_summary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -22,9 +22,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -34,7 +32,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 class _BatchSummary(DynamoClientProtocol):
 
-    def addBatchSummary(self, batch_summary: BatchSummary):
+    def add_batch_summary(self, batch_summary: BatchSummary):
         """
         Adds a single BatchSummary record to DynamoDB.
 
@@ -58,19 +56,19 @@ class _BatchSummary(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary already exists")
+                raise ValueError("batch_summary already exists") from e
             elif error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid")
+                raise ValueError("batch_summary is invalid") from e
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error adding batch summary: {e}")
+                raise ValueError(f"Error adding batch summary: {e}") from e
 
-    def addBatchSummaries(self, batch_summaries: List[BatchSummary]):
+    def add_batch_summaries(self, batch_summaries: List[BatchSummary]):
         """
         Adds multiple BatchSummary records to DynamoDB in batches.
 
@@ -81,7 +79,7 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
+            raise ValueError("batch_summaries cannot be None") from e
         if not isinstance(batch_summaries, list):
             raise ValueError("batch_summaries must be a list")
         if not all(isinstance(item, BatchSummary) for item in batch_summaries):
@@ -98,26 +96,24 @@ class _BatchSummary(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary already exists")
+                raise ValueError("batch_summary already exists") from e
             elif error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid")
+                raise ValueError("batch_summary is invalid") from e
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error adding batch summaries: {e}")
+                raise ValueError(f"Error adding batch summaries: {e}") from e
 
-    def updateBatchSummary(self, batch_summary: BatchSummary):
+    def update_batch_summary(self, batch_summary: BatchSummary):
         """
         Updates an existing BatchSummary record in DynamoDB.
 
@@ -128,7 +124,7 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summary is None, not a BatchSummary, or if the record does not exist.
         """
         if batch_summary is None:
-            raise ValueError("batch_summary cannot be None")
+            raise ValueError("batch_summary cannot be None") from e
         if not isinstance(batch_summary, BatchSummary):
             raise ValueError("batch_summary must be a BatchSummary")
 
@@ -141,19 +137,19 @@ class _BatchSummary(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary does not exist")
+                raise ValueError("batch_summary does not exist") from e
             elif error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid")
+                raise ValueError("batch_summary is invalid") from e
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error updating batch summary: {e}")
+                raise ValueError(f"Error updating batch summary: {e}") from e
 
-    def updateBatchSummaries(self, batch_summaries: List[BatchSummary]):
+    def update_batch_summaries(self, batch_summaries: List[BatchSummary]):
         """
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
@@ -164,7 +160,7 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
+            raise ValueError("batch_summaries cannot be None") from e
         if not isinstance(batch_summaries, list):
             raise ValueError("batch_summaries must be a list")
         if not all(isinstance(item, BatchSummary) for item in batch_summaries):
@@ -188,19 +184,19 @@ class _BatchSummary(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("batch_summary does not exist")
+                    raise ValueError("batch_summary does not exist") from e
                 elif error_code == "ValidationException":
-                    raise ValueError("batch_summary is invalid")
+                    raise ValueError("batch_summary is invalid") from e
                 elif error_code == "InternalServerError":
-                    raise ValueError("internal server error")
+                    raise ValueError("internal server error") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise ValueError("provisioned throughput exceeded")
+                    raise ValueError("provisioned throughput exceeded") from e
                 elif error_code == "ResourceNotFoundException":
-                    raise ValueError("table not found")
+                    raise ValueError("table not found") from e
                 else:
-                    raise ValueError(f"Error updating batch summaries: {e}")
+                    raise ValueError(f"Error updating batch summaries: {e}") from e
 
-    def deleteBatchSummary(self, batch_summary: BatchSummary):
+    def delete_batch_summary(self, batch_summary: BatchSummary):
         """
         Deletes a single BatchSummary record from DynamoDB.
 
@@ -211,7 +207,7 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summary is None, not a BatchSummary, or if the record does not exist.
         """
         if batch_summary is None:
-            raise ValueError("batch_summary cannot be None")
+            raise ValueError("batch_summary cannot be None") from e
         if not isinstance(batch_summary, BatchSummary):
             raise ValueError("batch_summary must be a BatchSummary")
 
@@ -224,19 +220,19 @@ class _BatchSummary(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary does not exist")
+                raise ValueError("batch_summary does not exist") from e
             elif error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid")
+                raise ValueError("batch_summary is invalid") from e
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error deleting batch summary: {e}")
+                raise ValueError(f"Error deleting batch summary: {e}") from e
 
-    def deleteBatchSummaries(self, batch_summaries: List[BatchSummary]):
+    def delete_batch_summaries(self, batch_summaries: List[BatchSummary]):
         """
         Deletes multiple BatchSummary records from DynamoDB using transactions.
 
@@ -247,7 +243,7 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
+            raise ValueError("batch_summaries cannot be None") from e
         if not isinstance(batch_summaries, list):
             raise ValueError("batch_summaries must be a list")
         if not all(isinstance(item, BatchSummary) for item in batch_summaries):
@@ -271,19 +267,19 @@ class _BatchSummary(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("batch_summary does not exist")
+                    raise ValueError("batch_summary does not exist") from e
                 elif error_code == "ValidationException":
-                    raise ValueError("batch_summary is invalid")
+                    raise ValueError("batch_summary is invalid") from e
                 elif error_code == "InternalServerError":
-                    raise ValueError("internal server error")
+                    raise ValueError("internal server error") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise ValueError("provisioned throughput exceeded")
+                    raise ValueError("provisioned throughput exceeded") from e
                 elif error_code == "ResourceNotFoundException":
-                    raise ValueError("table not found")
+                    raise ValueError("table not found") from e
                 else:
-                    raise ValueError(f"Error deleting batch summaries: {e}")
+                    raise ValueError(f"Error deleting batch summaries: {e}") from e
 
-    def getBatchSummary(self, batch_id: str) -> BatchSummary:
+    def get_batch_summary(self, batch_id: str) -> BatchSummary:
         """
         Retrieves a BatchSummary record from DynamoDB by batch_id.
 
@@ -310,19 +306,19 @@ class _BatchSummary(DynamoClientProtocol):
                 },
             )
             if "Item" in response:
-                return itemToBatchSummary(response["Item"])
+                return item_to_batch_summary(response["Item"])
             else:
-                raise ValueError("batch_summary does not exist")
+                raise ValueError("batch_summary does not exist") from e
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             elif error_code == "ValidationException":
                 raise ValueError("one or more parameters given were invalid")
             else:
-                raise ValueError(f"Error getting batch summary: {e}")
+                raise ValueError(f"Error getting batch summary: {e}") from e
 
-    def listBatchSummaries(
+    def list_batch_summaries(
         self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
@@ -366,7 +362,7 @@ class _BatchSummary(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 summaries.extend(
-                    [itemToBatchSummary(item) for item in response["Items"]]
+                    [item_to_batch_summary(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(summaries) >= limit:
@@ -375,9 +371,7 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -386,17 +380,17 @@ class _BatchSummary(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             elif error_code == "ValidationException":
                 raise ValueError("one or more parameters given were invalid")
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             else:
-                raise ValueError(f"Error listing batch summaries: {e}")
+                raise ValueError(f"Error listing batch summaries: {e}") from e
 
-    def getBatchSummariesByStatus(
+    def get_batch_summaries_by_status(
         self,
         status: str | BatchStatus,
         batch_type: str | BatchType = "EMBEDDING",
@@ -475,7 +469,7 @@ class _BatchSummary(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 summaries.extend(
-                    [itemToBatchSummary(item) for item in response["Items"]]
+                    [item_to_batch_summary(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(summaries) >= limit:
@@ -484,30 +478,24 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
 
             summaries = [
-                summary
-                for summary in summaries
-                if summary.batch_type == batch_type
+                summary for summary in summaries if summary.batch_type == batch_type
             ]
             return summaries, last_evaluated_key
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found")
+                raise ValueError("table not found") from e
             elif error_code == "ValidationException":
                 raise ValueError("one or more parameters given were invalid")
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error")
+                raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded")
+                raise ValueError("provisioned throughput exceeded") from e
             else:
-                raise ValueError(
-                    f"Error retrieving batch summaries by status: {e}"
-                )
+                raise ValueError(f"Error retrieving batch summaries by status: {e}")

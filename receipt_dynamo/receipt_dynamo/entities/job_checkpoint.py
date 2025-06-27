@@ -163,9 +163,7 @@ class JobCheckpoint:
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {
-                    "L": [self._to_dynamodb_value(item) for item in v]
-                }
+                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
             elif isinstance(v, bool):
                 result[k] = {"BOOL": v}
             elif isinstance(v, (int, float)):
@@ -348,7 +346,7 @@ def _parse_dynamodb_value(v: Dict) -> Any:
     return None
 
 
-def itemToJobCheckpoint(item: dict) -> JobCheckpoint:
+def item_to_job_checkpoint(item: dict) -> JobCheckpoint:
     """Converts a DynamoDB item to a JobCheckpoint object.
 
     Args:

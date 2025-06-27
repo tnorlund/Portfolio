@@ -53,15 +53,10 @@ class QueueJob:
         elif isinstance(enqueued_at, str):
             self.enqueued_at = enqueued_at
         else:
-            raise ValueError(
-                "enqueued_at must be a datetime object or a string"
-            )
+            raise ValueError("enqueued_at must be a datetime object or a string")
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if (
-            not isinstance(priority, str)
-            or priority.lower() not in valid_priorities
-        ):
+        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
@@ -171,7 +166,7 @@ class QueueJob:
         )
 
 
-def itemToQueueJob(item: dict) -> QueueJob:
+def item_to_queue_job(item: dict) -> QueueJob:
     """Converts a DynamoDB item to a QueueJob object.
 
     Args:

@@ -154,7 +154,7 @@ class OCRJob:
         )
 
 
-def itemToOCRJob(item: dict) -> OCRJob:
+def item_to_ocr_job(item: dict) -> OCRJob:
     """Converts a DynamoDB item to a OCRJob object.
 
     Args:

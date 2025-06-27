@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from receipt_dynamo import Line, itemToLine
+from receipt_dynamo import Line, item_to_line
 
 
 @pytest.fixture
@@ -507,9 +507,7 @@ def test_line_to_item(example_line):
     item = example_line.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
-    assert item["GSI1PK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    }
+    assert item["GSI1PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["GSI1SK"] == {"S": "LINE#00001"}
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
@@ -748,8 +746,7 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
                 or any(
-                    line.top_left[k] != orig_corners["top_left"][k]
-                    for k in ["x", "y"]
+                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
                 )
                 or any(
                     line.bottom_right[k] != orig_corners["bottom_right"][k]
@@ -760,9 +757,7 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
             )
-            assert (
-                corners_changed
-            ), "Expected corners to change after valid rotation."
+            assert corners_changed, "Expected corners to change after valid rotation."
         else:
             assert line.top_right == orig_corners["top_right"]
             assert line.top_left == orig_corners["top_left"]
@@ -1241,7 +1236,7 @@ def test_line_eq():
 def test_line_hash(example_line):
     """Test the Line __hash__ method and the set behavior for Line objects."""
     # Create a duplicate of example_line by converting it to an item and back.
-    duplicate_line = itemToLine(example_line.to_item())
+    duplicate_line = item_to_line(example_line.to_item())
 
     # Confirm that converting a Line to an item and back yields the same hash.
     assert hash(example_line) == hash(duplicate_line)
@@ -1274,15 +1269,15 @@ def test_line_hash(example_line):
 
 @pytest.mark.unit
 def test_item_to_line(example_line):
-    itemToLine(example_line.to_item()) == example_line
+    item_to_line(example_line.to_item()) == example_line
 
     # Missing keys
     with pytest.raises(ValueError, match="^Item is missing required keys"):
-        itemToLine({"SK": {"S": "LINE#00001"}})
+        item_to_line({"SK": {"S": "LINE#00001"}})
 
     # Bad keys
     with pytest.raises(ValueError, match="^Error converting item to Line"):
-        itemToLine(
+        item_to_line(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
                 "SK": {"S": "LINE#00001"},
