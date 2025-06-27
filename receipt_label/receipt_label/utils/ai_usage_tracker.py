@@ -13,7 +13,6 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
@@ -282,6 +281,20 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
+
+                # Include metadata from kwargs (added by context manager)
+                if "metadata" in kwargs:
+                    context_metadata = kwargs.get("metadata", {})
+                    # Extract context fields
+                    if context_metadata.get("operation_type"):
+                        metadata["operation_type"] = context_metadata[
+                            "operation_type"
+                        ]
+                    if context_metadata.get("job_id"):
+                        self.current_job_id = context_metadata["job_id"]
+                    if context_metadata.get("batch_id"):
+                        self.current_batch_id = context_metadata["batch_id"]
+
                 metadata.update(
                     {
                         "function": func.__name__,
@@ -632,6 +645,31 @@ class AIUsageTracker:
                                     self._tracker = tracker
 
                                 def create(self, **kwargs):
+                                    # Import here to avoid circular dependency
+                                    from .ai_usage_context import (
+                                        get_current_context,
+                                    )
+
+                                    # Merge thread-local context with kwargs
+                                    current_context = get_current_context()
+                                    if current_context:
+                                        # Add context metadata to kwargs
+                                        if "metadata" not in kwargs:
+                                            kwargs["metadata"] = {}
+                                        kwargs["metadata"].update(
+                                            {
+                                                "operation_type": current_context.get(
+                                                    "operation_type"
+                                                ),
+                                                "job_id": current_context.get(
+                                                    "job_id"
+                                                ),
+                                                "batch_id": current_context.get(
+                                                    "batch_id"
+                                                ),
+                                            }
+                                        )
+
                                     @self._tracker.track_openai_completion
                                     def _create(**kw):
                                         return self._completions.create(**kw)
@@ -653,6 +691,29 @@ class AIUsageTracker:
                             self._tracker = tracker
 
                         def create(self, **kwargs):
+                            # Import here to avoid circular dependency
+                            from .ai_usage_context import get_current_context
+
+                            # Merge thread-local context with kwargs
+                            current_context = get_current_context()
+                            if current_context:
+                                # Add context metadata to kwargs
+                                if "metadata" not in kwargs:
+                                    kwargs["metadata"] = {}
+                                kwargs["metadata"].update(
+                                    {
+                                        "operation_type": current_context.get(
+                                            "operation_type"
+                                        ),
+                                        "job_id": current_context.get(
+                                            "job_id"
+                                        ),
+                                        "batch_id": current_context.get(
+                                            "batch_id"
+                                        ),
+                                    }
+                                )
+
                             @self._tracker.track_openai_embedding
                             def _create(**kw):
                                 return self._embeddings.create(**kw)
