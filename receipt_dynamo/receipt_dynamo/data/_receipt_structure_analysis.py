@@ -95,7 +95,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not add receipt structure analysis to Dyndef add_receipt_structure_analyses(
+                raise DynamoDBError(f"Could not add receipt structure analysis to DynamoDB: {e}")
+
+    def add_receipt_structure_analyses(
         self, analyses: list[ReceiptStructureAnalysis]
     ):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
@@ -271,20 +273,22 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                             keys_seen[key_str] = i
 
                     if duplicate_keys:
-                        detailed_error = "Validation error with duplicate keys: {error_message}\nDuplicate keys: {duplicate_keys}"
+                        detailed_error = f"Validation error with duplicate keys: {error_message}\nDuplicate keys: {duplicate_keys}"
                     else:
-                        detailed_error = "Validation error possibly with duplicate keys: {error_message}"
+                        detailed_error = f"Validation error possibly with duplicate keys: {error_message}"
                 else:
-                    detailed_error = "Validation error: {error_message}"
+                    detailed_error = f"Validation error: {error_message}"
 
                 print(
-                    "Error in update_receipt_structure_analyses: {detailed_error}"
+                    f"Error in update_receipt_structure_analyses: {detailed_error}"
                 )
-                raise DynamoDBValidationError("One or more parameters given were invalid: {detailed_error}")
+                raise DynamoDBValidationError(f"One or more parameters given were invalid: {detailed_error}")
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not update receipt structure analyses in DynamoDB") fdelete_receipt_structure_analysisuctureAnalysis(
+                raise DynamoDBError(f"Could not update receipt structure analyses in DynamoDB: {e}")
+
+    def delete_receipt_structure_analysis(
         self, analysis: ReceiptStructureAnalysis
     ):
         """Deletes a single ReceiptStructureAnalysis by IDs.
@@ -496,8 +500,9 @@ get_receipt_structure_analysisAnalysis(
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied")
             else:
-                raise DynamoDBError("Could not get receipt structure analysis from the database")
-   list_receipt_structure_analyseslyses(
+                raise DynamoDBError(f"Could not get receipt structure analysis from the database: {e}")
+
+    def list_receipt_structure_analyses(
         self,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict[str, Any]] = None,

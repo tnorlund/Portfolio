@@ -361,7 +361,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 raise DynamoDBServerError("Internal server error: {e}")
             else:
                 raise OperationError("Error listing receipt lines: {e}")
-    list_receipt_lines_by_embedding_statusatus(
+    def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table with a given embedding status."""

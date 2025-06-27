@@ -390,7 +390,7 @@ get_receipt_validation_summarynSummary(
         Returns:
             tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and
                                                                the last evaluated key (or None if no more results).
-
+        """
         if status is None:
             raise ValueError(
                 "status parameter is required and cannot be None."

@@ -162,10 +162,10 @@ def update_receipt_sections(self, sections: list[ReceiptSection]):
                     raise ValueError("Access denied")
                 else:
                     raise ValueError(
-                        "Could not update ReceiptSections in the database: {e}"
+                        f"Could not update ReceiptSections in the database: {e}"
                     )
 
-  delete_receipt_sectionection(
+    def delete_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ):
         """Deletes a single ReceiptSection by IDs."""
@@ -186,7 +186,7 @@ def update_receipt_sections(self, sections: list[ReceiptSection]):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    "ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
+                    f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
                 )
             else:
                 raise
@@ -213,7 +213,7 @@ def update_receipt_sections(self, sections: list[ReceiptSection]):
                 "Could not delete ReceiptSections from the database"
             ) from e
 
-    deget_receipt_sectionon(
+    def get_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ) -> ReceiptSection:
         """Retrieves a single ReceiptSection by IDs."""
@@ -230,10 +230,10 @@ def update_receipt_sections(self, sections: list[ReceiptSection]):
             return item_to_receipt_section(response["Item"])
         except KeyError:
             raise ValueError(
-                "ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
+                f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
             )
 
-    deget_receipt_sections_from_receiptpt(
+    def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptSection]:
         """Retrieves all ReceiptSections for a given receipt."""
