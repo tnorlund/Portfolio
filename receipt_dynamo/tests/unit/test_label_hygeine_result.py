@@ -4,7 +4,7 @@ import pytest
 
 from receipt_dynamo.entities.label_hygiene_result import (
     LabelHygieneResult,
-    itemToLabelHygieneResult,
+    item_to_label_hygiene_result,
 )
 
 # === FIXTURE ===
@@ -68,7 +68,7 @@ def test_label_hygiene_result_constructor_type_validation(field, value, error):
 @pytest.mark.unit
 def test_label_hygiene_result_roundtrip(example_label_hygiene_result):
     item = example_label_hygiene_result.to_item()
-    restored = itemToLabelHygieneResult(item)
+    restored = item_to_label_hygiene_result(item)
     assert restored == example_label_hygiene_result
 
 
@@ -83,7 +83,7 @@ def test_label_hygiene_result_missing_keys():
         # missing keys like reasoning, gpt_agreed, timestamp
     }
     with pytest.raises(ValueError, match="missing keys"):
-        itemToLabelHygieneResult(item)
+        item_to_label_hygiene_result(item)
 
 
 def test_label_hygiene_result_example_ids_not_list():
@@ -118,10 +118,8 @@ def test_label_hygiene_result_malformed_pk_raises():
         "receipt_id": {"N": "101"},
         "timestamp": {"S": datetime.now().isoformat()},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to LabelHygieneResult"
-    ):
-        itemToLabelHygieneResult(item)
+    with pytest.raises(ValueError, match="Error converting item to LabelHygieneResult"):
+        item_to_label_hygiene_result(item)
 
 
 # === REPR, STR, ITER, EQ, HASH ===
@@ -153,7 +151,7 @@ def test_label_hygiene_result_iter(example_label_hygiene_result):
 @pytest.mark.unit
 def test_label_hygiene_result_eq_and_hash(example_label_hygiene_result):
     item = example_label_hygiene_result.to_item()
-    clone = itemToLabelHygieneResult(item)
+    clone = item_to_label_hygiene_result(item)
     assert clone == example_label_hygiene_result
     assert hash(clone) == hash(example_label_hygiene_result)
     assert example_label_hygiene_result != "not-a-label"

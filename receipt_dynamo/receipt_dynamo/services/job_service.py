@@ -9,13 +9,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.job import Job, itemToJob
+from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
 from receipt_dynamo.entities.job_dependency import JobDependency
 from receipt_dynamo.entities.job_log import JobLog
 from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_resource import JobResource
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 
 
 class JobService:
@@ -175,9 +175,7 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.listJobsByStatus(
-            status, limit, last_evaluated_key
-        )
+        return self.dynamo_client.listJobsByStatus(status, limit, last_evaluated_key)
 
     def list_jobs_by_user(
         self,
@@ -196,14 +194,10 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.listJobsByUser(
-            user_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.listJobsByUser(user_id, limit, last_evaluated_key)
 
     # Job status operations
-    def add_job_status(
-        self, job_id: str, status: str, message: str
-    ) -> JobStatus:
+    def add_job_status(self, job_id: str, status: str, message: str) -> JobStatus:
         """
         Add a new status record for a job.
 
@@ -358,9 +352,7 @@ class JobService:
         return self.dynamo_client.listJobResourcesByJob(job_id)
 
     # Job dependency operations
-    def add_job_dependency(
-        self, job_id: str, depends_on_job_id: str
-    ) -> JobDependency:
+    def add_job_dependency(self, job_id: str, depends_on_job_id: str) -> JobDependency:
         """
         Add a dependency between jobs.
 
@@ -405,9 +397,7 @@ class JobService:
         """
         return self.dynamo_client.listDependents(job_id)
 
-    def check_dependencies_satisfied(
-        self, job_id: str
-    ) -> Tuple[bool, List[Dict]]:
+    def check_dependencies_satisfied(self, job_id: str) -> Tuple[bool, List[Dict]]:
         """
         Check if all dependencies for a job are satisfied.
 
@@ -458,9 +448,7 @@ class JobService:
                     is_satisfied = dependency_job.status == "failed"
                 elif dependency.type == "ARTIFACT":
                     # Special condition for artifact dependency
-                    if dependency.condition and hasattr(
-                        dependency_job, "job_config"
-                    ):
+                    if dependency.condition and hasattr(dependency_job, "job_config"):
                         # Check if the artifact exists based on condition
                         # This would need to be implemented based on your artifact storage system
                         is_satisfied = self._check_artifact_exists(
@@ -481,9 +469,7 @@ class JobService:
 
         return all_satisfied, unsatisfied
 
-    def _check_artifact_exists(
-        self, job: Job, artifact_condition: str
-    ) -> bool:
+    def _check_artifact_exists(self, job: Job, artifact_condition: str) -> bool:
         """
         Check if an artifact exists for a job based on a condition.
 
