@@ -116,7 +116,7 @@ class _ReceiptSection(DynamoClientProtocol):
             else:
                 raise
 
-def update_receipt_sections(self, sections: list[ReceiptSection]):
+    def update_receipt_sections(self, sections: list[ReceiptSection]):
         """Updates multiple existing ReceiptSections in DynamoDB."""
         if sections is None:
             raise ValueError(

@@ -205,8 +205,8 @@ def test_word_tag_to_item(sample_word_tag):
 
 @pytest.mark.unit
 def test_word_tag_to_word_key(sample_word_tag):
-    """Test that the to_Word_key method returns the correct key."""
-    key = sample_word_tag.to_Word_key()
+    """Test that the to__word_key method returns the correct key."""
+    key = sample_word_tag.to__word_key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert key["SK"]["S"] == "LINE#00007#WORD#00101"
 

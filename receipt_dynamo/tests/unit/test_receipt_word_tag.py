@@ -345,8 +345,8 @@ def test_receipt_word_tag_to_item(example_receipt_word_tag):
 
 @pytest.mark.unit
 def test_receipt_word_tag_to_receipt_word_key(example_receipt_word_tag):
-    """Test the to_ReceiptWord_key method."""
-    key = example_receipt_word_tag.to_ReceiptWord_key()
+    """Test the to_receipt_word_key method."""
+    key = example_receipt_word_tag.to_receipt_word_key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert key["SK"]["S"] == "RECEIPT#00045#LINE#00006#WORD#00789"
 
