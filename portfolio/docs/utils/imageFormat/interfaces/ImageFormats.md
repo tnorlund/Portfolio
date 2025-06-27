@@ -6,7 +6,7 @@
 
 # Interface: ImageFormats
 
-Defined in: [utils/imageFormat.ts:84](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/utils/imageFormat.ts#L84)
+Defined in: [utils/imageFormat.ts:84](https://github.com/tnorlund/Portfolio/blob/b430f030be6ae84d38e73a977c42e593fa3d7f2d/portfolio/utils/imageFormat.ts#L84)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/imageFormat.ts:84](https://github.com/tnorlund/Portfolio/blob
 
 > **cdn\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:85](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/utils/imageFormat.ts#L85)
+Defined in: [utils/imageFormat.ts:85](https://github.com/tnorlund/Portfolio/blob/b430f030be6ae84d38e73a977c42e593fa3d7f2d/portfolio/utils/imageFormat.ts#L85)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/imageFormat.ts:85](https://github.com/tnorlund/Portfolio/blob
 
 > `optional` **cdn\_avif\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:87](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/utils/imageFormat.ts#L87)
+Defined in: [utils/imageFormat.ts:87](https://github.com/tnorlund/Portfolio/blob/b430f030be6ae84d38e73a977c42e593fa3d7f2d/portfolio/utils/imageFormat.ts#L87)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [utils/imageFormat.ts:87](https://github.com/tnorlund/Portfolio/blob
 
 > `optional` **cdn\_webp\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:86](https://github.com/tnorlund/Portfolio/blob/3e87d2c3cd6fd32e681b7d64755e5724d1d8afd1/portfolio/utils/imageFormat.ts#L86)
+Defined in: [utils/imageFormat.ts:86](https://github.com/tnorlund/Portfolio/blob/b430f030be6ae84d38e73a977c42e593fa3d7f2d/portfolio/utils/imageFormat.ts#L86)
