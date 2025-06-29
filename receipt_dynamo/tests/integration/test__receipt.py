@@ -172,10 +172,10 @@ def test_addReceipt_success(
     Tests the happy path of addReceipt.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
+    client.add_receipt(sample_receipt)
 
     # Verify the receipt in DynamoDB
-    retrieved = client.getReceipt(
+    retrieved = client.get_receipt(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
     assert (
@@ -191,10 +191,10 @@ def test_addReceipt_duplicate_raises(
     Tests that addReceipt raises ValueError when the receipt already exists.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
+    client.add_receipt(sample_receipt)
 
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
 
 
 @pytest.mark.integration
@@ -206,7 +206,7 @@ def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
     with pytest.raises(
         ValueError, match="Receipt parameter is required and cannot be None."
     ):
-        client.addReceipt(None)  # type: ignore
+        client.add_receipt(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -221,7 +221,7 @@ def test_addReceipt_raises_value_error_receipt_not_instance(
     with pytest.raises(
         ValueError, match="receipt must be an instance of the Receipt class."
     ):
-        client.addReceipt("not-a-receipt")  # type: ignore
+        client.add_receipt("not-a-receipt")  # type: ignore
 
 
 @pytest.mark.integration
@@ -248,7 +248,7 @@ def test_addReceipt_raises_conditional_check_failed(
     )
 
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -279,7 +279,7 @@ def test_addReceipt_raises_resource_not_found(
         # ResourceNotFoundException in addReceipt, so it won't raise
         # ValueError, it re-raises the original error if it's
         # not ConditionalCheckFailedException.
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -306,7 +306,7 @@ def test_addReceipt_raises_provisioned_throughput_exceeded(
     )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -333,7 +333,7 @@ def test_addReceipt_raises_internal_server_error(
     )
 
     with pytest.raises(Exception, match="Internal server error"):
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -360,7 +360,7 @@ def test_addReceipt_raises_unknown_error(
     )
 
     with pytest.raises(Exception, match="Something unexpected"):
-        client.addReceipt(sample_receipt)
+        client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -379,9 +379,9 @@ def test_addReceipts_success(dynamodb_table, sample_receipt):
     )
     receipts.append(second_receipt)
 
-    client.addReceipts(receipts)
+    client.add_receipts(receipts)
 
-    stored, _ = client.listReceipts()
+    stored, _ = client.list_receipts()
     assert len(stored) == 2
     assert sample_receipt in stored
     assert second_receipt in stored
@@ -399,7 +399,7 @@ def test_addReceipts_raises_value_error_receipts_none(
     with pytest.raises(
         ValueError, match="Receipts parameter is required and cannot be None."
     ):
-        client.addReceipts(None)  # type: ignore
+        client.add_receipts(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -414,7 +414,7 @@ def test_addReceipts_raises_value_error_receipts_not_list(
     with pytest.raises(
         ValueError, match="receipts must be a list of Receipt instances."
     ):
-        client.addReceipts("not-a-list")  # type: ignore
+        client.add_receipts("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -430,7 +430,7 @@ def test_addReceipts_raises_value_error_receipts_not_list_of_receipts(
         ValueError,
         match="All receipts must be instances of the Receipt class.",
     ):
-        client.addReceipts([sample_receipt, "not-a-receipt"])  # type: ignore
+        client.add_receipts([sample_receipt, "not-a-receipt"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -472,11 +472,11 @@ def test_addReceipts_unprocessed_items_retry(
     mocker.patch.object(
         client._client, "batch_write_item", side_effect=custom_side_effect
     )
-    client.addReceipts(receipts)
+    client.add_receipts(receipts)
 
     assert call_count["value"] == 2, "Should have retried once."
 
-    stored, _ = client.listReceipts()
+    stored, _ = client.list_receipts()
     assert len(stored) == 2
     assert sample_receipt in stored
     assert second_receipt in stored
@@ -505,7 +505,7 @@ def test_addReceipts_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.addReceipts([sample_receipt])
+        client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -532,7 +532,7 @@ def test_addReceipts_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.addReceipts([sample_receipt])
+        client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -561,7 +561,7 @@ def test_addReceipts_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.addReceipts([sample_receipt])
+        client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -588,7 +588,7 @@ def test_addReceipts_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.addReceipts([sample_receipt])
+        client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -616,7 +616,7 @@ def test_addReceipts_raises_clienterror(
         ),
     )
     with pytest.raises(Exception, match="Error adding receipts: "):
-        client.addReceipts([sample_receipt])
+        client.add_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
 
@@ -632,13 +632,13 @@ def test_updateReceipt_success(dynamodb_table, sample_receipt):
     Tests happy path for updateReceipt.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
+    client.add_receipt(sample_receipt)
 
     # Modify something
     sample_receipt.raw_s3_key = "new/path"
-    client.updateReceipt(sample_receipt)
+    client.update_receipt(sample_receipt)
 
-    updated = client.getReceipt(
+    updated = client.get_receipt(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
     assert updated.raw_s3_key == "new/path"
@@ -656,7 +656,7 @@ def test_updateReceipt_raises_value_error_receipt_none(
     with pytest.raises(
         ValueError, match="Receipt parameter is required and cannot be None."
     ):
-        client.updateReceipt(None)  # type: ignore
+        client.update_receipt(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -671,7 +671,7 @@ def test_updateReceipt_raises_value_error_receipt_not_instance(
     with pytest.raises(
         ValueError, match="receipt must be an instance of the Receipt class."
     ):
-        client.updateReceipt("not-a-receipt")  # type: ignore
+        client.update_receipt("not-a-receipt")  # type: ignore
 
 
 @pytest.mark.integration
@@ -697,7 +697,7 @@ def test_updateReceipt_raises_conditional_check_failed(
     )
 
     with pytest.raises(ValueError, match="does not exist"):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -724,7 +724,7 @@ def test_updateReceipt_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -751,7 +751,7 @@ def test_updateReceipt_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -780,7 +780,7 @@ def test_updateReceipt_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -807,7 +807,7 @@ def test_updateReceipt_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
 
@@ -835,7 +835,7 @@ def test_updateReceipt_raises_clienterror(
         ),
     )
     with pytest.raises(Exception, match="Error updating receipt: "):
-        client.updateReceipt(sample_receipt)
+        client.update_receipt(sample_receipt)
 
     mock_put.assert_called_once()
 
@@ -853,14 +853,14 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
             "receipt_id": sample_receipt.receipt_id + 1,
         }
     )
-    client.addReceipts([r1, r2])
+    client.add_receipts([r1, r2])
 
     # Now update them
     r1.raw_s3_key = "updated/path/1"
     r2.raw_s3_key = "updated/path/2"
-    client.updateReceipts([r1, r2])
+    client.update_receipts([r1, r2])
 
-    stored, _ = client.listReceipts()
+    stored, _ = client.list_receipts()
     assert len(stored) == 2
     # Confirm the updated s3_keys
     for item in stored:
@@ -882,7 +882,7 @@ def test_updateReceipts_raises_value_error_receipts_none(
     with pytest.raises(
         ValueError, match="Receipts parameter is required and cannot be None."
     ):
-        client.updateReceipts(None)  # type: ignore
+        client.update_receipts(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -897,7 +897,7 @@ def test_updateReceipts_raises_value_error_receipts_not_list(
     with pytest.raises(
         ValueError, match="receipts must be a list of Receipt instances."
     ):
-        client.updateReceipts("not-a-list")  # type: ignore
+        client.update_receipts("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -913,7 +913,7 @@ def test_updateReceipts_raises_value_error_receipts_not_list_of_receipts(
         ValueError,
         match="All receipts must be instances of the Receipt class.",
     ):
-        client.updateReceipts([sample_receipt, "not-a-receipt"])
+        client.update_receipts([sample_receipt, "not-a-receipt"])
 
 
 @pytest.mark.integration
@@ -939,7 +939,7 @@ def test_updateReceipts_raises_clienterror_conditional_check_failed(
         ),
     )
     with pytest.raises(ValueError, match="One or more receipts do not exist"):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -966,7 +966,7 @@ def test_updateReceipts_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -993,7 +993,7 @@ def test_updateReceipts_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -1022,7 +1022,7 @@ def test_updateReceipts_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -1049,7 +1049,7 @@ def test_updateReceipts_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
 
@@ -1076,7 +1076,7 @@ def test_updateReceipts_raises_client_error(
     )
 
     with pytest.raises(ValueError, match="Error updating receipts"):
-        client.updateReceipts([sample_receipt])
+        client.update_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
 
@@ -1092,10 +1092,10 @@ def test_deleteReceipt_success(dynamodb_table, sample_receipt):
     Tests happy path for deleteReceipt.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
+    client.add_receipt(sample_receipt)
 
-    client.deleteReceipt(sample_receipt)
-    receipts, _ = client.listReceipts()
+    client.delete_receipt(sample_receipt)
+    receipts, _ = client.list_receipts()
     assert sample_receipt not in receipts, "Receipt should be deleted."
 
 
@@ -1111,7 +1111,7 @@ def test_deleteReceipt_raises_value_error_receipt_none(
     with pytest.raises(
         ValueError, match="Receipt parameter is required and cannot be None."
     ):
-        client.deleteReceipt(None)  # type: ignore
+        client.delete_receipt(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1126,7 +1126,7 @@ def test_deleteReceipt_raises_value_error_receipt_not_instance(
     with pytest.raises(
         ValueError, match="receipt must be an instance of the Receipt class."
     ):
-        client.deleteReceipt("not-a-receipt")  # type: ignore
+        client.delete_receipt("not-a-receipt")  # type: ignore
 
 
 @pytest.mark.integration
@@ -1152,7 +1152,7 @@ def test_deleteReceipt_raises_conditional_check_failed(
     )
 
     with pytest.raises(ValueError, match="does not exist"):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1179,7 +1179,7 @@ def test_deleteReceipt_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1206,7 +1206,7 @@ def test_deleteReceipt_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1235,7 +1235,7 @@ def test_deleteReceipt_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1262,7 +1262,7 @@ def test_deleteReceipt_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1289,7 +1289,7 @@ def test_deleteReceipt_raises_client_error(
         ),
     )
     with pytest.raises(ValueError, match="Error deleting receipt"):
-        client.deleteReceipt(sample_receipt)
+        client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
 
@@ -1306,10 +1306,10 @@ def test_deleteReceipts_success(dynamodb_table, sample_receipt):
             "receipt_id": sample_receipt.receipt_id + 1,
         }
     )
-    client.addReceipts([r1, r2])
+    client.add_receipts([r1, r2])
 
-    client.deleteReceipts([r1, r2])
-    receipts, _ = client.listReceipts()
+    client.delete_receipts([r1, r2])
+    receipts, _ = client.list_receipts()
     assert not receipts, "All receipts should be deleted."
 
 
@@ -1325,7 +1325,7 @@ def test_deleteReceipts_raises_value_error_receipts_none(
     with pytest.raises(
         ValueError, match="Receipts parameter is required and cannot be None."
     ):
-        client.deleteReceipts(None)  # type: ignore
+        client.delete_receipts(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1340,7 +1340,7 @@ def test_deleteReceipts_raises_value_error_receipts_not_list(
     with pytest.raises(
         ValueError, match="receipts must be a list of Receipt instances."
     ):
-        client.deleteReceipts("not-a-list")  # type: ignore
+        client.delete_receipts("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -1356,7 +1356,7 @@ def test_deleteReceipts_raises_value_error_receipts_not_list_of_receipts(
         ValueError,
         match="All receipts must be instances of the Receipt class.",
     ):
-        client.deleteReceipts([sample_receipt, "not-a-receipt"])
+        client.delete_receipts([sample_receipt, "not-a-receipt"])
 
 
 @pytest.mark.integration
@@ -1382,7 +1382,7 @@ def test_deleteReceipts_raises_clienterror_conditional_check_failed(
         ),
     )
     with pytest.raises(ValueError, match="One or more receipts do not exist"):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
 
@@ -1409,7 +1409,7 @@ def test_deleteReceipts_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
 
@@ -1436,7 +1436,7 @@ def test_deleteReceipts_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
 
@@ -1465,7 +1465,7 @@ def test_deleteReceipts_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
 
@@ -1492,7 +1492,7 @@ def test_deleteReceipts_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
 
@@ -1521,7 +1521,7 @@ def test_deleteReceipts_raises_client_error(
     )
 
     with pytest.raises(ValueError, match="Error deleting receipts"):
-        client.deleteReceipts([sample_receipt])
+        client.delete_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
 
@@ -1537,8 +1537,8 @@ def test_getReceipt_success(dynamodb_table, sample_receipt):
     Tests retrieving a single receipt.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
-    retrieved = client.getReceipt(
+    client.add_receipt(sample_receipt)
+    retrieved = client.get_receipt(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
     assert retrieved == sample_receipt
@@ -1556,7 +1556,7 @@ def test_getReceipt_raises_value_error_image_id_none(
     with pytest.raises(
         ValueError, match="Image ID is required and cannot be None."
     ):
-        client.getReceipt(None, sample_receipt.receipt_id)
+        client.get_receipt(None, sample_receipt.receipt_id)
 
 
 @pytest.mark.integration
@@ -1571,7 +1571,7 @@ def test_getReceipt_raises_value_error_receipt_id_none(
     with pytest.raises(
         ValueError, match="Receipt ID is required and cannot be None."
     ):
-        client.getReceipt(sample_receipt.image_id, None)
+        client.get_receipt(sample_receipt.image_id, None)
 
 
 @pytest.mark.integration
@@ -1584,7 +1584,7 @@ def test_getReceipt_raises_value_error_image_id_not_uuid(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
-        client.getReceipt("not-a-uuid", sample_receipt.receipt_id)
+        client.get_receipt("not-a-uuid", sample_receipt.receipt_id)
 
 
 @pytest.mark.integration
@@ -1597,7 +1597,7 @@ def test_getReceipt_raises_value_error_receipt_id_not_int(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="Receipt ID must be an integer."):
-        client.getReceipt(sample_receipt.image_id, "not-an-int")
+        client.get_receipt(sample_receipt.image_id, "not-an-int")
 
 
 @pytest.mark.integration
@@ -1612,7 +1612,7 @@ def test_getReceipt_raises_value_error_receipt_id_negative(
     with pytest.raises(
         ValueError, match="Receipt ID must be a positive integer."
     ):
-        client.getReceipt(sample_receipt.image_id, -1)
+        client.get_receipt(sample_receipt.image_id, -1)
 
 
 @pytest.mark.integration
@@ -1622,7 +1622,7 @@ def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
 
 
 @pytest.mark.integration
@@ -1648,7 +1648,7 @@ def test_getReceipt_raises_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
 
@@ -1675,7 +1675,7 @@ def test_getReceipt_raises_validation_exception(
         ),
     )
     with pytest.raises(Exception, match="Validation error"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
 
@@ -1702,7 +1702,7 @@ def test_getReceipt_raises_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
 
@@ -1729,7 +1729,7 @@ def test_getReceipt_raises_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
 
@@ -1756,7 +1756,7 @@ def test_getReceipt_raises_client_error(
         ),
     )
     with pytest.raises(Exception, match="Error getting receipt"):
-        client.getReceipt(sample_receipt.image_id, sample_receipt.receipt_id)
+        client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
 
@@ -1774,12 +1774,12 @@ def test_getReceiptDetails_success(
     letters, etc.)
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
-    client.addReceiptWords([sample_receipt_word])
-    client.addReceiptWordTags([sample_receipt_word_tag])
-    client.addReceiptLetters([sample_receipt_letter])
+    client.add_receipt(sample_receipt)
+    client.add_receipt_words([sample_receipt_word])
+    client.add_receipt_word_tags([sample_receipt_word_tag])
+    client.add_receipt_letters([sample_receipt_letter])
 
-    details = client.getReceiptDetails(
+    details = client.get_receipt_details(
         sample_receipt.image_id, sample_receipt.receipt_id
     )
 
@@ -1812,16 +1812,16 @@ def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
     Tests listing all receipts without a limit.
     """
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(sample_receipt)
+    client.add_receipt(sample_receipt)
     r2 = Receipt(
         **{
             **sample_receipt.__dict__,
             "receipt_id": sample_receipt.receipt_id + 1,
         }
     )
-    client.addReceipt(r2)
+    client.add_receipt(r2)
 
-    receipts, lek = client.listReceipts()
+    receipts, lek = client.list_receipts()
     assert len(receipts) == 2
     assert sample_receipt in receipts
     assert r2 in receipts
@@ -1849,7 +1849,7 @@ def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
         client._client, "query", side_effect=[first_page, second_page]
     )
 
-    receipts, lek = client.listReceipts(limit=10)
+    receipts, lek = client.list_receipts(limit=10)
     assert len(receipts) == 2  # 1 from first page, 1 from second page
     assert lek is None
     assert mock_query.call_count == 2
@@ -1885,7 +1885,7 @@ def test_listReceipts_with_starting_LEK(
     )
 
     # Call listReceipts with limit=5 and starting LEK.
-    receipts, returned_lek = client.listReceipts(
+    receipts, returned_lek = client.list_receipts(
         limit=5, lastEvaluatedKey=start_lek
     )
 
@@ -1931,7 +1931,7 @@ def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     )
 
     # Call listReceipts with a limit of 3
-    receipts, lek = client.listReceipts(limit=limit)
+    receipts, lek = client.list_receipts(limit=limit)
 
     # The function should trim the items to exactly the limit
     assert (
@@ -1955,9 +1955,9 @@ def test_listReceipts_invalid_limit(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="Limit must be an integer"):
-        client.listReceipts(limit="not-an-int")
+        client.list_receipts(limit="not-an-int")
     with pytest.raises(ValueError, match="Limit must be greater than 0"):
-        client.listReceipts(limit=0)
+        client.list_receipts(limit=0)
 
 
 @pytest.mark.integration
@@ -1984,7 +1984,7 @@ def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="LastEvaluatedKey"):
-        client.listReceipts(lastEvaluatedKey=invalid_lek)
+        client.list_receipts(lastEvaluatedKey=invalid_lek)
 
 
 @pytest.mark.integration
@@ -2006,7 +2006,7 @@ def test_listReceipts_raises_resource_not_found(
     with pytest.raises(
         Exception, match="Could not list receipts from the database"
     ):
-        client.listReceipts()
+        client.list_receipts()
     mock_query.assert_called_once()
 
 
@@ -2027,7 +2027,7 @@ def test_listReceipts_raises_throughput(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.listReceipts()
+        client.list_receipts()
     mock_query.assert_called_once()
 
 
@@ -2050,7 +2050,7 @@ def test_listReceipts_raises_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.listReceipts()
+        client.list_receipts()
     mock_query.assert_called_once()
 
 
@@ -2071,7 +2071,7 @@ def test_listReceipts_raises_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.listReceipts()
+        client.list_receipts()
     mock_query.assert_called_once()
 
 
@@ -2094,7 +2094,7 @@ def test_listReceipts_raises_unknown_error(
     with pytest.raises(
         Exception, match="Could not list receipts from the database"
     ):
-        client.listReceipts()
+        client.list_receipts()
     mock_query.assert_called_once()
 
 
@@ -2113,11 +2113,11 @@ def test_listReceiptDetails_success(
     word_labels = sample_receipt_word_labels
 
     client = DynamoClient(dynamodb_table)
-    client.addReceipt(receipt)
-    client.addReceiptWords(receipt_words)
-    client.addReceiptWordLabels(word_labels)
+    client.add_receipt(receipt)
+    client.add_receipt_words(receipt_words)
+    client.add_receipt_word_labels(word_labels)
 
-    receipt_details, last_evaluated_key = client.listReceiptDetails()
+    receipt_details, last_evaluated_key = client.list_receipt_details()
 
     # Verify the structure of the returned data
     assert isinstance(receipt_details, dict)

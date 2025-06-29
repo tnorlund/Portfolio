@@ -34,7 +34,7 @@ def test_word_add_no_tags(dynamodb_table: Literal["MyMockedTable"]):
     word = Word(**correct_word_params)
 
     # Act
-    client.addWord(word)
+    client.add_word(word)
 
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -52,9 +52,9 @@ def test_word_add_error(dynamodb_table: Literal["MyMockedTable"]):
     word = Word(**correct_word_params)
 
     # Act
-    client.addWord(word)
+    client.add_word(word)
     with pytest.raises(ValueError):
-        client.addWord(word)
+        client.add_word(word)
 
 
 @pytest.mark.integration
@@ -67,7 +67,7 @@ def test_word_add_all(dynamodb_table: Literal["MyMockedTable"]):
     word2 = Word(**word2_params)
 
     # Act
-    client.addWords([word1, word2])
+    client.add_words([word1, word2])
 
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -90,14 +90,14 @@ def test_word_delete(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     word = Word(**correct_word_params)
-    client.addWord(word)
+    client.add_word(word)
 
     # Act
-    client.deleteWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
+    client.delete_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getWord("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
+        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
 
 @pytest.mark.integration
@@ -108,7 +108,7 @@ def test_word_delete_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.deleteWord(1, 2, 3)
+        client.delete_word(1, 2, 3)
 
 
 @pytest.mark.integration
@@ -119,17 +119,17 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
     word2_params = correct_word_params.copy()
     word2_params["word_id"] = 4
     word2 = Word(**word2_params)
-    client.addWord(word1)
-    client.addWord(word2)
+    client.add_word(word1)
+    client.add_word(word2)
 
     # Act
-    client.deleteWordsFromLine(1, 1)
+    client.delete_words_from_line(1, 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getWord(1, 1, 1)
+        client.get_word(1, 1, 1)
     with pytest.raises(ValueError):
-        client.getWord(1, 1, 2)
+        client.get_word(1, 1, 2)
 
 
 @pytest.mark.integration
@@ -137,10 +137,10 @@ def test_word_get(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     word = Word(**correct_word_params)
-    client.addWord(word)
+    client.add_word(word)
 
     # Act
-    retrieved_word = client.getWord(
+    retrieved_word = client.get_word(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3
     )
 
@@ -156,7 +156,7 @@ def test_word_get_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.getWord(1, 2, 3)
+        client.get_word(1, 2, 3)
 
 
 @pytest.mark.integration
@@ -167,10 +167,10 @@ def test_word_get_all(dynamodb_table: Literal["MyMockedTable"]):
         Word(**correct_word_params),
         Word(**{**correct_word_params, "word_id": 4}),
     ]
-    client.addWords(words)
+    client.add_words(words)
 
     # Act
-    words_retrieved = client.getWords([words[0].key(), words[1].key()])
+    words_retrieved = client.get_words([words[0].key(), words[1].key()])
 
     # Assert
     assert words_retrieved == words
@@ -187,7 +187,7 @@ def test_word_get_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
     # A key missing 'PK'
     bad_keys_missing_pk = [{"SK": {"S": "LINE#00002#WORD#00003"}}]
     with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
-        client.getWords(bad_keys_missing_pk)
+        client.get_words(bad_keys_missing_pk)
 
     # A key with PK not starting with 'IMAGE#'
     bad_keys_wrong_prefix = [
@@ -197,7 +197,7 @@ def test_word_get_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
         }
     ]
     with pytest.raises(ValueError, match="PK must start with 'IMAGE#'"):
-        client.getWords(bad_keys_wrong_prefix)
+        client.get_words(bad_keys_wrong_prefix)
 
     # A key with SK missing 'WORD'
     bad_keys_no_word = [
@@ -207,7 +207,7 @@ def test_word_get_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
         }
     ]
     with pytest.raises(ValueError, match="SK must contain 'WORD'"):
-        client.getWords(bad_keys_no_word)
+        client.get_words(bad_keys_no_word)
 
 
 @pytest.mark.integration
@@ -218,10 +218,10 @@ def test_word_list(dynamodb_table: Literal["MyMockedTable"]):
         Word(**correct_word_params),
         Word(**{**correct_word_params, "word_id": 4}),
     ]
-    client.addWords(words)
+    client.add_words(words)
 
     # Act
-    words_retrieved, _ = client.listWords()
+    words_retrieved, _ = client.list_words()
 
     # Assert
     assert words_retrieved == words
@@ -236,12 +236,12 @@ def test_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
         Word(**{**correct_word_params, "word_id": 1}),
         Word(**{**correct_word_params, "word_id": 2}),
     ]
-    client.addWords(words)
+    client.add_words(words)
     # sort words by id
     words = sorted(words, key=lambda x: x.word_id)
 
     # Act
-    response = client.listWordsFromLine(
+    response = client.list_words_from_line(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2
     )
 
@@ -257,15 +257,15 @@ def test_updateWords_success(dynamodb_table):
     client = DynamoClient(dynamodb_table)
     word1 = Word(**correct_word_params)
     word2 = Word(**{**correct_word_params, "word_id": 4})
-    client.addWords([word1, word2])
+    client.add_words([word1, word2])
 
     # Now update them
     word1.text = "updated_text_1"
     word2.text = "updated_text_2"
-    client.updateWords([word1, word2])
+    client.update_words([word1, word2])
 
     # Verify updates
-    retrieved_words = client.getWords([word1.key(), word2.key()])
+    retrieved_words = client.get_words([word1.key(), word2.key()])
     assert len(retrieved_words) == 2
     for word in retrieved_words:
         if word.word_id == word1.word_id:
@@ -283,7 +283,7 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
     with pytest.raises(
         ValueError, match="Words parameter is required and cannot be None."
     ):
-        client.updateWords(None)  # type: ignore
+        client.update_words(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -294,7 +294,7 @@ def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="Words must be provided as a list."):
-        client.updateWords("not-a-list")  # type: ignore
+        client.update_words("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -312,7 +312,7 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
         match="All items in the words list must be instances of the Word "
         "class.",
     ):
-        client.updateWords([word, "not-a-word"])  # type: ignore
+        client.update_words([word, "not-a-word"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -339,7 +339,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
         ),
     )
     with pytest.raises(ValueError, match="One or more words do not exist"):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
 
 
@@ -367,7 +367,7 @@ def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
 
 
@@ -395,7 +395,7 @@ def test_updateWords_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
 
 
@@ -425,7 +425,7 @@ def test_updateWords_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
 
 
@@ -451,7 +451,7 @@ def test_updateWords_raises_clienterror_access_denied(dynamodb_table, mocker):
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
 
 
@@ -476,5 +476,5 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
         ),
     )
     with pytest.raises(ValueError, match="Error updating words"):
-        client.updateWords([word])
+        client.update_words([word])
     mock_transact.assert_called_once()
