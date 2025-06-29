@@ -92,4 +92,38 @@ The final pass uses the OpenAI Agents SDK to resolve remaining ambiguous or inco
 - Apply logical rules (e.g., label propagation across lines)
 - Chain multiple reasoning steps before finalizing a label
 
+## AI Usage Tracking
+
+This package includes comprehensive AI usage tracking with context manager patterns for automatic cost monitoring.
+
+### Context Manager Patterns
+
+```python
+from receipt_label.utils import ai_usage_context, ai_usage_tracked
+
+# Decorator for automatic tracking
+@ai_usage_tracked(operation_type="receipt_processing")
+def process_receipt(receipt_id: str):
+    # Function is automatically tracked
+    result = openai_client.chat.completions.create(...)
+    return result
+
+# Context manager for complex operations
+with ai_usage_context("batch_processing", job_id="job-123") as tracker:
+    for receipt in receipts:
+        process_receipt(receipt)
+    # Metrics automatically flushed
+```
+
+### Features
+
+- **Automatic tracking** via decorators
+- **Context propagation** across function calls
+- **Error recovery** - metrics flushed even on exceptions
+- **Partial failure handling** for batch operations
+- **Thread-safe** concurrent operations
+- **< 5ms overhead** per operation
+
+See [Context Manager Documentation](docs/context_managers.md) for detailed usage.
+
 This stage is ideal for advanced logic, correction propagation, and multi-hop validation workflows.
