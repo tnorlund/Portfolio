@@ -518,7 +518,7 @@ class _ReceiptWord(DynamoClientProtocol):
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                     ":sk_end": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\\uffff#WORD#\\uffff"
+                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
                     },
                 },
             }

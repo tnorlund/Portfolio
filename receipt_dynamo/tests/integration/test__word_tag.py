@@ -31,10 +31,10 @@ def test_add_word_tag(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addWordTag(sample_word_tag)
+    client.add_word_tag(sample_word_tag)
 
     # Assert
-    retrieved_tag = client.getWordTag(
+    retrieved_tag = client.get_word_tag(
         sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
@@ -49,11 +49,11 @@ def test_add_word_tag_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addWordTag(sample_word_tag)
+    client.add_word_tag(sample_word_tag)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addWordTag(sample_word_tag)
+        client.add_word_tag(sample_word_tag)
 
 
 @pytest.mark.integration
@@ -62,14 +62,14 @@ def test_update_word_tag(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addWordTag(sample_word_tag)
+    client.add_word_tag(sample_word_tag)
 
     # Act: Update the tag from "SampleTag" to "UpdatedTag"
     sample_word_tag.tag = "UpdatedTag"
-    client.updateWordTag(sample_word_tag)
+    client.update_word_tag(sample_word_tag)
 
     # Assert
-    retrieved_tag = client.getWordTag(
+    retrieved_tag = client.get_word_tag(
         sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
@@ -84,10 +84,10 @@ def test_delete_word_tag(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addWordTag(sample_word_tag)
+    client.add_word_tag(sample_word_tag)
 
     # Act
-    client.deleteWordTag(
+    client.delete_word_tag(
         sample_word_tag.image_id,
         sample_word_tag.line_id,
         sample_word_tag.word_id,
@@ -96,7 +96,7 @@ def test_delete_word_tag(
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getWordTag(
+        client.get_word_tag(
             sample_word_tag.image_id,
             sample_word_tag.line_id,
             sample_word_tag.word_id,
@@ -119,10 +119,10 @@ def test_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
         for i in range(1, 4)
     ]
     for t in tags:
-        client.addWordTag(t)
+        client.add_word_tag(t)
 
     # Act
-    returned_tags, _ = client.listWordTags()
+    returned_tags, _ = client.list_word_tags()
 
     # Assert
     for t in tags:
@@ -155,10 +155,10 @@ def test_word_tag_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     )
 
     for wt in same_image_tags + [different_image_tag]:
-        client.addWordTag(wt)
+        client.add_word_tag(wt)
 
     # Act
-    found_tags = client.listWordTagsFromImage(
+    found_tags = client.list_word_tags_from_image(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
 
@@ -215,10 +215,10 @@ def test_get_word_tags(
     # Arrange
     client = DynamoClient(dynamodb_table)
     # Add them all
-    client.addWordTags(sample_word_tags)
+    client.add_word_tags(sample_word_tags)
 
     # Act: Retrieve all WordTags with tag="FOO"
-    foo_tags = client.getWordTags("FOO")
+    foo_tags = client.get_word_tags("FOO")
 
     # Assert: We expect 3 items with tag=FOO
     # Convert objects to sets of (image_id, line_id, word_id, tag) to compare
@@ -234,7 +234,7 @@ def test_get_word_tags(
     assert foo_returned == foo_expected
 
     # Also check that "BAR" is distinct
-    bar_tags = client.getWordTags("BAR")
+    bar_tags = client.get_word_tags("BAR")
     bar_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"),
     }
@@ -251,7 +251,7 @@ def test_word_tag_get_no_results(dynamodb_table: Literal["MyMockedTable"]):
     """
     client = DynamoClient(dynamodb_table)
     # No items added
-    results = client.getWordTags("NONEXISTENT")
+    results = client.get_word_tags("NONEXISTENT")
     assert results == []
 
 
@@ -276,9 +276,9 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
             )
         )
 
-    client.addWordTags(big_list)
+    client.add_word_tags(big_list)
 
-    results = client.getWordTags("PAGE")
+    results = client.get_word_tags("PAGE")
     # Should retrieve all 30
     assert len(results) == 30
     # Compare sets
@@ -303,7 +303,7 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
         tag="AnotherTag",
         timestamp_added="2021-01-01T00:00:00",
     )
-    client.addWordTags([tag1, tag2])
+    client.add_word_tags([tag1, tag2])
 
     # Store the original keys before updating
     tag1.key()
@@ -314,7 +314,7 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
     tag2.tag = "UpdatedTag2"
 
     # First delete the old tags
-    client.deleteWordTags(
+    client.delete_word_tags(
         [
             WordTag(
                 image_id=tag1.image_id,
@@ -334,11 +334,11 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
     )
 
     # Then add the updated tags
-    client.addWordTags([tag1, tag2])
+    client.add_word_tags([tag1, tag2])
 
     # Verify updates - use getWordTags to find by tag value
-    tags_with_updated_tag1 = client.getWordTags("UpdatedTag1")
-    tags_with_updated_tag2 = client.getWordTags("UpdatedTag2")
+    tags_with_updated_tag1 = client.get_word_tags("UpdatedTag1")
+    tags_with_updated_tag2 = client.get_word_tags("UpdatedTag2")
 
     assert len(tags_with_updated_tag1) == 1
     assert len(tags_with_updated_tag2) == 1
@@ -356,7 +356,7 @@ def test_updateWordTags_raises_value_error_word_tags_none(dynamodb_table):
     with pytest.raises(
         ValueError, match="WordTags parameter is required and cannot be None."
     ):
-        client.updateWordTags(None)  # type: ignore
+        client.update_word_tags(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -369,7 +369,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
     with pytest.raises(
         ValueError, match="WordTags must be provided as a list."
     ):
-        client.updateWordTags("not-a-list")  # type: ignore
+        client.update_word_tags("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -386,7 +386,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(
         match="All items in the word_tags list must be instances of the "
         "WordTag class.",
     ):
-        client.updateWordTags([sample_word_tag, "not-a-word-tag"])
+        client.update_word_tags([sample_word_tag, "not-a-word-tag"])
 
 
 @pytest.mark.integration
@@ -412,7 +412,7 @@ def test_updateWordTags_raises_clienterror_conditional_check_failed(
         ),
     )
     with pytest.raises(ValueError, match="One or more word tags do not exist"):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
@@ -439,7 +439,7 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
@@ -466,7 +466,7 @@ def test_updateWordTags_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
@@ -495,7 +495,7 @@ def test_updateWordTags_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
@@ -522,7 +522,7 @@ def test_updateWordTags_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
@@ -548,5 +548,5 @@ def test_updateWordTags_raises_client_error(
         ),
     )
     with pytest.raises(ValueError, match="Error updating word tags"):
-        client.updateWordTags([sample_word_tag])
+        client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
