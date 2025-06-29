@@ -87,7 +87,7 @@ def test_addReceiptStructureAnalysis_success(
     )
 
     # Act
-    client.addReceiptStructureAnalysis(analysis)
+    client.add_receipt_structure_analysis(analysis)
 
     # Assert - Verify the item was added by checking it
     response = client._client.get_item(
@@ -140,7 +140,9 @@ def test_addReceiptStructureAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.addReceiptStructureAnalysis(sample_receipt_structure_analysis)
+        client.add_receipt_structure_analysis(
+            sample_receipt_structure_analysis
+        )
 
     # Verify put_item was called
     mock_put_item.assert_called_once()
@@ -176,7 +178,7 @@ def test_addReceiptStructureAnalyses_success(
         analyses.append(analysis)
 
     # Act
-    client.addReceiptStructureAnalyses(analyses)
+    client.add_receipt_structure_analyses(analyses)
 
     # Assert - Verify some items were added by checking them
     for idx in [0, 1, 2]:
@@ -259,7 +261,7 @@ def test_addReceiptStructureAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.addReceiptStructureAnalyses(analyses)
+        client.add_receipt_structure_analyses(analyses)
 
     # Verify batch_write_item was called
     mock_batch_write.assert_called_once()
@@ -289,11 +291,11 @@ def test_updateReceiptStructureAnalysis_success(
     )
 
     # Add the analysis first
-    client.addReceiptStructureAnalysis(analysis)
+    client.add_receipt_structure_analysis(analysis)
 
     # Update the analysis
     analysis.overall_reasoning = "Updated analysis"
-    client.updateReceiptStructureAnalysis(analysis)
+    client.update_receipt_structure_analysis(analysis)
 
     # Assert - Verify the item was updated by checking it
     response = client._client.get_item(
@@ -337,7 +339,7 @@ def test_updateReceiptStructureAnalyses_success(
             version="1.0.0",
         )
         analyses.append(analysis)
-        client.addReceiptStructureAnalysis(analysis)
+        client.add_receipt_structure_analysis(analysis)
 
     # Update the analyses
     updated_analyses = []
@@ -346,7 +348,7 @@ def test_updateReceiptStructureAnalyses_success(
         updated_analyses.append(analysis)
 
     # Act - Update the analyses
-    client.updateReceiptStructureAnalyses(updated_analyses)
+    client.update_receipt_structure_analyses(updated_analyses)
 
     # Assert - Verify some items were updated by checking them
     for idx in [0, 1, 2]:
@@ -453,7 +455,7 @@ def test_updateReceiptStructureAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.updateReceiptStructureAnalyses(analyses)
+        client.update_receipt_structure_analyses(analyses)
 
     # Verify batch_write_item was called
     mock_batch_write.assert_called_once()
@@ -496,17 +498,17 @@ def test_listReceiptStructureAnalysesFromReceipt_success(
         analyses.append(analysis)
 
     # Clean up any existing analyses
-    existing_analyses = client.listReceiptStructureAnalysesFromReceipt(
+    existing_analyses = client.list_receipt_structure_analyses_from_receipt(
         receipt_id=receipt_id, image_id=image_id
     )
     if existing_analyses:
-        client.deleteReceiptStructureAnalyses(existing_analyses)
+        client.delete_receipt_structure_analyses(existing_analyses)
 
     # Add all analyses at once
-    client.addReceiptStructureAnalyses(analyses)
+    client.add_receipt_structure_analyses(analyses)
 
     # Act
-    result = client.listReceiptStructureAnalysesFromReceipt(
+    result = client.list_receipt_structure_analyses_from_receipt(
         receipt_id=receipt_id, image_id=image_id
     )
 

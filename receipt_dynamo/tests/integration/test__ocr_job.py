@@ -38,10 +38,10 @@ def test_addOCRJob_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addOCRJob(sample_ocr_job)
+    client.add_ocr_job(sample_ocr_job)
 
     # Assert
-    retrieved_job = client.getOCRJob(
+    retrieved_job = client.get_ocr_job(
         sample_ocr_job.image_id, sample_ocr_job.job_id
     )
     assert retrieved_job == sample_ocr_job
@@ -53,11 +53,11 @@ def test_addOCRJob_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addOCRJob(sample_ocr_job)
+    client.add_ocr_job(sample_ocr_job)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addOCRJob(sample_ocr_job)
+        client.add_ocr_job(sample_ocr_job)
 
 
 @pytest.mark.integration
@@ -81,7 +81,7 @@ def test_addOCRJob_invalid_parameters(
     # Arrange
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addOCRJob(invalid_input)  # type: ignore
+        client.add_ocr_job(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -145,7 +145,7 @@ def test_addOCRJob_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addOCRJob(sample_ocr_job)
+        client.add_ocr_job(sample_ocr_job)
     mock_put.assert_called_once()
 
 
