@@ -48,7 +48,7 @@ def test_addReceiptValidationResult_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptValidationResult(sample_receipt_validation_result)
+    client.add_receipt_validation_result(sample_receipt_validation_result)
 
     # Assert
     # Verify the item was added by retrieving it
@@ -77,7 +77,7 @@ def test_addReceiptValidationResult_duplicate_raises(
     client = DynamoClient(dynamodb_table)
 
     # Add the result first time
-    client.addReceiptValidationResult(sample_receipt_validation_result)
+    client.add_receipt_validation_result(sample_receipt_validation_result)
 
     # Act & Assert
     with pytest.raises(
@@ -85,7 +85,7 @@ def test_addReceiptValidationResult_duplicate_raises(
         match=f"ReceiptValidationResult with field {sample_receipt_validation_result.field_name} and index {sample_receipt_validation_result.result_index} already exists",
     ):
         # Try to add the same result again
-        client.addReceiptValidationResult(sample_receipt_validation_result)
+        client.add_receipt_validation_result(sample_receipt_validation_result)
 
 
 @pytest.mark.integration
@@ -115,7 +115,7 @@ def test_addReceiptValidationResult_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptValidationResult(invalid_input)
+        client.add_receipt_validation_result(invalid_input)
 
 
 @pytest.mark.integration
@@ -183,7 +183,7 @@ def test_addReceiptValidationResult_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptValidationResult(sample_receipt_validation_result)
+        client.add_receipt_validation_result(sample_receipt_validation_result)
 
 
 # Now let's implement tests for addReceiptValidationResults
@@ -210,7 +210,7 @@ def test_addReceiptValidationResults_success(
     validation_results = [result1, result2, result3]
 
     # Act
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Assert
     # Verify each result was added correctly
@@ -245,7 +245,7 @@ def test_addReceiptValidationResults_with_large_batch(
         validation_results.append(result)
 
     # Act
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Assert
     # Verify each result was added correctly
@@ -290,7 +290,11 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
             return {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": validation_results[0].to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": validation_results[0].to_item()
+                            }
+                        }
                     ]
                 }
             }
@@ -305,7 +309,7 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
     )
 
     # Act
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Assert
     # Verify batch_write_item was called at least twice (once for initial write, once for retry)
@@ -343,7 +347,7 @@ def test_addReceiptValidationResults_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptValidationResults(invalid_input)
+        client.add_receipt_validation_results(invalid_input)
 
 
 @pytest.mark.integration
@@ -413,11 +417,13 @@ def test_addReceiptValidationResults_client_errors(
     )
 
     # Mock batch_write_item to raise the client error
-    mocker.patch.object(client._client, "batch_write_item", side_effect=client_error)
+    mocker.patch.object(
+        client._client, "batch_write_item", side_effect=client_error
+    )
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error_message):
-        client.addReceiptValidationResults(validation_results)
+        client.add_receipt_validation_results(validation_results)
 
 
 # Now let's implement tests for updateReceiptValidationResult
@@ -431,7 +437,7 @@ def test_updateReceiptValidationResult_success(
     client = DynamoClient(dynamodb_table)
 
     # First add the result
-    client.addReceiptValidationResult(sample_receipt_validation_result)
+    client.add_receipt_validation_result(sample_receipt_validation_result)
 
     # Modify the result
     updated_result = deepcopy(sample_receipt_validation_result)
@@ -439,7 +445,7 @@ def test_updateReceiptValidationResult_success(
     updated_result.reasoning = "Updated reasoning for testing"
 
     # Act
-    client.updateReceiptValidationResult(updated_result)
+    client.update_receipt_validation_result(updated_result)
 
     # Assert
     # Verify the item was updated correctly
@@ -487,7 +493,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptValidationResult(invalid_input)
+        client.update_receipt_validation_result(invalid_input)
 
 
 @pytest.mark.integration
@@ -559,7 +565,9 @@ def test_updateReceiptValidationResult_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.updateReceiptValidationResult(sample_receipt_validation_result)
+        client.update_receipt_validation_result(
+            sample_receipt_validation_result
+        )
 
 
 # Now let's implement tests for updateReceiptValidationResults
@@ -586,7 +594,7 @@ def test_updateReceiptValidationResults_success(
     validation_results = [result1, result2, result3]
 
     # First add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Create updated versions
     updated_results = []
@@ -597,7 +605,7 @@ def test_updateReceiptValidationResults_success(
         updated_results.append(updated)
 
     # Act
-    client.updateReceiptValidationResults(updated_results)
+    client.update_receipt_validation_results(updated_results)
 
     # Assert
     # Verify each result was updated correctly
@@ -633,7 +641,7 @@ def test_updateReceiptValidationResults_with_large_batch(
         validation_results.append(result)
 
     # First add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Create updated versions
     updated_results = []
@@ -643,7 +651,7 @@ def test_updateReceiptValidationResults_with_large_batch(
         updated_results.append(updated)
 
     # Act
-    client.updateReceiptValidationResults(updated_results)
+    client.update_receipt_validation_results(updated_results)
 
     # Assert
     # Verify each result was updated correctly (check a sample)
@@ -694,7 +702,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptValidationResults(invalid_input)
+        client.update_receipt_validation_results(invalid_input)
 
 
 @pytest.mark.integration
@@ -786,7 +794,7 @@ def test_updateReceiptValidationResults_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.updateReceiptValidationResults(validation_results)
+        client.update_receipt_validation_results(validation_results)
 
 
 # Now let's implement tests for deleteReceiptValidationResult
@@ -800,7 +808,7 @@ def test_deleteReceiptValidationResult_success(
     client = DynamoClient(dynamodb_table)
 
     # First add the result
-    client.addReceiptValidationResult(sample_receipt_validation_result)
+    client.add_receipt_validation_result(sample_receipt_validation_result)
 
     # Verify it was added
     response = client._client.get_item(
@@ -815,7 +823,7 @@ def test_deleteReceiptValidationResult_success(
     assert "Item" in response
 
     # Act
-    client.deleteReceiptValidationResult(sample_receipt_validation_result)
+    client.delete_receipt_validation_result(sample_receipt_validation_result)
 
     # Assert
     # Verify the item was deleted
@@ -858,7 +866,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptValidationResult(invalid_input)
+        client.delete_receipt_validation_result(invalid_input)
 
 
 @pytest.mark.integration
@@ -922,11 +930,15 @@ def test_deleteReceiptValidationResult_client_errors(
     )
 
     # Mock delete_item to raise the client error
-    mocker.patch.object(client._client, "delete_item", side_effect=client_error)
+    mocker.patch.object(
+        client._client, "delete_item", side_effect=client_error
+    )
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.deleteReceiptValidationResult(sample_receipt_validation_result)
+        client.delete_receipt_validation_result(
+            sample_receipt_validation_result
+        )
 
 
 # Now let's implement tests for deleteReceiptValidationResults
@@ -952,7 +964,7 @@ def test_deleteReceiptValidationResults_success(
     validation_results = [result1, result2, result3]
 
     # First add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Verify they were added
     for result in validation_results:
@@ -968,7 +980,7 @@ def test_deleteReceiptValidationResults_success(
         assert "Item" in response
 
     # Act
-    client.deleteReceiptValidationResults(validation_results)
+    client.delete_receipt_validation_results(validation_results)
 
     # Assert
     # Verify all items were deleted
@@ -1016,7 +1028,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptValidationResults(invalid_input)
+        client.delete_receipt_validation_results(invalid_input)
 
 
 @pytest.mark.integration
@@ -1086,11 +1098,13 @@ def test_deleteReceiptValidationResults_client_errors(
     )
 
     # Mock batch_write_item to raise the client error
-    mocker.patch.object(client._client, "batch_write_item", side_effect=client_error)
+    mocker.patch.object(
+        client._client, "batch_write_item", side_effect=client_error
+    )
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.deleteReceiptValidationResults(validation_results)
+        client.delete_receipt_validation_results(validation_results)
 
 
 @pytest.mark.integration
@@ -1109,7 +1123,7 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
         validation_results.append(result)
 
     # First add the results so we can delete them
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Create a side effect that returns unprocessed items on first call, then succeeds
     def batch_write_side_effect(*args, **kwargs):
@@ -1134,7 +1148,7 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
     )
 
     # Act
-    client.deleteReceiptValidationResults(validation_results)
+    client.delete_receipt_validation_results(validation_results)
 
     # Assert
     # Verify batch_write_item was called at least twice (once for initial write, once for retry)
@@ -1157,7 +1171,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
         validation_results.append(result)
 
     # First add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Verify they were added
     for result in validation_results:
@@ -1173,7 +1187,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
         assert "Item" in response
 
     # Act
-    client.deleteReceiptValidationResults(validation_results)
+    client.delete_receipt_validation_results(validation_results)
 
     # Assert
     # Verify all items were deleted (check a sample)
@@ -1202,10 +1216,10 @@ def test_getReceiptValidationResult_success(
     client = DynamoClient(dynamodb_table)
 
     # First add the result
-    client.addReceiptValidationResult(sample_receipt_validation_result)
+    client.add_receipt_validation_result(sample_receipt_validation_result)
 
     # Act
-    result = client.getReceiptValidationResult(
+    result = client.get_receipt_validation_result(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -1241,7 +1255,7 @@ def test_getReceiptValidationResult_not_found(
         ValueError,
         match=f"ReceiptValidationResult with field {field_name} and index {result_index} not found",
     ):
-        client.getReceiptValidationResult(
+        client.get_receipt_validation_result(
             receipt_id=sample_receipt_validation_result.receipt_id,
             image_id=sample_receipt_validation_result.image_id,
             field_name=field_name,
@@ -1312,7 +1326,7 @@ def test_getReceiptValidationResult_invalid_parameters(
 
     # Act & Assert
     with pytest.raises((ValueError, AssertionError), match=expected_error):
-        client.getReceiptValidationResult(
+        client.get_receipt_validation_result(
             receipt_id=receipt_id,
             image_id=image_id,
             field_name=field_name,
@@ -1384,7 +1398,7 @@ def test_getReceiptValidationResult_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.getReceiptValidationResult(
+        client.get_receipt_validation_result(
             receipt_id=sample_receipt_validation_result.receipt_id,
             image_id=sample_receipt_validation_result.image_id,
             field_name=sample_receipt_validation_result.field_name,
@@ -1415,7 +1429,7 @@ def test_listReceiptValidationResults_success(
     result3.field_name = "tax_amount"
 
     # Add all the results
-    client.addReceiptValidationResults([result1, result2, result3])
+    client.add_receipt_validation_results([result1, result2, result3])
 
     # Mock the scan response since we'll get all results
     mock_scan = mocker.patch.object(client._client, "scan")
@@ -1426,7 +1440,7 @@ def test_listReceiptValidationResults_success(
     }
 
     # Act
-    results, last_key = client.listReceiptValidationResults()
+    results, last_key = client.list_receipt_validation_results()
 
     # Assert
     assert len(results) == 3
@@ -1458,7 +1472,7 @@ def test_listReceiptValidationResults_with_pagination(
         validation_results.append(result)
 
     # Add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Mock the scan response for pagination
     mock_scan = mocker.patch.object(client._client, "scan")
@@ -1513,14 +1527,16 @@ def test_listReceiptValidationResults_with_pagination(
     ]
 
     # Act - Get first page with limit of 3
-    page1_results, pagination_key1 = client.listReceiptValidationResults(limit=3)
+    page1_results, pagination_key1 = client.list_receipt_validation_results(
+        limit=3
+    )
 
     # Check pagination info from first page
     assert pagination_key1 is not None
     assert len(page1_results) == 3
 
     # Get second page
-    page2_results, pagination_key2 = client.listReceiptValidationResults(
+    page2_results, pagination_key2 = client.list_receipt_validation_results(
         limit=3, lastEvaluatedKey=pagination_key1
     )
 
@@ -1529,7 +1545,7 @@ def test_listReceiptValidationResults_with_pagination(
     assert len(page2_results) == 3
 
     # Get third page
-    page3_results, pagination_key3 = client.listReceiptValidationResults(
+    page3_results, pagination_key3 = client.list_receipt_validation_results(
         limit=3, lastEvaluatedKey=pagination_key2
     )
 
@@ -1538,7 +1554,7 @@ def test_listReceiptValidationResults_with_pagination(
     assert len(page3_results) == 3
 
     # Get fourth page (should be last with just 1 item)
-    page4_results, pagination_key4 = client.listReceiptValidationResults(
+    page4_results, pagination_key4 = client.list_receipt_validation_results(
         limit=3, lastEvaluatedKey=pagination_key3
     )
 
@@ -1573,7 +1589,7 @@ def test_listReceiptValidationResults_empty_results(
     }
 
     # Act
-    results, last_key = client.listReceiptValidationResults()
+    results, last_key = client.list_receipt_validation_results()
 
     # Assert
     assert len(results) == 0
@@ -1589,8 +1605,10 @@ def test_listReceiptValidationResults_with_negative_limit(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ParamValidationError, match="Invalid value for parameter Limit"):
-        client.listReceiptValidationResults(limit=-1)
+    with pytest.raises(
+        ParamValidationError, match="Invalid value for parameter Limit"
+    ):
+        client.list_receipt_validation_results(limit=-1)
 
 
 @pytest.mark.integration
@@ -1656,7 +1674,7 @@ def test_listReceiptValidationResults_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptValidationResults()
+        client.list_receipt_validation_results()
 
 
 # Now let's implement tests for listReceiptValidationResultsByType
@@ -1690,7 +1708,7 @@ def test_listReceiptValidationResultsByType_success(
     result4.type = "info"
 
     # Add all the results
-    client.addReceiptValidationResults([result1, result2, result3, result4])
+    client.add_receipt_validation_results([result1, result2, result3, result4])
 
     # Since GSI3 might not be available in the mocked DynamoDB,
     # we'll mock the query response
@@ -1705,7 +1723,9 @@ def test_listReceiptValidationResultsByType_success(
     mock_query.return_value = error_response
 
     # Act - Get results of type "error"
-    error_results, _ = client.listReceiptValidationResultsByType(result_type="error")
+    error_results, _ = client.list_receipt_validation_results_by_type(
+        result_type="error"
+    )
 
     # Assert
     assert len(error_results) == 2
@@ -1723,7 +1743,7 @@ def test_listReceiptValidationResultsByType_success(
     mock_query.return_value = warning_response
 
     # Act - Get results of type "warning"
-    warning_results, _ = client.listReceiptValidationResultsByType(
+    warning_results, _ = client.list_receipt_validation_results_by_type(
         result_type="warning"
     )
 
@@ -1741,7 +1761,9 @@ def test_listReceiptValidationResultsByType_success(
     mock_query.return_value = info_response
 
     # Act - Get results of type "info"
-    info_results, _ = client.listReceiptValidationResultsByType(result_type="info")
+    info_results, _ = client.list_receipt_validation_results_by_type(
+        result_type="info"
+    )
 
     # Assert
     assert len(info_results) == 1
@@ -1769,7 +1791,7 @@ def test_listReceiptValidationResultsByType_pagination(
         validation_results.append(result)
 
     # Add all the results
-    client.addReceiptValidationResults(validation_results)
+    client.add_receipt_validation_results(validation_results)
 
     # Since GSI3 might not be available in the mocked DynamoDB,
     # we'll mock the query response for pagination
@@ -1833,8 +1855,10 @@ def test_listReceiptValidationResultsByType_pagination(
     ]
 
     # Act - Get first page with limit of 3
-    page1_results, pagination_key1 = client.listReceiptValidationResultsByType(
-        result_type="error", limit=3
+    page1_results, pagination_key1 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3
+        )
     )
 
     # Check pagination info from first page
@@ -1842,8 +1866,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page1_results) == 3
 
     # Get second page
-    page2_results, pagination_key2 = client.listReceiptValidationResultsByType(
-        result_type="error", limit=3, lastEvaluatedKey=pagination_key1
+    page2_results, pagination_key2 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, lastEvaluatedKey=pagination_key1
+        )
     )
 
     # Check pagination info from second page
@@ -1851,8 +1877,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page2_results) == 3
 
     # Get third page
-    page3_results, pagination_key3 = client.listReceiptValidationResultsByType(
-        result_type="error", limit=3, lastEvaluatedKey=pagination_key2
+    page3_results, pagination_key3 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, lastEvaluatedKey=pagination_key2
+        )
     )
 
     # Check pagination info from third page
@@ -1860,8 +1888,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page3_results) == 3
 
     # Get fourth page (should be last with just 1 item)
-    page4_results, pagination_key4 = client.listReceiptValidationResultsByType(
-        result_type="error", limit=3, lastEvaluatedKey=pagination_key3
+    page4_results, pagination_key4 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, lastEvaluatedKey=pagination_key3
+        )
     )
 
     # Check pagination info from fourth page
@@ -1887,7 +1917,7 @@ def test_listReceiptValidationResultsByType_empty_results(
     # Add a single result of type "error"
     result = deepcopy(sample_receipt_validation_result)
     result.type = "error"
-    client.addReceiptValidationResult(result)
+    client.add_receipt_validation_result(result)
 
     # Mock the query response for a different type with no results
     mock_query = mocker.patch.object(client._client, "query")
@@ -1898,7 +1928,7 @@ def test_listReceiptValidationResultsByType_empty_results(
     }
 
     # Act - Get results of type "warning" (which doesn't exist)
-    results, pagination_key = client.listReceiptValidationResultsByType(
+    results, pagination_key = client.list_receipt_validation_results_by_type(
         result_type="warning"
     )
 
@@ -1926,7 +1956,7 @@ def test_listReceiptValidationResultsByType_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.listReceiptValidationResultsByType(result_type=result_type)
+        client.list_receipt_validation_results_by_type(result_type=result_type)
 
 
 @pytest.mark.integration
@@ -1938,8 +1968,12 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ParamValidationError, match="Invalid value for parameter Limit"):
-        client.listReceiptValidationResultsByType(result_type="error", limit=-1)
+    with pytest.raises(
+        ParamValidationError, match="Invalid value for parameter Limit"
+    ):
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=-1
+        )
 
 
 @pytest.mark.integration
@@ -2005,7 +2039,7 @@ def test_listReceiptValidationResultsByType_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptValidationResultsByType(result_type="error")
+        client.list_receipt_validation_results_by_type(result_type="error")
 
 
 @pytest.mark.integration
@@ -2025,13 +2059,19 @@ def test_listReceiptValidationResultsForField_success(
     mock_query.return_value = {
         "Items": [
             {
-                "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
+                },
                 "SK": {
                     "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
-                "receipt_id": {"N": str(sample_receipt_validation_result.receipt_id)},
+                "receipt_id": {
+                    "N": str(sample_receipt_validation_result.receipt_id)
+                },
                 "image_id": {"S": sample_receipt_validation_result.image_id},
-                "field_name": {"S": sample_receipt_validation_result.field_name},
+                "field_name": {
+                    "S": sample_receipt_validation_result.field_name
+                },
                 "result_index": {"N": "0"},
                 "type": {"S": sample_receipt_validation_result.type},
                 "message": {"S": sample_receipt_validation_result.message},
@@ -2040,13 +2080,17 @@ def test_listReceiptValidationResultsForField_success(
                 "expected_value": {
                     "S": sample_receipt_validation_result.expected_value
                 },
-                "actual_value": {"S": sample_receipt_validation_result.actual_value},
+                "actual_value": {
+                    "S": sample_receipt_validation_result.actual_value
+                },
                 "validation_timestamp": {
                     "S": sample_receipt_validation_result.validation_timestamp
                 },
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -2057,7 +2101,7 @@ def test_listReceiptValidationResultsForField_success(
     }
 
     # Execute
-    results = client.listReceiptValidationResultsForField(
+    results = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2075,7 +2119,9 @@ def test_listReceiptValidationResultsForField_success(
         TableName=dynamodb_table,
         KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
         ExpressionAttributeValues={
-            ":pkVal": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+            ":pkVal": {
+                "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
+            },
             ":skPrefix": {
                 "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
             },
@@ -2106,13 +2152,19 @@ def test_listReceiptValidationResultsForField_with_pagination(
     first_response = {
         "Items": [
             {
-                "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
+                },
                 "SK": {
                     "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
-                "receipt_id": {"N": str(sample_receipt_validation_result.receipt_id)},
+                "receipt_id": {
+                    "N": str(sample_receipt_validation_result.receipt_id)
+                },
                 "image_id": {"S": sample_receipt_validation_result.image_id},
-                "field_name": {"S": sample_receipt_validation_result.field_name},
+                "field_name": {
+                    "S": sample_receipt_validation_result.field_name
+                },
                 "result_index": {"N": "0"},
                 "type": {"S": sample_receipt_validation_result.type},
                 "message": {"S": sample_receipt_validation_result.message},
@@ -2121,13 +2173,17 @@ def test_listReceiptValidationResultsForField_with_pagination(
                 "expected_value": {
                     "S": sample_receipt_validation_result.expected_value
                 },
-                "actual_value": {"S": sample_receipt_validation_result.actual_value},
+                "actual_value": {
+                    "S": sample_receipt_validation_result.actual_value
+                },
                 "validation_timestamp": {
                     "S": sample_receipt_validation_result.validation_timestamp
                 },
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -2164,7 +2220,9 @@ def test_listReceiptValidationResultsForField_with_pagination(
                 "validation_timestamp": {"S": result2.validation_timestamp},
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -2177,7 +2235,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     mock_query.side_effect = [first_response, second_response]
 
     # Execute
-    results = client.listReceiptValidationResultsForField(
+    results = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2208,7 +2266,10 @@ def test_listReceiptValidationResultsForField_with_pagination(
         second_call_args["KeyConditionExpression"]
         == "PK = :pkVal AND begins_with(SK, :skPrefix)"
     )
-    assert second_call_args["ExclusiveStartKey"] == first_response["LastEvaluatedKey"]
+    assert (
+        second_call_args["ExclusiveStartKey"]
+        == first_response["LastEvaluatedKey"]
+    )
 
 
 @pytest.mark.integration
@@ -2231,7 +2292,7 @@ def test_listReceiptValidationResultsForField_empty_results(
     }
 
     # Execute
-    results = client.listReceiptValidationResultsForField(
+    results = client.list_receipt_validation_results_for_field(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         field_name="total_amount",
@@ -2300,7 +2361,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.listReceiptValidationResultsForField(
+        client.list_receipt_validation_results_for_field(
             receipt_id=receipt_id,
             image_id=image_id,
             field_name=field_name,
@@ -2370,7 +2431,7 @@ def test_listReceiptValidationResultsForField_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptValidationResultsForField(
+        client.list_receipt_validation_results_for_field(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             field_name="total_amount",

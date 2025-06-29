@@ -40,7 +40,7 @@ def test_addReceiptValidationCategory_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Execute
-    client.addReceiptValidationCategory(sample_receipt_validation_category)
+    client.add_receipt_validation_category(sample_receipt_validation_category)
 
     # Verify
     response = client._client.get_item(
@@ -66,14 +66,16 @@ def test_addReceiptValidationCategory_duplicate_raises(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the category first time
-    client.addReceiptValidationCategory(sample_receipt_validation_category)
+    client.add_receipt_validation_category(sample_receipt_validation_category)
 
     # Attempt to add the same category again and expect an error
     with pytest.raises(
         ValueError,
         match=f"ReceiptValidationCategory with field {sample_receipt_validation_category.field_name} already exists",
     ):
-        client.addReceiptValidationCategory(sample_receipt_validation_category)
+        client.add_receipt_validation_category(
+            sample_receipt_validation_category
+        )
 
     # Clean up
     client._client.delete_item(
@@ -116,7 +118,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptValidationCategory(invalid_input)
+        client.add_receipt_validation_category(invalid_input)
 
     # Verify that put_item was not called
     mock_put_item.assert_not_called()
@@ -189,7 +191,9 @@ def test_addReceiptValidationCategory_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptValidationCategory(sample_receipt_validation_category)
+        client.add_receipt_validation_category(
+            sample_receipt_validation_category
+        )
 
 
 @pytest.mark.integration
@@ -235,7 +239,7 @@ def test_addReceiptValidationCategories_success(
     ]
 
     # Execute
-    client.addReceiptValidationCategories(categories)
+    client.add_receipt_validation_categories(categories)
 
     # Verify
     for category in categories:
@@ -287,7 +291,7 @@ def test_addReceiptValidationCategories_with_large_batch(
         )
 
     # Execute
-    client.addReceiptValidationCategories(categories)
+    client.add_receipt_validation_categories(categories)
 
     # Verify
     for category in categories:
@@ -359,7 +363,7 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
     mock_batch_write.side_effect = batch_write_side_effect
 
     # Execute
-    client.addReceiptValidationCategories(categories)
+    client.add_receipt_validation_categories(categories)
 
     # Verify batch_write_item was called exactly twice
     assert (
@@ -405,7 +409,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptValidationCategories(invalid_input)
+        client.add_receipt_validation_categories(invalid_input)
 
     # Verify that batch_write_item was not called
     mock_batch_write.assert_not_called()
@@ -476,7 +480,7 @@ def test_addReceiptValidationCategories_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error_message):
-        client.addReceiptValidationCategories(
+        client.add_receipt_validation_categories(
             [sample_receipt_validation_category]
         )
 
@@ -497,7 +501,7 @@ def test_updateReceiptValidationCategory_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # First, add the category
-    client.addReceiptValidationCategory(sample_receipt_validation_category)
+    client.add_receipt_validation_category(sample_receipt_validation_category)
 
     # Create an updated version
     updated_category = ReceiptValidationCategory(
@@ -513,7 +517,7 @@ def test_updateReceiptValidationCategory_success(
     )
 
     # Execute
-    client.updateReceiptValidationCategory(updated_category)
+    client.update_receipt_validation_category(updated_category)
 
     # Verify
     response = client._client.get_item(
@@ -572,7 +576,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptValidationCategory(invalid_input)
+        client.update_receipt_validation_category(invalid_input)
 
     # Verify that put_item was not called
     mock_put_item.assert_not_called()
@@ -649,7 +653,7 @@ def test_updateReceiptValidationCategory_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.updateReceiptValidationCategory(
+        client.update_receipt_validation_category(
             sample_receipt_validation_category
         )
 
@@ -687,7 +691,7 @@ def test_updateReceiptValidationCategories_success(
 
     # Add all categories first
     for category in categories:
-        client.addReceiptValidationCategory(category)
+        client.add_receipt_validation_category(category)
 
     # Create updated versions
     updated_categories = [
@@ -716,7 +720,7 @@ def test_updateReceiptValidationCategories_success(
     ]
 
     # Execute
-    client.updateReceiptValidationCategories(updated_categories)
+    client.update_receipt_validation_categories(updated_categories)
 
     # Verify
     for category in updated_categories:
@@ -770,7 +774,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
         )
         categories.append(category)
         # Add each category first
-        client.addReceiptValidationCategory(category)
+        client.add_receipt_validation_category(category)
 
     # Create updated versions
     updated_categories = []
@@ -790,7 +794,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
         )
 
     # Execute
-    client.updateReceiptValidationCategories(updated_categories)
+    client.update_receipt_validation_categories(updated_categories)
 
     # Verify
     for category in updated_categories:
@@ -854,7 +858,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptValidationCategories(invalid_input)
+        client.update_receipt_validation_categories(invalid_input)
 
     # Verify that transact_write_items was not called
     mock_transact_write.assert_not_called()
@@ -948,7 +952,7 @@ def test_updateReceiptValidationCategories_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.updateReceiptValidationCategories(
+        client.update_receipt_validation_categories(
             [sample_receipt_validation_category]
         )
 
@@ -969,7 +973,7 @@ def test_deleteReceiptValidationCategory_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the category first
-    client.addReceiptValidationCategory(sample_receipt_validation_category)
+    client.add_receipt_validation_category(sample_receipt_validation_category)
 
     # Verify it was added
     response = client._client.get_item(
@@ -979,7 +983,9 @@ def test_deleteReceiptValidationCategory_success(
     assert "Item" in response, "Item was not added to the table."
 
     # Execute
-    client.deleteReceiptValidationCategory(sample_receipt_validation_category)
+    client.delete_receipt_validation_category(
+        sample_receipt_validation_category
+    )
 
     # Verify it was deleted
     response = client._client.get_item(
@@ -1023,7 +1029,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptValidationCategory(invalid_input)
+        client.delete_receipt_validation_category(invalid_input)
 
     # Verify that delete_item was not called
     mock_delete_item.assert_not_called()
@@ -1096,7 +1102,7 @@ def test_deleteReceiptValidationCategory_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.deleteReceiptValidationCategory(
+        client.delete_receipt_validation_category(
             sample_receipt_validation_category
         )
 
@@ -1145,10 +1151,10 @@ def test_deleteReceiptValidationCategories_success(
 
     # Add all categories first
     for category in categories:
-        client.addReceiptValidationCategory(category)
+        client.add_receipt_validation_category(category)
 
     # Execute
-    client.deleteReceiptValidationCategories(categories)
+    client.delete_receipt_validation_categories(categories)
 
     # Verify
     for category in categories:
@@ -1199,7 +1205,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptValidationCategories(invalid_input)
+        client.delete_receipt_validation_categories(invalid_input)
 
     # Verify that batch_write_item was not called
     mock_batch_write.assert_not_called()
@@ -1293,7 +1299,7 @@ def test_listReceiptValidationCategoriesForReceipt_success(
 
     # Execute
     results, last_evaluated_key = (
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
         )
@@ -1386,7 +1392,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_pagination(
     ]
 
     # Execute with pagination
-    results, _ = client.listReceiptValidationCategoriesForReceipt(
+    results, _ = client.list_receipt_validation_categories_for_receipt(
         receipt_id=receipt_id,
         image_id=image_id,
     )
@@ -1439,7 +1445,7 @@ def test_listReceiptValidationCategoriesForReceipt_empty_results(
 
     # Execute
     results, last_evaluated_key = (
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
         )
@@ -1483,7 +1489,7 @@ def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
         )
@@ -1506,14 +1512,14 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
 
     # Execute and Assert
     with pytest.raises(ValueError, match="limit must be an integer or None"):
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id, image_id=image_id, limit="not-an-integer"
         )
 
     with pytest.raises(
         ValueError, match="lastEvaluatedKey must be a dictionary or None"
     ):
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
             lastEvaluatedKey="not-a-dict",
@@ -1586,7 +1592,7 @@ def test_listReceiptValidationCategoriesForReceipt_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptValidationCategoriesForReceipt(
+        client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
         )

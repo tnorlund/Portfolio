@@ -40,20 +40,20 @@ def test_addBatchSummary_duplicate_raises(
         ),
     )
     with pytest.raises(ValueError, match="already exists"):
-        client.addBatchSummary(sample_batch_summary)
+        client.add_batch_summary(sample_batch_summary)
 
 
 @pytest.mark.parametrize("invalid", [None, "not-a-batch"])
 def test_addBatchSummary_invalid_param(dynamodb_table, invalid):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError):
-        client.addBatchSummary(invalid)
+        client.add_batch_summary(invalid)
 
 
 def test_addBatchSummaries_success(dynamodb_table, sample_batch_summary):
     client = DynamoClient(dynamodb_table)
     summaries = [sample_batch_summary]
-    client.addBatchSummaries(summaries)
+    client.add_batch_summaries(summaries)
 
 
 def test_addBatchSummaries_unprocessed_retry(
@@ -71,7 +71,7 @@ def test_addBatchSummaries_unprocessed_retry(
         },
         {},  # second call success
     ]
-    client.addBatchSummaries([sample_batch_summary])
+    client.add_batch_summaries([sample_batch_summary])
     assert mock_batch.call_count == 2
 
 
@@ -86,11 +86,11 @@ def test_updateBatchSummaries_chunked(
         for i in range(30)
     ]
     for item in summaries:
-        client.addBatchSummary(item)
+        client.add_batch_summary(item)
     mock_write = mocker.patch.object(
         client._client, "transact_write_items", return_value={}
     )
-    client.updateBatchSummaries(summaries)
+    client.update_batch_summaries(summaries)
     assert mock_write.call_count == 2
 
 
@@ -105,11 +105,11 @@ def test_deleteBatchSummaries_chunked(
         for i in range(30)
     ]
     for item in summaries:
-        client.addBatchSummary(item)
+        client.add_batch_summary(item)
     mock_write = mocker.patch.object(
         client._client, "transact_write_items", return_value={}
     )
-    client.deleteBatchSummaries(summaries)
+    client.delete_batch_summaries(summaries)
     assert mock_write.call_count == 2
 
 
@@ -121,11 +121,11 @@ def test_listBatchSummaries_with_limit_and_LEK(
         summary = BatchSummary(
             **{**dict(sample_batch_summary), "batch_id": str(uuid4())}
         )
-        client.addBatchSummary(summary)
-    first_page, lek = client.listBatchSummaries(limit=1)
+        client.add_batch_summary(summary)
+    first_page, lek = client.list_batch_summaries(limit=1)
     assert len(first_page) == 1
     assert lek is not None
-    second_page, lek2 = client.listBatchSummaries(
+    second_page, lek2 = client.list_batch_summaries(
         limit=1, lastEvaluatedKey=lek
     )
     assert len(second_page) == 1
@@ -148,7 +148,7 @@ def test_getBatchSummariesByStatus_limit_triggers_mid_loop(
         },
         {"Items": [item]},
     ]
-    results, lek = client.getBatchSummariesByStatus("PENDING", limit=3)
+    results, lek = client.get_batch_summaries_by_status("PENDING", limit=3)
     assert len(results) == 3
     assert lek is None
     assert mock_query.call_count == 3

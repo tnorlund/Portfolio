@@ -32,7 +32,7 @@ def test_line_add(dynamodb_table: Literal["MyMockedTable"]):
     line = Line(**correct_line_params)
 
     # Act
-    client.addLine(line)
+    client.add_line(line)
 
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -50,9 +50,9 @@ def test_line_add_error(dynamodb_table: Literal["MyMockedTable"]):
     line = Line(**correct_line_params)
 
     # Act
-    client.addLine(line)
+    client.add_line(line)
     with pytest.raises(ValueError):
-        client.addLine(line)
+        client.add_line(line)
 
 
 @pytest.mark.integration
@@ -66,7 +66,7 @@ def test_line_add_all(dynamodb_table: Literal["MyMockedTable"]):
     line_2 = Line(**line_2_params)
 
     # Act
-    client.addLines([line_1, line_2])
+    client.add_lines([line_1, line_2])
 
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -89,14 +89,14 @@ def test_line_delete(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     line = Line(**correct_line_params)
-    client.addLine(line)
+    client.add_line(line)
 
     # Act
-    client.deleteLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
+    client.delete_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
+        client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
 
 @pytest.mark.integration
@@ -104,11 +104,11 @@ def test_line_delete_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     line = Line(**correct_line_params)
-    client.addLine(line)
+    client.add_line(line)
 
     # Act
     with pytest.raises(ValueError):
-        client.deleteLine(1, 2)
+        client.delete_line(1, 2)
 
 
 @pytest.mark.integration
@@ -120,17 +120,17 @@ def test_line_delete_all(dynamodb_table: Literal["MyMockedTable"]):
     line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
-    client.addLine(line_1)
-    client.addLine(line_2)
+    client.add_line(line_1)
+    client.add_line(line_2)
 
     # Act
-    client.deleteLines([line_1, line_2])
+    client.delete_lines([line_1, line_2])
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLine(1, 1)
+        client.get_line(1, 1)
     with pytest.raises(ValueError):
-        client.getLine(1, 2)
+        client.get_line(1, 2)
 
 
 @pytest.mark.integration
@@ -138,10 +138,10 @@ def test_line_get(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     line = Line(**correct_line_params)
-    client.addLine(line)
+    client.add_line(line)
 
     # Act
-    retrieved_line = client.getLine("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
+    retrieved_line = client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
     assert retrieved_line == line
@@ -152,11 +152,11 @@ def test_line_get_error(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
     line = Line(**correct_line_params)
-    client.addLine(line)
+    client.add_line(line)
 
     # Act
     with pytest.raises(ValueError):
-        client.getLine(1, 2)
+        client.get_line(1, 2)
 
 
 @pytest.mark.integration
@@ -168,11 +168,11 @@ def test_line_list(dynamodb_table: Literal["MyMockedTable"]):
     line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
-    client.addLine(line_1)
-    client.addLine(line_2)
+    client.add_line(line_1)
+    client.add_line(line_2)
 
     # Act
-    lines, _ = client.listLines()
+    lines, _ = client.list_lines()
 
     # Assert
     assert line_1 in lines
@@ -185,7 +185,7 @@ def test_line_list_empty(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
 
     # Act
-    lines, _ = client.listLines()
+    lines, _ = client.list_lines()
 
     # Assert
     assert len(lines) == 0
@@ -200,11 +200,13 @@ def test_line_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     line_2_params["line_id"] = 2
     line_2_params["text"] = "A New Line"
     line_2 = Line(**line_2_params)
-    client.addLine(line_1)
-    client.addLine(line_2)
+    client.add_line(line_1)
+    client.add_line(line_2)
 
     # Act
-    lines = client.listLinesFromImage("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    lines = client.list_lines_from_image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
 
     # Assert
     assert line_1 in lines

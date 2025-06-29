@@ -49,8 +49,8 @@ def test_add_and_get(
     dynamodb_table: Literal["MyMockedTable"], sample_cache: LabelCountCache
 ) -> None:
     client = DynamoClient(dynamodb_table)
-    client.addLabelCountCache(sample_cache)
-    fetched = client.getLabelCountCache("DATE")
+    client.add_label_count_cache(sample_cache)
+    fetched = client.get_label_count_cache("DATE")
     assert fetched == sample_cache
 
 
@@ -59,10 +59,10 @@ def test_update(
     dynamodb_table: Literal["MyMockedTable"], sample_cache: LabelCountCache
 ) -> None:
     client = DynamoClient(dynamodb_table)
-    client.addLabelCountCache(sample_cache)
+    client.add_label_count_cache(sample_cache)
     sample_cache.valid_count = 2
-    client.updateLabelCountCache(sample_cache)
-    fetched = client.getLabelCountCache("DATE")
+    client.update_label_count_cache(sample_cache)
+    fetched = client.get_label_count_cache("DATE")
     assert fetched == sample_cache
 
 
@@ -72,8 +72,8 @@ def test_add_and_list(
     sample_caches: list[LabelCountCache],
 ) -> None:
     client = DynamoClient(dynamodb_table)
-    client.addLabelCountCaches(sample_caches)
-    fetched, _ = client.listLabelCountCaches()
+    client.add_label_count_caches(sample_caches)
+    fetched, _ = client.list_label_count_caches()
     assert len(fetched) == len(sample_caches)
     # sort the fetched caches by label
     fetched.sort(key=lambda x: x.label)

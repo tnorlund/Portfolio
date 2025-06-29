@@ -44,10 +44,10 @@ def test_addReceiptLetter_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptLetter(sample_receipt_letter)
+    client.add_receipt_letter(sample_receipt_letter)
 
     # Assert
-    retrieved_letter = client.getReceiptLetter(
+    retrieved_letter = client.get_receipt_letter(
         sample_receipt_letter.receipt_id,
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
@@ -64,11 +64,11 @@ def test_addReceiptLetter_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLetter(sample_receipt_letter)
+    client.add_receipt_letter(sample_receipt_letter)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptLetter(sample_receipt_letter)
+        client.add_receipt_letter(sample_receipt_letter)
 
 
 @pytest.mark.integration
@@ -96,7 +96,7 @@ def test_addReceiptLetter_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptLetter(invalid_input)  # type: ignore
+        client.add_receipt_letter(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -170,7 +170,7 @@ def test_addReceiptLetter_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptLetter(sample_receipt_letter)
+        client.add_receipt_letter(sample_receipt_letter)
     mock_put.assert_called_once()
 
 
@@ -192,10 +192,10 @@ def test_addReceiptLetters_success(
     letters = [sample_receipt_letter]
 
     # Act
-    client.addReceiptLetters(letters)
+    client.add_receipt_letters(letters)
 
     # Assert
-    retrieved_letter = client.getReceiptLetter(
+    retrieved_letter = client.get_receipt_letter(
         sample_receipt_letter.receipt_id,
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
@@ -234,11 +234,11 @@ def test_addReceiptLetters_with_large_batch(
         letters.append(letter)
 
     # Should complete successfully
-    client.addReceiptLetters(letters)
+    client.add_receipt_letters(letters)
 
     # Verify all letters were added
     for letter in letters:
-        retrieved_letter = client.getReceiptLetter(
+        retrieved_letter = client.get_receipt_letter(
             letter.receipt_id,
             letter.image_id,
             letter.line_id,
@@ -273,7 +273,7 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
     )
 
     # Should complete successfully after retrying
-    client.addReceiptLetters([sample_receipt_letter])
+    client.add_receipt_letters([sample_receipt_letter])
 
     # Verify both calls were made
     assert mock_batch.call_count == 2
@@ -305,7 +305,7 @@ def test_addReceiptLetters_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptLetters(invalid_input)  # type: ignore
+        client.add_receipt_letters(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -369,7 +369,7 @@ def test_addReceiptLetters_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error_message):
-        client.addReceiptLetters([sample_receipt_letter])
+        client.add_receipt_letters([sample_receipt_letter])
     mock_client.batch_write_item.assert_called_once()
 
 
@@ -385,14 +385,14 @@ def test_updateReceiptLetter_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLetter(sample_receipt_letter)
+    client.add_receipt_letter(sample_receipt_letter)
 
     # Change the text
     sample_receipt_letter.text = "Z"
-    client.updateReceiptLetter(sample_receipt_letter)
+    client.update_receipt_letter(sample_receipt_letter)
 
     # Assert
-    retrieved_letter = client.getReceiptLetter(
+    retrieved_letter = client.get_receipt_letter(
         sample_receipt_letter.receipt_id,
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
@@ -424,7 +424,7 @@ def test_updateReceiptLetter_invalid_parameters(
     parameters."""
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptLetter(invalid_input)
+        client.update_receipt_letter(invalid_input)
 
 
 @pytest.mark.integration
@@ -500,7 +500,7 @@ def test_updateReceiptLetter_client_errors(
         ),
         match=expected_error,
     ):
-        client.updateReceiptLetter(sample_receipt_letter)
+        client.update_receipt_letter(sample_receipt_letter)
     mock_put.assert_called_once()
 
 
@@ -537,18 +537,18 @@ def test_updateReceiptLetters_success(
     ]
     # Add initial letters
     for lt in letters:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Modify the letters
     for lt in letters:
         lt.text = "Z"
 
     # Act
-    client.updateReceiptLetters(letters)
+    client.update_receipt_letters(letters)
 
     # Assert
     for lt in letters:
-        retrieved_letter = client.getReceiptLetter(
+        retrieved_letter = client.get_receipt_letter(
             lt.receipt_id,
             lt.image_id,
             lt.line_id,
@@ -585,18 +585,18 @@ def test_updateReceiptLetters_with_large_batch(
             confidence=1.0,
         )
         letters.append(letter)
-        client.addReceiptLetter(letter)
+        client.add_receipt_letter(letter)
 
     # Update all letters
     for letter in letters:
         letter.text = "Z"  # Single character update
 
     # Should complete successfully
-    client.updateReceiptLetters(letters)
+    client.update_receipt_letters(letters)
 
     # Verify all letters were updated
     for letter in letters:
-        retrieved_letter = client.getReceiptLetter(
+        retrieved_letter = client.get_receipt_letter(
             letter.receipt_id,
             letter.image_id,
             letter.line_id,
@@ -643,7 +643,7 @@ def test_updateReceiptLetters_invalid_inputs(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptLetters(invalid_input)
+        client.update_receipt_letters(invalid_input)
 
 
 @pytest.mark.integration
@@ -745,7 +745,7 @@ def test_updateReceiptLetters_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_error):
-        client.updateReceiptLetters([sample_receipt_letter])
+        client.update_receipt_letters([sample_receipt_letter])
 
     mock_transact.assert_called_once()
 
@@ -762,14 +762,14 @@ def test_deleteReceiptLetter_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLetter(sample_receipt_letter)
+    client.add_receipt_letter(sample_receipt_letter)
 
     # Act
-    client.deleteReceiptLetter(sample_receipt_letter)
+    client.delete_receipt_letter(sample_receipt_letter)
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptLetter(
+        client.get_receipt_letter(
             sample_receipt_letter.receipt_id,
             sample_receipt_letter.image_id,
             sample_receipt_letter.line_id,
@@ -894,7 +894,7 @@ def test_deleteReceiptLetter_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.deleteReceiptLetter(sample_receipt_letter)
+        client.delete_receipt_letter(sample_receipt_letter)
     mock_delete.assert_called_once()
 
 
@@ -931,15 +931,15 @@ def test_deleteReceiptLetters_success(
     ]
     # Add initial letters
     for lt in letters:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Act
-    client.deleteReceiptLetters(letters)
+    client.delete_receipt_letters(letters)
 
     # Assert
     for lt in letters:
         with pytest.raises(ValueError, match="not found"):
-            client.getReceiptLetter(
+            client.get_receipt_letter(
                 lt.receipt_id,
                 lt.image_id,
                 lt.line_id,
@@ -973,15 +973,15 @@ def test_deleteReceiptLetters_with_large_batch(dynamodb_table):
             confidence=1.0,
         )
         letters.append(letter)
-        client.addReceiptLetter(letter)
+        client.add_receipt_letter(letter)
 
     # Delete all letters
-    client.deleteReceiptLetters(letters)
+    client.delete_receipt_letters(letters)
 
     # Verify all letters were deleted
     for letter in letters:
         with pytest.raises(ValueError, match="not found"):
-            client.getReceiptLetter(
+            client.get_receipt_letter(
                 letter.receipt_id,
                 letter.image_id,
                 letter.line_id,
@@ -1015,7 +1015,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
     )
 
     # Should complete successfully after retrying
-    client.deleteReceiptLetters([sample_receipt_letter])
+    client.delete_receipt_letters([sample_receipt_letter])
 
     # Verify both calls were made
     assert mock_batch.call_count == 2
@@ -1059,7 +1059,7 @@ def test_deleteReceiptLetters_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptLetters(invalid_input)
+        client.delete_receipt_letters(invalid_input)
 
 
 @pytest.mark.integration
@@ -1134,7 +1134,7 @@ def test_deleteReceiptLetters_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.deleteReceiptLetters([sample_receipt_letter])
+        client.delete_receipt_letters([sample_receipt_letter])
     mock_batch.assert_called_once()
 
 
@@ -1150,10 +1150,10 @@ def test_getReceiptLetter_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLetter(sample_receipt_letter)
+    client.add_receipt_letter(sample_receipt_letter)
 
     # Act
-    retrieved_letter = client.getReceiptLetter(
+    retrieved_letter = client.get_receipt_letter(
         sample_receipt_letter.receipt_id,
         sample_receipt_letter.image_id,
         sample_receipt_letter.line_id,
@@ -1175,7 +1175,7 @@ def test_getReceiptLetter_not_found(
 
     # Act & Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptLetter(
+        client.get_receipt_letter(
             sample_receipt_letter.receipt_id,
             sample_receipt_letter.image_id,
             sample_receipt_letter.line_id,
@@ -1269,7 +1269,7 @@ def test_getReceiptLetter_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptLetter(**params)
+        client.get_receipt_letter(**params)
 
 
 @pytest.mark.integration
@@ -1336,7 +1336,7 @@ def test_getReceiptLetter_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.getReceiptLetter(
+        client.get_receipt_letter(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
@@ -1375,10 +1375,10 @@ def test_listReceiptLetters_success(dynamodb_table: Literal["MyMockedTable"]):
         for i in range(1, 4)
     ]
     for lt in letters:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Act
-    returned_letters, _ = client.listReceiptLetters()
+    returned_letters, _ = client.list_receipt_letters()
 
     # Assert
     for lt in letters:
@@ -1411,10 +1411,10 @@ def test_listReceiptLetters_with_limit(
         for i in range(1, 6)  # Create 5 letters
     ]
     for lt in letters:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Act - Get first 2 letters
-    returned_letters, last_key = client.listReceiptLetters(limit=2)
+    returned_letters, last_key = client.list_receipt_letters(limit=2)
 
     # Assert
     assert len(returned_letters) == 2
@@ -1425,7 +1425,7 @@ def test_listReceiptLetters_with_limit(
         assert lt in letters
 
     # Act - Get next batch using last_key
-    next_letters, next_last_key = client.listReceiptLetters(
+    next_letters, next_last_key = client.list_receipt_letters(
         limit=2, lastEvaluatedKey=last_key
     )
 
@@ -1467,10 +1467,10 @@ def test_listReceiptLetters_with_pagination(
         for i in range(1, 10)  # Create 10 letters to force pagination
     ]
     for lt in letters:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Act
-    returned_letters, _ = client.listReceiptLetters()
+    returned_letters, _ = client.list_receipt_letters()
 
     # Assert
     assert len(returned_letters) == 9
@@ -1558,7 +1558,7 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
     client._client = mock_client
 
     # Call listReceiptLetters with no limit to force pagination
-    letters, last_key = client.listReceiptLetters()
+    letters, last_key = client.list_receipt_letters()
 
     # Verify we got both pages of results
     assert len(letters) == 2
@@ -1625,9 +1625,9 @@ def test_listReceiptLetters_invalid_parameters(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(expected_exception, match=expected_error):
         if param_name == "limit":
-            client.listReceiptLetters(limit=invalid_value)  # type: ignore
+            client.list_receipt_letters(limit=invalid_value)  # type: ignore
         else:
-            client.listReceiptLetters(
+            client.list_receipt_letters(
                 lastEvaluatedKey=invalid_value,  # type: ignore
             )
 
@@ -1706,7 +1706,7 @@ def test_listReceiptLetters_client_errors(
         ),
     )
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptLetters()
+        client.list_receipt_letters()
     mock_client.assert_called_once()
 
 
@@ -1806,7 +1806,7 @@ def test_listReceiptLetters_pagination_errors(
     client._client = mock_client
 
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptLetters()
+        client.list_receipt_letters()
 
     # Verify the correct number of calls were made
     assert mock_client.query.call_count == query_number
@@ -1873,10 +1873,10 @@ def test_listReceiptLettersFromWord_success(
     )
 
     for lt in letters_same_word + [different_word_letter]:
-        client.addReceiptLetter(lt)
+        client.add_receipt_letter(lt)
 
     # Act
-    found_letters = client.listReceiptLettersFromWord(
+    found_letters = client.list_receipt_letters_from_word(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
@@ -1967,7 +1967,7 @@ def test_listReceiptLettersFromWord_invalid_parameters(
     params[param_name] = invalid_value
 
     with pytest.raises(ValueError, match=expected_error):
-        client.listReceiptLettersFromWord(**params)
+        client.list_receipt_letters_from_word(**params)
 
 
 @pytest.mark.integration
@@ -1981,7 +1981,7 @@ def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
     for the given parameters.
     """
     client = DynamoClient(dynamodb_table)
-    found_letters = client.listReceiptLettersFromWord(
+    found_letters = client.list_receipt_letters_from_word(
         receipt_id=999,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=999,
@@ -2018,7 +2018,7 @@ def test_listReceiptLettersFromWord_with_pagination(
             confidence=1.0,
         )
         letters.append(letter)
-        client.addReceiptLetter(letter)
+        client.add_receipt_letter(letter)
 
     # Mock pagination behavior
     first_response = {
@@ -2033,7 +2033,7 @@ def test_listReceiptLettersFromWord_with_pagination(
     client._client = mock_client
 
     # Act
-    found_letters = client.listReceiptLettersFromWord(
+    found_letters = client.list_receipt_letters_from_word(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=10,
@@ -2116,7 +2116,7 @@ def test_listReceiptLettersFromWord_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptLettersFromWord(
+        client.list_receipt_letters_from_word(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,
@@ -2239,7 +2239,7 @@ def test_listReceiptLettersFromWord_pagination_errors(
     client._client = mock_client
 
     with pytest.raises(Exception, match=expected_error):
-        client.listReceiptLettersFromWord(
+        client.list_receipt_letters_from_word(
             receipt_id=sample_receipt_letter.receipt_id,
             image_id=sample_receipt_letter.image_id,
             line_id=sample_receipt_letter.line_id,

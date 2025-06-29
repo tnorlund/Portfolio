@@ -58,7 +58,7 @@ def test_letter_add(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
+    client.add_letter(letter)
 
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -76,9 +76,9 @@ def test_letter_add_error(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
+    client.add_letter(letter)
     with pytest.raises(ValueError):
-        client.addLetter(letter)
+        client.add_letter(letter)
 
 
 @pytest.mark.integration
@@ -91,13 +91,13 @@ def test_letter_add_all(dynamodb_table: Literal["MyMockedTable"]):
     ]
 
     # Act
-    client.addLetters(letters)
+    client.add_letters(letters)
 
     # Assert
-    assert letters[0] == client.getLetter(
+    assert letters[0] == client.get_letter(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
     )
-    assert letters[1] == client.getLetter(
+    assert letters[1] == client.get_letter(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2
     )
 
@@ -109,12 +109,12 @@ def test_letter_delete(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
-    client.deleteLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
+    client.add_letter(letter)
+    client.delete_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLetter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
+        client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
 
 @pytest.mark.integration
@@ -124,16 +124,16 @@ def test_letter_delete_error(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
+    client.add_letter(letter)
     with pytest.raises(ValueError):
-        client.deleteLetter(1, 1, 1, 2)
+        client.delete_letter(1, 1, 1, 2)
 
 
 @pytest.mark.integration
 def test_letter_delete_from_word(dynamodb_table: Literal["MyMockedTable"]):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addLetters(
+    client.add_letters(
         [
             Letter(**correct_letter_params),
             Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
@@ -141,13 +141,13 @@ def test_letter_delete_from_word(dynamodb_table: Literal["MyMockedTable"]):
     )
 
     # Act
-    client.deleteLettersFromWord(1, 1, 1)
+    client.delete_letters_from_word(1, 1, 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.getLetter(1, 1, 1, 1)
+        client.get_letter(1, 1, 1, 1)
     with pytest.raises(ValueError):
-        client.getLetter(1, 1, 1, 2)
+        client.get_letter(1, 1, 1, 2)
 
 
 @pytest.mark.integration
@@ -157,8 +157,8 @@ def test_letter_get(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
-    response = client.getLetter(
+    client.add_letter(letter)
+    response = client.get_letter(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
     )
 
@@ -173,9 +173,9 @@ def test_letter_get_error(dynamodb_table: Literal["MyMockedTable"]):
     letter = Letter(**correct_letter_params)
 
     # Act
-    client.addLetter(letter)
+    client.add_letter(letter)
     with pytest.raises(ValueError):
-        client.getLetter(1, 1, 1, 2)
+        client.get_letter(1, 1, 1, 2)
 
 
 @pytest.mark.integration
@@ -186,10 +186,10 @@ def test_letter_list(dynamodb_table: Literal["MyMockedTable"]):
         Letter(**correct_letter_params),
         Letter(**{**correct_letter_params, "letter_id": 2, "text": "1"}),
     ]
-    client.addLetters(letters)
+    client.add_letters(letters)
 
     # Act
-    letters_retrieved, _ = client.listLetters()
+    letters_retrieved, _ = client.list_letters()
 
     # Assert
     assert letters_retrieved == letters
@@ -205,11 +205,11 @@ def test_letter_list_from_word(dynamodb_table: Literal["MyMockedTable"]):
     letter2_params["text"] = "1"
     letter2 = Letter(**letter2_params)
 
-    client.addLetter(letter1)
-    client.addLetter(letter2)
+    client.add_letter(letter1)
+    client.add_letter(letter2)
 
     # Act
-    letters = client.listLettersFromWord(
+    letters = client.list_letters_from_word(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
     )
 

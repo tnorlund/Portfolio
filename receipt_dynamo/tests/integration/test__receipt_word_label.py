@@ -39,10 +39,10 @@ def test_addReceiptWordLabel_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Assert
-    retrieved_label = client.getReceiptWordLabel(
+    retrieved_label = client.get_receipt_word_label(
         sample_receipt_word_label.image_id,
         sample_receipt_word_label.receipt_id,
         sample_receipt_word_label.line_id,
@@ -59,11 +59,11 @@ def test_addReceiptWordLabel_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptWordLabel(sample_receipt_word_label)
+        client.add_receipt_word_label(sample_receipt_word_label)
 
 
 @pytest.mark.integration
@@ -91,7 +91,7 @@ def test_addReceiptWordLabel_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptWordLabel(invalid_input)  # type: ignore
+        client.add_receipt_word_label(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -165,7 +165,7 @@ def test_addReceiptWordLabel_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptWordLabel(sample_receipt_word_label)
+        client.add_receipt_word_label(sample_receipt_word_label)
     mock_put.assert_called_once()
 
 
@@ -203,11 +203,11 @@ def test_addReceiptWordLabels_success(
     ]
 
     # Act
-    client.addReceiptWordLabels(labels)
+    client.add_receipt_word_labels(labels)
 
     # Assert
     for label in labels:
-        retrieved_label = client.getReceiptWordLabel(
+        retrieved_label = client.get_receipt_word_label(
             label.image_id,
             label.receipt_id,
             label.line_id,
@@ -247,7 +247,7 @@ def test_addReceiptWordLabels_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptWordLabels(invalid_input)  # type: ignore
+        client.add_receipt_word_labels(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -310,7 +310,7 @@ def test_addReceiptWordLabels_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptWordLabels(labels)
+        client.add_receipt_word_labels(labels)
     mock_batch_write.assert_called_once()
 
 
@@ -347,7 +347,7 @@ def test_addReceiptWordLabels_unprocessed_items(
         ],
     )
 
-    client.addReceiptWordLabels(labels)
+    client.add_receipt_word_labels(labels)
 
     # Verify that batch_write_item was called twice
     assert mock_batch_write.call_count == 2
@@ -365,7 +365,7 @@ def test_updateReceiptWordLabel_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Update the label
     updated_label = ReceiptWordLabel(
@@ -379,10 +379,10 @@ def test_updateReceiptWordLabel_success(
     )
 
     # Act
-    client.updateReceiptWordLabel(updated_label)
+    client.update_receipt_word_label(updated_label)
 
     # Assert
-    retrieved_label = client.getReceiptWordLabel(
+    retrieved_label = client.get_receipt_word_label(
         updated_label.image_id,
         updated_label.receipt_id,
         updated_label.line_id,
@@ -402,7 +402,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.updateReceiptWordLabel(sample_receipt_word_label)
+        client.update_receipt_word_label(sample_receipt_word_label)
 
 
 @pytest.mark.integration
@@ -430,7 +430,7 @@ def test_updateReceiptWordLabel_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptWordLabel(invalid_input)  # type: ignore
+        client.update_receipt_word_label(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -498,7 +498,7 @@ def test_updateReceiptWordLabel_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptWordLabel(sample_receipt_word_label)
+        client.update_receipt_word_label(sample_receipt_word_label)
     mock_put.assert_called_once()
 
 
@@ -514,7 +514,7 @@ def test_updateReceiptWordLabels_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label
     second_label = ReceiptWordLabel(
@@ -527,7 +527,7 @@ def test_updateReceiptWordLabels_success(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Update both labels
     updated_labels = [
@@ -554,11 +554,11 @@ def test_updateReceiptWordLabels_success(
     ]
 
     # Act
-    client.updateReceiptWordLabels(updated_labels)
+    client.update_receipt_word_labels(updated_labels)
 
     # Assert
     for label in updated_labels:
-        retrieved_label = client.getReceiptWordLabel(
+        retrieved_label = client.get_receipt_word_label(
             label.image_id,
             label.receipt_id,
             label.line_id,
@@ -582,7 +582,7 @@ def test_updateReceiptWordLabels_nonexistent_raises(
         ValueError,
         match="Error updating receipt word labels: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
     ):
-        client.updateReceiptWordLabels(labels)
+        client.update_receipt_word_labels(labels)
 
 
 @pytest.mark.integration
@@ -615,7 +615,7 @@ def test_updateReceiptWordLabels_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptWordLabels(invalid_input)  # type: ignore
+        client.update_receipt_word_labels(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -684,7 +684,7 @@ def test_updateReceiptWordLabels_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptWordLabels(labels)
+        client.update_receipt_word_labels(labels)
     mock_transact_write.assert_called_once()
 
 
@@ -721,7 +721,7 @@ def test_updateReceiptWordLabels_chunking(
         return_value={},
     )
 
-    client.updateReceiptWordLabels(labels)
+    client.update_receipt_word_labels(labels)
 
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
@@ -739,14 +739,14 @@ def test_deleteReceiptWordLabel_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act
-    client.deleteReceiptWordLabel(sample_receipt_word_label)
+    client.delete_receipt_word_label(sample_receipt_word_label)
 
     # Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptWordLabel(
+        client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
             sample_receipt_word_label.line_id,
@@ -765,7 +765,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.deleteReceiptWordLabel(sample_receipt_word_label)
+        client.delete_receipt_word_label(sample_receipt_word_label)
 
 
 @pytest.mark.integration
@@ -793,7 +793,7 @@ def test_deleteReceiptWordLabel_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptWordLabel(invalid_input)  # type: ignore
+        client.delete_receipt_word_label(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -861,7 +861,7 @@ def test_deleteReceiptWordLabel_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptWordLabel(sample_receipt_word_label)
+        client.delete_receipt_word_label(sample_receipt_word_label)
     mock_delete.assert_called_once()
 
 
@@ -877,7 +877,7 @@ def test_deleteReceiptWordLabels_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label
     second_label = ReceiptWordLabel(
@@ -890,17 +890,17 @@ def test_deleteReceiptWordLabels_success(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     labels = [sample_receipt_word_label, second_label]
 
     # Act
-    client.deleteReceiptWordLabels(labels)
+    client.delete_receipt_word_labels(labels)
 
     # Assert
     for label in labels:
         with pytest.raises(ValueError, match="does not exist"):
-            client.getReceiptWordLabel(
+            client.get_receipt_word_label(
                 label.image_id,
                 label.receipt_id,
                 label.line_id,
@@ -922,7 +922,7 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
         Exception,
         match="Error deleting receipt word labels: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
     ):
-        client.deleteReceiptWordLabels([sample_receipt_word_label])
+        client.delete_receipt_word_labels([sample_receipt_word_label])
 
 
 @pytest.mark.integration
@@ -955,7 +955,7 @@ def test_deleteReceiptWordLabels_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptWordLabels(invalid_input)  # type: ignore
+        client.delete_receipt_word_labels(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1024,7 +1024,7 @@ def test_deleteReceiptWordLabels_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptWordLabels(labels)
+        client.delete_receipt_word_labels(labels)
     mock_transact_write.assert_called_once()
 
 
@@ -1061,7 +1061,7 @@ def test_deleteReceiptWordLabels_chunking(
         return_value={},
     )
 
-    client.deleteReceiptWordLabels(labels)
+    client.delete_receipt_word_labels(labels)
 
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
@@ -1079,10 +1079,10 @@ def test_getReceiptWordLabel_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act
-    retrieved_label = client.getReceiptWordLabel(
+    retrieved_label = client.get_receipt_word_label(
         sample_receipt_word_label.image_id,
         sample_receipt_word_label.receipt_id,
         sample_receipt_word_label.line_id,
@@ -1104,7 +1104,7 @@ def test_getReceiptWordLabel_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptWordLabel(
+        client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
             sample_receipt_word_label.line_id,
@@ -1175,7 +1175,7 @@ def test_getReceiptWordLabel_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptWordLabel(*invalid_params)
+        client.get_receipt_word_label(*invalid_params)
 
 
 @pytest.mark.integration
@@ -1237,7 +1237,7 @@ def test_getReceiptWordLabel_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptWordLabel(
+        client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
             sample_receipt_word_label.line_id,
@@ -1259,7 +1259,7 @@ def test_listReceiptWordLabels_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label
     second_label = ReceiptWordLabel(
@@ -1272,10 +1272,10 @@ def test_listReceiptWordLabels_success(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.listReceiptWordLabels()
+    labels, last_evaluated_key = client.list_receipt_word_labels()
 
     # Assert
     assert len(labels) == 2
@@ -1291,7 +1291,7 @@ def test_listReceiptWordLabels_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label
     second_label = ReceiptWordLabel(
@@ -1304,10 +1304,10 @@ def test_listReceiptWordLabels_with_limit(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.listReceiptWordLabels(limit=1)
+    labels, last_evaluated_key = client.list_receipt_word_labels(limit=1)
 
     # Assert
     assert len(labels) == 1
@@ -1321,7 +1321,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label
     second_label = ReceiptWordLabel(
@@ -1334,15 +1334,15 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Get first page
-    first_page, last_evaluated_key = client.listReceiptWordLabels(limit=1)
+    first_page, last_evaluated_key = client.list_receipt_word_labels(limit=1)
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
     # Get second page
-    second_page, last_evaluated_key = client.listReceiptWordLabels(
+    second_page, last_evaluated_key = client.list_receipt_word_labels(
         limit=1, lastEvaluatedKey=last_evaluated_key
     )
     assert len(second_page) == 1
@@ -1396,7 +1396,7 @@ def test_listReceiptWordLabels_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.listReceiptWordLabels(**invalid_input)
+        client.list_receipt_word_labels(**invalid_input)
 
 
 @pytest.mark.integration
@@ -1464,7 +1464,7 @@ def test_listReceiptWordLabels_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.listReceiptWordLabels()
+        client.list_receipt_word_labels()
     mock_query.assert_called_once()
 
 
@@ -1499,7 +1499,7 @@ def test_listReceiptWordLabels_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt word labels from the database"
     ):
-        client.listReceiptWordLabels()
+        client.list_receipt_word_labels()
     mock_query.assert_called_once()
 
     # Test subsequent query failure
@@ -1523,7 +1523,7 @@ def test_listReceiptWordLabels_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt word labels from the database"
     ):
-        client.listReceiptWordLabels()
+        client.list_receipt_word_labels()
     assert mock_query.call_count == 2
 
 
@@ -1539,7 +1539,7 @@ def test_getReceiptWordLabelsByLabel_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
@@ -1552,10 +1552,12 @@ def test_getReceiptWordLabelsByLabel_success(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel("ITEM")
+    labels, last_evaluated_key = client.get_receipt_word_labels_by_label(
+        "ITEM"
+    )
 
     # Assert
     assert len(labels) == 2
@@ -1571,7 +1573,7 @@ def test_getReceiptWordLabelsByLabel_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
@@ -1584,10 +1586,10 @@ def test_getReceiptWordLabelsByLabel_with_limit(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+    labels, last_evaluated_key = client.get_receipt_word_labels_by_label(
         "ITEM", limit=1
     )
 
@@ -1603,7 +1605,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Create a second label with the same label type
     second_label = ReceiptWordLabel(
@@ -1616,17 +1618,17 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
         timestamp_added="2024-03-20T12:00:00Z",
         validation_status="VALID",
     )
-    client.addReceiptWordLabel(second_label)
+    client.add_receipt_word_label(second_label)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+    first_page, last_evaluated_key = client.get_receipt_word_labels_by_label(
         "ITEM", limit=1
     )
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
     # Get second page
-    second_page, last_evaluated_key = client.getReceiptWordLabelsByLabel(
+    second_page, last_evaluated_key = client.get_receipt_word_labels_by_label(
         "ITEM", limit=1, lastEvaluatedKey=last_evaluated_key
     )
     assert len(second_page) == 1
@@ -1692,7 +1694,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptWordLabelsByLabel(**invalid_input)
+        client.get_receipt_word_labels_by_label(**invalid_input)
 
 
 @pytest.mark.integration
@@ -1760,7 +1762,7 @@ def test_getReceiptWordLabelsByLabel_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptWordLabelsByLabel("ITEM")
+        client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
 
 
@@ -1795,7 +1797,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt word labels by label type"
     ):
-        client.getReceiptWordLabelsByLabel("ITEM")
+        client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
 
     # Test subsequent query failure
@@ -1819,7 +1821,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt word labels by label type"
     ):
-        client.getReceiptWordLabelsByLabel("ITEM")
+        client.get_receipt_word_labels_by_label("ITEM")
     assert mock_query.call_count == 2
 
 
@@ -1839,11 +1841,11 @@ def test_getReceiptWordLabelsByValidationStatus_success(
 
     # No need to mock ValidationStatus.values anymore
 
-    client.addReceiptWordLabel(sample_receipt_word_label)
+    client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act
-    labels, last_evaluated_key = client.getReceiptWordLabelsByValidationStatus(
-        "VALID"
+    labels, last_evaluated_key = (
+        client.get_receipt_word_labels_by_validation_status("VALID")
     )
 
     # Assert
@@ -1913,7 +1915,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptWordLabelsByValidationStatus(**invalid_input)
+        client.get_receipt_word_labels_by_validation_status(**invalid_input)
 
 
 @pytest.mark.integration
@@ -1961,7 +1963,7 @@ def test_getReceiptWordLabelsByValidationStatus_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptWordLabelsByValidationStatus("VALID")
+        client.get_receipt_word_labels_by_validation_status("VALID")
     mock_query.assert_called_once()
 
 
@@ -1994,7 +1996,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
         Exception,
         match="Could not list receipt word labels by validation status",
     ):
-        client.getReceiptWordLabelsByValidationStatus("VALID")
+        client.get_receipt_word_labels_by_validation_status("VALID")
     assert mock_query.call_count == 2
 
 
@@ -2016,7 +2018,7 @@ def test_getReceiptWordLabelsByValidationStatus_multi_page_success(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus("VALID")
+    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID")
     assert len(labels) == 1
     assert lek is None
 
@@ -2046,7 +2048,7 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
         "VALID", limit=3
     )
 
@@ -2076,7 +2078,7 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
         "VALID", limit=2
     )
 
@@ -2109,7 +2111,7 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
         },
     ]
 
-    labels, lek = client.getReceiptWordLabelsByValidationStatus(
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
         "VALID", limit=3
     )
 
