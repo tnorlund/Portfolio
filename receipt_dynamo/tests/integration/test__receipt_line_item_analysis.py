@@ -59,7 +59,7 @@ def test_addReceiptLineItemAnalysis_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Act
-    client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+    client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Assert
     # Verify the item was added by retrieving it
@@ -96,11 +96,13 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
     """Test that adding a duplicate ReceiptLineItemAnalysis raises an error."""
     # Arrange
     client = DynamoClient(table_name=dynamodb_table)
-    client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+    client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+        client.add_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
     assert "already exists" in str(excinfo.value)
 
 
@@ -131,7 +133,7 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.addReceiptLineItemAnalysis(invalid_input)
+        client.add_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -192,13 +194,13 @@ def test_addReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError) as excinfo:
-            client.addReceiptLineItemAnalysis(
+            client.add_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
         assert expected_exception in str(excinfo.value)
     else:
         with pytest.raises(Exception) as excinfo:
-            client.addReceiptLineItemAnalysis(
+            client.add_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
         assert expected_exception in str(excinfo.value)
@@ -229,7 +231,7 @@ def test_addReceiptLineItemAnalyses_success(
     analyses = [sample_receipt_line_item_analysis, second_analysis]
 
     # Act
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Assert
     # Verify the items were added by retrieving them
@@ -271,7 +273,7 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
         analyses.append(analysis)
 
     # Act
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Assert
     # Verify the first, middle, and last items were added
@@ -324,7 +326,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
     ]
 
     # Act
-    client.addReceiptLineItemAnalyses([sample_receipt_line_item_analysis])
+    client.add_receipt_line_item_analyses([sample_receipt_line_item_analysis])
 
     # Assert
     # Should call batch_write_item twice: once for the initial request,
@@ -363,7 +365,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.addReceiptLineItemAnalyses(invalid_input)
+        client.add_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -424,7 +426,9 @@ def test_addReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.addReceiptLineItemAnalyses([sample_receipt_line_item_analysis])
+        client.add_receipt_line_item_analyses(
+            [sample_receipt_line_item_analysis]
+        )
     assert expected_error_message in str(excinfo.value)
 
 
@@ -438,7 +442,7 @@ def test_updateReceiptLineItemAnalysis_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # First add the item to be updated
-    client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+    client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Modify the item
     updated_analysis = ReceiptLineItemAnalysis(
@@ -454,7 +458,7 @@ def test_updateReceiptLineItemAnalysis_success(
     )
 
     # Act
-    client.updateReceiptLineItemAnalysis(updated_analysis)
+    client.update_receipt_line_item_analysis(updated_analysis)
 
     # Assert
     # Verify the item was updated
@@ -499,7 +503,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.updateReceiptLineItemAnalysis(invalid_input)
+        client.update_receipt_line_item_analysis(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -564,13 +568,13 @@ def test_updateReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError) as excinfo:
-            client.updateReceiptLineItemAnalysis(
+            client.update_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
         assert expected_error in str(excinfo.value)
     else:
         with pytest.raises(Exception) as excinfo:
-            client.updateReceiptLineItemAnalysis(
+            client.update_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
         assert expected_error in str(excinfo.value)
@@ -599,7 +603,7 @@ def test_updateReceiptLineItemAnalyses_success(
     )
 
     # Add the items first
-    client.addReceiptLineItemAnalyses(
+    client.add_receipt_line_item_analyses(
         [sample_receipt_line_item_analysis, second_analysis]
     )
 
@@ -629,7 +633,7 @@ def test_updateReceiptLineItemAnalyses_success(
     )
 
     # Act
-    client.updateReceiptLineItemAnalyses(
+    client.update_receipt_line_item_analyses(
         [updated_analysis1, updated_analysis2]
     )
 
@@ -675,7 +679,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         analyses.append(analysis)
 
     # Add items first
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Create updated versions
     updated_analyses = []
@@ -694,7 +698,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         updated_analyses.append(updated_analysis)
 
     # Act
-    client.updateReceiptLineItemAnalyses(updated_analyses)
+    client.update_receipt_line_item_analyses(updated_analyses)
 
     # Assert - check a few of the updated items
     for receipt_id in [1, 15, 30]:
@@ -743,7 +747,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.updateReceiptLineItemAnalyses(invalid_input)
+        client.update_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -831,7 +835,7 @@ def test_updateReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.updateReceiptLineItemAnalyses(
+        client.update_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
     assert expected_error in str(excinfo.value)
@@ -847,7 +851,7 @@ def test_deleteReceiptLineItemAnalysis_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the analysis first
-    client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+    client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Verify the analysis exists
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
@@ -862,7 +866,7 @@ def test_deleteReceiptLineItemAnalysis_success(
     assert "Item" in response
 
     # Act
-    client.deleteReceiptLineItemAnalysis(
+    client.delete_receipt_line_item_analysis(
         analysis=sample_receipt_line_item_analysis
     )
 
@@ -903,7 +907,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.deleteReceiptLineItemAnalysis(analysis=invalid_input)
+        client.delete_receipt_line_item_analysis(analysis=invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -964,7 +968,7 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.deleteReceiptLineItemAnalysis(
+        client.delete_receipt_line_item_analysis(
             analysis=sample_receipt_line_item_analysis
         )
     assert expected_error in str(excinfo.value)
@@ -1006,7 +1010,7 @@ def test_deleteReceiptLineItemAnalyses_not_found(
     ]
 
     # Act - should not raise an error
-    client.deleteReceiptLineItemAnalyses(non_existent_analyses)
+    client.delete_receipt_line_item_analyses(non_existent_analyses)
 
     # Assert - The items weren't there to begin with, so no assertions are needed
 
@@ -1040,7 +1044,7 @@ def test_deleteReceiptLineItemAnalyses_success(
     analyses.append(second_analysis)
 
     # Add the analyses
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Verify the analyses exist
     for analysis in analyses:
@@ -1056,7 +1060,7 @@ def test_deleteReceiptLineItemAnalyses_success(
         assert "Item" in response
 
     # Act
-    client.deleteReceiptLineItemAnalyses(analyses)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert
     # Verify the analyses were deleted
@@ -1098,7 +1102,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         analyses.append(analysis)
 
     # Add items first
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Verify a sample of analyses exist
     for receipt_id in [1, 15, 30]:
@@ -1114,7 +1118,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         assert "Item" in response
 
     # Act
-    client.deleteReceiptLineItemAnalyses(analyses)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert - check a sample of the deleted items
     for receipt_id in [1, 15, 30]:
@@ -1160,7 +1164,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.deleteReceiptLineItemAnalyses(invalid_input)
+        client.delete_receipt_line_item_analyses(invalid_input)
     assert expected_error in str(excinfo.value)
 
 
@@ -1217,7 +1221,7 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.deleteReceiptLineItemAnalyses(
+        client.delete_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )
     assert expected_error in str(excinfo.value)
@@ -1268,7 +1272,7 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
     ]
 
     # Act
-    client.deleteReceiptLineItemAnalyses(analyses)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert - verify the batch_write_item was called twice
     assert mock_client.batch_write_item.call_count == 2
@@ -1284,10 +1288,10 @@ def test_getReceiptLineItemAnalysis_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the analysis first
-    client.addReceiptLineItemAnalysis(sample_receipt_line_item_analysis)
+    client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Act
-    result = client.getReceiptLineItemAnalysis(
+    result = client.get_receipt_line_item_analysis(
         image_id=sample_receipt_line_item_analysis.image_id,
         receipt_id=sample_receipt_line_item_analysis.receipt_id,
     )
@@ -1324,7 +1328,7 @@ def test_getReceiptLineItemAnalysis_not_found(
     # Act & Assert
     # The implementation might either return None or raise an exception
     try:
-        result = client.getReceiptLineItemAnalysis(
+        result = client.get_receipt_line_item_analysis(
             image_id=valid_uuid,
             receipt_id=non_existent_receipt_id,
         )
@@ -1372,7 +1376,7 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.getReceiptLineItemAnalysis(
+        client.get_receipt_line_item_analysis(
             image_id=image_id, receipt_id=receipt_id
         )
     assert expected_error in str(excinfo.value)
@@ -1430,7 +1434,7 @@ def test_getReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.getReceiptLineItemAnalysis(
+        client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
         )
@@ -1459,7 +1463,7 @@ def test_getReceiptLineItemAnalysis_malformed_item(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.getReceiptLineItemAnalysis(
+        client.get_receipt_line_item_analysis(
             image_id=sample_receipt_line_item_analysis.image_id,
             receipt_id=sample_receipt_line_item_analysis.receipt_id,
         )
@@ -1491,10 +1495,10 @@ def test_listReceiptLineItemAnalyses_success(
         )
         analyses.append(analysis)
 
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Act
-    result, last_evaluated_key = client.listReceiptLineItemAnalyses()
+    result, last_evaluated_key = client.list_receipt_line_item_analyses()
 
     # Assert
     assert result is not None
@@ -1523,7 +1527,7 @@ def test_listReceiptLineItemAnalyses_empty(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Act - we assume the table has been cleared since our fixture runs for each test
-    result, last_evaluated_key = client.listReceiptLineItemAnalyses()
+    result, last_evaluated_key = client.list_receipt_line_item_analyses()
 
     # Assert
     assert result is not None
@@ -1577,10 +1581,10 @@ def test_listReceiptLineItemAnalyses_with_prefix(
         )
         analyses.append(analysis)
 
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Act - list all analyses and filter in memory
-    result, _ = client.listReceiptLineItemAnalyses()
+    result, _ = client.list_receipt_line_item_analyses()
 
     # Assert
     assert result is not None
@@ -1631,7 +1635,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         )
         analyses.append(analysis)
 
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Mock the query method to return paginated results
     mock_client = mocker.patch.object(client, "_client")
@@ -1717,7 +1721,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
     ]
 
     # Act
-    result, last_key = client.listReceiptLineItemAnalyses()
+    result, last_key = client.list_receipt_line_item_analyses()
 
     # Assert
     assert result is not None
@@ -1764,7 +1768,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.listReceiptLineItemAnalyses(
+        client.list_receipt_line_item_analyses(
             limit=limit, lastEvaluatedKey=last_evaluated_key
         )
     assert expected_error in str(excinfo.value)
@@ -1822,7 +1826,7 @@ def test_listReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.listReceiptLineItemAnalyses()
+        client.list_receipt_line_item_analyses()
     assert expected_error in str(excinfo.value)
 
 
@@ -1866,10 +1870,12 @@ def test_listReceiptLineItemAnalysesForImage_success(
     )
     analyses.append(other_image_analysis)
 
-    client.addReceiptLineItemAnalyses(analyses)
+    client.add_receipt_line_item_analyses(analyses)
 
     # Act
-    result = client.listReceiptLineItemAnalysesForImage(image_id=image_id)
+    result = client.list_receipt_line_item_analyses_for_image(
+        image_id=image_id
+    )
 
     # Assert
     assert result is not None
@@ -1894,7 +1900,7 @@ def test_listReceiptLineItemAnalysesForImage_not_found(
     )
 
     # Act
-    result = client.listReceiptLineItemAnalysesForImage(
+    result = client.list_receipt_line_item_analyses_for_image(
         image_id=non_existent_image_id
     )
 
@@ -1924,7 +1930,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.listReceiptLineItemAnalysesForImage(image_id=image_id)
+        client.list_receipt_line_item_analyses_for_image(image_id=image_id)
     assert expected_error in str(excinfo.value)
 
 
@@ -1990,5 +1996,5 @@ def test_listReceiptLineItemAnalysesForImage_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.listReceiptLineItemAnalysesForImage(image_id=image_id)
+        client.list_receipt_line_item_analyses_for_image(image_id=image_id)
     assert expected_error in str(excinfo.value)
