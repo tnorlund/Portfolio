@@ -42,10 +42,10 @@ def test_addReceiptField_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Assert
-    retrieved_field = client.getReceiptField(
+    retrieved_field = client.get_receipt_field(
         sample_receipt_field.field_type,
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
@@ -60,11 +60,11 @@ def test_addReceiptField_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptField(sample_receipt_field)
+        client.add_receipt_field(sample_receipt_field)
 
 
 @pytest.mark.integration
@@ -92,7 +92,7 @@ def test_addReceiptField_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptField(invalid_input)  # type: ignore
+        client.add_receipt_field(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -166,7 +166,7 @@ def test_addReceiptField_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptField(sample_receipt_field)
+        client.add_receipt_field(sample_receipt_field)
     mock_put.assert_called_once()
 
 
@@ -214,11 +214,11 @@ def test_addReceiptFields_success(
     ]
 
     # Act
-    client.addReceiptFields(fields)
+    client.add_receipt_fields(fields)
 
     # Assert
     for field in fields:
-        retrieved_field = client.getReceiptField(
+        retrieved_field = client.get_receipt_field(
             field.field_type,
             field.image_id,
             field.receipt_id,
@@ -256,7 +256,7 @@ def test_addReceiptFields_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptFields(invalid_input)  # type: ignore
+        client.add_receipt_fields(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -319,7 +319,7 @@ def test_addReceiptFields_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptFields(fields)
+        client.add_receipt_fields(fields)
     mock_batch_write.assert_called_once()
 
 
@@ -356,7 +356,7 @@ def test_addReceiptFields_unprocessed_items(
         ],
     )
 
-    client.addReceiptFields(fields)
+    client.add_receipt_fields(fields)
 
     # Verify that batch_write_item was called twice
     assert mock_batch_write.call_count == 2
@@ -374,7 +374,7 @@ def test_updateReceiptField_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Update the field
     updated_field = ReceiptField(
@@ -387,10 +387,10 @@ def test_updateReceiptField_success(
     )
 
     # Act
-    client.updateReceiptField(updated_field)
+    client.update_receipt_field(updated_field)
 
     # Assert
-    retrieved_field = client.getReceiptField(
+    retrieved_field = client.get_receipt_field(
         updated_field.field_type,
         updated_field.image_id,
         updated_field.receipt_id,
@@ -408,7 +408,7 @@ def test_updateReceiptField_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.updateReceiptField(sample_receipt_field)
+        client.update_receipt_field(sample_receipt_field)
 
 
 @pytest.mark.integration
@@ -436,7 +436,7 @@ def test_updateReceiptField_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptField(invalid_input)  # type: ignore
+        client.update_receipt_field(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -504,7 +504,7 @@ def test_updateReceiptField_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptField(sample_receipt_field)
+        client.update_receipt_field(sample_receipt_field)
     mock_put.assert_called_once()
 
 
@@ -520,7 +520,7 @@ def test_updateReceiptFields_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field
     second_field = ReceiptField(
@@ -537,7 +537,7 @@ def test_updateReceiptFields_success(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Update both fields
     updated_fields = [
@@ -560,11 +560,11 @@ def test_updateReceiptFields_success(
     ]
 
     # Act
-    client.updateReceiptFields(updated_fields)
+    client.update_receipt_fields(updated_fields)
 
     # Assert
     for field in updated_fields:
-        retrieved_field = client.getReceiptField(
+        retrieved_field = client.get_receipt_field(
             field.field_type,
             field.image_id,
             field.receipt_id,
@@ -586,7 +586,7 @@ def test_updateReceiptFields_nonexistent_raises(
         ValueError,
         match="Error updating receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
     ):
-        client.updateReceiptFields(fields)
+        client.update_receipt_fields(fields)
 
 
 @pytest.mark.integration
@@ -619,7 +619,7 @@ def test_updateReceiptFields_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptFields(invalid_input)  # type: ignore
+        client.update_receipt_fields(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -688,7 +688,7 @@ def test_updateReceiptFields_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptFields(fields)
+        client.update_receipt_fields(fields)
     mock_transact_write.assert_called_once()
 
 
@@ -729,7 +729,7 @@ def test_updateReceiptFields_chunking(
         return_value={},
     )
 
-    client.updateReceiptFields(fields)
+    client.update_receipt_fields(fields)
 
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
@@ -747,14 +747,14 @@ def test_deleteReceiptField_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Act
-    client.deleteReceiptField(sample_receipt_field)
+    client.delete_receipt_field(sample_receipt_field)
 
     # Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptField(
+        client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -771,7 +771,7 @@ def test_deleteReceiptField_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.deleteReceiptField(sample_receipt_field)
+        client.delete_receipt_field(sample_receipt_field)
 
 
 @pytest.mark.integration
@@ -799,7 +799,7 @@ def test_deleteReceiptField_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptField(invalid_input)  # type: ignore
+        client.delete_receipt_field(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -867,7 +867,7 @@ def test_deleteReceiptField_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptField(sample_receipt_field)
+        client.delete_receipt_field(sample_receipt_field)
     mock_delete.assert_called_once()
 
 
@@ -883,7 +883,7 @@ def test_deleteReceiptFields_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field
     second_field = ReceiptField(
@@ -900,17 +900,17 @@ def test_deleteReceiptFields_success(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     fields = [sample_receipt_field, second_field]
 
     # Act
-    client.deleteReceiptFields(fields)
+    client.delete_receipt_fields(fields)
 
     # Assert
     for field in fields:
         with pytest.raises(ValueError, match="does not exist"):
-            client.getReceiptField(
+            client.get_receipt_field(
                 field.field_type,
                 field.image_id,
                 field.receipt_id,
@@ -930,7 +930,7 @@ def test_deleteReceiptFields_nonexistent_raises(
         Exception,
         match="Error deleting receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
     ):
-        client.deleteReceiptFields([sample_receipt_field])
+        client.delete_receipt_fields([sample_receipt_field])
 
 
 @pytest.mark.integration
@@ -963,7 +963,7 @@ def test_deleteReceiptFields_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptFields(invalid_input)  # type: ignore
+        client.delete_receipt_fields(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1032,7 +1032,7 @@ def test_deleteReceiptFields_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptFields(fields)
+        client.delete_receipt_fields(fields)
     mock_transact_write.assert_called_once()
 
 
@@ -1073,7 +1073,7 @@ def test_deleteReceiptFields_chunking(
         return_value={},
     )
 
-    client.deleteReceiptFields(fields)
+    client.delete_receipt_fields(fields)
 
     # Verify that transact_write_items was called twice (for 2 chunks)
     assert mock_transact_write.call_count == 2
@@ -1091,10 +1091,10 @@ def test_getReceiptField_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Act
-    retrieved_field = client.getReceiptField(
+    retrieved_field = client.get_receipt_field(
         sample_receipt_field.field_type,
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
@@ -1114,7 +1114,7 @@ def test_getReceiptField_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptField(
+        client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -1167,7 +1167,7 @@ def test_getReceiptField_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptField(*invalid_params)
+        client.get_receipt_field(*invalid_params)
 
 
 @pytest.mark.integration
@@ -1229,7 +1229,7 @@ def test_getReceiptField_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptField(
+        client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -1249,7 +1249,7 @@ def test_listReceiptFields_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field
     second_field = ReceiptField(
@@ -1266,10 +1266,10 @@ def test_listReceiptFields_success(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.listReceiptFields()
+    fields, last_evaluated_key = client.list_receipt_fields()
 
     # Assert
     assert len(fields) == 2
@@ -1285,7 +1285,7 @@ def test_listReceiptFields_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field
     second_field = ReceiptField(
@@ -1302,10 +1302,10 @@ def test_listReceiptFields_with_limit(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.listReceiptFields(limit=1)
+    fields, last_evaluated_key = client.list_receipt_fields(limit=1)
 
     # Assert
     assert len(fields) == 1
@@ -1319,7 +1319,7 @@ def test_listReceiptFields_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field
     second_field = ReceiptField(
@@ -1336,15 +1336,15 @@ def test_listReceiptFields_with_last_evaluated_key(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Get first page
-    first_page, last_evaluated_key = client.listReceiptFields(limit=1)
+    first_page, last_evaluated_key = client.list_receipt_fields(limit=1)
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
     # Get second page
-    second_page, last_evaluated_key = client.listReceiptFields(
+    second_page, last_evaluated_key = client.list_receipt_fields(
         limit=1, lastEvaluatedKey=last_evaluated_key
     )
     assert len(second_page) == 1
@@ -1398,7 +1398,7 @@ def test_listReceiptFields_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.listReceiptFields(**invalid_input)
+        client.list_receipt_fields(**invalid_input)
 
 
 @pytest.mark.integration
@@ -1466,7 +1466,7 @@ def test_listReceiptFields_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.listReceiptFields()
+        client.list_receipt_fields()
     mock_query.assert_called_once()
 
 
@@ -1501,7 +1501,7 @@ def test_listReceiptFields_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields from the database"
     ):
-        client.listReceiptFields()
+        client.list_receipt_fields()
     mock_query.assert_called_once()
 
     # Test subsequent query failure
@@ -1525,7 +1525,7 @@ def test_listReceiptFields_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields from the database"
     ):
-        client.listReceiptFields()
+        client.list_receipt_fields()
     assert mock_query.call_count == 2
 
 
@@ -1541,7 +1541,7 @@ def test_getReceiptFieldsByImage_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id
     second_field = ReceiptField(
@@ -1558,10 +1558,10 @@ def test_getReceiptFieldsByImage_success(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByImage(
+    fields, last_evaluated_key = client.get_receipt_fields_by_image(
         sample_receipt_field.image_id
     )
 
@@ -1579,7 +1579,7 @@ def test_getReceiptFieldsByImage_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id
     second_field = ReceiptField(
@@ -1596,10 +1596,10 @@ def test_getReceiptFieldsByImage_with_limit(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByImage(
+    fields, last_evaluated_key = client.get_receipt_fields_by_image(
         sample_receipt_field.image_id, limit=1
     )
 
@@ -1615,7 +1615,7 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id
     second_field = ReceiptField(
@@ -1632,17 +1632,17 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptFieldsByImage(
+    first_page, last_evaluated_key = client.get_receipt_fields_by_image(
         sample_receipt_field.image_id, limit=1
     )
     assert len(first_page) == 1
     assert last_evaluated_key is not None
 
     # Get second page
-    second_page, last_evaluated_key = client.getReceiptFieldsByImage(
+    second_page, last_evaluated_key = client.get_receipt_fields_by_image(
         sample_receipt_field.image_id,
         limit=1,
         lastEvaluatedKey=last_evaluated_key,
@@ -1719,7 +1719,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptFieldsByImage(**invalid_input)
+        client.get_receipt_fields_by_image(**invalid_input)
 
 
 @pytest.mark.integration
@@ -1787,7 +1787,7 @@ def test_getReceiptFieldsByImage_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptFieldsByImage(sample_receipt_field.image_id)
+        client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     mock_query.assert_called_once()
 
 
@@ -1822,7 +1822,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields by image ID"
     ):
-        client.getReceiptFieldsByImage(sample_receipt_field.image_id)
+        client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     mock_query.assert_called_once()
 
     # Test subsequent query failure
@@ -1846,7 +1846,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields by image ID"
     ):
-        client.getReceiptFieldsByImage(sample_receipt_field.image_id)
+        client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     assert mock_query.call_count == 2
 
 
@@ -1862,7 +1862,7 @@ def test_getReceiptFieldsByReceipt_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
@@ -1879,10 +1879,10 @@ def test_getReceiptFieldsByReceipt_success(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByReceipt(
+    fields, last_evaluated_key = client.get_receipt_fields_by_receipt(
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
     )
@@ -1901,7 +1901,7 @@ def test_getReceiptFieldsByReceipt_with_limit(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
@@ -1918,10 +1918,10 @@ def test_getReceiptFieldsByReceipt_with_limit(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Act
-    fields, last_evaluated_key = client.getReceiptFieldsByReceipt(
+    fields, last_evaluated_key = client.get_receipt_fields_by_receipt(
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
         limit=1,
@@ -1939,7 +1939,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptField(sample_receipt_field)
+    client.add_receipt_field(sample_receipt_field)
 
     # Create a second field with the same image_id and receipt_id
     second_field = ReceiptField(
@@ -1956,10 +1956,10 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
         reasoning="This field appears to be the address",
         timestamp_added="2024-03-20T12:00:00Z",
     )
-    client.addReceiptField(second_field)
+    client.add_receipt_field(second_field)
 
     # Get first page
-    first_page, last_evaluated_key = client.getReceiptFieldsByReceipt(
+    first_page, last_evaluated_key = client.get_receipt_fields_by_receipt(
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
         limit=1,
@@ -1968,7 +1968,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
     assert last_evaluated_key is not None
 
     # Get second page
-    second_page, last_evaluated_key = client.getReceiptFieldsByReceipt(
+    second_page, last_evaluated_key = client.get_receipt_fields_by_receipt(
         sample_receipt_field.image_id,
         sample_receipt_field.receipt_id,
         limit=1,
@@ -2073,7 +2073,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptFieldsByReceipt(**invalid_input)
+        client.get_receipt_fields_by_receipt(**invalid_input)
 
 
 @pytest.mark.integration
@@ -2141,7 +2141,7 @@ def test_getReceiptFieldsByReceipt_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptFieldsByReceipt(
+        client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
         )
@@ -2179,7 +2179,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields by receipt ID"
     ):
-        client.getReceiptFieldsByReceipt(
+        client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
         )
@@ -2206,7 +2206,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
     with pytest.raises(
         Exception, match="Could not list receipt fields by receipt ID"
     ):
-        client.getReceiptFieldsByReceipt(
+        client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
         )

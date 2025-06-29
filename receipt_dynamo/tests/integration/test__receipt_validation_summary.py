@@ -76,7 +76,7 @@ def test_addReceiptValidationSummary_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the sample validation summary to the table
-    client.addReceiptValidationSummary(sample_receipt_validation_summary)
+    client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Try to retrieve the validation summary to verify it was added correctly
     response = client._client.get_item(
@@ -115,11 +115,13 @@ def test_addReceiptValidationSummary_duplicate_raises(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Add the validation summary for the first time
-    client.addReceiptValidationSummary(sample_receipt_validation_summary)
+    client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Attempt to add the same validation summary again, which should raise an error
     with pytest.raises(ValueError) as excinfo:
-        client.addReceiptValidationSummary(sample_receipt_validation_summary)
+        client.add_receipt_validation_summary(
+            sample_receipt_validation_summary
+        )
 
     # Check that the error message contains useful information
     receipt_id = sample_receipt_validation_summary.receipt_id
@@ -157,7 +159,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
 
     # Try to add with invalid input
     with pytest.raises(ValueError) as excinfo:
-        client.addReceiptValidationSummary(invalid_input)
+        client.add_receipt_validation_summary(invalid_input)
 
     # Verify the error message
     assert expected_error in str(excinfo.value)
@@ -233,12 +235,12 @@ def test_addReceiptValidationSummary_client_errors(
     # Attempt to add the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_exception):
-            client.addReceiptValidationSummary(
+            client.add_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
     else:
         with pytest.raises(Exception, match=expected_exception):
-            client.addReceiptValidationSummary(
+            client.add_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
 
@@ -256,7 +258,7 @@ def test_updateReceiptValidationSummary_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # First, add the sample validation summary to the table
-    client.addReceiptValidationSummary(sample_receipt_validation_summary)
+    client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Now, modify the validation summary
     updated_summary = sample_receipt_validation_summary
@@ -270,7 +272,7 @@ def test_updateReceiptValidationSummary_success(
     updated_summary.metadata = {"test": "value"}
 
     # Update the validation summary in the table
-    client.updateReceiptValidationSummary(updated_summary)
+    client.update_receipt_validation_summary(updated_summary)
 
     # Get the updated summary from the table - use the correct key format
     response = client._client.get_item(
@@ -347,7 +349,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
 
     # Attempt to update a validation summary that wasn't previously added
     with pytest.raises(ValueError) as excinfo:
-        client.updateReceiptValidationSummary(
+        client.update_receipt_validation_summary(
             sample_receipt_validation_summary
         )
 
@@ -387,7 +389,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
 
     # Try to update with invalid input
     with pytest.raises(ValueError) as excinfo:
-        client.updateReceiptValidationSummary(invalid_input)
+        client.update_receipt_validation_summary(invalid_input)
 
     # Verify the error message
     assert expected_error in str(excinfo.value)
@@ -467,12 +469,12 @@ def test_updateReceiptValidationSummary_client_errors(
     # Attempt to update the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_error):
-            client.updateReceiptValidationSummary(
+            client.update_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
     else:
         with pytest.raises(Exception, match=expected_error):
-            client.updateReceiptValidationSummary(
+            client.update_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
 
@@ -490,7 +492,7 @@ def test_deleteReceiptValidationSummary_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # First, add the sample validation summary to the table
-    client.addReceiptValidationSummary(sample_receipt_validation_summary)
+    client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Verify it was added
     response = client._client.get_item(
@@ -505,7 +507,7 @@ def test_deleteReceiptValidationSummary_success(
     assert "Item" in response
 
     # Now delete the validation summary
-    client.deleteReceiptValidationSummary(sample_receipt_validation_summary)
+    client.delete_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Verify it was deleted
     response = client._client.get_item(
@@ -531,7 +533,7 @@ def test_deleteReceiptValidationSummary_not_exists_raises(
 
     # Attempt to delete a validation summary that wasn't previously added
     with pytest.raises(ValueError) as excinfo:
-        client.deleteReceiptValidationSummary(
+        client.delete_receipt_validation_summary(
             sample_receipt_validation_summary
         )
 
@@ -585,7 +587,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
                 validation_timestamp="2023-01-01T00:00:00",
             )
             # If we get here without error, pass the summary to the delete method
-            client.deleteReceiptValidationSummary(summary)
+            client.delete_receipt_validation_summary(summary)
         except ValueError as e:
             # Re-raise the ValueError to be caught by pytest.raises
             raise ValueError(str(e))
@@ -665,12 +667,12 @@ def test_deleteReceiptValidationSummary_client_errors(
     # Attempt to delete the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_error):
-            client.deleteReceiptValidationSummary(
+            client.delete_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
     else:
         with pytest.raises(Exception, match=expected_error):
-            client.deleteReceiptValidationSummary(
+            client.delete_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
 
@@ -688,10 +690,10 @@ def test_getReceiptValidationSummary_success(
     client = DynamoClient(table_name=dynamodb_table)
 
     # First, add the sample validation summary to the table
-    client.addReceiptValidationSummary(sample_receipt_validation_summary)
+    client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Now retrieve the validation summary
-    result = client.getReceiptValidationSummary(
+    result = client.get_receipt_validation_summary(
         receipt_id=sample_receipt_validation_summary.receipt_id,
         image_id=sample_receipt_validation_summary.image_id,
     )
@@ -732,7 +734,7 @@ def test_getReceiptValidationSummary_not_exists_returns_none(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Attempt to retrieve a validation summary that wasn't previously added
-    result = client.getReceiptValidationSummary(
+    result = client.get_receipt_validation_summary(
         receipt_id=sample_receipt_validation_summary.receipt_id,
         image_id=sample_receipt_validation_summary.image_id,
     )
@@ -771,7 +773,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
 
     # Try to retrieve with invalid input
     with pytest.raises(ValueError) as excinfo:
-        client.getReceiptValidationSummary(
+        client.get_receipt_validation_summary(
             receipt_id=receipt_id, image_id=image_id
         )
 
@@ -844,7 +846,7 @@ def test_getReceiptValidationSummary_client_errors(
 
     # Attempt to retrieve the validation summary, which should now raise an exception
     with pytest.raises(Exception, match=expected_error):
-        client.getReceiptValidationSummary(
+        client.get_receipt_validation_summary(
             receipt_id=sample_receipt_validation_summary.receipt_id,
             image_id=sample_receipt_validation_summary.image_id,
         )

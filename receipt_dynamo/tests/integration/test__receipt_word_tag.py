@@ -32,10 +32,10 @@ def test_add_receipt_word_tag(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptWordTag(sample_receipt_word_tag)
+    client.add_receipt_word_tag(sample_receipt_word_tag)
 
     # Assert
-    retrieved = client.getReceiptWordTag(
+    retrieved = client.get_receipt_word_tag(
         sample_receipt_word_tag.image_id,
         sample_receipt_word_tag.receipt_id,
         sample_receipt_word_tag.line_id,
@@ -52,11 +52,11 @@ def test_add_receipt_word_tag_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordTag(sample_receipt_word_tag)
+    client.add_receipt_word_tag(sample_receipt_word_tag)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptWordTag(sample_receipt_word_tag)
+        client.add_receipt_word_tag(sample_receipt_word_tag)
 
 
 @pytest.mark.integration
@@ -66,14 +66,14 @@ def test_update_receipt_word_tag(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordTag(sample_receipt_word_tag)
+    client.add_receipt_word_tag(sample_receipt_word_tag)
 
     # Act: Update the tag from "SampleTag" to "UpdatedTag"
     sample_receipt_word_tag.tag = "UpdatedTag"
-    client.updateReceiptWordTag(sample_receipt_word_tag)
+    client.update_receipt_word_tag(sample_receipt_word_tag)
 
     # Assert
-    retrieved = client.getReceiptWordTag(
+    retrieved = client.get_receipt_word_tag(
         sample_receipt_word_tag.image_id,
         sample_receipt_word_tag.receipt_id,
         sample_receipt_word_tag.line_id,
@@ -90,10 +90,10 @@ def test_delete_receipt_word_tag(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordTag(sample_receipt_word_tag)
+    client.add_receipt_word_tag(sample_receipt_word_tag)
 
     # Act
-    client.deleteReceiptWordTag(
+    client.delete_receipt_word_tag(
         image_id=sample_receipt_word_tag.image_id,
         receipt_id=sample_receipt_word_tag.receipt_id,
         line_id=sample_receipt_word_tag.line_id,
@@ -103,7 +103,7 @@ def test_delete_receipt_word_tag(
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptWordTag(
+        client.get_receipt_word_tag(
             sample_receipt_word_tag.image_id,
             sample_receipt_word_tag.receipt_id,
             sample_receipt_word_tag.line_id,
@@ -128,10 +128,10 @@ def test_receipt_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
         for i in range(1, 4)
     ]
     for rwt in receipt_word_tags:
-        client.addReceiptWordTag(rwt)
+        client.add_receipt_word_tag(rwt)
 
     # Act
-    returned_tags, _ = client.listReceiptWordTags()
+    returned_tags, _ = client.list_receipt_word_tags()
 
     # Assert
     for rwt in receipt_word_tags:
@@ -168,10 +168,10 @@ def test_receipt_word_tag_list_from_image(
     )
 
     for rwt in same_image_tags + [different_image_tag]:
-        client.addReceiptWordTag(rwt)
+        client.add_receipt_word_tag(rwt)
 
     # Act
-    found_tags = client.listReceiptWordTagsFromImage(
+    found_tags = client.list_receipt_word_tags_from_image(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
 
@@ -230,10 +230,10 @@ def test_get_receipt_word_tags(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWordTags(sample_receipt_word_tags)
+    client.add_receipt_word_tags(sample_receipt_word_tags)
 
     # Act: Retrieve all with tag="ALPHA"
-    alpha, _ = client.getReceiptWordTags("ALPHA")
+    alpha, _ = client.get_receipt_word_tags("ALPHA")
 
     # Assert
     # The two we expect with ALPHA
@@ -247,7 +247,7 @@ def test_get_receipt_word_tags(
     assert alpha_returned == alpha_expected
 
     # Check BETA
-    beta, _ = client.getReceiptWordTags("BETA")
+    beta, _ = client.get_receipt_word_tags("BETA")
     beta_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 200, 20, 20, "BETA"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed6", 400, 40, 40, "BETA"),
@@ -266,7 +266,7 @@ def test_receipt_word_tag_get_no_results(
     If tag doesn't exist, we expect an empty list.
     """
     client = DynamoClient(dynamodb_table)
-    results, _ = client.getReceiptWordTags("NOTHING")
+    results, _ = client.get_receipt_word_tags("NOTHING")
     assert results == []
 
 
@@ -293,9 +293,9 @@ def test_receipt_word_tag_get_pagination(
             )
         )
 
-    client.addReceiptWordTags(big_list)
+    client.add_receipt_word_tags(big_list)
 
-    results, _ = client.getReceiptWordTags("PAGE")
+    results, _ = client.get_receipt_word_tags("PAGE")
     assert len(results) == 30
 
     returned_tuples = {

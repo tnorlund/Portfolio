@@ -43,10 +43,10 @@ def test_addReceiptWord_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptWord(sample_receipt_word)
+    client.add_receipt_word(sample_receipt_word)
 
     # Assert
-    retrieved_word = client.getReceiptWord(
+    retrieved_word = client.get_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
@@ -61,11 +61,11 @@ def test_add_receipt_word_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWord(sample_receipt_word)
+    client.add_receipt_word(sample_receipt_word)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptWord(sample_receipt_word)
+        client.add_receipt_word(sample_receipt_word)
 
 
 @pytest.mark.integration
@@ -92,7 +92,7 @@ def test_addReceiptWord_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptWord(invalid_input)  # type: ignore
+        client.add_receipt_word(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -164,7 +164,7 @@ def test_addReceiptWord_client_errors(
         ),
     )
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptWord(sample_receipt_word)
+        client.add_receipt_word(sample_receipt_word)
     mock_put.assert_called_once()
 
 
@@ -182,10 +182,10 @@ def test_addReceiptWords_success(
     words = [sample_receipt_word]
 
     # Act
-    client.addReceiptWords(words)
+    client.add_receipt_words(words)
 
     # Assert
-    retrieved_word = client.getReceiptWord(
+    retrieved_word = client.get_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
@@ -221,11 +221,11 @@ def test_addReceiptWords_large_batch(
         words.append(word)
 
     # Act
-    client.addReceiptWords(words)
+    client.add_receipt_words(words)
 
     # Assert
     for word in words:
-        retrieved_word = client.getReceiptWord(
+        retrieved_word = client.get_receipt_word(
             word.receipt_id,
             word.image_id,
             word.line_id,
@@ -261,7 +261,7 @@ def test_addReceiptWords_with_unprocessed_items_retries(
     )
 
     # Should complete successfully after retrying
-    client.addReceiptWords([sample_receipt_word])
+    client.add_receipt_words([sample_receipt_word])
 
     # Verify both calls were made
     assert mock_batch.call_count == 2
@@ -296,7 +296,7 @@ def test_addReceiptWords_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptWords(invalid_input)  # type: ignore
+        client.add_receipt_words(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -368,7 +368,7 @@ def test_addReceiptWords_client_errors(
         ),
     )
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptWords([sample_receipt_word])
+        client.add_receipt_words([sample_receipt_word])
     mock_batch.assert_called_once()
 
 
@@ -380,14 +380,14 @@ def test_update_receipt_word(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWord(sample_receipt_word)
+    client.add_receipt_word(sample_receipt_word)
 
     # Change text
     sample_receipt_word.text = "Updated receipt word"
-    client.updateReceiptWord(sample_receipt_word)
+    client.update_receipt_word(sample_receipt_word)
 
     # Assert
-    retrieved_word = client.getReceiptWord(
+    retrieved_word = client.get_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
@@ -402,10 +402,10 @@ def test_delete_receipt_word(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptWord(sample_receipt_word)
+    client.add_receipt_word(sample_receipt_word)
 
     # Act
-    client.deleteReceiptWord(
+    client.delete_receipt_word(
         sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
         sample_receipt_word.line_id,
@@ -414,7 +414,7 @@ def test_delete_receipt_word(
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptWord(
+        client.get_receipt_word(
             sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,
             sample_receipt_word.line_id,
@@ -445,10 +445,10 @@ def test_receipt_word_list(dynamodb_table: Literal["MyMockedTable"]):
         for i in range(1, 4)
     ]
     for w in words:
-        client.addReceiptWord(w)
+        client.add_receipt_word(w)
 
     # Act
-    returned_words, _ = client.listReceiptWords()
+    returned_words, _ = client.list_receipt_words()
 
     # Assert
     for w in words:
@@ -495,10 +495,10 @@ def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
         confidence=0.9,
     )
     for w in words_same_line + [another_word]:
-        client.addReceiptWord(w)
+        client.add_receipt_word(w)
 
     # Act
-    found_words = client.listReceiptWordsFromLine(
+    found_words = client.list_receipt_words_from_line(
         1, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 10
     )
 
@@ -522,7 +522,7 @@ def test_list_receipt_words_by_embedding_status(
     client = DynamoClient(dynamodb_table)
     # Add a word with NONE status
     word_none = sample_receipt_word
-    client.addReceiptWord(word_none)
+    client.add_receipt_word(word_none)
     # Create and add a separate word with PENDING status
     word_pending = ReceiptWord(
         receipt_id=sample_receipt_word.receipt_id,
@@ -540,9 +540,9 @@ def test_list_receipt_words_by_embedding_status(
         confidence=sample_receipt_word.confidence,
         embedding_status=EmbeddingStatus.PENDING,
     )
-    client.addReceiptWord(word_pending)
+    client.add_receipt_word(word_pending)
     # Act
-    found_words = client.listReceiptWordsByEmbeddingStatus(
+    found_words = client.list_receipt_words_by_embedding_status(
         EmbeddingStatus.NONE
     )
 

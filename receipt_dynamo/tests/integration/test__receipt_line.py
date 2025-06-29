@@ -32,10 +32,10 @@ def test_add_receipt_line(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptLine(sample_receipt_line)
+    client.add_receipt_line(sample_receipt_line)
 
     # Assert
-    retrieved_line = client.getReceiptLine(
+    retrieved_line = client.get_receipt_line(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
         sample_receipt_line.line_id,
@@ -49,11 +49,11 @@ def test_add_receipt_line_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLine(sample_receipt_line)
+    client.add_receipt_line(sample_receipt_line)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptLine(sample_receipt_line)
+        client.add_receipt_line(sample_receipt_line)
 
 
 @pytest.mark.integration
@@ -62,17 +62,17 @@ def test_update_receipt_line(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLine(sample_receipt_line)
+    client.add_receipt_line(sample_receipt_line)
 
     # Modify some field
     updated_text = "Updated line text"
     sample_receipt_line.text = updated_text
 
     # Act
-    client.updateReceiptLine(sample_receipt_line)
+    client.update_receipt_line(sample_receipt_line)
 
     # Assert
-    retrieved_line = client.getReceiptLine(
+    retrieved_line = client.get_receipt_line(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
         sample_receipt_line.line_id,
@@ -86,10 +86,10 @@ def test_delete_receipt_line(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLine(sample_receipt_line)
+    client.add_receipt_line(sample_receipt_line)
 
     # Act
-    client.deleteReceiptLine(
+    client.delete_receipt_line(
         sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
         sample_receipt_line.line_id,
@@ -97,7 +97,7 @@ def test_delete_receipt_line(
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptLine(
+        client.get_receipt_line(
             sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
             sample_receipt_line.line_id,
@@ -126,10 +126,10 @@ def test_receipt_line_list(dynamodb_table: Literal["MyMockedTable"]):
         for i in range(1, 4)
     ]
     for ln in lines:
-        client.addReceiptLine(ln)
+        client.add_receipt_line(ln)
 
     # Act
-    returned_lines, _ = client.listReceiptLines()
+    returned_lines, _ = client.list_receipt_lines()
 
     # Assert
     # Might return lines for multiple receipts/images if your table is reused,
@@ -179,10 +179,10 @@ def test_receipt_line_list_from_receipt(
         confidence=0.99,
     )
     for ln in lines_same_receipt + [another_line]:
-        client.addReceiptLine(ln)
+        client.add_receipt_line(ln)
 
     # Act
-    found_lines = client.listReceiptLinesFromReceipt(
+    found_lines = client.list_receipt_lines_from_receipt(
         receipt_id=1, image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
 

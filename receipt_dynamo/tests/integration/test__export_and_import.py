@@ -306,16 +306,16 @@ def test_export_and_import_image(dynamodb_table, export_dir):
         )
     ]
 
-    client.addImage(image)
-    client.addLines(lines)
-    client.addWords(words)
-    client.addWordTags(word_tags)
-    client.addLetters(letters)
-    client.addReceipts(receipts)
-    client.addReceiptLines(receipt_lines)
-    client.addReceiptWords(receipt_words)
-    client.addReceiptWordTags(receipt_word_tags)
-    client.addReceiptLetters(receipt_letters)
+    client.add_image(image)
+    client.add_lines(lines)
+    client.add_words(words)
+    client.add_word_tags(word_tags)
+    client.add_letters(letters)
+    client.add_receipts(receipts)
+    client.add_receipt_lines(receipt_lines)
+    client.add_receipt_words(receipt_words)
+    client.add_receipt_word_tags(receipt_word_tags)
+    client.add_receipt_letters(receipt_letters)
     # Act
     export_image(dynamodb_table, image.image_id, output_dir=export_dir)
 
@@ -323,55 +323,55 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert os.path.exists(f"{export_dir}/{image.image_id}.json")
 
     # Act
-    client.deleteImages([image])
-    client.deleteLines(lines)
-    client.deleteWords(words)
-    client.deleteWordTags(word_tags)
-    client.deleteLetters(letters)
-    client.deleteReceipts(receipts)
-    client.deleteReceiptLines(receipt_lines)
-    client.deleteReceiptWords(receipt_words)
-    client.deleteReceiptWordTags(receipt_word_tags)
-    client.deleteReceiptLetters(receipt_letters)
+    client.delete_images([image])
+    client.delete_lines(lines)
+    client.delete_words(words)
+    client.delete_word_tags(word_tags)
+    client.delete_letters(letters)
+    client.delete_receipts(receipts)
+    client.delete_receipt_lines(receipt_lines)
+    client.delete_receipt_words(receipt_words)
+    client.delete_receipt_word_tags(receipt_word_tags)
+    client.delete_receipt_letters(receipt_letters)
 
     # Assert
-    assert len(client.listImages()[0]) == 0
-    assert len(client.listLines()[0]) == 0
-    assert len(client.listWords()[0]) == 0
-    assert len(client.listLetters()[0]) == 0
-    assert len(client.listReceipts()[0]) == 0
-    assert len(client.listReceiptLines()[0]) == 0
-    assert len(client.listReceiptWords()[0]) == 0
-    assert len(client.listReceiptWordTags()[0]) == 0
-    assert len(client.listReceiptLetters()[0]) == 0
+    assert len(client.list_images()[0]) == 0
+    assert len(client.list_lines()[0]) == 0
+    assert len(client.list_words()[0]) == 0
+    assert len(client.list_letters()[0]) == 0
+    assert len(client.list_receipts()[0]) == 0
+    assert len(client.list_receipt_lines()[0]) == 0
+    assert len(client.list_receipt_words()[0]) == 0
+    assert len(client.list_receipt_word_tags()[0]) == 0
+    assert len(client.list_receipt_letters()[0]) == 0
 
     # Act
     import_image(dynamodb_table, f"{export_dir}/{image.image_id}.json")
 
     # Assert
-    assert len(client.listImages()[0]) == 1
-    assert client.listImages()[0][0].image_id == image.image_id
-    assert len(client.listLines()[0]) == 1
-    assert client.listLines()[0][0].line_id == 1
-    assert client.listLines()[0][0].text == "Hello, world!"
-    assert len(client.listWords()[0]) == 1
-    assert client.listWords()[0][0].word_id == 1
-    assert client.listWords()[0][0].text == "Hello"
-    assert len(client.listWordTags()[0]) == 1
-    assert client.listWordTags()[0][0].tag == "test_tag"
-    assert len(client.listLetters()[0]) == 1
-    assert client.listLetters()[0][0].letter_id == 1
-    assert client.listLetters()[0][0].text == "H"
-    assert len(client.listReceipts()[0]) == 1
-    assert client.listReceipts()[0][0].receipt_id == 1
-    assert len(client.listReceiptLines()[0]) == 1
-    assert client.listReceiptLines()[0][0].receipt_id == 1
-    assert len(client.listReceiptWords()[0]) == 1
-    assert client.listReceiptWords()[0][0].text == "Hello"
-    assert len(client.listReceiptWordTags()[0]) == 1
-    assert client.listReceiptWordTags()[0][0].tag == "test_tag"
-    assert len(client.listReceiptLetters()[0]) == 1
-    assert client.listReceiptLetters()[0][0].text == "H"
+    assert len(client.list_images()[0]) == 1
+    assert client.list_images()[0][0].image_id == image.image_id
+    assert len(client.list_lines()[0]) == 1
+    assert client.list_lines()[0][0].line_id == 1
+    assert client.list_lines()[0][0].text == "Hello, world!"
+    assert len(client.list_words()[0]) == 1
+    assert client.list_words()[0][0].word_id == 1
+    assert client.list_words()[0][0].text == "Hello"
+    assert len(client.list_word_tags()[0]) == 1
+    assert client.list_word_tags()[0][0].tag == "test_tag"
+    assert len(client.list_letters()[0]) == 1
+    assert client.list_letters()[0][0].letter_id == 1
+    assert client.list_letters()[0][0].text == "H"
+    assert len(client.list_receipts()[0]) == 1
+    assert client.list_receipts()[0][0].receipt_id == 1
+    assert len(client.list_receipt_lines()[0]) == 1
+    assert client.list_receipt_lines()[0][0].receipt_id == 1
+    assert len(client.list_receipt_words()[0]) == 1
+    assert client.list_receipt_words()[0][0].text == "Hello"
+    assert len(client.list_receipt_word_tags()[0]) == 1
+    assert client.list_receipt_word_tags()[0][0].tag == "test_tag"
+    assert len(client.list_receipt_letters()[0]) == 1
+    assert client.list_receipt_letters()[0][0].text == "H"
 
 
 @pytest.mark.integration

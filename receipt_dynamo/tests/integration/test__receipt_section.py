@@ -31,10 +31,10 @@ def test_add_receipt_section(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptSection(sample_receipt_section)
+    client.add_receipt_section(sample_receipt_section)
 
     # Assert
-    retrieved = client.getReceiptSection(
+    retrieved = client.get_receipt_section(
         sample_receipt_section.receipt_id,
         sample_receipt_section.image_id,
         sample_receipt_section.section_type,
@@ -48,9 +48,9 @@ def test_add_receipt_section_duplicate_raises(
     sample_receipt_section: ReceiptSection,
 ):
     client = DynamoClient(dynamodb_table)
-    client.addReceiptSection(sample_receipt_section)
+    client.add_receipt_section(sample_receipt_section)
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptSection(sample_receipt_section)
+        client.add_receipt_section(sample_receipt_section)
 
 
 @pytest.mark.integration
@@ -61,10 +61,10 @@ def test_update_receipt_section(
     client = DynamoClient(dynamodb_table)
     # Start with HEADER
     sample_receipt_section.section_type = SectionType.HEADER
-    client.addReceiptSection(sample_receipt_section)
+    client.add_receipt_section(sample_receipt_section)
 
     # Delete the old section before updating with new section type
-    client.deleteReceiptSection(
+    client.delete_receipt_section(
         sample_receipt_section.receipt_id,
         sample_receipt_section.image_id,
         sample_receipt_section.section_type,
@@ -72,10 +72,10 @@ def test_update_receipt_section(
 
     # Modify section_type to FOOTER and add as new section
     sample_receipt_section.section_type = SectionType.FOOTER
-    client.addReceiptSection(sample_receipt_section)
+    client.add_receipt_section(sample_receipt_section)
 
     # Verify the section was updated
-    retrieved = client.getReceiptSection(
+    retrieved = client.get_receipt_section(
         sample_receipt_section.receipt_id,
         sample_receipt_section.image_id,
         sample_receipt_section.section_type,
@@ -89,16 +89,16 @@ def test_delete_receipt_section(
     sample_receipt_section: ReceiptSection,
 ):
     client = DynamoClient(dynamodb_table)
-    client.addReceiptSection(sample_receipt_section)
+    client.add_receipt_section(sample_receipt_section)
 
-    client.deleteReceiptSection(
+    client.delete_receipt_section(
         sample_receipt_section.receipt_id,
         sample_receipt_section.image_id,
         sample_receipt_section.section_type,
     )
 
     with pytest.raises(ValueError, match="not found"):
-        client.getReceiptSection(
+        client.get_receipt_section(
             sample_receipt_section.receipt_id,
             sample_receipt_section.image_id,
             sample_receipt_section.section_type,
@@ -125,10 +125,10 @@ def test_receipt_section_list(dynamodb_table: Literal["MyMockedTable"]):
         )
     ]
     for sec in sections:
-        client.addReceiptSection(sec)
+        client.add_receipt_section(sec)
 
     # Act
-    returned_sections, _ = client.listReceiptSections()
+    returned_sections, _ = client.list_receipt_sections()
 
     # Assert
     for sec in sections:
