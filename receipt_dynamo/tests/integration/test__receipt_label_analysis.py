@@ -45,10 +45,10 @@ def test_addReceiptLabelAnalysis_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Assert
-    retrieved_analysis = client.getReceiptLabelAnalysis(
+    retrieved_analysis = client.get_receipt_label_analysis(
         sample_receipt_label_analysis.image_id,
         sample_receipt_label_analysis.receipt_id,
     )
@@ -62,11 +62,11 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act & Assert
     with pytest.raises(ValueError, match="already exists"):
-        client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
 
 @pytest.mark.integration
@@ -97,7 +97,7 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptLabelAnalysis(invalid_input)  # type: ignore
+        client.add_receipt_label_analysis(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -171,7 +171,7 @@ def test_addReceiptLabelAnalysis_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.add_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
 
 
@@ -208,11 +208,11 @@ def test_addReceiptLabelAnalyses_success(
     ]
 
     # Act
-    client.addReceiptLabelAnalyses(analyses)
+    client.add_receipt_label_analyses(analyses)
 
     # Assert
     for analysis in analyses:
-        retrieved_analysis = client.getReceiptLabelAnalysis(
+        retrieved_analysis = client.get_receipt_label_analysis(
             analysis.image_id,
             analysis.receipt_id,
         )
@@ -252,7 +252,7 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.addReceiptLabelAnalyses(invalid_input)  # type: ignore
+        client.add_receipt_label_analyses(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -315,7 +315,7 @@ def test_addReceiptLabelAnalyses_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.addReceiptLabelAnalyses(analyses)
+        client.add_receipt_label_analyses(analyses)
     mock_batch_write.assert_called_once()
 
 
@@ -352,7 +352,7 @@ def test_addReceiptLabelAnalyses_unprocessed_items(
         ],
     )
 
-    client.addReceiptLabelAnalyses(analyses)
+    client.add_receipt_label_analyses(analyses)
 
     # Verify that batch_write_item was called twice
     assert mock_batch_write.call_count == 2
@@ -370,7 +370,7 @@ def test_updateReceiptLabelAnalysis_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Update the labels
     updated_analysis = ReceiptLabelAnalysis(
@@ -391,10 +391,10 @@ def test_updateReceiptLabelAnalysis_success(
     )
 
     # Act
-    client.updateReceiptLabelAnalysis(updated_analysis)
+    client.update_receipt_label_analysis(updated_analysis)
 
     # Assert
-    retrieved_analysis = client.getReceiptLabelAnalysis(
+    retrieved_analysis = client.get_receipt_label_analysis(
         updated_analysis.image_id,
         updated_analysis.receipt_id,
     )
@@ -413,7 +413,7 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.updateReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.update_receipt_label_analysis(sample_receipt_label_analysis)
 
 
 @pytest.mark.integration
@@ -444,7 +444,7 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptLabelAnalysis(invalid_input)  # type: ignore
+        client.update_receipt_label_analysis(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -512,7 +512,7 @@ def test_updateReceiptLabelAnalysis_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.update_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
 
 
@@ -551,7 +551,7 @@ def test_updateReceiptLabelAnalyses_success(
     ]
 
     # Add them to the database
-    client.addReceiptLabelAnalyses(analyses)
+    client.add_receipt_label_analyses(analyses)
 
     # Update the analyses
     updated_analyses = [
@@ -590,11 +590,11 @@ def test_updateReceiptLabelAnalyses_success(
     ]
 
     # Act
-    client.updateReceiptLabelAnalyses(updated_analyses)
+    client.update_receipt_label_analyses(updated_analyses)
 
     # Assert
     for analysis in updated_analyses:
-        retrieved_analysis = client.getReceiptLabelAnalysis(
+        retrieved_analysis = client.get_receipt_label_analysis(
             analysis.image_id,
             analysis.receipt_id,
         )
@@ -612,7 +612,7 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
 
     # Act & Assert - should raise when item doesn't exist
     with pytest.raises(ValueError, match="do not exist"):
-        client.updateReceiptLabelAnalyses(analyses)
+        client.update_receipt_label_analyses(analyses)
 
 
 @pytest.mark.integration
@@ -648,7 +648,7 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.updateReceiptLabelAnalyses(invalid_input)  # type: ignore
+        client.update_receipt_label_analyses(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -711,7 +711,7 @@ def test_updateReceiptLabelAnalyses_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.updateReceiptLabelAnalyses(analyses)
+        client.update_receipt_label_analyses(analyses)
     mock_transact.assert_called_once()
 
 
@@ -754,7 +754,7 @@ def test_updateReceiptLabelAnalyses_chunking(
     )
 
     # Act
-    client.updateReceiptLabelAnalyses(analyses)
+    client.update_receipt_label_analyses(analyses)
 
     # Assert
     # Should be called twice (25 items in first chunk, 5 in second)
@@ -781,14 +781,14 @@ def test_deleteReceiptLabelAnalysis_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    client.deleteReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.delete_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Assert - should raise when trying to get deleted item
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptLabelAnalysis(
+        client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
         )
@@ -804,7 +804,7 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.deleteReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.delete_receipt_label_analysis(sample_receipt_label_analysis)
 
 
 @pytest.mark.integration
@@ -835,7 +835,7 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptLabelAnalysis(invalid_input)  # type: ignore
+        client.delete_receipt_label_analysis(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -903,7 +903,7 @@ def test_deleteReceiptLabelAnalysis_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptLabelAnalysis(sample_receipt_label_analysis)
+        client.delete_receipt_label_analysis(sample_receipt_label_analysis)
     mock_delete.assert_called_once()
 
 
@@ -942,15 +942,15 @@ def test_deleteReceiptLabelAnalyses_success(
     ]
 
     # Add them to the database
-    client.addReceiptLabelAnalyses(analyses)
+    client.add_receipt_label_analyses(analyses)
 
     # Act
-    client.deleteReceiptLabelAnalyses(analyses)
+    client.delete_receipt_label_analyses(analyses)
 
     # Assert - should raise when trying to get deleted items
     for analysis in analyses:
         with pytest.raises(ValueError, match="does not exist"):
-            client.getReceiptLabelAnalysis(
+            client.get_receipt_label_analysis(
                 analysis.image_id,
                 analysis.receipt_id,
             )
@@ -967,7 +967,7 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="do not exist"):
-        client.deleteReceiptLabelAnalyses(analyses)
+        client.delete_receipt_label_analyses(analyses)
 
 
 @pytest.mark.integration
@@ -1003,7 +1003,7 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.deleteReceiptLabelAnalyses(invalid_input)  # type: ignore
+        client.delete_receipt_label_analyses(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1066,7 +1066,7 @@ def test_deleteReceiptLabelAnalyses_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.deleteReceiptLabelAnalyses(analyses)
+        client.delete_receipt_label_analyses(analyses)
     mock_transact.assert_called_once()
 
 
@@ -1109,7 +1109,7 @@ def test_deleteReceiptLabelAnalyses_chunking(
     )
 
     # Act
-    client.deleteReceiptLabelAnalyses(analyses)
+    client.delete_receipt_label_analyses(analyses)
 
     # Assert
     # Should be called twice (25 items in first chunk, 5 in second)
@@ -1136,10 +1136,10 @@ def test_getReceiptLabelAnalysis_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    retrieved_analysis = client.getReceiptLabelAnalysis(
+    retrieved_analysis = client.get_receipt_label_analysis(
         sample_receipt_label_analysis.image_id,
         sample_receipt_label_analysis.receipt_id,
     )
@@ -1158,7 +1158,7 @@ def test_getReceiptLabelAnalysis_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(ValueError, match="does not exist"):
-        client.getReceiptLabelAnalysis(
+        client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
         )
@@ -1202,7 +1202,7 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptLabelAnalysis(*invalid_params)  # type: ignore
+        client.get_receipt_label_analysis(*invalid_params)  # type: ignore
 
 
 @pytest.mark.integration
@@ -1264,7 +1264,7 @@ def test_getReceiptLabelAnalysis_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.getReceiptLabelAnalysis(
+        client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
         )
@@ -1283,10 +1283,10 @@ def test_listReceiptLabelAnalyses_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = client.listReceiptLabelAnalyses()
+    analyses, last_evaluated_key = client.list_receipt_label_analyses()
 
     # Assert
     assert len(analyses) == 1
@@ -1322,10 +1322,10 @@ def test_listReceiptLabelAnalyses_with_limit(
             overall_reasoning=f"Overall reasoning {i}",
         )
         analyses.append(analysis)
-        client.addReceiptLabelAnalysis(analysis)
+        client.add_receipt_label_analysis(analysis)
 
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = client.listReceiptLabelAnalyses(
+    result_analyses, last_evaluated_key = client.list_receipt_label_analyses(
         limit=2
     )
 
@@ -1361,7 +1361,7 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
     }
 
     # Act
-    analyses, last_evaluated_key = client.listReceiptLabelAnalyses(
+    analyses, last_evaluated_key = client.list_receipt_label_analyses(
         limit=1
     )  # Add a limit to ensure it exits the loop
 
@@ -1425,9 +1425,9 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
         if "limit" in invalid_input:
-            client.listReceiptLabelAnalyses(limit=invalid_input["limit"])  # type: ignore
+            client.list_receipt_label_analyses(limit=invalid_input["limit"])  # type: ignore
         elif "lastEvaluatedKey" in invalid_input:
-            client.listReceiptLabelAnalyses(lastEvaluatedKey=invalid_input["lastEvaluatedKey"])  # type: ignore
+            client.list_receipt_label_analyses(lastEvaluatedKey=invalid_input["lastEvaluatedKey"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -1489,7 +1489,7 @@ def test_listReceiptLabelAnalyses_client_errors(
     )
 
     with pytest.raises(Exception, match=expected_exception):
-        client.listReceiptLabelAnalyses()
+        client.list_receipt_label_analyses()
     mock_query.assert_called_once()
 
 
@@ -1505,10 +1505,10 @@ def test_getReceiptLabelAnalysesByImage_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = client.getReceiptLabelAnalysesByImage(
+    analyses, last_evaluated_key = client.get_receipt_label_analyses_by_image(
         sample_receipt_label_analysis.image_id
     )
 
@@ -1546,11 +1546,11 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
             overall_reasoning=f"Overall reasoning {i}",
         )
         analyses.append(analysis)
-        client.addReceiptLabelAnalysis(analysis)
+        client.add_receipt_label_analysis(analysis)
 
     # Act - get only 2 results
     result_analyses, last_evaluated_key = (
-        client.getReceiptLabelAnalysesByImage(
+        client.get_receipt_label_analyses_by_image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
         )
     )
@@ -1637,7 +1637,7 @@ def test_getReceiptLabelAnalysesByImage_invalid_parameters(
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptLabelAnalysesByImage(image_id, **kwargs)  # type: ignore
+        client.get_receipt_label_analyses_by_image(image_id, **kwargs)  # type: ignore
 
 
 # -------------------------------------------------------------------
@@ -1652,12 +1652,14 @@ def test_getReceiptLabelAnalysesByReceipt_success(
 ):
     # Arrange
     client = DynamoClient(dynamodb_table)
-    client.addReceiptLabelAnalysis(sample_receipt_label_analysis)
+    client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = client.getReceiptLabelAnalysesByReceipt(
-        sample_receipt_label_analysis.image_id,
-        sample_receipt_label_analysis.receipt_id,
+    analyses, last_evaluated_key = (
+        client.get_receipt_label_analyses_by_receipt(
+            sample_receipt_label_analysis.image_id,
+            sample_receipt_label_analysis.receipt_id,
+        )
     )
 
     # Assert
@@ -1750,4 +1752,4 @@ def test_getReceiptLabelAnalysesByReceipt_invalid_parameters(
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
-        client.getReceiptLabelAnalysesByReceipt(image_id, receipt_id, **kwargs)  # type: ignore
+        client.get_receipt_label_analyses_by_receipt(image_id, receipt_id, **kwargs)  # type: ignore
