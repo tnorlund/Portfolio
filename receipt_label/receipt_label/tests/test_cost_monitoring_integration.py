@@ -3,6 +3,7 @@ Integration tests for cost monitoring system.
 """
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,6 +34,8 @@ class TestCostMonitoringIntegration:
         """Create mock DynamoDB client."""
         client = MagicMock()
         client.table_name = "test-table"
+        # Mock the _client attribute that BudgetManager uses
+        client._client = MagicMock()
         return client
 
     @pytest.fixture
@@ -211,8 +214,8 @@ class TestCostMonitoringIntegration:
         assert budget.amount == Decimal("1000.00")
 
         # Update budget
-        mock_dynamo_client.get_item.return_value = {
-            "Item": {"budget_data": {"S": budget.to_dict().__str__()}}
+        mock_dynamo_client._client.get_item.return_value = {
+            "Item": {"budget_data": {"S": json.dumps(budget.to_dict())}}
         }
 
         updated_budget = budget_manager.update_budget(
@@ -411,7 +414,9 @@ class TestCostMonitoringIntegration:
         assert channel2.min_level == ThresholdLevel.CRITICAL
 
         # Test invalid string level (should default to INFO)
-        with patch("receipt_label.utils.cost_monitoring.alert_manager.logger") as mock_logger:
+        with patch(
+            "receipt_label.utils.cost_monitoring.alert_manager.logger"
+        ) as mock_logger:
             channel3 = AlertChannel(
                 channel_type="email",
                 destination="test@example.com",

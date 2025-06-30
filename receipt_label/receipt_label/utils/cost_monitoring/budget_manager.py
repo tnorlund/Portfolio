@@ -371,7 +371,7 @@ class BudgetManager:
         if budget.effective_until:
             item["effective_until"] = {"S": budget.effective_until.isoformat()}
 
-        self.dynamo_client.put_item(
+        self.dynamo_client._client.put_item(
             TableName=self.table_name,
             Item=item,
         )
@@ -385,7 +385,7 @@ class BudgetManager:
 
         scope = parts[1]
 
-        response = self.dynamo_client.get_item(
+        response = self.dynamo_client._client.get_item(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"BUDGET#{scope}"},
@@ -401,7 +401,7 @@ class BudgetManager:
 
     def _query_budgets_by_scope(self, scope: str) -> List[Budget]:
         """Query all budgets for a scope."""
-        response = self.dynamo_client.query(
+        response = self.dynamo_client._client.query(
             TableName=self.table_name,
             KeyConditionExpression="PK = :pk",
             ExpressionAttributeValues={

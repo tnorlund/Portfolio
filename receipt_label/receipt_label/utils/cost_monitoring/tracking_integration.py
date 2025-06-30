@@ -120,7 +120,9 @@ class CostAwareAIUsageTracker(AIUsageTracker):
 
         if alert and self.alert_manager:
             # Send alert asynchronously
-            task = asyncio.create_task(self._send_alert_async(alert, budget_name))
+            task = asyncio.create_task(
+                self._send_alert_async(alert, budget_name)
+            )
             self._alert_tasks.add(task)
             # Clean up completed tasks
             task.add_done_callback(lambda t: self._alert_tasks.discard(t))

@@ -24,6 +24,9 @@ class TestBudgetManager:
         """Create a mock DynamoDB client."""
         client = MagicMock()
         client.table_name = "test-table"
+        # Mock the _client attribute that BudgetManager uses
+        client._client = MagicMock()
+        client.region = "us-east-1"
         return client
 
     @pytest.fixture
@@ -64,8 +67,8 @@ class TestBudgetManager:
         assert budget.is_active is True
 
         # Verify DynamoDB put_item was called
-        mock_dynamo_client.put_item.assert_called_once()
-        call_args = mock_dynamo_client.put_item.call_args[1]
+        mock_dynamo_client._client.put_item.assert_called_once()
+        call_args = mock_dynamo_client._client.put_item.call_args[1]
         assert call_args["TableName"] == "test-table"
         assert call_args["Item"]["PK"]["S"] == "BUDGET#user:test-user"
 
@@ -74,7 +77,7 @@ class TestBudgetManager:
     ):
         """Test retrieving active budget."""
         # Mock DynamoDB response
-        mock_dynamo_client.query.return_value = {
+        mock_dynamo_client._client.query.return_value = {
             "Items": [
                 {
                     "PK": {"S": "BUDGET#user:test"},
@@ -108,7 +111,7 @@ class TestBudgetManager:
             is_active=True,
         )
 
-        mock_dynamo_client.query.return_value = {
+        mock_dynamo_client._client.query.return_value = {
             "Items": [
                 {
                     "budget_data": {"S": json.dumps(expired_budget.to_dict())},
@@ -124,7 +127,7 @@ class TestBudgetManager:
     ):
         """Test updating an existing budget."""
         # Mock get_item response
-        mock_dynamo_client.get_item.return_value = {
+        mock_dynamo_client._client.get_item.return_value = {
             "Item": {
                 "budget_data": {"S": json.dumps(sample_budget.to_dict())},
             }
@@ -142,13 +145,13 @@ class TestBudgetManager:
         assert updated_budget.metadata["notes"] == "Increased budget"
 
         # Verify put_item was called to save update
-        assert mock_dynamo_client.put_item.call_count == 1
+        assert mock_dynamo_client._client.put_item.call_count == 1
 
     def test_deactivate_budget(
         self, budget_manager, mock_dynamo_client, sample_budget
     ):
         """Test deactivating a budget."""
-        mock_dynamo_client.get_item.return_value = {
+        mock_dynamo_client._client.get_item.return_value = {
             "Item": {
                 "budget_data": {"S": json.dumps(sample_budget.to_dict())},
             }
@@ -157,7 +160,7 @@ class TestBudgetManager:
         budget_manager.deactivate_budget(sample_budget.budget_id)
 
         # Verify put_item was called with inactive status
-        call_args = mock_dynamo_client.put_item.call_args[1]
+        call_args = mock_dynamo_client._client.put_item.call_args[1]
         stored_budget = json.loads(call_args["Item"]["budget_data"]["S"])
         assert stored_budget["is_active"] is False
         assert stored_budget["effective_until"] is not None
@@ -181,7 +184,7 @@ class TestBudgetManager:
                 }
             )
 
-        mock_dynamo_client.query.return_value = {"Items": budgets_data}
+        mock_dynamo_client._client.query.return_value = {"Items": budgets_data}
 
         history = budget_manager.get_budget_history("user:test")
 
@@ -226,7 +229,7 @@ class TestBudgetManager:
         sample_budget.rollover_enabled = True
 
         # Mock get_item for deactivation
-        mock_dynamo_client.get_item.return_value = {
+        mock_dynamo_client._client.get_item.return_value = {
             "Item": {
                 "budget_data": {"S": json.dumps(sample_budget.to_dict())},
             }
@@ -243,7 +246,7 @@ class TestBudgetManager:
 
         # Verify old budget was deactivated
         assert (
-            mock_dynamo_client.put_item.call_count == 2
+            mock_dynamo_client._client.put_item.call_count == 2
         )  # One for new, one for deactivation
 
     def test_invalid_scope_format(self, budget_manager):
@@ -254,7 +257,7 @@ class TestBudgetManager:
 
     def test_budget_not_found(self, budget_manager, mock_dynamo_client):
         """Test handling when budget is not found."""
-        mock_dynamo_client.get_item.return_value = {}
+        mock_dynamo_client._client.get_item.return_value = {}
 
         with pytest.raises(ValueError, match="Budget not found"):
             budget_manager.update_budget(
