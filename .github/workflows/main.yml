@@ -103,7 +103,7 @@ jobs:
   test-python:
     name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, python-tests]
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
