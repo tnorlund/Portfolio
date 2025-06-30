@@ -66,14 +66,14 @@ def list_pending_embedding_batches(
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+    summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
         status="PENDING",
         batch_type=BatchType.EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+        next_summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
             status="PENDING",
             batch_type=BatchType.EMBEDDING,
             limit=25,
@@ -167,12 +167,12 @@ def get_receipt_descriptions(
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
         receipt, lines, words, letters, tags, labels = (
-            client_manager.dynamo.getReceiptDetails(
+            client_manager.dynamo.get_receipt_details(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
         )
-        receipt_metadata = client_manager.dynamo.getReceiptMetadata(
+        receipt_metadata = client_manager.dynamo.get_receipt_metadata(
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -487,7 +487,7 @@ def write_embedding_results_to_dynamo(
         chunk = embedding_results[i : i + 25]
         if client_manager is None:
             client_manager = get_client_manager()
-        client_manager.dynamo.addEmbeddingBatchResults(chunk)
+        client_manager.dynamo.add_embedding_batch_results(chunk)
         written += len(chunk)
     return written
 
@@ -500,6 +500,6 @@ def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    batch_summary = client_manager.dynamo.getBatchSummary(batch_id)
+    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
     batch_summary.status = "COMPLETED"
-    client_manager.dynamo.updateBatchSummary(batch_summary)
+    client_manager.dynamo.update_batch_summary(batch_summary)

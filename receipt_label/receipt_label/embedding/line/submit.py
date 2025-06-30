@@ -173,7 +173,7 @@ def query_receipt_lines(
     """Query the ReceiptLines from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    _, lines, _, _, _, _ = client_manager.dynamo.getReceiptDetails(
+    _, lines, _, _, _, _ = client_manager.dynamo.get_receipt_details(
         image_id, receipt_id
     )
     return lines
@@ -260,7 +260,7 @@ def add_batch_summary(
     """Write the BatchSummary entity to DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    client_manager.dynamo.addBatchSummary(summary)
+    client_manager.dynamo.add_batch_summary(summary)
 
 
 def update_line_embedding_status(
@@ -272,4 +272,4 @@ def update_line_embedding_status(
     for line in lines:
         # Set to the string value so GSI1PK is updated correctly
         line.embedding_status = EmbeddingStatus.PENDING.value
-    client_manager.dynamo.updateReceiptLines(lines)
+    client_manager.dynamo.update_receipt_lines(lines)

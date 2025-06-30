@@ -119,7 +119,7 @@ def query_receipt_words(
         _,
         _,
         _,
-    ) = client_manager.dynamo.getReceiptDetails(image_id, receipt_id)
+    ) = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
     return words
 
 
@@ -164,7 +164,7 @@ def list_receipt_words_with_no_embeddings(
     """Fetch all ReceiptWord items with embedding_status == NONE."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.listReceiptWordsByEmbeddingStatus(
+    return client_manager.dynamo.list_receipt_words_by_embedding_status(
         EmbeddingStatus.NONE
     )
 
@@ -357,7 +357,7 @@ def add_batch_summary(
     """Write the BatchSummary entity to DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    client_manager.dynamo.addBatchSummary(summary)
+    client_manager.dynamo.add_batch_summary(summary)
 
 
 def update_word_embedding_status(
@@ -369,4 +369,4 @@ def update_word_embedding_status(
     for word in words:
         # Set to the string value so GSI1PK is updated correctly
         word.embedding_status = EmbeddingStatus.PENDING.value
-    client_manager.dynamo.updateReceiptWords(words)
+    client_manager.dynamo.update_receipt_words(words)
