@@ -384,6 +384,147 @@ class CostMonitor:
                     all_metrics.extend(metrics)
             return all_metrics
         else:
-            # For job/environment, need to scan with filters
+            # For job/environment, use scan with filters
             # This is less efficient but necessary for these access patterns
-            return []  # TODO: Implement scan with filters
+            return self._scan_metrics_with_filters(
+                scope_type, scope_value, start_date, end_date, service
+            )
+
+    def _scan_metrics_with_filters(
+        self,
+        scope_type: str,
+        scope_value: str,
+        start_date: str,
+        end_date: str,
+        service: Optional[str] = None,
+    ) -> List[AIUsageMetric]:
+        """
+        Scan metrics with filters for job/environment scopes.
+        
+        This is less efficient than indexed queries but necessary
+        for scope types that don't have dedicated GSIs.
+        """
+        try:
+            # Build filter expression
+            filter_expression = "attribute_exists(#scope_attr) AND #scope_attr = :scope_value"
+            filter_expression += " AND #date BETWEEN :start_date AND :end_date"
+            
+            expression_attribute_names = {
+                "#date": "date",
+            }
+            
+            expression_attribute_values = {
+                ":scope_value": {"S": scope_value},
+                ":start_date": {"S": start_date},
+                ":end_date": {"S": end_date},
+            }
+            
+            if scope_type == "job":
+                expression_attribute_names["#scope_attr"] = "job_id"
+            elif scope_type == "environment":
+                expression_attribute_names["#scope_attr"] = "environment"
+            else:
+                logger.warning(f"Unsupported scope type for scan: {scope_type}")
+                return []
+            
+            # Add service filter if specified
+            if service:
+                filter_expression += " AND #service = :service"
+                expression_attribute_names["#service"] = "service"
+                expression_attribute_values[":service"] = {"S": service}
+            
+            # Perform scan
+            response = self.dynamo_client._client.scan(
+                TableName=self.dynamo_client.table_name,
+                FilterExpression=filter_expression,
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values,
+            )
+            
+            # Convert items back to AIUsageMetric objects
+            metrics = []
+            for item in response.get("Items", []):
+                try:
+                    # Convert DynamoDB item to AIUsageMetric
+                    metric = self._dynamodb_item_to_metric(item)
+                    if metric:
+                        metrics.append(metric)
+                except Exception as e:
+                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    continue
+            
+            logger.info(
+                f"Scanned {len(metrics)} metrics for {scope_type}:{scope_value} "
+                f"between {start_date} and {end_date}"
+            )
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Failed to scan metrics for {scope_type}:{scope_value}: {e}")
+            return []
+
+    def _dynamodb_item_to_metric(self, item: Dict) -> Optional[AIUsageMetric]:
+        """Convert DynamoDB item to AIUsageMetric object."""
+        try:
+            # Extract required fields
+            service = item.get("service", {}).get("S", "")
+            model = item.get("model", {}).get("S", "")
+            operation = item.get("operation", {}).get("S", "")
+            timestamp_str = item.get("timestamp", {}).get("S", "")
+            
+            if not all([service, model, operation, timestamp_str]):
+                return None
+            
+            # Parse timestamp
+            from datetime import datetime
+            timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            
+            # Extract optional fields with proper type conversion
+            def get_decimal_value(field_name: str) -> Optional[Decimal]:
+                field = item.get(field_name, {})
+                if "N" in field:
+                    return Decimal(field["N"])
+                elif "S" in field:
+                    try:
+                        return Decimal(field["S"])
+                    except:
+                        return None
+                return None
+            
+            def get_int_value(field_name: str) -> Optional[int]:
+                field = item.get(field_name, {})
+                if "N" in field:
+                    return int(field["N"])
+                return None
+            
+            def get_string_value(field_name: str) -> Optional[str]:
+                field = item.get(field_name, {})
+                return field.get("S")
+            
+            # Create AIUsageMetric object
+            metric = AIUsageMetric(
+                service=service,
+                model=model,
+                operation=operation,
+                timestamp=timestamp,
+                request_id=get_string_value("request_id"),
+                input_tokens=get_int_value("input_tokens"),
+                output_tokens=get_int_value("output_tokens"),
+                total_tokens=get_int_value("total_tokens"),
+                api_calls=get_int_value("api_calls") or 1,
+                cost_usd=get_decimal_value("cost_usd"),
+                latency_ms=get_int_value("latency_ms"),
+                user_id=get_string_value("user_id"),
+                job_id=get_string_value("job_id"),
+                batch_id=get_string_value("batch_id"),
+                github_pr=get_int_value("github_pr"),
+                environment=get_string_value("environment"),
+                error=get_string_value("error"),
+            )
+            
+            return metric
+            
+        except Exception as e:
+            logger.warning(f"Failed to parse DynamoDB item: {e}")
+            return None

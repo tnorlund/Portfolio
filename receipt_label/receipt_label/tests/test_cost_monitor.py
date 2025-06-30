@@ -338,3 +338,77 @@ class TestCostMonitor:
             )
 
             assert alert is None
+
+    def test_query_metrics_job_scope(self, mock_dynamo_client):
+        """Test querying metrics for job scope using scan."""
+        monitor = CostMonitor(mock_dynamo_client)
+        
+        # Mock scan response
+        mock_scan_response = {
+            "Items": [
+                {
+                    "service": {"S": "openai"},
+                    "model": {"S": "gpt-3.5-turbo"},
+                    "operation": {"S": "completion"},
+                    "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
+                    "job_id": {"S": "test-job-123"},
+                    "cost_usd": {"N": "1.50"},
+                    "date": {"S": "2024-01-01"},
+                }
+            ]
+        }
+        
+        mock_dynamo_client._client.scan.return_value = mock_scan_response
+        
+        # Test job scope query
+        metrics = monitor._query_metrics(
+            scope_type="job",
+            scope_value="test-job-123",
+            start_date="2024-01-01",
+            end_date="2024-01-01",
+        )
+        
+        assert len(metrics) == 1
+        assert metrics[0].job_id == "test-job-123"
+        assert metrics[0].service == "openai"
+        assert metrics[0].cost_usd == Decimal("1.50")
+        
+        # Verify scan was called with correct parameters
+        mock_dynamo_client._client.scan.assert_called_once()
+        call_kwargs = mock_dynamo_client._client.scan.call_args[1]
+        assert call_kwargs["ExpressionAttributeNames"]["#scope_attr"] == "job_id"
+        assert call_kwargs["ExpressionAttributeValues"][":scope_value"]["S"] == "test-job-123"
+
+    def test_query_metrics_environment_scope(self, mock_dynamo_client):
+        """Test querying metrics for environment scope using scan."""
+        monitor = CostMonitor(mock_dynamo_client)
+        
+        # Mock scan response
+        mock_scan_response = {
+            "Items": [
+                {
+                    "service": {"S": "anthropic"},
+                    "model": {"S": "claude-3-opus"},
+                    "operation": {"S": "completion"},
+                    "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
+                    "environment": {"S": "production"},
+                    "cost_usd": {"N": "2.25"},
+                    "date": {"S": "2024-01-01"},
+                }
+            ]
+        }
+        
+        mock_dynamo_client._client.scan.return_value = mock_scan_response
+        
+        # Test environment scope query
+        metrics = monitor._query_metrics(
+            scope_type="environment",
+            scope_value="production",
+            start_date="2024-01-01",
+            end_date="2024-01-01",
+        )
+        
+        assert len(metrics) == 1
+        assert metrics[0].environment == "production"
+        assert metrics[0].service == "anthropic"
+        assert metrics[0].cost_usd == Decimal("2.25")
