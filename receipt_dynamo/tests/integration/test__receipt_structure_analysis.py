@@ -64,7 +64,7 @@ def sample_receipt_structure_analysis():
 
 
 @pytest.mark.integration
-def test_addReceiptStructureAnalysis_success(
+def test_add_receipt_structure_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful addition of a ReceiptStructureAnalysis."""
@@ -118,7 +118,7 @@ def test_addReceiptStructureAnalysis_success(
         ),
     ],
 )
-def test_addReceiptStructureAnalysis_client_errors(
+def test_add_receipt_structure_analysis_client_errors(
     dynamodb_table,
     sample_receipt_structure_analysis,
     mocker,
@@ -149,7 +149,7 @@ def test_addReceiptStructureAnalysis_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptStructureAnalyses_success(
+def test_add_receipt_structure_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful addition of multiple ReceiptStructureAnalyses."""
@@ -227,7 +227,7 @@ def test_addReceiptStructureAnalyses_success(
         ),
     ],
 )
-def test_addReceiptStructureAnalyses_client_errors(
+def test_add_receipt_structure_analyses_client_errors(
     dynamodb_table,
     sample_receipt_structure_analysis,
     mocker,
@@ -268,7 +268,7 @@ def test_addReceiptStructureAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptStructureAnalysis_success(
+def test_update_receipt_structure_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful update of a ReceiptStructureAnalysis."""
@@ -312,7 +312,7 @@ def test_updateReceiptStructureAnalysis_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptStructureAnalyses_success(
+def test_update_receipt_structure_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful update of multiple ReceiptStructureAnalyses."""
@@ -417,7 +417,7 @@ def test_updateReceiptStructureAnalyses_success(
         ),
     ],
 )
-def test_updateReceiptStructureAnalyses_client_errors(
+def test_update_receipt_structure_analyses_client_errors(
     dynamodb_table,
     sample_receipt_structure_analysis,
     mocker,
@@ -462,7 +462,7 @@ def test_updateReceiptStructureAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptStructureAnalysesFromReceipt_success(
+def test_list_receipt_structure_analyses_from_receipt_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test successful listing of ReceiptStructureAnalyses for a receipt."""

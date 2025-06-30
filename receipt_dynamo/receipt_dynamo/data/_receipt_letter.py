@@ -11,6 +11,7 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.utils.dynamo_helpers import batch_write_items
 
 
 class _ReceiptLetter(DynamoClientProtocol):

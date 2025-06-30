@@ -26,12 +26,12 @@ def sample_receipt_word_label():
 
 
 # -------------------------------------------------------------------
-#                        addReceiptWordLabel
+#                        add_receipt_word_label
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptWordLabel_success(
+def test_add_receipt_word_label_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -53,7 +53,7 @@ def test_addReceiptWordLabel_success(
 
 
 @pytest.mark.integration
-def test_addReceiptWordLabel_duplicate_raises(
+def test_add_receipt_word_label_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -77,7 +77,7 @@ def test_addReceiptWordLabel_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptWordLabel_invalid_parameters(
+def test_add_receipt_word_label_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -131,7 +131,7 @@ def test_addReceiptWordLabel_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptWordLabel_client_errors(
+def test_add_receipt_word_label_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -170,12 +170,12 @@ def test_addReceiptWordLabel_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        addReceiptWordLabels
+#                        add_receipt_word_labels
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptWordLabels_success(
+def test_add_receipt_word_labels_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -232,7 +232,7 @@ def test_addReceiptWordLabels_success(
         ),
     ],
 )
-def test_addReceiptWordLabels_invalid_parameters(
+def test_add_receipt_word_labels_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -277,7 +277,7 @@ def test_addReceiptWordLabels_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptWordLabels_client_errors(
+def test_add_receipt_word_labels_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -315,7 +315,7 @@ def test_addReceiptWordLabels_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptWordLabels_unprocessed_items(
+def test_add_receipt_word_labels_unprocessed_items(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -354,12 +354,12 @@ def test_addReceiptWordLabels_unprocessed_items(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptWordLabel
+#                        update_receipt_word_label
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptWordLabel_success(
+def test_update_receipt_word_label_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -393,7 +393,7 @@ def test_updateReceiptWordLabel_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptWordLabel_nonexistent_raises(
+def test_update_receipt_word_label_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -416,7 +416,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptWordLabel_invalid_parameters(
+def test_update_receipt_word_label_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -465,7 +465,7 @@ def test_updateReceiptWordLabel_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptWordLabel_client_errors(
+def test_update_receipt_word_label_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -503,12 +503,12 @@ def test_updateReceiptWordLabel_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptWordLabels
+#                        update_receipt_word_labels
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptWordLabels_success(
+def test_update_receipt_word_labels_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -569,7 +569,7 @@ def test_updateReceiptWordLabels_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptWordLabels_nonexistent_raises(
+def test_update_receipt_word_labels_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -600,7 +600,7 @@ def test_updateReceiptWordLabels_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptWordLabels_invalid_parameters(
+def test_update_receipt_word_labels_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -650,7 +650,7 @@ def test_updateReceiptWordLabels_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptWordLabels_client_errors(
+def test_update_receipt_word_labels_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -689,7 +689,7 @@ def test_updateReceiptWordLabels_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptWordLabels_chunking(
+def test_update_receipt_word_labels_chunking(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -728,12 +728,12 @@ def test_updateReceiptWordLabels_chunking(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptWordLabel
+#                        delete_receipt_word_label
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptWordLabel_success(
+def test_delete_receipt_word_label_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -756,7 +756,7 @@ def test_deleteReceiptWordLabel_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptWordLabel_nonexistent_raises(
+def test_delete_receipt_word_label_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -779,7 +779,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptWordLabel_invalid_parameters(
+def test_delete_receipt_word_label_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -828,7 +828,7 @@ def test_deleteReceiptWordLabel_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptWordLabel_client_errors(
+def test_delete_receipt_word_label_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -866,12 +866,12 @@ def test_deleteReceiptWordLabel_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptWordLabels
+#                        delete_receipt_word_labels
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptWordLabels_success(
+def test_delete_receipt_word_labels_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -910,7 +910,7 @@ def test_deleteReceiptWordLabels_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptWordLabels_nonexistent_raises(
+def test_delete_receipt_word_labels_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -940,7 +940,7 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptWordLabels_invalid_parameters(
+def test_delete_receipt_word_labels_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -990,7 +990,7 @@ def test_deleteReceiptWordLabels_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptWordLabels_client_errors(
+def test_delete_receipt_word_labels_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1029,7 +1029,7 @@ def test_deleteReceiptWordLabels_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptWordLabels_chunking(
+def test_delete_receipt_word_labels_chunking(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1068,12 +1068,12 @@ def test_deleteReceiptWordLabels_chunking(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptWordLabel
+#                        get_receipt_word_label
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabel_success(
+def test_get_receipt_word_label_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1095,7 +1095,7 @@ def test_getReceiptWordLabel_success(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabel_nonexistent_raises(
+def test_get_receipt_word_label_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1159,7 +1159,7 @@ def test_getReceiptWordLabel_nonexistent_raises(
         ),
     ],
 )
-def test_getReceiptWordLabel_invalid_parameters(
+def test_get_receipt_word_label_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1205,7 +1205,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptWordLabel_client_errors(
+def test_get_receipt_word_label_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1248,12 +1248,12 @@ def test_getReceiptWordLabel_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        listReceiptWordLabels
+#                        list_receipt_word_labels
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceiptWordLabels_success(
+def test_list_receipt_word_labels_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1285,7 +1285,7 @@ def test_listReceiptWordLabels_success(
 
 
 @pytest.mark.integration
-def test_listReceiptWordLabels_with_limit(
+def test_list_receipt_word_labels_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1315,7 +1315,7 @@ def test_listReceiptWordLabels_with_limit(
 
 
 @pytest.mark.integration
-def test_listReceiptWordLabels_with_last_evaluated_key(
+def test_list_receipt_word_labels_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1379,7 +1379,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
         ),
     ],
 )
-def test_listReceiptWordLabels_invalid_parameters(
+def test_list_receipt_word_labels_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1431,7 +1431,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptWordLabels_client_errors(
+def test_list_receipt_word_labels_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1469,7 +1469,7 @@ def test_listReceiptWordLabels_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptWordLabels_pagination_errors(
+def test_list_receipt_word_labels_pagination_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1528,12 +1528,12 @@ def test_listReceiptWordLabels_pagination_errors(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptWordLabelsByLabel
+#                        get_receipt_word_labels_by_label
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByLabel_success(
+def test_get_receipt_word_labels_by_label_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1567,7 +1567,7 @@ def test_getReceiptWordLabelsByLabel_success(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByLabel_with_limit(
+def test_get_receipt_word_labels_by_label_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1599,7 +1599,7 @@ def test_getReceiptWordLabelsByLabel_with_limit(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
+def test_get_receipt_word_labels_by_label_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
 ):
@@ -1676,7 +1676,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
         ),
     ],
 )
-def test_getReceiptWordLabelsByLabel_invalid_parameters(
+def test_get_receipt_word_labels_by_label_invalid_parameters(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1729,7 +1729,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptWordLabelsByLabel_client_errors(
+def test_get_receipt_word_labels_by_label_client_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1767,7 +1767,7 @@ def test_getReceiptWordLabelsByLabel_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByLabel_pagination_errors(
+def test_get_receipt_word_labels_by_label_pagination_errors(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -1826,12 +1826,12 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptWordLabelsByValidationStatus
+#                        get_receipt_word_labels_by_validation_status
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByValidationStatus_success(
+def test_get_receipt_word_labels_by_validation_status_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
     mocker,
@@ -1903,7 +1903,7 @@ def test_getReceiptWordLabelsByValidationStatus_success(
         ),
     ],
 )
-def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
+def test_get_receipt_word_labels_by_validation_status_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
     mocker,
@@ -1944,7 +1944,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptWordLabelsByValidationStatus_client_errors(
+def test_get_receipt_word_labels_by_validation_status_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
     mocker,
@@ -1968,7 +1968,7 @@ def test_getReceiptWordLabelsByValidationStatus_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
+def test_get_receipt_word_labels_by_validation_status_pagination_midway_failure(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word_label: ReceiptWordLabel,
     mocker,
@@ -2000,7 +2000,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
     assert mock_query.call_count == 2
 
 
-def test_getReceiptWordLabelsByValidationStatus_multi_page_success(
+def test_get_receipt_word_labels_by_validation_status_multi_page_success(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -2024,7 +2024,7 @@ def test_getReceiptWordLabelsByValidationStatus_multi_page_success(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
+def test_get_receipt_word_labels_by_validation_status_hits_limit_mid_loop(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -2057,7 +2057,7 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
     assert mock_query.call_count == 3  # ensures we looped and reassigned limit
 
 
-def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
+def test_get_receipt_word_labels_by_validation_status_limit_updates_mid_loop(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,
@@ -2088,7 +2088,7 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
 
 
 @pytest.mark.integration
-def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
+def test_get_receipt_word_labels_by_validation_status_triggers_limit_mid_loop(
     dynamodb_table,
     sample_receipt_word_label,
     mocker,

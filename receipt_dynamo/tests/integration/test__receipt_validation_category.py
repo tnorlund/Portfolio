@@ -25,7 +25,7 @@ def sample_receipt_validation_category():
 
 
 @pytest.mark.integration
-def test_addReceiptValidationCategory_success(
+def test_add_receipt_validation_category_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -51,7 +51,7 @@ def test_addReceiptValidationCategory_success(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationCategory_duplicate_raises(
+def test_add_receipt_validation_category_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -95,7 +95,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptValidationCategory_invalid_parameters(
+def test_add_receipt_validation_category_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -161,7 +161,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptValidationCategory_client_errors(
+def test_add_receipt_validation_category_client_errors(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -197,7 +197,7 @@ def test_addReceiptValidationCategory_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationCategories_success(
+def test_add_receipt_validation_categories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -260,7 +260,7 @@ def test_addReceiptValidationCategories_success(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationCategories_with_large_batch(
+def test_add_receipt_validation_categories_with_large_batch(
     dynamodb_table, sample_receipt_validation_category
 ):
     """
@@ -312,7 +312,7 @@ def test_addReceiptValidationCategories_with_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationCategories_with_unprocessed_items_retries(
+def test_add_receipt_validation_categories_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_category, mocker
 ):
     """
@@ -386,7 +386,7 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptValidationCategories_invalid_parameters(
+def test_add_receipt_validation_categories_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -451,7 +451,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptValidationCategories_client_errors(
+def test_add_receipt_validation_categories_client_errors(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -486,7 +486,7 @@ def test_addReceiptValidationCategories_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationCategory_success(
+def test_update_receipt_validation_category_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -553,7 +553,7 @@ def test_updateReceiptValidationCategory_success(
         ),
     ],
 )
-def test_updateReceiptValidationCategory_invalid_parameters(
+def test_update_receipt_validation_category_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -623,7 +623,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptValidationCategory_client_errors(
+def test_update_receipt_validation_category_client_errors(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -659,7 +659,7 @@ def test_updateReceiptValidationCategory_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationCategories_success(
+def test_update_receipt_validation_categories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -745,7 +745,7 @@ def test_updateReceiptValidationCategories_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationCategories_with_large_batch(
+def test_update_receipt_validation_categories_with_large_batch(
     dynamodb_table, sample_receipt_validation_category
 ):
     """
@@ -833,7 +833,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
         ),
     ],
 )
-def test_updateReceiptValidationCategories_invalid_inputs(
+def test_update_receipt_validation_categories_invalid_inputs(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -912,7 +912,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         ),
     ],
 )
-def test_updateReceiptValidationCategories_client_errors(
+def test_update_receipt_validation_categories_client_errors(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -958,7 +958,7 @@ def test_updateReceiptValidationCategories_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationCategory_success(
+def test_delete_receipt_validation_category_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -1006,7 +1006,7 @@ def test_deleteReceiptValidationCategory_success(
         ),
     ],
 )
-def test_deleteReceiptValidationCategory_invalid_parameters(
+def test_delete_receipt_validation_category_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -1072,7 +1072,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptValidationCategory_client_errors(
+def test_delete_receipt_validation_category_client_errors(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -1108,7 +1108,7 @@ def test_deleteReceiptValidationCategory_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationCategories_success(
+def test_delete_receipt_validation_categories_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
 ):
@@ -1182,7 +1182,7 @@ def test_deleteReceiptValidationCategories_success(
         ),
     ],
 )
-def test_deleteReceiptValidationCategories_invalid_parameters(
+def test_delete_receipt_validation_categories_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_category,
     mocker,
@@ -1248,7 +1248,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
     ],
 )
 @pytest.mark.integration
-def test_listReceiptValidationCategoriesForReceipt_success(
+def test_list_receipt_validation_categories_for_receipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
     mocker,
@@ -1334,7 +1334,7 @@ def test_listReceiptValidationCategoriesForReceipt_success(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationCategoriesForReceipt_with_pagination(
+def test_list_receipt_validation_categories_for_receipt_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
     mocker,
@@ -1423,7 +1423,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationCategoriesForReceipt_empty_results(
+def test_list_receipt_validation_categories_for_receipt_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
 ):
@@ -1469,7 +1469,7 @@ def test_listReceiptValidationCategoriesForReceipt_empty_results(
         (1, "", "uuid must be a valid UUIDv4"),
     ],
 )
-def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
+def test_list_receipt_validation_categories_for_receipt_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     receipt_id,
     image_id,
@@ -1496,7 +1496,7 @@ def test_listReceiptValidationCategoriesForReceipt_invalid_parameters(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
+def test_list_receipt_validation_categories_for_receipt_with_invalid_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """
@@ -1562,7 +1562,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         ),
     ],
 )
-def test_listReceiptValidationCategoriesForReceipt_client_errors(
+def test_list_receipt_validation_categories_for_receipt_client_errors(
     dynamodb_table,
     mocker,
     error_code,

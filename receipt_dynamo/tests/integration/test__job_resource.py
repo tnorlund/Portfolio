@@ -75,23 +75,23 @@ def sample_job_resource_2(sample_job):
 
 
 # ---
-# addJobResource
+# add_job_resource
 # ---
 
 
 @pytest.mark.integration
-def test_addJobResource_success(
+def test_add_job_resource_success(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test adding a job resource successfully"""
     # Add the job first (since it's a foreign key reference)
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Verify the job resource was added by retrieving it
-    resource = job_resource_dynamo.getJobResource(
+    resource = job_resource_dynamo.get_job_resource(
         sample_job_resource.job_id, sample_job_resource.resource_id
     )
     assert resource.job_id == sample_job_resource.job_id
@@ -104,17 +104,17 @@ def test_addJobResource_success(
 
 
 @pytest.mark.integration
-def test_addJobResource_raises_value_error(job_resource_dynamo):
+def test_add_job_resource_raises_value_error(job_resource_dynamo):
     """Test that addJobResource raises ValueError when job_resource is None"""
     with pytest.raises(
         ValueError,
         match="JobResource parameter is required and cannot be None.",
     ):
-        job_resource_dynamo.addJobResource(None)
+        job_resource_dynamo.add_job_resource(None)
 
 
 @pytest.mark.integration
-def test_addJobResource_raises_value_error_not_instance(job_resource_dynamo):
+def test_add_job_resource_raises_value_error_not_instance(job_resource_dynamo):
     """
     Test that addJobResource raises ValueError when job_resource is not an
     instance of JobResource
@@ -123,11 +123,11 @@ def test_addJobResource_raises_value_error_not_instance(job_resource_dynamo):
         ValueError,
         match="job_resource must be an instance of the JobResource class.",
     ):
-        job_resource_dynamo.addJobResource("not a job resource")
+        job_resource_dynamo.add_job_resource("not a job resource")
 
 
 @pytest.mark.integration
-def test_addJobResource_raises_conditional_check_failed(
+def test_add_job_resource_raises_conditional_check_failed(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """
@@ -135,10 +135,10 @@ def test_addJobResource_raises_conditional_check_failed(
     already exists
     """
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource first
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Try to add it again
     with pytest.raises(
@@ -147,11 +147,11 @@ def test_addJobResource_raises_conditional_check_failed(
         f"{sample_job_resource.resource_id} for job "
         f"{sample_job_resource.job_id} already exists",
     ):
-        job_resource_dynamo.addJobResource(sample_job_resource)
+        job_resource_dynamo.add_job_resource(sample_job_resource)
 
 
 @pytest.mark.integration
-def test_addJobResource_raises_resource_not_found(
+def test_add_job_resource_raises_resource_not_found(
     job_resource_dynamo, sample_job_resource, mocker
 ):
     """Simulate a ResourceNotFoundException when adding a job resource"""
@@ -172,28 +172,28 @@ def test_addJobResource_raises_resource_not_found(
     with pytest.raises(
         Exception, match="Could not add job resource to DynamoDB"
     ):
-        job_resource_dynamo.addJobResource(sample_job_resource)
+        job_resource_dynamo.add_job_resource(sample_job_resource)
     mock_put.assert_called_once()
 
 
 # ---
-# getJobResource
+# get_job_resource
 # ---
 
 
 @pytest.mark.integration
-def test_getJobResource_success(
+def test_get_job_resource_success(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test getting a job resource successfully"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Get the job resource
-    resource = job_resource_dynamo.getJobResource(
+    resource = job_resource_dynamo.get_job_resource(
         sample_job_resource.job_id, sample_job_resource.resource_id
     )
 
@@ -208,16 +208,16 @@ def test_getJobResource_success(
 
 
 @pytest.mark.integration
-def test_getJobResource_raises_value_error_job_id_none(job_resource_dynamo):
+def test_get_job_resource_raises_value_error_job_id_none(job_resource_dynamo):
     """Test that getJobResource raises ValueError when job_id is None"""
     with pytest.raises(
         ValueError, match="Job ID is required and cannot be None."
     ):
-        job_resource_dynamo.getJobResource(None, "resource-123")
+        job_resource_dynamo.get_job_resource(None, "resource-123")
 
 
 @pytest.mark.integration
-def test_getJobResource_raises_value_error_resource_id_none(
+def test_get_job_resource_raises_value_error_resource_id_none(
     job_resource_dynamo, sample_job
 ):
     """Test that getJobResource raises ValueError when resource_id is None"""
@@ -225,11 +225,11 @@ def test_getJobResource_raises_value_error_resource_id_none(
         ValueError,
         match="Resource ID is required and must be a non-empty string.",
     ):
-        job_resource_dynamo.getJobResource(sample_job.job_id, None)
+        job_resource_dynamo.get_job_resource(sample_job.job_id, None)
 
 
 @pytest.mark.integration
-def test_getJobResource_raises_value_error_not_found(
+def test_get_job_resource_raises_value_error_not_found(
     job_resource_dynamo, sample_job
 ):
     """
@@ -239,30 +239,30 @@ def test_getJobResource_raises_value_error_not_found(
     with pytest.raises(
         ValueError, match="No job resource found with job ID.*"
     ):
-        job_resource_dynamo.getJobResource(
+        job_resource_dynamo.get_job_resource(
             sample_job.job_id, "nonexistent-resource"
         )
 
 
 # ---
-# updateJobResourceStatus
+# update_job_resource_status
 # ---
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_success(
+def test_update_job_resource_status_success(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test updating a job resource status successfully"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Update the job resource status
     released_at = datetime.now().isoformat()
-    job_resource_dynamo.updateJobResourceStatus(
+    job_resource_dynamo.update_job_resource_status(
         sample_job_resource.job_id,
         sample_job_resource.resource_id,
         "released",
@@ -270,7 +270,7 @@ def test_updateJobResourceStatus_success(
     )
 
     # Get the job resource to verify the update
-    job_resource = job_resource_dynamo.getJobResource(
+    job_resource = job_resource_dynamo.get_job_resource(
         sample_job_resource.job_id, sample_job_resource.resource_id
     )
 
@@ -280,7 +280,7 @@ def test_updateJobResourceStatus_success(
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_raises_value_error_job_id_none(
+def test_update_job_resource_status_raises_value_error_job_id_none(
     job_resource_dynamo,
 ):
     """
@@ -289,13 +289,13 @@ def test_updateJobResourceStatus_raises_value_error_job_id_none(
     with pytest.raises(
         ValueError, match="Job ID is required and cannot be None."
     ):
-        job_resource_dynamo.updateJobResourceStatus(
+        job_resource_dynamo.update_job_resource_status(
             None, "resource-123", "released"
         )
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_raises_value_error_resource_id_none(
+def test_update_job_resource_status_raises_value_error_resource_id_none(
     job_resource_dynamo, sample_job
 ):
     """
@@ -306,13 +306,13 @@ def test_updateJobResourceStatus_raises_value_error_resource_id_none(
         ValueError,
         match="Resource ID is required and must be a non-empty string.",
     ):
-        job_resource_dynamo.updateJobResourceStatus(
+        job_resource_dynamo.update_job_resource_status(
             sample_job.job_id, None, "released"
         )
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_raises_value_error_status_none(
+def test_update_job_resource_status_raises_value_error_status_none(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """
@@ -321,20 +321,20 @@ def test_updateJobResourceStatus_raises_value_error_status_none(
     with pytest.raises(
         ValueError, match="Status is required and must be a non-empty string."
     ):
-        job_resource_dynamo.updateJobResourceStatus(
+        job_resource_dynamo.update_job_resource_status(
             sample_job.job_id, sample_job_resource.resource_id, None
         )
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_raises_value_error_invalid_status(
+def test_update_job_resource_status_raises_value_error_invalid_status(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """
     Test that updateJobResourceStatus raises ValueError when status is invalid
     """
     with pytest.raises(ValueError, match="Invalid status.*"):
-        job_resource_dynamo.updateJobResourceStatus(
+        job_resource_dynamo.update_job_resource_status(
             sample_job.job_id,
             sample_job_resource.resource_id,
             "invalid_status",
@@ -342,7 +342,7 @@ def test_updateJobResourceStatus_raises_value_error_invalid_status(
 
 
 @pytest.mark.integration
-def test_updateJobResourceStatus_not_found(
+def test_update_job_resource_status_not_found(
     job_resource_dynamo, sample_job, mocker
 ):
     """Test updating a non-existent job resource"""
@@ -363,7 +363,7 @@ def test_updateJobResourceStatus_not_found(
     with pytest.raises(
         ValueError, match="No job resource found with job ID.*"
     ):
-        job_resource_dynamo.updateJobResourceStatus(
+        job_resource_dynamo.update_job_resource_status(
             sample_job.job_id,
             "nonexistent-resource",
             "released",
@@ -373,24 +373,24 @@ def test_updateJobResourceStatus_not_found(
 
 
 # ---
-# listJobResources
+# list_job_resources
 # ---
 
 
 @pytest.mark.integration
-def test_listJobResources_success(
+def test_list_job_resources_success(
     job_resource_dynamo, sample_job, sample_job_resource, sample_job_resource_2
 ):
     """Test listing job resources successfully"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resources
-    job_resource_dynamo.addJobResource(sample_job_resource)
-    job_resource_dynamo.addJobResource(sample_job_resource_2)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource_2)
 
     # List the job resources
-    resources, last_evaluated_key = job_resource_dynamo.listJobResources(
+    resources, last_evaluated_key = job_resource_dynamo.list_job_resources(
         sample_job.job_id
     )
 
@@ -402,19 +402,19 @@ def test_listJobResources_success(
 
 
 @pytest.mark.integration
-def test_listJobResources_with_limit(
+def test_list_job_resources_with_limit(
     job_resource_dynamo, sample_job, sample_job_resource, sample_job_resource_2
 ):
     """Test listing job resources with a limit"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resources
-    job_resource_dynamo.addJobResource(sample_job_resource)
-    job_resource_dynamo.addJobResource(sample_job_resource_2)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource_2)
 
     # List the job resources with limit=1
-    resources, last_evaluated_key = job_resource_dynamo.listJobResources(
+    resources, last_evaluated_key = job_resource_dynamo.list_job_resources(
         sample_job.job_id, limit=1
     )
 
@@ -426,20 +426,20 @@ def test_listJobResources_with_limit(
 
 
 @pytest.mark.integration
-def test_listJobResources_with_pagination(
+def test_list_job_resources_with_pagination(
     job_resource_dynamo, sample_job, sample_job_resource, sample_job_resource_2
 ):
     """Test listing job resources with pagination"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resources
-    job_resource_dynamo.addJobResource(sample_job_resource)
-    job_resource_dynamo.addJobResource(sample_job_resource_2)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource_2)
 
     # List the first page
-    resources_page1, last_evaluated_key = job_resource_dynamo.listJobResources(
-        sample_job.job_id, limit=1
+    resources_page1, last_evaluated_key = (
+        job_resource_dynamo.list_job_resources(sample_job.job_id, limit=1)
     )
 
     # Verify first page
@@ -448,7 +448,7 @@ def test_listJobResources_with_pagination(
 
     # List the second page
     resources_page2, last_evaluated_key2 = (
-        job_resource_dynamo.listJobResources(
+        job_resource_dynamo.list_job_resources(
             sample_job.job_id, limit=1, lastEvaluatedKey=last_evaluated_key
         )
     )
@@ -461,13 +461,13 @@ def test_listJobResources_with_pagination(
 
 
 @pytest.mark.integration
-def test_listJobResources_empty(job_resource_dynamo, sample_job):
+def test_list_job_resources_empty(job_resource_dynamo, sample_job):
     """Test listing job resources when none exist"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # List the job resources
-    resources, last_evaluated_key = job_resource_dynamo.listJobResources(
+    resources, last_evaluated_key = job_resource_dynamo.list_job_resources(
         sample_job.job_id
     )
 
@@ -477,26 +477,26 @@ def test_listJobResources_empty(job_resource_dynamo, sample_job):
 
 
 # ---
-# listResourcesByType
+# list_resources_by_type
 # ---
 
 
 @pytest.mark.integration
-def test_listResourcesByType_success(
+def test_list_resources_by_type_success(
     job_resource_dynamo, sample_job, sample_job_resource, sample_job_resource_2
 ):
     """Test listing resources by type successfully"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resources
-    job_resource_dynamo.addJobResource(sample_job_resource)  # gpu
-    job_resource_dynamo.addJobResource(
+    job_resource_dynamo.add_job_resource(sample_job_resource)  # gpu
+    job_resource_dynamo.add_job_resource(
         sample_job_resource_2
     )  # compute_instance
 
     # List the resources by type
-    resources, last_evaluated_key = job_resource_dynamo.listResourcesByType(
+    resources, last_evaluated_key = job_resource_dynamo.list_resources_by_type(
         "gpu"
     )
 
@@ -509,18 +509,18 @@ def test_listResourcesByType_success(
 
 
 @pytest.mark.integration
-def test_listResourcesByType_with_limit(
+def test_list_resources_by_type_with_limit(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test listing resources by type with a limit"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)  # gpu
+    job_resource_dynamo.add_job_resource(sample_job_resource)  # gpu
 
     # List the resources by type with limit=1
-    resources, last_evaluated_key = job_resource_dynamo.listResourcesByType(
+    resources, last_evaluated_key = job_resource_dynamo.list_resources_by_type(
         "gpu", limit=1
     )
 
@@ -529,18 +529,18 @@ def test_listResourcesByType_with_limit(
 
 
 @pytest.mark.integration
-def test_listResourcesByType_not_found(
+def test_list_resources_by_type_not_found(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test listing resources by type when none match"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)  # gpu
+    job_resource_dynamo.add_job_resource(sample_job_resource)  # gpu
 
     # List resources by a non-existent type
-    resources, last_evaluated_key = job_resource_dynamo.listResourcesByType(
+    resources, last_evaluated_key = job_resource_dynamo.list_resources_by_type(
         "nonexistent-type"
     )
 
@@ -550,7 +550,7 @@ def test_listResourcesByType_not_found(
 
 
 @pytest.mark.integration
-def test_listResourcesByType_raises_value_error(job_resource_dynamo):
+def test_list_resources_by_type_raises_value_error(job_resource_dynamo):
     """
     Test that listResourcesByType raises ValueError when resource_type is None
     """
@@ -558,27 +558,27 @@ def test_listResourcesByType_raises_value_error(job_resource_dynamo):
         ValueError,
         match="Resource type is required and must be a non-empty string.",
     ):
-        job_resource_dynamo.listResourcesByType(None)
+        job_resource_dynamo.list_resources_by_type(None)
 
 
 # ---
-# getResourceById
+# get_resource_by_id
 # ---
 
 
 @pytest.mark.integration
-def test_getResourceById_success(
+def test_get_resource_by_id_success(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test getting a resource by ID successfully"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Get the resource by ID
-    resources, last_evaluated_key = job_resource_dynamo.getResourceById(
+    resources, last_evaluated_key = job_resource_dynamo.get_resource_by_id(
         sample_job_resource.resource_id
     )
 
@@ -590,18 +590,18 @@ def test_getResourceById_success(
 
 
 @pytest.mark.integration
-def test_getResourceById_with_limit(
+def test_get_resource_by_id_with_limit(
     job_resource_dynamo, sample_job, sample_job_resource
 ):
     """Test getting a resource by ID with a limit"""
     # Add the job first
-    job_resource_dynamo.addJob(sample_job)
+    job_resource_dynamo.add_job(sample_job)
 
     # Add the job resource
-    job_resource_dynamo.addJobResource(sample_job_resource)
+    job_resource_dynamo.add_job_resource(sample_job_resource)
 
     # Get the resource by ID
-    resources, last_evaluated_key = job_resource_dynamo.getResourceById(
+    resources, last_evaluated_key = job_resource_dynamo.get_resource_by_id(
         sample_job_resource.resource_id
     )
 
@@ -610,10 +610,10 @@ def test_getResourceById_with_limit(
 
 
 @pytest.mark.integration
-def test_getResourceById_not_found(job_resource_dynamo):
+def test_get_resource_by_id_not_found(job_resource_dynamo):
     """Test getting a resource by ID when it doesn't exist"""
     # Get a resource by a non-existent ID
-    resources, last_evaluated_key = job_resource_dynamo.getResourceById(
+    resources, last_evaluated_key = job_resource_dynamo.get_resource_by_id(
         "nonexistent-resource-id"
     )
 
@@ -622,13 +622,13 @@ def test_getResourceById_not_found(job_resource_dynamo):
 
 
 @pytest.mark.integration
-def test_getResourceById_raises_value_error(job_resource_dynamo):
+def test_get_resource_by_id_raises_value_error(job_resource_dynamo):
     """Test that getResourceById raises ValueError when resource_id is None"""
     with pytest.raises(
         ValueError,
         match="Resource ID is required and must be a non-empty string.",
     ):
-        job_resource_dynamo.getResourceById(None)
+        job_resource_dynamo.get_resource_by_id(None)
 
 
 # ---
@@ -660,7 +660,7 @@ def test_validate_last_evaluated_key_raises_value_error_invalid_format():
 
 
 @pytest.mark.integration
-def test_listJobResources_raises_client_error(
+def test_list_job_resources_raises_client_error(
     job_resource_dynamo, sample_job, mocker
 ):
     """
@@ -685,12 +685,14 @@ def test_listJobResources_raises_client_error(
     with pytest.raises(
         Exception, match="Could not list job resources from the database"
     ):
-        job_resource_dynamo.listJobResources(sample_job.job_id)
+        job_resource_dynamo.list_job_resources(sample_job.job_id)
     mock_query.assert_called_once()
 
 
 @pytest.mark.integration
-def test_listResourcesByType_raises_client_error(job_resource_dynamo, mocker):
+def test_list_resources_by_type_raises_client_error(
+    job_resource_dynamo, mocker
+):
     """
     Test that listResourcesByType raises an exception when a ClientError occurs
     """
@@ -713,12 +715,12 @@ def test_listResourcesByType_raises_client_error(job_resource_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not query resources by type from the database"
     ):
-        job_resource_dynamo.listResourcesByType("gpu")
+        job_resource_dynamo.list_resources_by_type("gpu")
     mock_query.assert_called_once()
 
 
 @pytest.mark.integration
-def test_getResourceById_raises_client_error(job_resource_dynamo, mocker):
+def test_get_resource_by_id_raises_client_error(job_resource_dynamo, mocker):
     """
     Test that getResourceById raises an exception when a ClientError occurs
     """
@@ -739,5 +741,5 @@ def test_getResourceById_raises_client_error(job_resource_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Could not get resource by ID"):
-        job_resource_dynamo.getResourceById("resource-123")
+        job_resource_dynamo.get_resource_by_id("resource-123")
     mock_query.assert_called_once()

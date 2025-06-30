@@ -12,6 +12,7 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.utils.dynamo_helpers import batch_write_items
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25

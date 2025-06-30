@@ -3,29 +3,11 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
-
-
-def validate_last_evaluated_key(lek: dict) -> None:
-    """Validates the format of a LastEvaluatedKey for pagination.
-
-    Args:
-        lek (dict): The LastEvaluatedKey to validate.
-
-    Raises:
-        ValueError: If the LastEvaluatedKey is invalid.
-    """
-    # If None, it's valid (means not provided)
-    if lek is None:
-        return
-
-    if not all(k in lek for k in ["PK", "SK"]):
-        raise ValueError("LastEvaluatedKey must contain PK and SK")
-
-    # Check if the values are in the correct format
-    if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
-        raise ValueError(
-            "LastEvaluatedKey values must be in DynamoDB format with 'S' attribute"
-        )
+from receipt_dynamo.utils.dynamo_helpers import (
+    batch_write_items,
+    handle_conditional_check_failed,
+    validate_last_evaluated_key,
+)
 
 
 class _Queue(DynamoClientProtocol):
@@ -59,8 +41,13 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Queue {queue.queue_name} already exists") from e
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Queue {queue.queue_name} already exists"
+                ) from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
@@ -95,29 +82,39 @@ class _Queue(DynamoClientProtocol):
             # Prepare the batch request
             request_items = {
                 self.table_name: [
-                    {"PutRequest": {"Item": queue.to_item()}} for queue in queues
+                    {"PutRequest": {"Item": queue.to_item()}}
+                    for queue in queues
                 ]
             }
 
             # Execute the batch write and handle unprocessed items
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Check for unprocessed items and retry them
             unprocessed_items = response.get("UnprocessedItems", {})
 
-            while unprocessed_items and unprocessed_items.get(self.table_name, []):
+            while unprocessed_items and unprocessed_items.get(
+                self.table_name, []
+            ):
                 # Wait a moment before retrying
                 import time
 
                 time.sleep(0.5)
 
                 # Retry the unprocessed items
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
         except ClientError as e:
             # Handle different types of ClientError
-            if e.response["Error"]["Code"] == "ProvisionedThroughputExceededException":
+            if (
+                e.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
+            ):
                 raise ClientError(
                     e.response,
                     "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff",
@@ -172,8 +169,13 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Queue {queue.queue_name} does not exist") from e
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Queue {queue.queue_name} does not exist"
+                ) from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
@@ -204,8 +206,13 @@ class _Queue(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Queue {queue.queue_name} does not exist") from e
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Queue {queue.queue_name} does not exist"
+                ) from e
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
                 # issues
@@ -295,7 +302,9 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to Queue objects
-            queues = [item_to_queue(item) for item in response.get("Items", [])]
+            queues = [
+                item_to_queue(item) for item in response.get("Items", [])
+            ]
 
             # Return the queues and the LastEvaluatedKey for pagination
             return queues, response.get("LastEvaluatedKey")
@@ -348,7 +357,10 @@ class _Queue(DynamoClientProtocol):
             self.update_queue(queue)
 
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"Job {queue_job.job_id} is already in queue {queue_job.queue_name}"
                 )
@@ -390,7 +402,10 @@ class _Queue(DynamoClientProtocol):
             self.update_queue(queue)
 
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"Job {queue_job.job_id} is not in queue {queue_job.queue_name}"
                 )
@@ -450,7 +465,9 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [item_to_queue_job(item) for item in response.get("Items", [])]
+            queue_jobs = [
+                item_to_queue_job(item) for item in response.get("Items", [])
+            ]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")
@@ -515,7 +532,9 @@ class _Queue(DynamoClientProtocol):
             response = self._client.query(**query_params)
 
             # Convert the DynamoDB items to QueueJob objects
-            queue_jobs = [item_to_queue_job(item) for item in response.get("Items", [])]
+            queue_jobs = [
+                item_to_queue_job(item) for item in response.get("Items", [])
+            ]
 
             # Return the queue jobs and the LastEvaluatedKey for pagination
             return queue_jobs, response.get("LastEvaluatedKey")

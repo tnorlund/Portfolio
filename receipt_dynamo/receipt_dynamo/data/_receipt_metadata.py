@@ -10,6 +10,7 @@ from receipt_dynamo.entities.util import (
     assert_valid_point,
     assert_valid_uuid,
 )
+from receipt_dynamo.utils.dynamo_helpers import batch_write_items
 
 
 class _ReceiptMetadata(DynamoClientProtocol):
@@ -66,8 +67,12 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None") from e
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
@@ -80,7 +85,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -135,9 +142,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error updating receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
 
-    def update_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
+    def update_receipt_metadatas(
+        self, receipt_metadatas: List[ReceiptMetadata]
+    ):
         """
         Updates multiple ReceiptMetadata records in DynamoDB using transactions.
 
@@ -151,8 +162,12 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None") from e
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
@@ -191,7 +206,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error updating receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
 
     def delete_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
@@ -228,9 +245,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error deleting receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt metadata: {e}"
+                ) from e
 
-    def delete_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
+    def delete_receipt_metadatas(
+        self, receipt_metadatas: List[ReceiptMetadata]
+    ):
         """
         Deletes multiple ReceiptMetadata records from DynamoDB.
 
@@ -244,8 +265,12 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None") from e
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
@@ -284,9 +309,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error deleting receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt metadata: {e}"
+                ) from e
 
-    def get_receipt_metadata(self, image_id: str, receipt_id: int) -> ReceiptMetadata:
+    def get_receipt_metadata(
+        self, image_id: str, receipt_id: int
+    ) -> ReceiptMetadata:
         """
         Retrieves a single ReceiptMetadata record from DynamoDB by image_id and receipt_id.
 
@@ -352,7 +381,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if not all(isinstance(index, tuple) for index in indices):
             raise ValueError("indices must be a list of tuples")
         if not all(
-            isinstance(index[0], str) and isinstance(index[1], int) for index in indices
+            isinstance(index[0], str) and isinstance(index[1], int)
+            for index in indices
         ):
             raise ValueError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
@@ -407,7 +437,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name):
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -431,7 +463,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
 
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
         metadatas = []
@@ -441,7 +475,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_METADATA"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_METADATA"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -450,7 +486,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -509,7 +546,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -555,7 +593,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
         metadatas = []
@@ -564,7 +604,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"PLACE#{place_id}"}},
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"PLACE#{place_id}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -573,7 +615,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -645,7 +688,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key

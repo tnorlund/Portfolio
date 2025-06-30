@@ -290,7 +290,7 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_updateWordTags_success(dynamodb_table, sample_word_tag):
+def test_update_word_tags_success(dynamodb_table, sample_word_tag):
     """
     Tests happy path for updateWordTags.
     """
@@ -347,7 +347,7 @@ def test_updateWordTags_success(dynamodb_table, sample_word_tag):
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_value_error_word_tags_none(dynamodb_table):
+def test_update_word_tags_raises_value_error_word_tags_none(dynamodb_table):
     """
     Tests that updateWordTags raises ValueError when the word_tags parameter
     is None.
@@ -360,7 +360,9 @@ def test_updateWordTags_raises_value_error_word_tags_none(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
+def test_update_word_tags_raises_value_error_word_tags_not_list(
+    dynamodb_table,
+):
     """
     Tests that updateWordTags raises ValueError when the word_tags parameter
     is not a list.
@@ -373,7 +375,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(
+def test_update_word_tags_raises_value_error_word_tags_not_list_of_word_tags(
     dynamodb_table, sample_word_tag
 ):
     """
@@ -390,7 +392,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list_of_word_tags(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_conditional_check_failed(
+def test_update_word_tags_raises_clienterror_conditional_check_failed(
     dynamodb_table, sample_word_tag, mocker
 ):
     """
@@ -417,7 +419,7 @@ def test_updateWordTags_raises_clienterror_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
+def test_update_word_tags_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_word_tag, mocker
 ):
     """
@@ -444,7 +446,7 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_internal_server_error(
+def test_update_word_tags_raises_clienterror_internal_server_error(
     dynamodb_table, sample_word_tag, mocker
 ):
     """
@@ -471,7 +473,7 @@ def test_updateWordTags_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_validation_exception(
+def test_update_word_tags_raises_clienterror_validation_exception(
     dynamodb_table, sample_word_tag, mocker
 ):
     """
@@ -500,7 +502,7 @@ def test_updateWordTags_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_clienterror_access_denied(
+def test_update_word_tags_raises_clienterror_access_denied(
     dynamodb_table, sample_word_tag, mocker
 ):
     """
@@ -527,7 +529,7 @@ def test_updateWordTags_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_client_error(
+def test_update_word_tags_raises_client_error(
     dynamodb_table, sample_word_tag, mocker
 ):
     """

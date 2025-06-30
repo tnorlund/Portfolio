@@ -250,7 +250,7 @@ def test_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_updateWords_success(dynamodb_table):
+def test_update_words_success(dynamodb_table):
     """
     Tests happy path for updateWords.
     """
@@ -275,7 +275,7 @@ def test_updateWords_success(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWords_raises_value_error_words_none(dynamodb_table):
+def test_update_words_raises_value_error_words_none(dynamodb_table):
     """
     Tests that updateWords raises ValueError when the words parameter is None.
     """
@@ -287,7 +287,7 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
+def test_update_words_raises_value_error_words_not_list(dynamodb_table):
     """
     Tests that updateWords raises ValueError when the words parameter is not a
     list.
@@ -298,7 +298,7 @@ def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateWords_raises_value_error_words_not_list_of_words(
+def test_update_words_raises_value_error_words_not_list_of_words(
     dynamodb_table,
 ):
     """
@@ -316,7 +316,7 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_conditional_check_failed(
+def test_update_words_raises_clienterror_conditional_check_failed(
     dynamodb_table, mocker
 ):
     """
@@ -344,7 +344,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
+def test_update_words_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, mocker
 ):
     """
@@ -372,7 +372,7 @@ def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_internal_server_error(
+def test_update_words_raises_clienterror_internal_server_error(
     dynamodb_table, mocker
 ):
     """
@@ -400,7 +400,7 @@ def test_updateWords_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_validation_exception(
+def test_update_words_raises_clienterror_validation_exception(
     dynamodb_table, mocker
 ):
     """
@@ -430,7 +430,7 @@ def test_updateWords_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_access_denied(dynamodb_table, mocker):
+def test_update_words_raises_clienterror_access_denied(dynamodb_table, mocker):
     """
     Tests that updateWords raises an Exception when the AccessDeniedException
     error is raised.
@@ -456,7 +456,7 @@ def test_updateWords_raises_clienterror_access_denied(dynamodb_table, mocker):
 
 
 @pytest.mark.integration
-def test_updateWords_raises_client_error(dynamodb_table, mocker):
+def test_update_words_raises_client_error(dynamodb_table, mocker):
     """
     Simulate any error (ResourceNotFound, etc.) in transact_write_items.
     """

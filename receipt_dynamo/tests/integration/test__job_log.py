@@ -51,37 +51,37 @@ def multiple_job_logs():
 
 
 @pytest.mark.integration
-def test_addJobLog_success(job_log_dynamo, sample_job_log):
+def test_add_job_log_success(job_log_dynamo, sample_job_log):
     """Test adding a job log entry successfully."""
     # Add the job log
-    job_log_dynamo.addJobLog(sample_job_log)
+    job_log_dynamo.add_job_log(sample_job_log)
 
     # Verify it was added by retrieving it
-    retrieved_log = job_log_dynamo.getJobLog(
+    retrieved_log = job_log_dynamo.get_job_log(
         job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
     )
     assert retrieved_log == sample_job_log
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_value_error(job_log_dynamo):
+def test_add_job_log_raises_value_error(job_log_dynamo):
     """Test that addJobLog raises ValueError when job_log is None."""
     with pytest.raises(ValueError, match="job_log cannot be None"):
-        job_log_dynamo.addJobLog(None)
+        job_log_dynamo.add_job_log(None)
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_value_error_job_not_instance(job_log_dynamo):
+def test_add_job_log_raises_value_error_job_not_instance(job_log_dynamo):
     """
     Test that addJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
     with pytest.raises(ValueError, match="job_log must be a JobLog instance"):
-        job_log_dynamo.addJobLog("not a job log")
+        job_log_dynamo.add_job_log("not a job log")
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_conditional_check_failed(
+def test_add_job_log_raises_conditional_check_failed(
     job_log_dynamo, sample_job_log
 ):
     """
@@ -89,15 +89,15 @@ def test_addJobLog_raises_conditional_check_failed(
     log.
     """
     # Add the job log
-    job_log_dynamo.addJobLog(sample_job_log)
+    job_log_dynamo.add_job_log(sample_job_log)
 
     # Try to add it again, which should raise an error
     with pytest.raises(ValueError, match="already exists"):
-        job_log_dynamo.addJobLog(sample_job_log)
+        job_log_dynamo.add_job_log(sample_job_log)
 
 
 @pytest.mark.integration
-def test_addJobLog_raises_resource_not_found(
+def test_add_job_log_raises_resource_not_found(
     job_log_dynamo, sample_job_log, mocker
 ):
     """
@@ -117,42 +117,42 @@ def test_addJobLog_raises_resource_not_found(
 
     # Attempt to add the job log
     with pytest.raises(ClientError) as excinfo:
-        job_log_dynamo.addJobLog(sample_job_log)
+        job_log_dynamo.add_job_log(sample_job_log)
     assert (
         excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
     )
 
 
 @pytest.mark.integration
-def test_addJobLogs_success(job_log_dynamo, multiple_job_logs):
+def test_add_job_logs_success(job_log_dynamo, multiple_job_logs):
     """Test adding multiple job logs successfully."""
     # Add the job logs
-    job_log_dynamo.addJobLogs(multiple_job_logs)
+    job_log_dynamo.add_job_logs(multiple_job_logs)
 
     # Verify they were added by retrieving and comparing
     for log in multiple_job_logs:
-        retrieved_log = job_log_dynamo.getJobLog(
+        retrieved_log = job_log_dynamo.get_job_log(
             job_id=log.job_id, timestamp=log.timestamp
         )
         assert retrieved_log == log
 
 
 @pytest.mark.integration
-def test_addJobLogs_raises_value_error_logs_none(job_log_dynamo):
+def test_add_job_logs_raises_value_error_logs_none(job_log_dynamo):
     """Test that addJobLogs raises ValueError when job_logs is None."""
     with pytest.raises(ValueError, match="job_logs cannot be None"):
-        job_log_dynamo.addJobLogs(None)
+        job_log_dynamo.add_job_logs(None)
 
 
 @pytest.mark.integration
-def test_addJobLogs_raises_value_error_logs_not_list(job_log_dynamo):
+def test_add_job_logs_raises_value_error_logs_not_list(job_log_dynamo):
     """Test that addJobLogs raises ValueError when job_logs is not a list."""
     with pytest.raises(ValueError, match="job_logs must be a list"):
-        job_log_dynamo.addJobLogs("not a list")
+        job_log_dynamo.add_job_logs("not a list")
 
 
 @pytest.mark.integration
-def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
+def test_add_job_logs_raises_value_error_logs_not_list_of_logs(
     job_log_dynamo, sample_job_log
 ):
     """
@@ -162,61 +162,63 @@ def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
     with pytest.raises(
         ValueError, match="All items in job_logs must be JobLog instances"
     ):
-        job_log_dynamo.addJobLogs([sample_job_log, "not a job log"])
+        job_log_dynamo.add_job_logs([sample_job_log, "not a job log"])
 
 
 @pytest.mark.integration
-def test_addJobLogs_empty_list(job_log_dynamo):
+def test_add_job_logs_empty_list(job_log_dynamo):
     """Test that addJobLogs handles an empty list gracefully."""
     # This should not raise an error
-    job_log_dynamo.addJobLogs([])
+    job_log_dynamo.add_job_logs([])
 
 
 @pytest.mark.integration
-def test_getJobLog_success(job_log_dynamo, sample_job_log):
+def test_get_job_log_success(job_log_dynamo, sample_job_log):
     """Test retrieving a job log successfully."""
     # Add the job log
-    job_log_dynamo.addJobLog(sample_job_log)
+    job_log_dynamo.add_job_log(sample_job_log)
 
     # Retrieve the job log
-    retrieved_log = job_log_dynamo.getJobLog(
+    retrieved_log = job_log_dynamo.get_job_log(
         job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
     )
     assert retrieved_log == sample_job_log
 
 
 @pytest.mark.integration
-def test_getJobLog_raises_value_error_job_id_none(job_log_dynamo):
+def test_get_job_log_raises_value_error_job_id_none(job_log_dynamo):
     """Test that getJobLog raises ValueError when job_id is None."""
     with pytest.raises(ValueError, match="job_id cannot be None"):
-        job_log_dynamo.getJobLog(job_id=None, timestamp="2021-01-01T12:00:00")
+        job_log_dynamo.get_job_log(
+            job_id=None, timestamp="2021-01-01T12:00:00"
+        )
 
 
 @pytest.mark.integration
-def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
+def test_get_job_log_raises_value_error_timestamp_none(job_log_dynamo):
     """Test that getJobLog raises ValueError when timestamp is None."""
     with pytest.raises(ValueError, match="timestamp cannot be None"):
-        job_log_dynamo.getJobLog(job_id="some-job-id", timestamp=None)
+        job_log_dynamo.get_job_log(job_id="some-job-id", timestamp=None)
 
 
 @pytest.mark.integration
-def test_getJobLog_raises_value_error_log_not_found(job_log_dynamo):
+def test_get_job_log_raises_value_error_log_not_found(job_log_dynamo):
     """Test that getJobLog raises ValueError when the job log is not found."""
     with pytest.raises(ValueError, match="not found"):
-        job_log_dynamo.getJobLog(
+        job_log_dynamo.get_job_log(
             job_id="non-existent-job", timestamp="2021-01-01T12:00:00"
         )
 
 
 @pytest.mark.integration
-def test_listJobLogs_success(job_log_dynamo, multiple_job_logs):
+def test_list_job_logs_success(job_log_dynamo, multiple_job_logs):
     """Test listing job logs successfully."""
     # Add the job logs
-    job_log_dynamo.addJobLogs(multiple_job_logs)
+    job_log_dynamo.add_job_logs(multiple_job_logs)
 
     # List the job logs
     job_id = multiple_job_logs[0].job_id  # All logs have the same job_id
-    logs, last_key = job_log_dynamo.listJobLogs(job_id=job_id)
+    logs, last_key = job_log_dynamo.list_job_logs(job_id=job_id)
 
     # Check that all logs are returned
     assert len(logs) == len(multiple_job_logs)
@@ -239,15 +241,15 @@ def test_listJobLogs_success(job_log_dynamo, multiple_job_logs):
 
 
 @pytest.mark.integration
-def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
+def test_list_job_logs_with_limit(job_log_dynamo, multiple_job_logs):
     """Test listing job logs with a limit."""
     # Add the job logs
-    job_log_dynamo.addJobLogs(multiple_job_logs)
+    job_log_dynamo.add_job_logs(multiple_job_logs)
 
     # List the job logs with a limit
     job_id = multiple_job_logs[0].job_id  # All logs have the same job_id
     limit = 2
-    logs, last_key = job_log_dynamo.listJobLogs(job_id=job_id, limit=limit)
+    logs, last_key = job_log_dynamo.list_job_logs(job_id=job_id, limit=limit)
 
     # Check that only the specified number of logs are returned
     assert len(logs) == limit
@@ -258,7 +260,7 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
     ), "LastEvaluatedKey should be returned when limit is used"
 
     # Use the last key to get the next batch
-    next_logs, next_last_key = job_log_dynamo.listJobLogs(
+    next_logs, next_last_key = job_log_dynamo.list_job_logs(
         job_id=job_id, limit=limit, lastEvaluatedKey=last_key
     )
 
@@ -272,53 +274,53 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
 
 
 @pytest.mark.integration
-def test_listJobLogs_raises_value_error_job_id_none(job_log_dynamo):
+def test_list_job_logs_raises_value_error_job_id_none(job_log_dynamo):
     """Test that listJobLogs raises ValueError when job_id is None."""
     with pytest.raises(ValueError, match="job_id cannot be None"):
-        job_log_dynamo.listJobLogs(job_id=None)
+        job_log_dynamo.list_job_logs(job_id=None)
 
 
 @pytest.mark.integration
-def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
+def test_delete_job_log_success(job_log_dynamo, sample_job_log):
     """Test deleting a job log successfully."""
     # Add the job log
-    job_log_dynamo.addJobLog(sample_job_log)
+    job_log_dynamo.add_job_log(sample_job_log)
 
     # Verify it was added
-    retrieved_log = job_log_dynamo.getJobLog(
+    retrieved_log = job_log_dynamo.get_job_log(
         job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
     )
     assert retrieved_log == sample_job_log
 
     # Delete the job log
-    job_log_dynamo.deleteJobLog(sample_job_log)
+    job_log_dynamo.delete_job_log(sample_job_log)
 
     # Verify it was deleted
     with pytest.raises(ValueError, match="not found"):
-        job_log_dynamo.getJobLog(
+        job_log_dynamo.get_job_log(
             job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
         )
 
 
 @pytest.mark.integration
-def test_deleteJobLog_raises_value_error_log_none(job_log_dynamo):
+def test_delete_job_log_raises_value_error_log_none(job_log_dynamo):
     """Test that deleteJobLog raises ValueError when job_log is None."""
     with pytest.raises(ValueError, match="job_log cannot be None"):
-        job_log_dynamo.deleteJobLog(None)
+        job_log_dynamo.delete_job_log(None)
 
 
 @pytest.mark.integration
-def test_deleteJobLog_raises_value_error_log_not_instance(job_log_dynamo):
+def test_delete_job_log_raises_value_error_log_not_instance(job_log_dynamo):
     """
     Test that deleteJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
     with pytest.raises(ValueError, match="job_log must be a JobLog instance"):
-        job_log_dynamo.deleteJobLog("not a job log")
+        job_log_dynamo.delete_job_log("not a job log")
 
 
 @pytest.mark.integration
-def test_deleteJobLog_raises_conditional_check_failed(
+def test_delete_job_log_raises_conditional_check_failed(
     job_log_dynamo, sample_job_log
 ):
     """
@@ -326,20 +328,20 @@ def test_deleteJobLog_raises_conditional_check_failed(
     """
     # Try to delete a job log that doesn't exist
     with pytest.raises(ValueError, match="not found"):
-        job_log_dynamo.deleteJobLog(sample_job_log)
+        job_log_dynamo.delete_job_log(sample_job_log)
 
 
 @pytest.mark.integration
-def test_listJobLogs_empty_result(job_log_dynamo):
+def test_list_job_logs_empty_result(job_log_dynamo):
     """Test listing job logs when there are none returns an empty list."""
     job_id = str(uuid.uuid4())
-    logs, last_key = job_log_dynamo.listJobLogs(job_id=job_id)
+    logs, last_key = job_log_dynamo.list_job_logs(job_id=job_id)
     assert logs == []
     assert last_key is None
 
 
 @pytest.mark.integration
-def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
+def test_list_job_logs_with_resource_not_found(job_log_dynamo, mocker):
     """Test that listJobLogs handles ResourceNotFoundException properly."""
     # Mock the query method to raise ResourceNotFoundException
     mock_client = mocker.patch.object(job_log_dynamo, "_client")
@@ -356,7 +358,7 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())
     with pytest.raises(ClientError) as excinfo:
-        job_log_dynamo.listJobLogs(job_id=job_id)
+        job_log_dynamo.list_job_logs(job_id=job_id)
     assert (
         excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
     )

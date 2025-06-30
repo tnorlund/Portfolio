@@ -31,12 +31,12 @@ def sample_receipt_letter():
 
 
 # -------------------------------------------------------------------
-#                        addReceiptLetter
+#                        add_receipt_letter
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptLetter_success(
+def test_add_receipt_letter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -58,7 +58,7 @@ def test_addReceiptLetter_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLetter_duplicate_raises(
+def test_add_receipt_letter_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -82,7 +82,7 @@ def test_addReceiptLetter_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptLetter_invalid_parameters(
+def test_add_receipt_letter_invalid_parameters(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -136,7 +136,7 @@ def test_addReceiptLetter_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptLetter_client_errors(
+def test_add_receipt_letter_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -175,12 +175,12 @@ def test_addReceiptLetter_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        addReceiptLetters
+#                        add_receipt_letters
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_success(
+def test_add_receipt_letters_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -206,7 +206,7 @@ def test_addReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_with_large_batch(
+def test_add_receipt_letters_with_large_batch(
     dynamodb_table, sample_receipt_letter
 ):
     """Test that addReceiptLetters handles batches larger than 25 items."""
@@ -249,7 +249,7 @@ def test_addReceiptLetters_with_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptLetters_with_unprocessed_items_retries(
+def test_add_receipt_letters_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test that addReceiptLetters retries unprocessed items."""
@@ -291,7 +291,7 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptLetters_invalid_parameters(
+def test_add_receipt_letters_invalid_parameters(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -344,7 +344,7 @@ def test_addReceiptLetters_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptLetters_client_errors(
+def test_add_receipt_letters_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -374,12 +374,12 @@ def test_addReceiptLetters_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptLetter
+#                        update_receipt_letter
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptLetter_success(
+def test_update_receipt_letter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -413,7 +413,7 @@ def test_updateReceiptLetter_success(
         ),
     ],
 )
-def test_updateReceiptLetter_invalid_parameters(
+def test_update_receipt_letter_invalid_parameters(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -468,7 +468,7 @@ def test_updateReceiptLetter_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptLetter_client_errors(
+def test_update_receipt_letter_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -505,12 +505,12 @@ def test_updateReceiptLetter_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptLetters
+#                        update_receipt_letters
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptLetters_success(
+def test_update_receipt_letters_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -559,7 +559,7 @@ def test_updateReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLetters_with_large_batch(
+def test_update_receipt_letters_with_large_batch(
     dynamodb_table, sample_receipt_letter
 ):
     """Test that updateReceiptLetters handles batches larger than 25 items."""
@@ -618,7 +618,7 @@ def test_updateReceiptLetters_with_large_batch(
         ),
     ],
 )
-def test_updateReceiptLetters_invalid_inputs(
+def test_update_receipt_letters_invalid_inputs(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -694,7 +694,7 @@ def test_updateReceiptLetters_invalid_inputs(
         ),
     ],
 )
-def test_updateReceiptLetters_client_errors(
+def test_update_receipt_letters_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -751,12 +751,12 @@ def test_updateReceiptLetters_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptLetter
+#                        delete_receipt_letter
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetter_success(
+def test_delete_receipt_letter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -789,7 +789,7 @@ def test_deleteReceiptLetter_success(
         ),
     ],
 )
-def test_deleteReceiptLetter_invalid_parameters(
+def test_delete_receipt_letter_invalid_parameters(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -814,7 +814,7 @@ def test_deleteReceiptLetter_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        dynamo_client.deleteReceiptLetter(invalid_input)
+        dynamo_client.delete_receipt_letter(invalid_input)
 
 
 @pytest.mark.integration
@@ -854,7 +854,7 @@ def test_deleteReceiptLetter_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptLetter_client_errors(
+def test_delete_receipt_letter_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -899,12 +899,12 @@ def test_deleteReceiptLetter_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptLetters
+#                        delete_receipt_letters
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetters_success(
+def test_delete_receipt_letters_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -949,7 +949,7 @@ def test_deleteReceiptLetters_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetters_with_large_batch(dynamodb_table):
+def test_delete_receipt_letters_with_large_batch(dynamodb_table):
     """Test that deleteReceiptLetters handles batches larger than 25 items."""
     client = DynamoClient(dynamodb_table)
 
@@ -991,7 +991,7 @@ def test_deleteReceiptLetters_with_large_batch(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_deleteReceiptLetters_with_unprocessed_items(
+def test_delete_receipt_letters_with_unprocessed_items(
     dynamodb_table, sample_receipt_letter, mocker
 ):
     """Test that deleteReceiptLetters retries unprocessed items."""
@@ -1033,7 +1033,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
         ),
     ],
 )
-def test_deleteReceiptLetters_invalid_parameters(
+def test_delete_receipt_letters_invalid_parameters(
     dynamodb_table,
     mocker,
     invalid_input,
@@ -1094,7 +1094,7 @@ def test_deleteReceiptLetters_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptLetters_client_errors(
+def test_delete_receipt_letters_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -1139,12 +1139,12 @@ def test_deleteReceiptLetters_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptLetter
+#                        get_receipt_letter
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptLetter_success(
+def test_get_receipt_letter_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -1166,7 +1166,7 @@ def test_getReceiptLetter_success(
 
 
 @pytest.mark.integration
-def test_getReceiptLetter_not_found(
+def test_get_receipt_letter_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
 ):
@@ -1227,7 +1227,7 @@ def test_getReceiptLetter_not_found(
         ("letter_id", "not-an-integer", "letter_id must be an integer", {}),
     ],
 )
-def test_getReceiptLetter_invalid_parameters(
+def test_get_receipt_letter_invalid_parameters(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -1299,7 +1299,7 @@ def test_getReceiptLetter_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptLetter_client_errors(
+def test_get_receipt_letter_client_errors(
     dynamodb_table,
     sample_receipt_letter,
     mocker,
@@ -1347,12 +1347,14 @@ def test_getReceiptLetter_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        listReceiptLetters
+#                        list_receipt_letters
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_success(dynamodb_table: Literal["MyMockedTable"]):
+def test_list_receipt_letters_success(
+    dynamodb_table: Literal["MyMockedTable"],
+):
     # Arrange
     client = DynamoClient(dynamodb_table)
     letters = [
@@ -1386,7 +1388,7 @@ def test_listReceiptLetters_success(dynamodb_table: Literal["MyMockedTable"]):
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_with_limit(
+def test_list_receipt_letters_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     # Arrange
@@ -1441,7 +1443,7 @@ def test_listReceiptLetters_with_limit(
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_with_pagination(
+def test_list_receipt_letters_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test pagination in listReceiptLetters with more than 25 items."""
@@ -1479,7 +1481,7 @@ def test_listReceiptLetters_with_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
+def test_list_receipt_letters_multiple_pages(dynamodb_table, mocker):
     """Test successful pagination through multiple pages in
     listReceiptLetters."""
     client = DynamoClient(dynamodb_table)
@@ -1609,7 +1611,7 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
         ),
     ],
 )
-def test_listReceiptLetters_invalid_parameters(
+def test_list_receipt_letters_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     param_name: str,
     invalid_value: Any,
@@ -1674,7 +1676,7 @@ def test_listReceiptLetters_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptLetters_client_errors(
+def test_list_receipt_letters_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
     error_code: str,
@@ -1734,7 +1736,7 @@ def test_listReceiptLetters_client_errors(
         ),
     ],
 )
-def test_listReceiptLetters_pagination_errors(
+def test_list_receipt_letters_pagination_errors(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
     error_code: str,
@@ -1824,12 +1826,12 @@ def test_listReceiptLetters_pagination_errors(
 
 
 # -------------------------------------------------------------------
-#                        listReceiptLettersFromWord
+#                        list_receipt_letters_from_word
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceiptLettersFromWord_success(
+def test_list_receipt_letters_from_word_success(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     # Arrange
@@ -1938,7 +1940,7 @@ def test_listReceiptLettersFromWord_success(
         ),
     ],
 )
-def test_listReceiptLettersFromWord_invalid_parameters(
+def test_list_receipt_letters_from_word_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     param_name: str,
     invalid_value: Any,
@@ -1971,7 +1973,7 @@ def test_listReceiptLettersFromWord_invalid_parameters(
 
 
 @pytest.mark.integration
-def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
+def test_list_receipt_letters_from_word_returns_empty_list_when_not_found(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test that listReceiptLettersFromWord returns empty list when no letters
@@ -1992,7 +1994,7 @@ def test_listReceiptLettersFromWord_returns_empty_list_when_not_found(
 
 
 @pytest.mark.integration
-def test_listReceiptLettersFromWord_with_pagination(
+def test_list_receipt_letters_from_word_with_pagination(
     dynamodb_table: Literal["MyMockedTable"], mocker
 ):
     """Test listReceiptLettersFromWord with pagination."""
@@ -2083,7 +2085,7 @@ def test_listReceiptLettersFromWord_with_pagination(
         ),
     ],
 )
-def test_listReceiptLettersFromWord_client_errors(
+def test_list_receipt_letters_from_word_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
     mocker,
@@ -2167,7 +2169,7 @@ def test_listReceiptLettersFromWord_client_errors(
         ),
     ],
 )
-def test_listReceiptLettersFromWord_pagination_errors(
+def test_list_receipt_letters_from_word_pagination_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_letter: ReceiptLetter,
     mocker,

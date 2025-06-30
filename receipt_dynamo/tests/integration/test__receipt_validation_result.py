@@ -39,7 +39,7 @@ def sample_receipt_validation_result():
 
 # Now let's implement test for addReceiptValidationResult
 @pytest.mark.integration
-def test_addReceiptValidationResult_success(
+def test_add_receipt_validation_result_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -68,7 +68,7 @@ def test_addReceiptValidationResult_success(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationResult_duplicate_raises(
+def test_add_receipt_validation_result_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -99,7 +99,7 @@ def test_addReceiptValidationResult_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptValidationResult_invalid_parameters(
+def test_add_receipt_validation_result_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -155,7 +155,7 @@ def test_addReceiptValidationResult_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptValidationResult_client_errors(
+def test_add_receipt_validation_result_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -188,7 +188,7 @@ def test_addReceiptValidationResult_client_errors(
 
 # Now let's implement tests for addReceiptValidationResults
 @pytest.mark.integration
-def test_addReceiptValidationResults_success(
+def test_add_receipt_validation_results_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -230,7 +230,7 @@ def test_addReceiptValidationResults_success(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationResults_with_large_batch(
+def test_add_receipt_validation_results_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test adding a large batch of validation results (more than 25)"""
@@ -265,7 +265,7 @@ def test_addReceiptValidationResults_with_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationResults_with_unprocessed_items_retries(
+def test_add_receipt_validation_results_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_result, mocker
 ):
     """Test that unprocessed items are retried when adding validation results"""
@@ -331,7 +331,7 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptValidationResults_invalid_parameters(
+def test_add_receipt_validation_results_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -386,7 +386,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptValidationResults_client_errors(
+def test_add_receipt_validation_results_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -428,7 +428,7 @@ def test_addReceiptValidationResults_client_errors(
 
 # Now let's implement tests for updateReceiptValidationResult
 @pytest.mark.integration
-def test_updateReceiptValidationResult_success(
+def test_update_receipt_validation_result_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -477,7 +477,7 @@ def test_updateReceiptValidationResult_success(
         ),
     ],
 )
-def test_updateReceiptValidationResult_invalid_parameters(
+def test_update_receipt_validation_result_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -537,7 +537,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptValidationResult_client_errors(
+def test_update_receipt_validation_result_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -572,7 +572,7 @@ def test_updateReceiptValidationResult_client_errors(
 
 # Now let's implement tests for updateReceiptValidationResults
 @pytest.mark.integration
-def test_updateReceiptValidationResults_success(
+def test_update_receipt_validation_results_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -626,7 +626,7 @@ def test_updateReceiptValidationResults_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationResults_with_large_batch(
+def test_update_receipt_validation_results_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test updating a large batch of validation results (more than 25)"""
@@ -686,7 +686,7 @@ def test_updateReceiptValidationResults_with_large_batch(
         ),
     ],
 )
-def test_updateReceiptValidationResults_invalid_inputs(
+def test_update_receipt_validation_results_invalid_inputs(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -753,7 +753,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         ),
     ],
 )
-def test_updateReceiptValidationResults_client_errors(
+def test_update_receipt_validation_results_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -799,7 +799,7 @@ def test_updateReceiptValidationResults_client_errors(
 
 # Now let's implement tests for deleteReceiptValidationResult
 @pytest.mark.integration
-def test_deleteReceiptValidationResult_success(
+def test_delete_receipt_validation_result_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -850,7 +850,7 @@ def test_deleteReceiptValidationResult_success(
         ),
     ],
 )
-def test_deleteReceiptValidationResult_invalid_parameters(
+def test_delete_receipt_validation_result_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -906,7 +906,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptValidationResult_client_errors(
+def test_delete_receipt_validation_result_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -943,7 +943,7 @@ def test_deleteReceiptValidationResult_client_errors(
 
 # Now let's implement tests for deleteReceiptValidationResults
 @pytest.mark.integration
-def test_deleteReceiptValidationResults_success(
+def test_delete_receipt_validation_results_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -1012,7 +1012,7 @@ def test_deleteReceiptValidationResults_success(
         ),
     ],
 )
-def test_deleteReceiptValidationResults_invalid_parameters(
+def test_delete_receipt_validation_results_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -1067,7 +1067,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptValidationResults_client_errors(
+def test_delete_receipt_validation_results_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -1108,7 +1108,7 @@ def test_deleteReceiptValidationResults_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
+def test_delete_receipt_validation_results_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_validation_result, mocker
 ):
     """Test that unprocessed items are retried when deleting validation results"""
@@ -1156,7 +1156,7 @@ def test_deleteReceiptValidationResults_with_unprocessed_items_retries(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationResults_with_large_batch(
+def test_delete_receipt_validation_results_with_large_batch(
     dynamodb_table, sample_receipt_validation_result
 ):
     """Test deleting a large batch of validation results (more than 25)"""
@@ -1207,7 +1207,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
 
 # Now let's implement tests for getReceiptValidationResult
 @pytest.mark.integration
-def test_getReceiptValidationResult_success(
+def test_get_receipt_validation_result_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -1234,7 +1234,7 @@ def test_getReceiptValidationResult_success(
 
 
 @pytest.mark.integration
-def test_getReceiptValidationResult_not_found(
+def test_get_receipt_validation_result_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
 ):
@@ -1312,7 +1312,7 @@ def test_getReceiptValidationResult_not_found(
         ),
     ],
 )
-def test_getReceiptValidationResult_invalid_parameters(
+def test_get_receipt_validation_result_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     receipt_id,
     image_id,
@@ -1370,7 +1370,7 @@ def test_getReceiptValidationResult_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptValidationResult_client_errors(
+def test_get_receipt_validation_result_client_errors(
     dynamodb_table,
     sample_receipt_validation_result,
     mocker,
@@ -1408,7 +1408,7 @@ def test_getReceiptValidationResult_client_errors(
 
 # Now let's implement tests for listReceiptValidationResults
 @pytest.mark.integration
-def test_listReceiptValidationResults_success(
+def test_list_receipt_validation_results_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -1454,7 +1454,7 @@ def test_listReceiptValidationResults_success(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResults_with_pagination(
+def test_list_receipt_validation_results_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -1572,7 +1572,7 @@ def test_listReceiptValidationResults_with_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResults_empty_results(
+def test_list_receipt_validation_results_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
 ):
@@ -1597,7 +1597,7 @@ def test_listReceiptValidationResults_empty_results(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResults_with_negative_limit(
+def test_list_receipt_validation_results_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing validation results with a negative limit should raise ParamValidationError"""
@@ -1647,7 +1647,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         ),
     ],
 )
-def test_listReceiptValidationResults_client_errors(
+def test_list_receipt_validation_results_client_errors(
     dynamodb_table,
     mocker,
     error_code,
@@ -1679,7 +1679,7 @@ def test_listReceiptValidationResults_client_errors(
 
 # Now let's implement tests for listReceiptValidationResultsByType
 @pytest.mark.integration
-def test_listReceiptValidationResultsByType_success(
+def test_list_receipt_validation_results_by_type_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -1772,7 +1772,7 @@ def test_listReceiptValidationResultsByType_success(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsByType_pagination(
+def test_list_receipt_validation_results_by_type_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -1905,7 +1905,7 @@ def test_listReceiptValidationResultsByType_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsByType_empty_results(
+def test_list_receipt_validation_results_by_type_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -1945,7 +1945,7 @@ def test_listReceiptValidationResultsByType_empty_results(
         ("", "result_type must not be empty"),
     ],
 )
-def test_listReceiptValidationResultsByType_invalid_parameters(
+def test_list_receipt_validation_results_by_type_invalid_parameters(
     dynamodb_table,
     result_type,
     expected_error,
@@ -1960,7 +1960,7 @@ def test_listReceiptValidationResultsByType_invalid_parameters(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsByType_with_negative_limit(
+def test_list_receipt_validation_results_by_type_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing validation results by type with a negative limit should raise ParamValidationError"""
@@ -2012,7 +2012,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         ),
     ],
 )
-def test_listReceiptValidationResultsByType_client_errors(
+def test_list_receipt_validation_results_by_type_client_errors(
     dynamodb_table,
     mocker,
     error_code,
@@ -2043,7 +2043,7 @@ def test_listReceiptValidationResultsByType_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsForField_success(
+def test_list_receipt_validation_results_for_field_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -2130,7 +2130,7 @@ def test_listReceiptValidationResultsForField_success(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsForField_with_pagination(
+def test_list_receipt_validation_results_for_field_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
     mocker,
@@ -2273,7 +2273,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptValidationResultsForField_empty_results(
+def test_list_receipt_validation_results_for_field_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
 ):
@@ -2346,7 +2346,7 @@ def test_listReceiptValidationResultsForField_empty_results(
         ),
     ],
 )
-def test_listReceiptValidationResultsForField_invalid_parameters(
+def test_list_receipt_validation_results_for_field_invalid_parameters(
     dynamodb_table,
     receipt_id,
     image_id,
@@ -2404,7 +2404,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptValidationResultsForField_client_errors(
+def test_list_receipt_validation_results_for_field_client_errors(
     dynamodb_table,
     mocker,
     error_code,

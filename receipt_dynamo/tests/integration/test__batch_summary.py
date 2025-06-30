@@ -22,7 +22,7 @@ def sample_batch_summary():
     )
 
 
-def test_addBatchSummary_duplicate_raises(
+def test_add_batch_summary_duplicate_raises(
     dynamodb_table, sample_batch_summary, mocker
 ):
     client = DynamoClient(dynamodb_table)
@@ -44,19 +44,19 @@ def test_addBatchSummary_duplicate_raises(
 
 
 @pytest.mark.parametrize("invalid", [None, "not-a-batch"])
-def test_addBatchSummary_invalid_param(dynamodb_table, invalid):
+def test_add_batch_summary_invalid_param(dynamodb_table, invalid):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError):
         client.add_batch_summary(invalid)
 
 
-def test_addBatchSummaries_success(dynamodb_table, sample_batch_summary):
+def test_add_batch_summaries_success(dynamodb_table, sample_batch_summary):
     client = DynamoClient(dynamodb_table)
     summaries = [sample_batch_summary]
     client.add_batch_summaries(summaries)
 
 
-def test_addBatchSummaries_unprocessed_retry(
+def test_add_batch_summaries_unprocessed_retry(
     dynamodb_table, sample_batch_summary, mocker
 ):
     client = DynamoClient(dynamodb_table)
@@ -75,7 +75,7 @@ def test_addBatchSummaries_unprocessed_retry(
     assert mock_batch.call_count == 2
 
 
-def test_updateBatchSummaries_chunked(
+def test_update_batch_summaries_chunked(
     dynamodb_table, sample_batch_summary, mocker
 ):
     client = DynamoClient(dynamodb_table)
@@ -94,7 +94,7 @@ def test_updateBatchSummaries_chunked(
     assert mock_write.call_count == 2
 
 
-def test_deleteBatchSummaries_chunked(
+def test_delete_batch_summaries_chunked(
     dynamodb_table, sample_batch_summary, mocker
 ):
     client = DynamoClient(dynamodb_table)
@@ -113,7 +113,7 @@ def test_deleteBatchSummaries_chunked(
     assert mock_write.call_count == 2
 
 
-def test_listBatchSummaries_with_limit_and_LEK(
+def test_list_batch_summaries_with_limit_and_lek(
     dynamodb_table, sample_batch_summary
 ):
     client = DynamoClient(dynamodb_table)
@@ -131,7 +131,7 @@ def test_listBatchSummaries_with_limit_and_LEK(
     assert len(second_page) == 1
 
 
-def test_getBatchSummariesByStatus_limit_triggers_mid_loop(
+def test_get_batch_summaries_by_status_limit_triggers_mid_loop(
     dynamodb_table, sample_batch_summary, mocker
 ):
     client = DynamoClient(dynamodb_table)

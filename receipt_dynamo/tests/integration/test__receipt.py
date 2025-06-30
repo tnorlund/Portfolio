@@ -16,6 +16,7 @@ from receipt_dynamo import (
     ReceiptWordLabel,
     ReceiptWordTag,
 )
+from receipt_dynamo.data.shared_exceptions import DynamoDBThroughputError
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -160,12 +161,12 @@ def sample_image():
 
 
 # -------------------------------------------------------------------
-#                   addReceipt / addReceipts
+#                   add_receipt / addReceipts
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceipt_success(
+def test_add_receipt_success(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt
 ):
     """
@@ -184,7 +185,7 @@ def test_addReceipt_success(
 
 
 @pytest.mark.integration
-def test_addReceipt_duplicate_raises(
+def test_add_receipt_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt
 ):
     """
@@ -198,7 +199,9 @@ def test_addReceipt_duplicate_raises(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
+def test_add_receipt_raises_value_error(
+    dynamodb_table, sample_receipt, mocker
+):
     """
     Tests that addReceipt raises ValueError when the receipt is None.
     """
@@ -210,7 +213,7 @@ def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_value_error_receipt_not_instance(
+def test_add_receipt_raises_value_error_receipt_not_instance(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -225,7 +228,7 @@ def test_addReceipt_raises_value_error_receipt_not_instance(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_conditional_check_failed(
+def test_add_receipt_raises_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -253,7 +256,7 @@ def test_addReceipt_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_resource_not_found(
+def test_add_receipt_raises_resource_not_found(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -284,7 +287,7 @@ def test_addReceipt_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_provisioned_throughput_exceeded(
+def test_add_receipt_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -311,7 +314,7 @@ def test_addReceipt_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_internal_server_error(
+def test_add_receipt_raises_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -338,7 +341,7 @@ def test_addReceipt_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_addReceipt_raises_unknown_error(
+def test_add_receipt_raises_unknown_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -365,7 +368,7 @@ def test_addReceipt_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_addReceipts_success(dynamodb_table, sample_receipt):
+def test_add_receipts_success(dynamodb_table, sample_receipt):
     """
     Tests the happy path of addReceipts (batch write).
     """
@@ -388,7 +391,7 @@ def test_addReceipts_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_value_error_receipts_none(
+def test_add_receipts_raises_value_error_receipts_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -403,7 +406,7 @@ def test_addReceipts_raises_value_error_receipts_none(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_value_error_receipts_not_list(
+def test_add_receipts_raises_value_error_receipts_not_list(
     dynamodb_table, sample_receipt
 ):
     """
@@ -418,7 +421,7 @@ def test_addReceipts_raises_value_error_receipts_not_list(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_value_error_receipts_not_list_of_receipts(
+def test_add_receipts_raises_value_error_receipts_not_list_of_receipts(
     dynamodb_table, sample_receipt
 ):
     """
@@ -434,7 +437,7 @@ def test_addReceipts_raises_value_error_receipts_not_list_of_receipts(
 
 
 @pytest.mark.integration
-def test_addReceipts_unprocessed_items_retry(
+def test_add_receipts_unprocessed_items_retry(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -483,7 +486,7 @@ def test_addReceipts_unprocessed_items_retry(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_clienterror_provisioned_throughput_exceeded(
+def test_add_receipts_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -504,13 +507,16 @@ def test_addReceipts_raises_clienterror_provisioned_throughput_exceeded(
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+    with pytest.raises(
+        DynamoDBThroughputError, match="Provisioned throughput exceeded"
+    ):
         client.add_receipts([sample_receipt])
-    mock_batch.assert_called_once()
+    # Our helper now retries 3 times before giving up
+    assert mock_batch.call_count == 3
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_clienterror_internal_server_error(
+def test_add_receipts_raises_clienterror_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -537,7 +543,7 @@ def test_addReceipts_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_clienterror_validation_exception(
+def test_add_receipts_raises_clienterror_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -566,7 +572,7 @@ def test_addReceipts_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_clienterror_access_denied(
+def test_add_receipts_raises_clienterror_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -593,7 +599,7 @@ def test_addReceipts_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_addReceipts_raises_clienterror(
+def test_add_receipts_raises_clienterror(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -622,12 +628,12 @@ def test_addReceipts_raises_clienterror(
 
 
 # -------------------------------------------------------------------
-#                  updateReceipt / updateReceipts
+#                  update_receipt / updateReceipts
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceipt_success(dynamodb_table, sample_receipt):
+def test_update_receipt_success(dynamodb_table, sample_receipt):
     """
     Tests happy path for updateReceipt.
     """
@@ -645,7 +651,7 @@ def test_updateReceipt_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_value_error_receipt_none(
+def test_update_receipt_raises_value_error_receipt_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -660,7 +666,7 @@ def test_updateReceipt_raises_value_error_receipt_none(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_value_error_receipt_not_instance(
+def test_update_receipt_raises_value_error_receipt_not_instance(
     dynamodb_table, sample_receipt
 ):
     """
@@ -675,7 +681,7 @@ def test_updateReceipt_raises_value_error_receipt_not_instance(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_conditional_check_failed(
+def test_update_receipt_raises_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -702,7 +708,7 @@ def test_updateReceipt_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_clienterror_provisioned_throughput_exceeded(
+def test_update_receipt_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -729,7 +735,7 @@ def test_updateReceipt_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_clienterror_internal_server_error(
+def test_update_receipt_raises_clienterror_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -756,7 +762,7 @@ def test_updateReceipt_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_clienterror_validation_exception(
+def test_update_receipt_raises_clienterror_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -785,7 +791,7 @@ def test_updateReceipt_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_clienterror_access_denied(
+def test_update_receipt_raises_clienterror_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -812,7 +818,7 @@ def test_updateReceipt_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateReceipt_raises_clienterror(
+def test_update_receipt_raises_clienterror(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -841,7 +847,7 @@ def test_updateReceipt_raises_clienterror(
 
 
 @pytest.mark.integration
-def test_updateReceipts_success(dynamodb_table, sample_receipt):
+def test_update_receipts_success(dynamodb_table, sample_receipt):
     """
     Tests happy path of updateReceipts (batch write).
     """
@@ -871,7 +877,7 @@ def test_updateReceipts_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_value_error_receipts_none(
+def test_update_receipts_raises_value_error_receipts_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -886,7 +892,7 @@ def test_updateReceipts_raises_value_error_receipts_none(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_value_error_receipts_not_list(
+def test_update_receipts_raises_value_error_receipts_not_list(
     dynamodb_table, sample_receipt
 ):
     """
@@ -901,7 +907,7 @@ def test_updateReceipts_raises_value_error_receipts_not_list(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_value_error_receipts_not_list_of_receipts(
+def test_update_receipts_raises_value_error_receipts_not_list_of_receipts(
     dynamodb_table, sample_receipt
 ):
     """
@@ -917,7 +923,7 @@ def test_updateReceipts_raises_value_error_receipts_not_list_of_receipts(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_clienterror_conditional_check_failed(
+def test_update_receipts_raises_clienterror_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -944,7 +950,7 @@ def test_updateReceipts_raises_clienterror_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_clienterror_provisioned_throughput_exceeded(
+def test_update_receipts_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -971,7 +977,7 @@ def test_updateReceipts_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_clienterror_internal_server_error(
+def test_update_receipts_raises_clienterror_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -998,7 +1004,7 @@ def test_updateReceipts_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_clienterror_validation_exception(
+def test_update_receipts_raises_clienterror_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1027,7 +1033,7 @@ def test_updateReceipts_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_clienterror_access_denied(
+def test_update_receipts_raises_clienterror_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1054,7 +1060,7 @@ def test_updateReceipts_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateReceipts_raises_client_error(
+def test_update_receipts_raises_client_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1082,12 +1088,12 @@ def test_updateReceipts_raises_client_error(
 
 
 # -------------------------------------------------------------------
-#                  deleteReceipt / deleteReceipts
+#                  delete_receipt / deleteReceipts
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceipt_success(dynamodb_table, sample_receipt):
+def test_delete_receipt_success(dynamodb_table, sample_receipt):
     """
     Tests happy path for deleteReceipt.
     """
@@ -1100,7 +1106,7 @@ def test_deleteReceipt_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_value_error_receipt_none(
+def test_delete_receipt_raises_value_error_receipt_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1115,7 +1121,7 @@ def test_deleteReceipt_raises_value_error_receipt_none(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_value_error_receipt_not_instance(
+def test_delete_receipt_raises_value_error_receipt_not_instance(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1130,7 +1136,7 @@ def test_deleteReceipt_raises_value_error_receipt_not_instance(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_conditional_check_failed(
+def test_delete_receipt_raises_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1157,7 +1163,7 @@ def test_deleteReceipt_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_clienterror_provisioned_throughput_exceeded(
+def test_delete_receipt_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1184,7 +1190,7 @@ def test_deleteReceipt_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_clienterror_internal_server_error(
+def test_delete_receipt_raises_clienterror_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1211,7 +1217,7 @@ def test_deleteReceipt_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_clienterror_validation_exception(
+def test_delete_receipt_raises_clienterror_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1240,7 +1246,7 @@ def test_deleteReceipt_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_clienterror_access_denied(
+def test_delete_receipt_raises_clienterror_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1267,7 +1273,7 @@ def test_deleteReceipt_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_deleteReceipt_raises_client_error(
+def test_delete_receipt_raises_client_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1294,7 +1300,7 @@ def test_deleteReceipt_raises_client_error(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_success(dynamodb_table, sample_receipt):
+def test_delete_receipts_success(dynamodb_table, sample_receipt):
     """
     Tests happy path for deleteReceipts.
     """
@@ -1314,7 +1320,7 @@ def test_deleteReceipts_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_value_error_receipts_none(
+def test_delete_receipts_raises_value_error_receipts_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1329,7 +1335,7 @@ def test_deleteReceipts_raises_value_error_receipts_none(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_value_error_receipts_not_list(
+def test_delete_receipts_raises_value_error_receipts_not_list(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1344,7 +1350,7 @@ def test_deleteReceipts_raises_value_error_receipts_not_list(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_value_error_receipts_not_list_of_receipts(
+def test_delete_receipts_raises_value_error_receipts_not_list_of_receipts(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1360,7 +1366,7 @@ def test_deleteReceipts_raises_value_error_receipts_not_list_of_receipts(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_clienterror_conditional_check_failed(
+def test_delete_receipts_raises_clienterror_conditional_check_failed(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1387,7 +1393,7 @@ def test_deleteReceipts_raises_clienterror_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_clienterror_provisioned_throughput_exceeded(
+def test_delete_receipts_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1414,7 +1420,7 @@ def test_deleteReceipts_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_clienterror_internal_server_error(
+def test_delete_receipts_raises_clienterror_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1441,7 +1447,7 @@ def test_deleteReceipts_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_clienterror_validation_exception(
+def test_delete_receipts_raises_clienterror_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1470,7 +1476,7 @@ def test_deleteReceipts_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_clienterror_access_denied(
+def test_delete_receipts_raises_clienterror_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1497,7 +1503,7 @@ def test_deleteReceipts_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_deleteReceipts_raises_client_error(
+def test_delete_receipts_raises_client_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1527,12 +1533,12 @@ def test_deleteReceipts_raises_client_error(
 
 
 # -------------------------------------------------------------------
-#               getReceipt / getReceiptDetails
+#               get_receipt / getReceiptDetails
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceipt_success(dynamodb_table, sample_receipt):
+def test_get_receipt_success(dynamodb_table, sample_receipt):
     """
     Tests retrieving a single receipt.
     """
@@ -1545,7 +1551,7 @@ def test_getReceipt_success(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_value_error_image_id_none(
+def test_get_receipt_raises_value_error_image_id_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1560,7 +1566,7 @@ def test_getReceipt_raises_value_error_image_id_none(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_value_error_receipt_id_none(
+def test_get_receipt_raises_value_error_receipt_id_none(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1575,7 +1581,7 @@ def test_getReceipt_raises_value_error_receipt_id_none(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_value_error_image_id_not_uuid(
+def test_get_receipt_raises_value_error_image_id_not_uuid(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1588,7 +1594,7 @@ def test_getReceipt_raises_value_error_image_id_not_uuid(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_value_error_receipt_id_not_int(
+def test_get_receipt_raises_value_error_receipt_id_not_int(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1601,7 +1607,7 @@ def test_getReceipt_raises_value_error_receipt_id_not_int(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_value_error_receipt_id_negative(
+def test_get_receipt_raises_value_error_receipt_id_negative(
     dynamodb_table, sample_receipt
 ):
     """
@@ -1616,7 +1622,7 @@ def test_getReceipt_raises_value_error_receipt_id_negative(
 
 
 @pytest.mark.integration
-def test_getReceipt_not_found(dynamodb_table, sample_receipt):
+def test_get_receipt_not_found(dynamodb_table, sample_receipt):
     """
     Tests getReceipt raises ValueError if not found.
     """
@@ -1626,7 +1632,7 @@ def test_getReceipt_not_found(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_provisioned_throughput_exceeded(
+def test_get_receipt_raises_provisioned_throughput_exceeded(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1653,7 +1659,7 @@ def test_getReceipt_raises_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_validation_exception(
+def test_get_receipt_raises_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1680,7 +1686,7 @@ def test_getReceipt_raises_validation_exception(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_internal_server_error(
+def test_get_receipt_raises_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1707,7 +1713,7 @@ def test_getReceipt_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_access_denied(
+def test_get_receipt_raises_access_denied(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1734,7 +1740,7 @@ def test_getReceipt_raises_access_denied(
 
 
 @pytest.mark.integration
-def test_getReceipt_raises_client_error(
+def test_get_receipt_raises_client_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1761,7 +1767,7 @@ def test_getReceipt_raises_client_error(
 
 
 @pytest.mark.integration
-def test_getReceiptDetails_success(
+def test_get_receipt_details_success(
     dynamodb_table,
     sample_receipt,
     sample_receipt_word,
@@ -1802,12 +1808,12 @@ def test_getReceiptDetails_success(
 
 
 # -------------------------------------------------------------------
-#                  listReceipts
+#                  list_receipts
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
+def test_list_receipts_no_limit(dynamodb_table, sample_receipt):
     """
     Tests listing all receipts without a limit.
     """
@@ -1831,7 +1837,7 @@ def test_listReceipts_no_limit(dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
+def test_list_receipts_with_pagination(dynamodb_table, sample_receipt, mocker):
     """
     Tests listing receipts in multiple pages with a limit.
     We'll patch query to simulate a second page.
@@ -1856,7 +1862,7 @@ def test_listReceipts_with_pagination(dynamodb_table, sample_receipt, mocker):
 
 
 @pytest.mark.integration
-def test_listReceipts_with_starting_LEK(
+def test_list_receipts_with_starting_lek(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -1909,7 +1915,7 @@ def test_listReceipts_with_starting_LEK(
 
 
 @pytest.mark.integration
-def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
+def test_list_receipts_limit_trim(mocker, dynamodb_table, sample_receipt):
     """
     Tests that listReceipts stops paginating once the accumulated receipts
     reach the limit, trims any extra items, and returns the LastEvaluatedKey
@@ -1949,7 +1955,7 @@ def test_listReceipts_limit_trim(mocker, dynamodb_table, sample_receipt):
 
 
 @pytest.mark.integration
-def test_listReceipts_invalid_limit(dynamodb_table):
+def test_list_receipts_invalid_limit(dynamodb_table):
     """
     listReceipts should raise a ValueError if limit is not int or is <= 0.
     """
@@ -1977,7 +1983,7 @@ def test_listReceipts_invalid_limit(dynamodb_table):
         },
     ],
 )
-def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
+def test_list_receipts_invalid_last_evaluated_key(dynamodb_table, invalid_lek):
     """
     Verifies that listReceipts raises a ValueError when lastEvaluatedKey is
     invalid.
@@ -1988,7 +1994,7 @@ def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
 
 
 @pytest.mark.integration
-def test_listReceipts_raises_resource_not_found(
+def test_list_receipts_raises_resource_not_found(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -2011,7 +2017,7 @@ def test_listReceipts_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_listReceipts_raises_throughput(
+def test_list_receipts_raises_throughput(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -2032,7 +2038,7 @@ def test_listReceipts_raises_throughput(
 
 
 @pytest.mark.integration
-def test_listReceipts_raises_validation_exception(
+def test_list_receipts_raises_validation_exception(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -2055,7 +2061,7 @@ def test_listReceipts_raises_validation_exception(
 
 
 @pytest.mark.integration
-def test_listReceipts_raises_internal_server_error(
+def test_list_receipts_raises_internal_server_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -2076,7 +2082,7 @@ def test_listReceipts_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_listReceipts_raises_unknown_error(
+def test_list_receipts_raises_unknown_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
@@ -2099,7 +2105,7 @@ def test_listReceipts_raises_unknown_error(
 
 
 @pytest.mark.integration
-def test_listReceiptDetails_success(
+def test_list_receipt_details_success(
     dynamodb_table,
     sample_receipt,
     sample_receipt_words,

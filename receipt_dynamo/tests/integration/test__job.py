@@ -52,53 +52,53 @@ def sample_job_status(sample_job):
 
 
 # ---
-# addJob
+# add_job
 # ---
 
 
 @pytest.mark.integration
-def test_addJob_success(job_dynamo, sample_job):
+def test_add_job_success(job_dynamo, sample_job):
     """Test adding a job successfully"""
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
     # Verify the job was added
-    job = job_dynamo.getJob(sample_job.job_id)
+    job = job_dynamo.get_job(sample_job.job_id)
     assert job.job_id == sample_job.job_id
     assert job.name == sample_job.name
     assert job.status == sample_job.status
 
 
 @pytest.mark.integration
-def test_addJob_raises_value_error(job_dynamo):
+def test_add_job_raises_value_error(job_dynamo):
     """Test that addJob raises ValueError when job is None"""
     with pytest.raises(
         ValueError, match="Job parameter is required and cannot be None."
     ):
-        job_dynamo.addJob(None)
+        job_dynamo.add_job(None)
 
 
 @pytest.mark.integration
-def test_addJob_raises_value_error_job_not_instance(job_dynamo):
+def test_add_job_raises_value_error_job_not_instance(job_dynamo):
     """Test that addJob raises ValueError when job is not an instance of Job"""
     with pytest.raises(
         ValueError, match="job must be an instance of the Job class."
     ):
-        job_dynamo.addJob("not a job")
+        job_dynamo.add_job("not a job")
 
 
 @pytest.mark.integration
-def test_addJob_raises_conditional_check_failed(job_dynamo, sample_job):
+def test_add_job_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that addJob raises ValueError when the job already exists"""
     # Add the job first
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
     # Try to add it again
     with pytest.raises(
         ValueError, match=f"Job with ID {sample_job.job_id} already exists"
     ):
-        job_dynamo.addJob(sample_job)
+        job_dynamo.add_job(sample_job)
 
 
 @pytest.mark.integration
-def test_addJob_raises_resource_not_found(job_dynamo, sample_job, mocker):
+def test_add_job_raises_resource_not_found(job_dynamo, sample_job, mocker):
     """
     Simulate a ResourceNotFoundException when adding a job.
     """
@@ -121,12 +121,12 @@ def test_addJob_raises_resource_not_found(job_dynamo, sample_job, mocker):
         # ResourceNotFoundException in addJob, so it won't raise ValueError,
         # it re-raises the original error if it's not
         # ConditionalCheckFailedException.
-        job_dynamo.addJob(sample_job)
+        job_dynamo.add_job(sample_job)
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJob_raises_provisioned_throughput_exceeded(
+def test_add_job_raises_provisioned_throughput_exceeded(
     job_dynamo, sample_job, mocker
 ):
     """
@@ -147,12 +147,12 @@ def test_addJob_raises_provisioned_throughput_exceeded(
     )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        job_dynamo.addJob(sample_job)
+        job_dynamo.add_job(sample_job)
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJob_raises_internal_server_error(job_dynamo, sample_job, mocker):
+def test_add_job_raises_internal_server_error(job_dynamo, sample_job, mocker):
     """
     Simulate an InternalServerError when adding a job.
     """
@@ -171,12 +171,12 @@ def test_addJob_raises_internal_server_error(job_dynamo, sample_job, mocker):
     )
 
     with pytest.raises(Exception, match="Internal server error"):
-        job_dynamo.addJob(sample_job)
+        job_dynamo.add_job(sample_job)
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJob_raises_unknown_error(job_dynamo, sample_job, mocker):
+def test_add_job_raises_unknown_error(job_dynamo, sample_job, mocker):
     """
     Simulate an unknown error when adding a job.
     """
@@ -195,17 +195,17 @@ def test_addJob_raises_unknown_error(job_dynamo, sample_job, mocker):
     )
 
     with pytest.raises(Exception, match="Something unexpected"):
-        job_dynamo.addJob(sample_job)
+        job_dynamo.add_job(sample_job)
     mock_put.assert_called_once()
 
 
 # ---
-# addJobs
+# add_jobs
 # ---
 
 
 @pytest.mark.integration
-def test_addJobs_success(job_dynamo, sample_job):
+def test_add_jobs_success(job_dynamo, sample_job):
     """Test adding multiple jobs successfully"""
     job2 = Job(
         job_id=str(uuid.uuid4()),
@@ -220,11 +220,11 @@ def test_addJobs_success(job_dynamo, sample_job):
         tags={"env": "test", "purpose": "integration-test"},
     )
     jobs = [sample_job, job2]
-    job_dynamo.addJobs(jobs)
+    job_dynamo.add_jobs(jobs)
 
     # Verify the jobs were added
-    job1_result = job_dynamo.getJob(sample_job.job_id)
-    job2_result = job_dynamo.getJob(job2.job_id)
+    job1_result = job_dynamo.get_job(sample_job.job_id)
+    job2_result = job_dynamo.get_job(job2.job_id)
 
     assert job1_result.job_id == sample_job.job_id
     assert job1_result.name == sample_job.name
@@ -233,25 +233,25 @@ def test_addJobs_success(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-def test_addJobs_raises_value_error_jobs_none(job_dynamo):
+def test_add_jobs_raises_value_error_jobs_none(job_dynamo):
     """Test that addJobs raises ValueError when jobs is None"""
     with pytest.raises(
         ValueError, match="Jobs parameter is required and cannot be None."
     ):
-        job_dynamo.addJobs(None)
+        job_dynamo.add_jobs(None)
 
 
 @pytest.mark.integration
-def test_addJobs_raises_value_error_jobs_not_list(job_dynamo):
+def test_add_jobs_raises_value_error_jobs_not_list(job_dynamo):
     """Test that addJobs raises ValueError when jobs is not a list"""
     with pytest.raises(
         ValueError, match="jobs must be a list of Job instances."
     ):
-        job_dynamo.addJobs("not a list")
+        job_dynamo.add_jobs("not a list")
 
 
 @pytest.mark.integration
-def test_addJobs_raises_value_error_jobs_not_list_of_jobs(
+def test_add_jobs_raises_value_error_jobs_not_list_of_jobs(
     job_dynamo, sample_job
 ):
     """
@@ -261,11 +261,11 @@ def test_addJobs_raises_value_error_jobs_not_list_of_jobs(
     with pytest.raises(
         ValueError, match="All jobs must be instances of the Job class."
     ):
-        job_dynamo.addJobs([sample_job, "not a job"])
+        job_dynamo.add_jobs([sample_job, "not a job"])
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror_provisioned_throughput_exceeded(
+def test_add_jobs_raises_clienterror_provisioned_throughput_exceeded(
     job_dynamo, sample_job, mocker
 ):
     """
@@ -286,12 +286,12 @@ def test_addJobs_raises_clienterror_provisioned_throughput_exceeded(
     )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        job_dynamo.addJobs([sample_job])
+        job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror_internal_server_error(
+def test_add_jobs_raises_clienterror_internal_server_error(
     job_dynamo, sample_job, mocker
 ):
     """
@@ -312,12 +312,12 @@ def test_addJobs_raises_clienterror_internal_server_error(
     )
 
     with pytest.raises(Exception, match="Internal server error"):
-        job_dynamo.addJobs([sample_job])
+        job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror_validation_exception(
+def test_add_jobs_raises_clienterror_validation_exception(
     job_dynamo, sample_job, mocker
 ):
     """
@@ -340,12 +340,12 @@ def test_addJobs_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        job_dynamo.addJobs([sample_job])
+        job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror_access_denied(
+def test_add_jobs_raises_clienterror_access_denied(
     job_dynamo, sample_job, mocker
 ):
     """
@@ -366,12 +366,12 @@ def test_addJobs_raises_clienterror_access_denied(
     )
 
     with pytest.raises(Exception, match="Access denied"):
-        job_dynamo.addJobs([sample_job])
+        job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror(job_dynamo, sample_job, mocker):
+def test_add_jobs_raises_clienterror(job_dynamo, sample_job, mocker):
     """
     Simulate an unknown error when adding jobs.
     """
@@ -390,17 +390,17 @@ def test_addJobs_raises_clienterror(job_dynamo, sample_job, mocker):
     )
 
     with pytest.raises(Exception, match="Something unexpected"):
-        job_dynamo.addJobs([sample_job])
+        job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()
 
 
 @pytest.mark.integration
-def test_getJob_success(job_dynamo, sample_job):
+def test_get_job_success(job_dynamo, sample_job):
     """Test getting a job successfully"""
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Get the job
-    job = job_dynamo.getJob(sample_job.job_id)
+    job = job_dynamo.get_job(sample_job.job_id)
 
     # Verify
     assert job.job_id == sample_job.job_id
@@ -415,7 +415,7 @@ def test_getJob_success(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-def test_addJobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
+def test_add_jobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
     """
     Partial mocking to simulate unprocessed items. The second call should
     succeed.
@@ -459,11 +459,11 @@ def test_addJobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
     mocker.patch.object(
         job_dynamo._client, "batch_write_item", side_effect=custom_side_effect
     )
-    job_dynamo.addJobs(jobs)
+    job_dynamo.add_jobs(jobs)
 
     assert call_count["value"] == 2, "Should have retried once."
 
-    stored, _ = job_dynamo.listJobs()
+    stored, _ = job_dynamo.list_jobs()
     assert len(stored) == 2
     # We can't directly compare objects since the stored ones might have
     # different timestamps/attributes
@@ -473,34 +473,34 @@ def test_addJobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
 
 
 @pytest.mark.integration
-def test_getJob_raises_value_error_job_id_none(job_dynamo):
+def test_get_job_raises_value_error_job_id_none(job_dynamo):
     """Test that getJob raises ValueError when job_id is None"""
     with pytest.raises(
         ValueError, match="Job ID is required and cannot be None."
     ):
-        job_dynamo.getJob(None)
+        job_dynamo.get_job(None)
 
 
 @pytest.mark.integration
-def test_getJob_raises_value_error_job_not_found(job_dynamo):
+def test_get_job_raises_value_error_job_not_found(job_dynamo):
     """Test that getJob raises ValueError when job does not exist"""
     with pytest.raises(ValueError, match="Job with ID .* does not exist"):
-        job_dynamo.getJob(str(uuid.uuid4()))
+        job_dynamo.get_job(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_updateJob_success(job_dynamo, sample_job):
+def test_update_job_success(job_dynamo, sample_job):
     """Test updating a job successfully"""
     # Add the job
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Update the job
     sample_job.status = "running"
     sample_job.priority = "high"
-    job_dynamo.updateJob(sample_job)
+    job_dynamo.update_job(sample_job)
 
     # Get the updated job
-    updated_job = job_dynamo.getJob(sample_job.job_id)
+    updated_job = job_dynamo.get_job(sample_job.job_id)
 
     # Verify
     assert updated_job.status == "running"
@@ -508,16 +508,16 @@ def test_updateJob_success(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-def test_updateJob_raises_value_error_job_none(job_dynamo):
+def test_update_job_raises_value_error_job_none(job_dynamo):
     """Test that updateJob raises ValueError when job is None"""
     with pytest.raises(
         ValueError, match="Job parameter is required and cannot be None."
     ):
-        job_dynamo.updateJob(None)
+        job_dynamo.update_job(None)
 
 
 @pytest.mark.integration
-def test_updateJob_raises_value_error_job_not_instance(job_dynamo):
+def test_update_job_raises_value_error_job_not_instance(job_dynamo):
     """
     Test that updateJob raises ValueError when job is not an instance of
     Job
@@ -525,76 +525,76 @@ def test_updateJob_raises_value_error_job_not_instance(job_dynamo):
     with pytest.raises(
         ValueError, match="job must be an instance of the Job class."
     ):
-        job_dynamo.updateJob("not a job")
+        job_dynamo.update_job("not a job")
 
 
 @pytest.mark.integration
-def test_updateJob_raises_conditional_check_failed(job_dynamo, sample_job):
+def test_update_job_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that updateJob raises ValueError when the job does not exist"""
     # Try to update without adding first
     with pytest.raises(
         ValueError, match=f"Job with ID {sample_job.job_id} does not exist"
     ):
-        job_dynamo.updateJob(sample_job)
+        job_dynamo.update_job(sample_job)
 
 
 @pytest.mark.integration
-def test_deleteJob_success(job_dynamo, sample_job):
+def test_delete_job_success(job_dynamo, sample_job):
     """Test deleting a job successfully"""
     # Add the job
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Delete the job
-    job_dynamo.deleteJob(sample_job)
+    job_dynamo.delete_job(sample_job)
 
     # Try to get the job - should raise ValueError
     with pytest.raises(
         ValueError, match=f"Job with ID {sample_job.job_id} does not exist"
     ):
-        job_dynamo.getJob(sample_job.job_id)
+        job_dynamo.get_job(sample_job.job_id)
 
 
 @pytest.mark.integration
-def test_deleteJob_raises_value_error_job_none(job_dynamo):
+def test_delete_job_raises_value_error_job_none(job_dynamo):
     """Test that deleteJob raises ValueError when job is None"""
     with pytest.raises(
         ValueError, match="Job parameter is required and cannot be None."
     ):
-        job_dynamo.deleteJob(None)
+        job_dynamo.delete_job(None)
 
 
 @pytest.mark.integration
-def test_deleteJob_raises_value_error_job_not_instance(job_dynamo):
+def test_delete_job_raises_value_error_job_not_instance(job_dynamo):
     """
     Test that deleteJob raises ValueError when job is not an instance of Job
     """
     with pytest.raises(
         ValueError, match="job must be an instance of the Job class."
     ):
-        job_dynamo.deleteJob("not a job")
+        job_dynamo.delete_job("not a job")
 
 
 @pytest.mark.integration
-def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
+def test_delete_job_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that deleteJob raises ValueError when the job does not exist"""
     # Try to delete without adding first
     with pytest.raises(
         ValueError, match=f"Job with ID {sample_job.job_id} does not exist"
     ):
-        job_dynamo.deleteJob(sample_job)
+        job_dynamo.delete_job(sample_job)
 
 
 @pytest.mark.integration
-def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
+def test_add_job_status_success(job_dynamo, sample_job, sample_job_status):
     """Test adding a job status successfully"""
     # Add the job first
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Add the job status
-    job_dynamo.addJobStatus(sample_job_status)
+    job_dynamo.add_job_status(sample_job_status)
 
     # Get the latest job status
-    status = job_dynamo.getLatestJobStatus(sample_job.job_id)
+    status = job_dynamo.get_latest_job_status(sample_job.job_id)
 
     # Verify
     assert status.job_id == sample_job_status.job_id
@@ -604,16 +604,16 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-def test_addJobStatus_raises_value_error_status_none(job_dynamo):
+def test_add_job_status_raises_value_error_status_none(job_dynamo):
     """Test that addJobStatus raises ValueError when status is None"""
     with pytest.raises(
         ValueError, match="JobStatus parameter is required and cannot be None."
     ):
-        job_dynamo.addJobStatus(None)
+        job_dynamo.add_job_status(None)
 
 
 @pytest.mark.integration
-def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
+def test_add_job_status_raises_value_error_status_not_instance(job_dynamo):
     """
     Test that addJobStatus raises ValueError when status is not an instance
     of JobStatus
@@ -622,17 +622,19 @@ def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
         ValueError,
         match="job_status must be an instance of the JobStatus class.",
     ):
-        job_dynamo.addJobStatus("not a job status")
+        job_dynamo.add_job_status("not a job status")
 
 
 @pytest.mark.integration
-def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
+def test_get_job_with_status_success(
+    job_dynamo, sample_job, sample_job_status
+):
     """Test getting a job with its status updates"""
     # Add the job
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Add a status update
-    job_dynamo.addJobStatus(sample_job_status)
+    job_dynamo.add_job_status(sample_job_status)
 
     # Add another status update with different status
     new_status = JobStatus(
@@ -644,10 +646,10 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
         updated_by="test_system",
         instance_id="i-12345678",
     )
-    job_dynamo.addJobStatus(new_status)
+    job_dynamo.add_job_status(new_status)
 
     # Get the job with status updates
-    job, statuses = job_dynamo.getJobWithStatus(sample_job.job_id)
+    job, statuses = job_dynamo.get_job_with_status(sample_job.job_id)
 
     # Verify
     assert job.job_id == sample_job.job_id
@@ -660,7 +662,7 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-def test_getLatestJobStatus_raises_value_error_no_status(
+def test_get_latest_job_status_raises_value_error_no_status(
     job_dynamo, sample_job
 ):
     """
@@ -668,24 +670,24 @@ def test_getLatestJobStatus_raises_value_error_no_status(
     updates
     """
     # Add the job
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # Try to get the latest status - should raise ValueError
     with pytest.raises(
         ValueError,
         match=f"No status updates found for job with ID {sample_job.job_id}",
     ):
-        job_dynamo.getLatestJobStatus(sample_job.job_id)
+        job_dynamo.get_latest_job_status(sample_job.job_id)
 
 
 @pytest.mark.integration
-def test_listJobs_success(job_dynamo, sample_job):
+def test_list_jobs_success(job_dynamo, sample_job):
     """Test listJobs successfully lists jobs"""
     # Add the job first
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # List jobs
-    jobs, last_evaluated_key = job_dynamo.listJobs()
+    jobs, last_evaluated_key = job_dynamo.list_jobs()
 
     # Verify
     assert len(jobs) >= 1
@@ -693,26 +695,26 @@ def test_listJobs_success(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-def test_listJobs_with_limit(job_dynamo, sample_job):
+def test_list_jobs_with_limit(job_dynamo, sample_job):
     """Test listJobs with a limit parameter"""
     # Add the job first
-    job_dynamo.addJob(sample_job)
+    job_dynamo.add_job(sample_job)
 
     # List jobs with limit=1
-    jobs, last_evaluated_key = job_dynamo.listJobs(limit=1)
+    jobs, last_evaluated_key = job_dynamo.list_jobs(limit=1)
 
     # Verify
     assert len(jobs) <= 1
 
 
 @pytest.mark.integration
-def test_listJobStatuses_success(job_dynamo, sample_job_status):
+def test_list_job_statuses_success(job_dynamo, sample_job_status):
     """Test listJobStatuses successfully lists job statuses"""
     # Add the job status first
-    job_dynamo.addJobStatus(sample_job_status)
+    job_dynamo.add_job_status(sample_job_status)
 
     # List job statuses
-    job_statuses, last_evaluated_key = job_dynamo.listJobStatuses(
+    job_statuses, last_evaluated_key = job_dynamo.list_job_statuses(
         sample_job_status.job_id
     )
 
@@ -724,13 +726,13 @@ def test_listJobStatuses_success(job_dynamo, sample_job_status):
 
 
 @pytest.mark.integration
-def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
+def test_list_job_statuses_with_limit(job_dynamo, sample_job_status):
     """Test listJobStatuses with a limit parameter"""
     # Add the job status first
-    job_dynamo.addJobStatus(sample_job_status)
+    job_dynamo.add_job_status(sample_job_status)
 
     # List job statuses with limit=1
-    job_statuses, last_evaluated_key = job_dynamo.listJobStatuses(
+    job_statuses, last_evaluated_key = job_dynamo.list_job_statuses(
         sample_job_status.job_id, limit=1
     )
 
@@ -739,12 +741,12 @@ def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
 
 
 @pytest.mark.integration
-def test_listJobStatuses_raises_value_error_job_id_none(job_dynamo):
+def test_list_job_statuses_raises_value_error_job_id_none(job_dynamo):
     """Test listJobStatuses raises ValueError when job_id is None"""
     with pytest.raises(
         ValueError, match="Job ID is required and cannot be None."
     ):
-        job_dynamo.listJobStatuses(None)
+        job_dynamo.list_job_statuses(None)
 
 
 @pytest.mark.integration
@@ -771,7 +773,7 @@ def test_validate_last_evaluated_key_raises_value_error_invalid_format():
 
 
 @pytest.mark.integration
-def test_listJobs_raises_client_error_unknown(job_dynamo, mocker):
+def test_list_jobs_raises_client_error_unknown(job_dynamo, mocker):
     """
     Test that listJobs raises an exception when an unknown ClientError
     occurs
@@ -790,11 +792,11 @@ def test_listJobs_raises_client_error_unknown(job_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not list jobs from the database"
     ):
-        job_dynamo.listJobs()
+        job_dynamo.list_jobs()
 
 
 @pytest.mark.integration
-def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
+def test_list_jobs_raises_client_error_resource_not_found(job_dynamo, mocker):
     """
     Test that listJobs raises an exception when ResourceNotFoundException
     occurs
@@ -813,11 +815,11 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not list jobs from the database"
     ):
-        job_dynamo.listJobs()
+        job_dynamo.list_jobs()
 
 
 @pytest.mark.integration
-def test_listJobStatuses_raises_client_error_resource_not_found(
+def test_list_job_statuses_raises_client_error_resource_not_found(
     job_dynamo, mocker
 ):
     """
@@ -838,11 +840,11 @@ def test_listJobStatuses_raises_client_error_resource_not_found(
     with pytest.raises(
         Exception, match="Could not list job statuses from the database"
     ):
-        job_dynamo.listJobStatuses(str(uuid.uuid4()))
+        job_dynamo.list_job_statuses(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_listJobStatuses_raises_client_error_internal_server_error(
+def test_list_job_statuses_raises_client_error_internal_server_error(
     job_dynamo, mocker
 ):
     """
@@ -861,11 +863,13 @@ def test_listJobStatuses_raises_client_error_internal_server_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Internal server error"):
-        job_dynamo.listJobStatuses(str(uuid.uuid4()))
+        job_dynamo.list_job_statuses(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_listJobStatuses_raises_client_error_access_denied(job_dynamo, mocker):
+def test_list_job_statuses_raises_client_error_access_denied(
+    job_dynamo, mocker
+):
     """
     Test that listJobStatuses raises an exception when AccessDeniedException
     occurs
@@ -881,11 +885,11 @@ def test_listJobStatuses_raises_client_error_access_denied(job_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not list job statuses from the database"
     ):
-        job_dynamo.listJobStatuses(str(uuid.uuid4()))
+        job_dynamo.list_job_statuses(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
+def test_list_jobs_by_status_raises_client_error_unknown(job_dynamo, mocker):
     """
     Test that listJobsByStatus raises an exception when an unknown ClientError
     occurs
@@ -904,11 +908,11 @@ def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not list jobs by status from the database"
     ):
-        job_dynamo.listJobsByStatus("pending")
+        job_dynamo.list_jobs_by_status("pending")
 
 
 @pytest.mark.integration
-def test_listJobsByUser_raises_client_error_unknown(job_dynamo, mocker):
+def test_list_jobs_by_user_raises_client_error_unknown(job_dynamo, mocker):
     """
     Test that listJobsByUser raises an exception when an unknown ClientError
     occurs
@@ -927,11 +931,11 @@ def test_listJobsByUser_raises_client_error_unknown(job_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not list jobs by user from the database"
     ):
-        job_dynamo.listJobsByUser("test_user")
+        job_dynamo.list_jobs_by_user("test_user")
 
 
 @pytest.mark.integration
-def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
+def test_get_job_raises_client_error_resource_not_found(job_dynamo, mocker):
     """
     Test that getJob raises an exception when ResourceNotFoundException
     occurs
@@ -950,11 +954,11 @@ def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Error getting job"):
-        job_dynamo.getJob(str(uuid.uuid4()))
+        job_dynamo.get_job(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
+def test_get_job_raises_client_error_internal_server_error(job_dynamo, mocker):
     """
     Test that getJob raises an exception when InternalServerError occurs
     """
@@ -972,11 +976,11 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Internal server error"):
-        job_dynamo.getJob(str(uuid.uuid4()))
+        job_dynamo.get_job(str(uuid.uuid4()))
 
 
 @pytest.mark.integration
-def test_getLatestJobStatus_raises_client_error_resource_not_found(
+def test_get_latest_job_status_raises_client_error_resource_not_found(
     job_dynamo, mocker
 ):
     """
@@ -995,4 +999,4 @@ def test_getLatestJobStatus_raises_client_error_resource_not_found(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Could not get latest job status"):
-        job_dynamo.getLatestJobStatus(str(uuid.uuid4()))
+        job_dynamo.get_latest_job_status(str(uuid.uuid4()))

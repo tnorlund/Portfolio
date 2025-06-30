@@ -31,12 +31,12 @@ def sample_receipt_word():
 
 
 # -------------------------------------------------------------------
-#                        addReceiptWord
+#                        add_receipt_word
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptWord_success(
+def test_add_receipt_word_success(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
 ):
     # Arrange
@@ -79,7 +79,7 @@ def test_add_receipt_word_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptWord_invalid_parameters(
+def test_add_receipt_word_invalid_parameters(
     dynamodb_table,
     sample_receipt_word,
     invalid_input,
@@ -132,7 +132,7 @@ def test_addReceiptWord_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptWord_client_errors(
+def test_add_receipt_word_client_errors(
     dynamodb_table,
     sample_receipt_word,
     mocker,
@@ -169,12 +169,12 @@ def test_addReceiptWord_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        addReceiptWords
+#                        add_receipt_words
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptWords_success(
+def test_add_receipt_words_success(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
 ):
     # Arrange
@@ -195,7 +195,7 @@ def test_addReceiptWords_success(
 
 
 @pytest.mark.integration
-def test_addReceiptWords_large_batch(
+def test_add_receipt_words_large_batch(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
 ):
     # Arrange
@@ -235,7 +235,7 @@ def test_addReceiptWords_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptWords_with_unprocessed_items_retries(
+def test_add_receipt_words_with_unprocessed_items_retries(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_word: ReceiptWord,
     mocker,
@@ -282,7 +282,7 @@ def test_addReceiptWords_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptWords_invalid_parameters(
+def test_add_receipt_words_invalid_parameters(
     dynamodb_table,
     sample_receipt_word,
     invalid_input,
@@ -336,7 +336,7 @@ def test_addReceiptWords_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptWords_client_errors(
+def test_add_receipt_words_client_errors(
     dynamodb_table,
     sample_receipt_word,
     mocker,
@@ -373,7 +373,7 @@ def test_addReceiptWords_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptWord
+#                        update_receipt_word
 # -------------------------------------------------------------------
 def test_update_receipt_word(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt_word: ReceiptWord
@@ -510,7 +510,7 @@ def test_receipt_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
 
 
 # -------------------------------------------------------------------
-#                        listReceiptWordsByEmbeddingStatus
+#                        list_receipt_words_by_embedding_status
 # -------------------------------------------------------------------
 
 

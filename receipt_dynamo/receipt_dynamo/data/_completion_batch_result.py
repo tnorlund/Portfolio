@@ -12,17 +12,11 @@ from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
     item_to_completion_batch_result,
 )
-
-
-def validate_last_evaluated_key(lek: dict) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+from receipt_dynamo.utils.dynamo_helpers import (
+    batch_write_items,
+    handle_conditional_check_failed,
+    validate_last_evaluated_key,
+)
 
 
 class _CompletionBatchResult(DynamoClientProtocol):
@@ -40,25 +34,35 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not add completion batch result: {e}"
             ) from e
 
-    def add_completion_batch_results(self, results: List[CompletionBatchResult]):
+    def add_completion_batch_results(
+        self, results: List[CompletionBatchResult]
+    ):
         if not isinstance(results, list) or not all(
             isinstance(r, CompletionBatchResult) for r in results
         ):
-            raise ValueError("Must provide a list of CompletionBatchResult instances.")
+            raise ValueError(
+                "Must provide a list of CompletionBatchResult instances."
+            )
         for i in range(0, len(results), 25):
             chunk = results[i : i + 25]
-            request_items = [{"PutRequest": {"Item": r.to_item()}} for r in chunk]
+            request_items = [
+                {"PutRequest": {"Item": r.to_item()}} for r in chunk
+            ]
             response = self._client.batch_write_item(
                 RequestItems={self.table_name: request_items}
             )
             unprocessed = response.get("UnprocessedItems", {})
             while unprocessed.get(self.table_name):
-                response = self._client.batch_write_item(RequestItems=unprocessed)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed
+                )
                 unprocessed = response.get("UnprocessedItems", {})
 
     def update_completion_batch_result(self, result: CompletionBatchResult):
         if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.") from e
+            raise ValueError(
+                "Must provide a CompletionBatchResult instance."
+            ) from e
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -72,7 +76,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
 
     def delete_completion_batch_result(self, result: CompletionBatchResult):
         if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.") from e
+            raise ValueError(
+                "Must provide a CompletionBatchResult instance."
+            ) from e
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -125,7 +131,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "COMPLETION_BATCH_RESULT"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "COMPLETION_BATCH_RESULT"}
+                },
             }
             if lastEvaluatedKey:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -136,13 +144,16 @@ class _CompletionBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    item_to_completion_batch_result(item) for item in response["Items"]
+                    item_to_completion_batch_result(item)
+                    for item in response["Items"]
                 )
 
                 if limit and len(results) >= limit:
                     return results[:limit], response.get("LastEvaluatedKey")
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     return results, None
         except ClientError as e:
@@ -174,13 +185,16 @@ class _CompletionBatchResult(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             results.extend(
-                item_to_completion_batch_result(item) for item in response["Items"]
+                item_to_completion_batch_result(item)
+                for item in response["Items"]
             )
 
             if limit and len(results) >= limit:
                 return results[:limit], response.get("LastEvaluatedKey")
             if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
                 return results, None
 
@@ -200,7 +214,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :pk",
-            "ExpressionAttributeValues": {":pk": {"S": f"LABEL_TARGET#{label_target}"}},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"LABEL_TARGET#{label_target}"}
+            },
         }
         if lastEvaluatedKey:
             query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -210,12 +226,15 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 query_params["Limit"] = limit - len(results)
             response = self._client.query(**query_params)
             results.extend(
-                item_to_completion_batch_result(item) for item in response["Items"]
+                item_to_completion_batch_result(item)
+                for item in response["Items"]
             )
             if limit and len(results) >= limit:
                 return results[:limit], response.get("LastEvaluatedKey")
             if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
                 return results, None
 
@@ -232,7 +251,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
             "TableName": self.table_name,
             "IndexName": "GSI3",
             "KeyConditionExpression": "GSI3PK = :pk",
-            "ExpressionAttributeValues": {":pk": {"S": f"RECEIPT#{receipt_id}"}},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"RECEIPT#{receipt_id}"}
+            },
         }
         if lastEvaluatedKey:
             query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -242,11 +263,14 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 query_params["Limit"] = limit - len(results)
             response = self._client.query(**query_params)
             results.extend(
-                item_to_completion_batch_result(item) for item in response["Items"]
+                item_to_completion_batch_result(item)
+                for item in response["Items"]
             )
             if limit and len(results) >= limit:
                 return results[:limit], response.get("LastEvaluatedKey")
             if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
                 return results, None

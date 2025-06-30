@@ -25,12 +25,12 @@ def sample_ocr_job():
 
 
 # -------------------------------------------------------------------
-#                        addRefinementJob
+#                        add_refinement_job
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addOCRJob_success(
+def test_add_ocr_job_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_ocr_job: OCRJob,
 ):
@@ -47,7 +47,7 @@ def test_addOCRJob_success(
     assert retrieved_job == sample_ocr_job
 
 
-def test_addOCRJob_duplicate_raises(
+def test_add_ocr_job_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_ocr_job: OCRJob,
 ):
@@ -71,7 +71,7 @@ def test_addOCRJob_duplicate_raises(
         ),
     ],
 )
-def test_addOCRJob_invalid_parameters(
+def test_add_ocr_job_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     sample_ocr_job: OCRJob,
     mocker,
@@ -121,7 +121,7 @@ def test_addOCRJob_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addOCRJob_client_errors(
+def test_add_ocr_job_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_ocr_job: OCRJob,
     mocker,
@@ -150,5 +150,5 @@ def test_addOCRJob_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        getOCRJob
+#                        get_ocr_job
 # -------------------------------------------------------------------

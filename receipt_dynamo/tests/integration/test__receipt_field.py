@@ -29,12 +29,12 @@ def sample_receipt_field():
 
 
 # -------------------------------------------------------------------
-#                        addReceiptField
+#                        add_receipt_field
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptField_success(
+def test_add_receipt_field_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -54,7 +54,7 @@ def test_addReceiptField_success(
 
 
 @pytest.mark.integration
-def test_addReceiptField_duplicate_raises(
+def test_add_receipt_field_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -78,7 +78,7 @@ def test_addReceiptField_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptField_invalid_parameters(
+def test_add_receipt_field_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -132,7 +132,7 @@ def test_addReceiptField_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptField_client_errors(
+def test_add_receipt_field_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -171,12 +171,12 @@ def test_addReceiptField_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        addReceiptFields
+#                        add_receipt_fields
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptFields_success(
+def test_add_receipt_fields_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -241,7 +241,7 @@ def test_addReceiptFields_success(
         ),
     ],
 )
-def test_addReceiptFields_invalid_parameters(
+def test_add_receipt_fields_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -286,7 +286,7 @@ def test_addReceiptFields_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptFields_client_errors(
+def test_add_receipt_fields_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -324,7 +324,7 @@ def test_addReceiptFields_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptFields_unprocessed_items(
+def test_add_receipt_fields_unprocessed_items(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -363,12 +363,12 @@ def test_addReceiptFields_unprocessed_items(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptField
+#                        update_receipt_field
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptField_success(
+def test_update_receipt_field_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -399,7 +399,7 @@ def test_updateReceiptField_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptField_nonexistent_raises(
+def test_update_receipt_field_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -422,7 +422,7 @@ def test_updateReceiptField_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptField_invalid_parameters(
+def test_update_receipt_field_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -471,7 +471,7 @@ def test_updateReceiptField_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptField_client_errors(
+def test_update_receipt_field_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -509,12 +509,12 @@ def test_updateReceiptField_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptFields
+#                        update_receipt_fields
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptFields_success(
+def test_update_receipt_fields_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -573,7 +573,7 @@ def test_updateReceiptFields_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptFields_nonexistent_raises(
+def test_update_receipt_fields_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -604,7 +604,7 @@ def test_updateReceiptFields_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptFields_invalid_parameters(
+def test_update_receipt_fields_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -654,7 +654,7 @@ def test_updateReceiptFields_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptFields_client_errors(
+def test_update_receipt_fields_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -693,7 +693,7 @@ def test_updateReceiptFields_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptFields_chunking(
+def test_update_receipt_fields_chunking(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -736,12 +736,12 @@ def test_updateReceiptFields_chunking(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptField
+#                        delete_receipt_field
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptField_success(
+def test_delete_receipt_field_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -762,7 +762,7 @@ def test_deleteReceiptField_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptField_nonexistent_raises(
+def test_delete_receipt_field_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -785,7 +785,7 @@ def test_deleteReceiptField_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptField_invalid_parameters(
+def test_delete_receipt_field_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -834,7 +834,7 @@ def test_deleteReceiptField_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptField_client_errors(
+def test_delete_receipt_field_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -872,12 +872,12 @@ def test_deleteReceiptField_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptFields
+#                        delete_receipt_fields
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptFields_success(
+def test_delete_receipt_fields_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -918,7 +918,7 @@ def test_deleteReceiptFields_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptFields_nonexistent_raises(
+def test_delete_receipt_fields_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -948,7 +948,7 @@ def test_deleteReceiptFields_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptFields_invalid_parameters(
+def test_delete_receipt_fields_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -998,7 +998,7 @@ def test_deleteReceiptFields_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptFields_client_errors(
+def test_delete_receipt_fields_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1037,7 +1037,7 @@ def test_deleteReceiptFields_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptFields_chunking(
+def test_delete_receipt_fields_chunking(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1080,12 +1080,12 @@ def test_deleteReceiptFields_chunking(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptField
+#                        get_receipt_field
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptField_success(
+def test_get_receipt_field_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1105,7 +1105,7 @@ def test_getReceiptField_success(
 
 
 @pytest.mark.integration
-def test_getReceiptField_nonexistent_raises(
+def test_get_receipt_field_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1151,7 +1151,7 @@ def test_getReceiptField_nonexistent_raises(
         ),
     ],
 )
-def test_getReceiptField_invalid_parameters(
+def test_get_receipt_field_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1197,7 +1197,7 @@ def test_getReceiptField_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptField_client_errors(
+def test_get_receipt_field_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1238,12 +1238,12 @@ def test_getReceiptField_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        listReceiptFields
+#                        list_receipt_fields
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceiptFields_success(
+def test_list_receipt_fields_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1279,7 +1279,7 @@ def test_listReceiptFields_success(
 
 
 @pytest.mark.integration
-def test_listReceiptFields_with_limit(
+def test_list_receipt_fields_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1313,7 +1313,7 @@ def test_listReceiptFields_with_limit(
 
 
 @pytest.mark.integration
-def test_listReceiptFields_with_last_evaluated_key(
+def test_list_receipt_fields_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1381,7 +1381,7 @@ def test_listReceiptFields_with_last_evaluated_key(
         ),
     ],
 )
-def test_listReceiptFields_invalid_parameters(
+def test_list_receipt_fields_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1433,7 +1433,7 @@ def test_listReceiptFields_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptFields_client_errors(
+def test_list_receipt_fields_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1471,7 +1471,7 @@ def test_listReceiptFields_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptFields_pagination_errors(
+def test_list_receipt_fields_pagination_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1530,12 +1530,12 @@ def test_listReceiptFields_pagination_errors(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptFieldsByImage
+#                        get_receipt_fields_by_image
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByImage_success(
+def test_get_receipt_fields_by_image_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1573,7 +1573,7 @@ def test_getReceiptFieldsByImage_success(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByImage_with_limit(
+def test_get_receipt_fields_by_image_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1609,7 +1609,7 @@ def test_getReceiptFieldsByImage_with_limit(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByImage_with_last_evaluated_key(
+def test_get_receipt_fields_by_image_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1701,7 +1701,7 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
         ),
     ],
 )
-def test_getReceiptFieldsByImage_invalid_parameters(
+def test_get_receipt_fields_by_image_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1754,7 +1754,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptFieldsByImage_client_errors(
+def test_get_receipt_fields_by_image_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1792,7 +1792,7 @@ def test_getReceiptFieldsByImage_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByImage_pagination_errors(
+def test_get_receipt_fields_by_image_pagination_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -1851,12 +1851,12 @@ def test_getReceiptFieldsByImage_pagination_errors(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptFieldsByReceipt
+#                        get_receipt_fields_by_receipt
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByReceipt_success(
+def test_get_receipt_fields_by_receipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1895,7 +1895,7 @@ def test_getReceiptFieldsByReceipt_success(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByReceipt_with_limit(
+def test_get_receipt_fields_by_receipt_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -1933,7 +1933,7 @@ def test_getReceiptFieldsByReceipt_with_limit(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
+def test_get_receipt_fields_by_receipt_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_field: ReceiptField,
 ):
@@ -2054,7 +2054,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
         ),
     ],
 )
-def test_getReceiptFieldsByReceipt_invalid_parameters(
+def test_get_receipt_fields_by_receipt_invalid_parameters(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -2108,7 +2108,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptFieldsByReceipt_client_errors(
+def test_get_receipt_fields_by_receipt_client_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,
@@ -2149,7 +2149,7 @@ def test_getReceiptFieldsByReceipt_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptFieldsByReceipt_pagination_errors(
+def test_get_receipt_fields_by_receipt_pagination_errors(
     dynamodb_table,
     sample_receipt_field,
     mocker,

@@ -8,6 +8,7 @@ from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,
 )
+from receipt_dynamo.utils.dynamo_helpers import batch_write_items
 
 
 class _LabelCountCache(DynamoClientProtocol):

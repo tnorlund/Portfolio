@@ -15,17 +15,11 @@ from receipt_dynamo.entities.job_resource import (
     item_to_job_resource,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-
-def validate_last_evaluated_key(lek: dict) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+from receipt_dynamo.utils.dynamo_helpers import (
+    batch_write_items,
+    handle_conditional_check_failed,
+    validate_last_evaluated_key,
+)
 
 
 class _JobResource(DynamoClientProtocol):
@@ -39,7 +33,9 @@ class _JobResource(DynamoClientProtocol):
             ValueError: When a job resource with the same resource ID already exists
         """
         if job_resource is None:
-            raise ValueError("JobResource parameter is required and cannot be None.")
+            raise ValueError(
+                "JobResource parameter is required and cannot be None."
+            )
         if not isinstance(job_resource, JobResource):
             raise ValueError(
                 "job_resource must be an instance of the JobResource class."
@@ -88,7 +84,9 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError("Resource ID is required and must be a non-empty string.")
+            raise ValueError(
+                "Resource ID is required and must be a non-empty string."
+            )
 
         try:
             response = self._client.get_item(
@@ -108,7 +106,9 @@ class _JobResource(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(f"Could not get job resource: {e}") from e
+                raise ReceiptDynamoError(
+                    f"Could not get job resource: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -140,13 +140,19 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError("Resource ID is required and must be a non-empty string.")
+            raise ValueError(
+                "Resource ID is required and must be a non-empty string."
+            )
         if not status or not isinstance(status, str):
-            raise ValueError("Status is required and must be a non-empty string.")
+            raise ValueError(
+                "Status is required and must be a non-empty string."
+            )
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
         if status.lower() not in valid_statuses:
-            raise ValueError(f"Invalid status. Must be one of {valid_statuses}")
+            raise ValueError(
+                f"Invalid status. Must be one of {valid_statuses}"
+            )
 
         if status.lower() == "released" and not released_at:
             raise ValueError(
@@ -160,7 +166,9 @@ class _JobResource(DynamoClientProtocol):
 
             if released_at:
                 update_expression += ", released_at = :released_at"
-                expression_attribute_values[":released_at"] = {"S": released_at}
+                expression_attribute_values[":released_at"] = {
+                    "S": released_at
+                }
 
             self._client.update_item(
                 TableName=self.table_name,
@@ -190,7 +198,9 @@ class _JobResource(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error updating job resource status: {e}") from e
+                raise OperationError(
+                    f"Error updating job resource status: {e}"
+                ) from e
 
     def list_job_resources(
         self,
@@ -259,7 +269,9 @@ class _JobResource(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -356,7 +368,9 @@ class _JobResource(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -402,7 +416,9 @@ class _JobResource(DynamoClientProtocol):
             Exception: If the underlying database query fails.
         """
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError("Resource ID is required and must be a non-empty string.")
+            raise ValueError(
+                "Resource ID is required and must be a non-empty string."
+            )
 
         try:
             response = self._client.query(
@@ -425,7 +441,9 @@ class _JobResource(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(f"Could not get resource by ID: {e}") from e
+                raise ReceiptDynamoError(
+                    f"Could not get resource by ID: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -437,4 +455,6 @@ class _JobResource(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error getting resource by ID: {e}") from e
+                raise OperationError(
+                    f"Error getting resource by ID: {e}"
+                ) from e

@@ -45,7 +45,7 @@ def sample_receipt_chatgpt_validation():
 
 
 @pytest.mark.integration
-def test_addReceiptChatGPTValidation_success(
+def test_add_receipt_chat_gpt_validation_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -83,7 +83,7 @@ def test_addReceiptChatGPTValidation_success(
 
 
 @pytest.mark.integration
-def test_addReceiptChatGPTValidation_duplicate_raises(
+def test_add_receipt_chat_gpt_validation_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -116,7 +116,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptChatGPTValidation_invalid_parameters(
+def test_add_receipt_chat_gpt_validation_invalid_parameters(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -175,7 +175,7 @@ def test_addReceiptChatGPTValidation_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptChatGPTValidation_client_errors(
+def test_add_receipt_chat_gpt_validation_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -215,7 +215,7 @@ def test_addReceiptChatGPTValidation_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptChatGPTValidations_success(
+def test_add_receipt_chat_gpt_validations_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -278,7 +278,7 @@ def test_addReceiptChatGPTValidations_success(
 
 
 @pytest.mark.integration
-def test_addReceiptChatGPTValidations_with_large_batch(
+def test_add_receipt_chat_gpt_validations_with_large_batch(
     dynamodb_table, sample_receipt_chatgpt_validation
 ):
     """Test adding a large batch of validations (more than 25) to verify batch processing."""
@@ -321,7 +321,7 @@ def test_addReceiptChatGPTValidations_with_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
+def test_add_receipt_chat_gpt_validations_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_chatgpt_validation, mocker
 ):
     """Test that the method retries processing unprocessed items."""
@@ -389,7 +389,7 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptChatGPTValidations_invalid_parameters(
+def test_add_receipt_chat_gpt_validations_invalid_parameters(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -447,7 +447,7 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptChatGPTValidations_client_errors(
+def test_add_receipt_chat_gpt_validations_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -497,7 +497,7 @@ def test_addReceiptChatGPTValidations_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptChatGPTValidation_success(
+def test_update_receipt_chat_gpt_validation_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -561,7 +561,7 @@ def test_updateReceiptChatGPTValidation_success(
         ),
     ],
 )
-def test_updateReceiptChatGPTValidation_invalid_parameters(
+def test_update_receipt_chat_gpt_validation_invalid_parameters(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -624,7 +624,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptChatGPTValidation_client_errors(
+def test_update_receipt_chat_gpt_validation_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -664,7 +664,7 @@ def test_updateReceiptChatGPTValidation_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptChatGPTValidations_success(
+def test_update_receipt_chat_gpt_validations_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -754,7 +754,7 @@ def test_updateReceiptChatGPTValidations_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptChatGPTValidations_with_large_batch(
+def test_update_receipt_chat_gpt_validations_with_large_batch(
     dynamodb_table, sample_receipt_chatgpt_validation
 ):
     """Test updating a large batch of validations (more than 25) to verify batch processing."""
@@ -833,7 +833,7 @@ def test_updateReceiptChatGPTValidations_with_large_batch(
         ),
     ],
 )
-def test_updateReceiptChatGPTValidations_invalid_inputs(
+def test_update_receipt_chat_gpt_validations_invalid_inputs(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -903,7 +903,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         ),
     ],
 )
-def test_updateReceiptChatGPTValidations_client_errors(
+def test_update_receipt_chat_gpt_validations_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -957,7 +957,7 @@ def test_updateReceiptChatGPTValidations_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptChatGPTValidation_success(
+def test_delete_receipt_chat_gpt_validation_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -1007,7 +1007,7 @@ def test_deleteReceiptChatGPTValidation_success(
         ),
     ],
 )
-def test_deleteReceiptChatGPTValidation_invalid_parameters(
+def test_delete_receipt_chat_gpt_validation_invalid_parameters(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -1066,7 +1066,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptChatGPTValidation_client_errors(
+def test_delete_receipt_chat_gpt_validation_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -1106,7 +1106,7 @@ def test_deleteReceiptChatGPTValidation_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptChatGPTValidations_success(
+def test_delete_receipt_chat_gpt_validations_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -1195,7 +1195,7 @@ def test_deleteReceiptChatGPTValidations_success(
         ),
     ],
 )
-def test_deleteReceiptChatGPTValidations_invalid_parameters(
+def test_delete_receipt_chat_gpt_validations_invalid_parameters(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -1253,7 +1253,7 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptChatGPTValidations_client_errors(
+def test_delete_receipt_chat_gpt_validations_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -1303,7 +1303,7 @@ def test_deleteReceiptChatGPTValidations_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptChatGPTValidations_with_unprocessed_items_retries(
+def test_delete_receipt_chat_gpt_validations_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_chatgpt_validation, mocker
 ):
     """Test that the method retries processing unprocessed items when deleting validations."""
@@ -1357,7 +1357,7 @@ def test_deleteReceiptChatGPTValidations_with_unprocessed_items_retries(
 
 
 @pytest.mark.integration
-def test_deleteReceiptChatGPTValidations_with_large_batch(
+def test_delete_receipt_chat_gpt_validations_with_large_batch(
     dynamodb_table, sample_receipt_chatgpt_validation
 ):
     """Test deleting a large batch of validations (more than 25) to verify batch processing."""
@@ -1415,7 +1415,7 @@ def test_deleteReceiptChatGPTValidations_with_large_batch(
 
 
 @pytest.mark.integration
-def test_getReceiptChatGPTValidation_success(
+def test_get_receipt_chat_gpt_validation_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -1451,7 +1451,7 @@ def test_getReceiptChatGPTValidation_success(
 
 
 @pytest.mark.integration
-def test_getReceiptChatGPTValidation_not_found(
+def test_get_receipt_chat_gpt_validation_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
 ):
@@ -1510,7 +1510,7 @@ def test_getReceiptChatGPTValidation_not_found(
         ),
     ],
 )
-def test_getReceiptChatGPTValidation_invalid_parameters(
+def test_get_receipt_chat_gpt_validation_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     receipt_id,
     image_id,
@@ -1566,7 +1566,7 @@ def test_getReceiptChatGPTValidation_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptChatGPTValidation_client_errors(
+def test_get_receipt_chat_gpt_validation_client_errors(
     dynamodb_table,
     sample_receipt_chatgpt_validation,
     mocker,
@@ -1603,7 +1603,7 @@ def test_getReceiptChatGPTValidation_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptChatGPTValidations_success(
+def test_list_receipt_chat_gpt_validations_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
     mocker,
@@ -1695,7 +1695,7 @@ def test_listReceiptChatGPTValidations_success(
 
 
 @pytest.mark.integration
-def test_listReceiptChatGPTValidations_with_pagination(
+def test_list_receipt_chat_gpt_validations_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
     mocker,
@@ -1805,7 +1805,7 @@ def test_listReceiptChatGPTValidations_with_pagination(
 
 
 @pytest.mark.integration
-def test_listReceiptChatGPTValidations_empty_results(
+def test_list_receipt_chat_gpt_validations_empty_results(
     dynamodb_table: Literal["MyMockedTable"],
     mocker,
 ):
@@ -1873,7 +1873,7 @@ def test_listReceiptChatGPTValidations_empty_results(
         ),
     ],
 )
-def test_listReceiptChatGPTValidations_client_errors(
+def test_list_receipt_chat_gpt_validations_client_errors(
     dynamodb_table,
     mocker,
     error_code,
@@ -1905,7 +1905,7 @@ def test_listReceiptChatGPTValidations_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptChatGPTValidationsForReceipt_success(
+def test_list_receipt_chat_gpt_validations_for_receipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
     mocker,
@@ -2011,7 +2011,7 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
         (1, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )
-def test_listReceiptChatGPTValidationsForReceipt_invalid_parameters(
+def test_list_receipt_chat_gpt_validations_for_receipt_invalid_parameters(
     dynamodb_table,
     receipt_id,
     image_id,
@@ -2030,7 +2030,7 @@ def test_listReceiptChatGPTValidationsForReceipt_invalid_parameters(
 
 
 @pytest.mark.integration
-def test_listReceiptChatGPTValidationsByStatus_success(
+def test_list_receipt_chat_gpt_validations_by_status_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_chatgpt_validation: ReceiptChatGPTValidation,
     mocker,
@@ -2116,7 +2116,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
         ("", "status must not be empty"),
     ],
 )
-def test_listReceiptChatGPTValidationsByStatus_invalid_parameters(
+def test_list_receipt_chat_gpt_validations_by_status_invalid_parameters(
     dynamodb_table,
     status,
     expected_error,
@@ -2166,7 +2166,7 @@ def test_listReceiptChatGPTValidationsByStatus_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptChatGPTValidationsByStatus_client_errors(
+def test_list_receipt_chat_gpt_validations_by_status_client_errors(
     dynamodb_table,
     mocker,
     error_code,

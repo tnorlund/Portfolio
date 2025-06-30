@@ -67,7 +67,7 @@ def sample_receipt_validation_summary():
 
 
 @pytest.mark.integration
-def test_addReceiptValidationSummary_success(
+def test_add_receipt_validation_summary_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -106,7 +106,7 @@ def test_addReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_addReceiptValidationSummary_duplicate_raises(
+def test_add_receipt_validation_summary_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -143,7 +143,7 @@ def test_addReceiptValidationSummary_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptValidationSummary_invalid_parameters(
+def test_add_receipt_validation_summary_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,
@@ -205,7 +205,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptValidationSummary_client_errors(
+def test_add_receipt_validation_summary_client_errors(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,
@@ -249,7 +249,7 @@ def test_addReceiptValidationSummary_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationSummary_success(
+def test_update_receipt_validation_summary_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -339,7 +339,7 @@ def test_updateReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptValidationSummary_not_exists_raises(
+def test_update_receipt_validation_summary_not_exists_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -373,7 +373,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
         ),
     ],
 )
-def test_updateReceiptValidationSummary_invalid_parameters(
+def test_update_receipt_validation_summary_invalid_parameters(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,
@@ -439,7 +439,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptValidationSummary_client_errors(
+def test_update_receipt_validation_summary_client_errors(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,
@@ -483,7 +483,7 @@ def test_updateReceiptValidationSummary_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationSummary_success(
+def test_delete_receipt_validation_summary_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -523,7 +523,7 @@ def test_deleteReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationSummary_not_exists_raises(
+def test_delete_receipt_validation_summary_not_exists_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -564,7 +564,7 @@ def test_deleteReceiptValidationSummary_not_exists_raises(
         (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )
-def test_deleteReceiptValidationSummary_invalid_parameters(
+def test_delete_receipt_validation_summary_invalid_parameters(
     dynamodb_table,
     receipt_id,
     image_id,
@@ -637,7 +637,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptValidationSummary_client_errors(
+def test_delete_receipt_validation_summary_client_errors(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,
@@ -681,7 +681,7 @@ def test_deleteReceiptValidationSummary_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptValidationSummary_success(
+def test_get_receipt_validation_summary_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -725,7 +725,7 @@ def test_getReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_getReceiptValidationSummary_not_exists_returns_none(
+def test_get_receipt_validation_summary_not_exists_returns_none(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
@@ -761,7 +761,7 @@ def test_getReceiptValidationSummary_not_exists_returns_none(
         (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )
-def test_getReceiptValidationSummary_invalid_parameters(
+def test_get_receipt_validation_summary_invalid_parameters(
     dynamodb_table,
     receipt_id,
     image_id,
@@ -817,7 +817,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptValidationSummary_client_errors(
+def test_get_receipt_validation_summary_client_errors(
     dynamodb_table,
     sample_receipt_validation_summary,
     mocker,

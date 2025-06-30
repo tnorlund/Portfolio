@@ -29,7 +29,7 @@ def example_image():
 
 
 @pytest.mark.integration
-def test_addImage_raises_value_error_for_none_image(dynamodb_table):
+def test_add_image_raises_value_error_for_none_image(dynamodb_table):
     """
     Integration test that checks addImage raises ValueError when 'image' is
     None. We rely on the 'dynamodb_table' fixture to create a table so that
@@ -42,7 +42,7 @@ def test_addImage_raises_value_error_for_none_image(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
+def test_add_image_raises_value_error_for_invalid_type(dynamodb_table):
     """
     Checks addImage with an invalid type for 'image'.
     """
@@ -52,7 +52,7 @@ def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_addImage_raises_conditional_check_failed(
+def test_add_image_raises_conditional_check_failed(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -83,7 +83,7 @@ def test_addImage_raises_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_addImage_raises_provisioned_throughput(
+def test_add_image_raises_provisioned_throughput(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -115,7 +115,7 @@ def test_addImage_raises_provisioned_throughput(
 
 
 @pytest.mark.integration
-def test_addImage_raises_internal_server_error(
+def test_add_image_raises_internal_server_error(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -148,7 +148,7 @@ def test_addImage_raises_internal_server_error(
 
 
 @pytest.mark.integration
-def test_addImage_raises_unknown_exception(
+def test_add_image_raises_unknown_exception(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -181,7 +181,7 @@ def test_addImage_raises_unknown_exception(
 
 
 @pytest.mark.integration
-def test_addImage(dynamodb_table, example_image):
+def test_add_image(dynamodb_table, example_image):
     """
     Verifies a successful addImage call actually persists data to DynamoDB.
     """
@@ -208,7 +208,7 @@ def test_addImage(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_getImage(dynamodb_table, example_image):
+def test_get_image(dynamodb_table, example_image):
     """
     This test focuses on retrieving an image, but also proves integration by
     adding the image first (so there's actually something to get).
@@ -539,7 +539,7 @@ def test_image_delete_all(dynamodb_table):
 
 
 @pytest.mark.integration
-def test_updateImages_success(dynamodb_table, example_image):
+def test_update_images_success(dynamodb_table, example_image):
     """
     Tests happy path for updateImages.
     """
@@ -572,7 +572,7 @@ def test_updateImages_success(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_none(
+def test_update_images_raises_value_error_images_none(
     dynamodb_table, example_image
 ):
     """
@@ -587,7 +587,7 @@ def test_updateImages_raises_value_error_images_none(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_not_list(
+def test_update_images_raises_value_error_images_not_list(
     dynamodb_table, example_image
 ):
     """
@@ -600,7 +600,7 @@ def test_updateImages_raises_value_error_images_not_list(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_value_error_images_not_list_of_images(
+def test_update_images_raises_value_error_images_not_list_of_images(
     dynamodb_table, example_image
 ):
     """
@@ -619,7 +619,7 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_clienterror_conditional_check_failed(
+def test_update_images_raises_clienterror_conditional_check_failed(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -646,7 +646,7 @@ def test_updateImages_raises_clienterror_conditional_check_failed(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_clienterror_provisioned_throughput_exceeded(
+def test_update_images_raises_clienterror_provisioned_throughput_exceeded(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -673,7 +673,7 @@ def test_updateImages_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_clienterror_internal_server_error(
+def test_update_images_raises_clienterror_internal_server_error(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -700,7 +700,7 @@ def test_updateImages_raises_clienterror_internal_server_error(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_clienterror_validation_exception(
+def test_update_images_raises_clienterror_validation_exception(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -729,7 +729,7 @@ def test_updateImages_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_clienterror_access_denied(
+def test_update_images_raises_clienterror_access_denied(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -756,7 +756,7 @@ def test_updateImages_raises_clienterror_access_denied(
 
 
 @pytest.mark.integration
-def test_updateImages_raises_client_error(
+def test_update_images_raises_client_error(
     dynamodb_table, example_image, mocker
 ):
     """
@@ -784,7 +784,7 @@ def test_updateImages_raises_client_error(
 
 
 @pytest.mark.integration
-def test_listImagesByType_no_limit(dynamodb_table, example_image):
+def test_list_images_by_type_no_limit(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
     client.add_image(example_image)
 
@@ -795,7 +795,7 @@ def test_listImagesByType_no_limit(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_listImagesByType_invalid_type(dynamodb_table, example_image):
+def test_list_images_by_type_invalid_type(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
     client.add_image(example_image)
 
@@ -804,7 +804,7 @@ def test_listImagesByType_invalid_type(dynamodb_table, example_image):
 
 
 @pytest.mark.integration
-def test_listImagesByType_with_pagination(
+def test_list_images_by_type_with_pagination(
     dynamodb_table, example_image, mocker
 ):
     client = DynamoClient(dynamodb_table)

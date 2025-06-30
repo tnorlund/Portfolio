@@ -14,6 +14,7 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.utils.dynamo_helpers import batch_write_items
 
 
 class _ReceiptChatGPTValidation(DynamoClientProtocol):
@@ -76,17 +77,25 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                     "ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not add receipt ChatGPT validation to DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    "Could not add receipt ChatGPT validation to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}") from e
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError("Could not add receipt ChatGPT validation to DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    "Could not add receipt ChatGPT validation to DynamoDB: {e}"
+                ) from e
 
     def add_receipt_chatgpt_validations(
         self, validations: list[ReceiptChatGPTValidation]
@@ -132,15 +141,21 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}") from e
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError("Could not add ReceiptChatGPTValidations to the database: {e}") from e
+                raise DynamoDBError(
+                    "Could not add ReceiptChatGPTValidations to the database: {e}"
+                ) from e
 
     def update_receipt_chatgpt_validation(
         self, validation: ReceiptChatGPTValidation
@@ -175,17 +190,25 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                     "ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}") from e
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError("Could not update ReceiptChatGPTValidation in the database: {e}") from e
+                raise DynamoDBError(
+                    "Could not update ReceiptChatGPTValidation in the database: {e}"
+                ) from e
 
-    def update_receipt_chatgpt_validations(self, validations: list[ReceiptChatGPTValidation]):
+    def update_receipt_chatgpt_validations(
+        self, validations: list[ReceiptChatGPTValidation]
+    ):
         """Updates multiple ReceiptChatGPTValidations in the database.
 
         Args:
@@ -232,7 +255,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                             "One or more ReceiptChatGPTValidations do not exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                    raise DynamoDBThroughputError(
+                        "Provisioned throughput exceeded: {e}"
+                    ) from e
 
     def delete_receipt_chat_gpt_validation(
         self,
@@ -268,15 +293,21 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                     "ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}") from e
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError("Could not delete ReceiptChatGPTValidation from the database") from e
+                raise DynamoDBError(
+                    "Could not delete ReceiptChatGPTValidation from the database"
+                ) from e
 
     def delete_receipt_chat_gpt_validations(
         self, validations: list[ReceiptChatGPTValidation]
@@ -322,7 +353,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "ValidationException":
@@ -332,7 +365,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError(f"Could not delete ReceiptChatGPTValidations from the database: {e}") from e
+                raise DynamoDBError(
+                    f"Could not delete ReceiptChatGPTValidations from the database: {e}"
+                ) from e
 
     def get_receipt_chat_gpt_validation(
         self,
@@ -391,7 +426,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
                 raise OperationError("Validation error: {e}") from e
             elif error_code == "InternalServerError":
@@ -399,7 +436,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise OperationError(f"Error getting receipt ChatGPT validation: {e}") from e
+                raise OperationError(
+                    f"Error getting receipt ChatGPT validation: {e}"
+                ) from e
 
     def list_receipt_chat_gpt_validations(
         self, limit: int = None, last_evaluated_key: dict | None = None
@@ -423,7 +462,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         validations = []
         try:
@@ -473,9 +514,13 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not list receipt ChatGPT validations from DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    "Could not list receipt ChatGPT validations from DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     "One or more parameters given were invalid: {e}"
@@ -483,7 +528,10 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             else:
-                raise OperationError("Error listing receipt ChatGPT validations: {e}") from e
+                raise OperationError(
+                    "Error listing receipt ChatGPT validations: {e}"
+                ) from e
+
     def list_receipt_chat_gpt_validations_for_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptChatGPTValidation]:
@@ -554,15 +602,22 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise DynamoDBValidationError("One or more parameters given were invalid: {e}") from e
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid: {e}"
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError("Access denied: {e}") from e
             else:
-                raise DynamoDBError("Could not list ReceiptChatGPTValidations from the database: {e}") from e
+                raise DynamoDBError(
+                    "Could not list ReceiptChatGPTValidations from the database: {e}"
+                ) from e
+
     def list_receipt_chat_gpt_validations_by_status(
         self,
         status: str,
@@ -597,7 +652,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         validations = []
         try:
@@ -646,9 +703,13 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise DynamoDBError("Could not list receipt ChatGPT validations from DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    "Could not list receipt ChatGPT validations from DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    "Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     "One or more parameters given were invalid: {e}"
@@ -656,4 +717,6 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error: {e}") from e
             else:
-                raise OperationError("Error listing receipt ChatGPT validations: {e}") from e
+                raise OperationError(
+                    "Error listing receipt ChatGPT validations: {e}"
+                ) from e

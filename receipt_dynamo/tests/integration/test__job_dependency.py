@@ -51,15 +51,15 @@ def multiple_job_dependencies():
 
 
 @pytest.mark.integration
-def test_addJobDependency_success(
+def test_add_job_dependency_success(
     job_dependency_dynamo, sample_job_dependency
 ):
     """Test adding a job dependency successfully."""
     # Add the job dependency
-    job_dependency_dynamo.addJobDependency(sample_job_dependency)
+    job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
     # Verify it was added by retrieving it
-    retrieved_dependency = job_dependency_dynamo.getJobDependency(
+    retrieved_dependency = job_dependency_dynamo.get_job_dependency(
         dependent_job_id=sample_job_dependency.dependent_job_id,
         dependency_job_id=sample_job_dependency.dependency_job_id,
     )
@@ -67,16 +67,16 @@ def test_addJobDependency_success(
 
 
 @pytest.mark.integration
-def test_addJobDependency_raises_value_error(job_dependency_dynamo):
+def test_add_job_dependency_raises_value_error(job_dependency_dynamo):
     """
     Test that addJobDependency raises ValueError when job_dependency is None.
     """
     with pytest.raises(ValueError, match="job_dependency cannot be None"):
-        job_dependency_dynamo.addJobDependency(None)
+        job_dependency_dynamo.add_job_dependency(None)
 
 
 @pytest.mark.integration
-def test_addJobDependency_raises_value_error_job_not_instance(
+def test_add_job_dependency_raises_value_error_job_not_instance(
     job_dependency_dynamo,
 ):
     """
@@ -86,11 +86,11 @@ def test_addJobDependency_raises_value_error_job_not_instance(
     with pytest.raises(
         ValueError, match="job_dependency must be a JobDependency instance"
     ):
-        job_dependency_dynamo.addJobDependency("not a job dependency")
+        job_dependency_dynamo.add_job_dependency("not a job dependency")
 
 
 @pytest.mark.integration
-def test_addJobDependency_raises_conditional_check_failed(
+def test_add_job_dependency_raises_conditional_check_failed(
     job_dependency_dynamo, sample_job_dependency
 ):
     """
@@ -98,15 +98,15 @@ def test_addJobDependency_raises_conditional_check_failed(
     duplicate job dependency.
     """
     # Add the job dependency
-    job_dependency_dynamo.addJobDependency(sample_job_dependency)
+    job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
     # Try to add it again, which should raise an error
     with pytest.raises(ValueError, match="already exists"):
-        job_dependency_dynamo.addJobDependency(sample_job_dependency)
+        job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
 
 @pytest.mark.integration
-def test_addJobDependency_raises_resource_not_found(
+def test_add_job_dependency_raises_resource_not_found(
     job_dependency_dynamo, sample_job_dependency, mocker
 ):
     """
@@ -126,22 +126,22 @@ def test_addJobDependency_raises_resource_not_found(
 
     # Attempt to add the job dependency
     with pytest.raises(ClientError) as excinfo:
-        job_dependency_dynamo.addJobDependency(sample_job_dependency)
+        job_dependency_dynamo.add_job_dependency(sample_job_dependency)
     assert (
         excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
     )
 
 
 @pytest.mark.integration
-def test_getJobDependency_success(
+def test_get_job_dependency_success(
     job_dependency_dynamo, sample_job_dependency
 ):
     """Test retrieving a job dependency successfully."""
     # Add the job dependency
-    job_dependency_dynamo.addJobDependency(sample_job_dependency)
+    job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
     # Retrieve the job dependency
-    retrieved_dependency = job_dependency_dynamo.getJobDependency(
+    retrieved_dependency = job_dependency_dynamo.get_job_dependency(
         dependent_job_id=sample_job_dependency.dependent_job_id,
         dependency_job_id=sample_job_dependency.dependency_job_id,
     )
@@ -149,20 +149,20 @@ def test_getJobDependency_success(
 
 
 @pytest.mark.integration
-def test_getJobDependency_raises_value_error_dependent_job_id_none(
+def test_get_job_dependency_raises_value_error_dependent_job_id_none(
     job_dependency_dynamo,
 ):
     """
     Test that getJobDependency raises ValueError when dependent_job_id is None.
     """
     with pytest.raises(ValueError, match="dependent_job_id cannot be None"):
-        job_dependency_dynamo.getJobDependency(
+        job_dependency_dynamo.get_job_dependency(
             dependent_job_id=None, dependency_job_id="some-job-id"
         )
 
 
 @pytest.mark.integration
-def test_getJobDependency_raises_value_error_dependency_job_id_none(
+def test_get_job_dependency_raises_value_error_dependency_job_id_none(
     job_dependency_dynamo,
 ):
     """
@@ -170,13 +170,13 @@ def test_getJobDependency_raises_value_error_dependency_job_id_none(
     None.
     """
     with pytest.raises(ValueError, match="dependency_job_id cannot be None"):
-        job_dependency_dynamo.getJobDependency(
+        job_dependency_dynamo.get_job_dependency(
             dependent_job_id="some-job-id", dependency_job_id=None
         )
 
 
 @pytest.mark.integration
-def test_getJobDependency_raises_value_error_dependency_not_found(
+def test_get_job_dependency_raises_value_error_dependency_not_found(
     job_dependency_dynamo,
 ):
     """
@@ -184,26 +184,26 @@ def test_getJobDependency_raises_value_error_dependency_not_found(
     not found.
     """
     with pytest.raises(ValueError, match="not found"):
-        job_dependency_dynamo.getJobDependency(
+        job_dependency_dynamo.get_job_dependency(
             dependent_job_id="non-existent-job",
             dependency_job_id="another-non-existent-job",
         )
 
 
 @pytest.mark.integration
-def test_listDependencies_success(
+def test_list_dependencies_success(
     job_dependency_dynamo, multiple_job_dependencies
 ):
     """Test listing job dependencies successfully."""
     # Add the job dependencies
     for dependency in multiple_job_dependencies:
-        job_dependency_dynamo.addJobDependency(dependency)
+        job_dependency_dynamo.add_job_dependency(dependency)
 
     # List the job dependencies
     dependent_job_id = multiple_job_dependencies[
         0
     ].dependent_job_id  # All have the same dependent_job_id
-    dependencies, last_key = job_dependency_dynamo.listDependencies(
+    dependencies, last_key = job_dependency_dynamo.list_dependencies(
         dependent_job_id=dependent_job_id
     )
 
@@ -228,20 +228,20 @@ def test_listDependencies_success(
 
 
 @pytest.mark.integration
-def test_listDependencies_with_limit(
+def test_list_dependencies_with_limit(
     job_dependency_dynamo, multiple_job_dependencies
 ):
     """Test listing job dependencies with a limit."""
     # Add the job dependencies
     for dependency in multiple_job_dependencies:
-        job_dependency_dynamo.addJobDependency(dependency)
+        job_dependency_dynamo.add_job_dependency(dependency)
 
     # List the job dependencies with a limit
     dependent_job_id = multiple_job_dependencies[
         0
     ].dependent_job_id  # All have the same dependent_job_id
     limit = 2
-    dependencies, last_key = job_dependency_dynamo.listDependencies(
+    dependencies, last_key = job_dependency_dynamo.list_dependencies(
         dependent_job_id=dependent_job_id, limit=limit
     )
 
@@ -256,7 +256,7 @@ def test_listDependencies_with_limit(
     # Use the last key to get the next batch
     if last_key is not None:
         next_dependencies, next_last_key = (
-            job_dependency_dynamo.listDependencies(
+            job_dependency_dynamo.list_dependencies(
                 dependent_job_id=dependent_job_id,
                 limit=limit,
                 lastEvaluatedKey=last_key,
@@ -275,23 +275,23 @@ def test_listDependencies_with_limit(
 
 
 @pytest.mark.integration
-def test_listDependencies_raises_value_error_dependent_job_id_none(
+def test_list_dependencies_raises_value_error_dependent_job_id_none(
     job_dependency_dynamo,
 ):
     """
     Test that listDependencies raises ValueError when dependent_job_id is None.
     """
     with pytest.raises(ValueError, match="dependent_job_id cannot be None"):
-        job_dependency_dynamo.listDependencies(dependent_job_id=None)
+        job_dependency_dynamo.list_dependencies(dependent_job_id=None)
 
 
 @pytest.mark.integration
-def test_listDependencies_empty_result(job_dependency_dynamo):
+def test_list_dependencies_empty_result(job_dependency_dynamo):
     """
     Test listing job dependencies when there are none returns an empty list.
     """
     dependent_job_id = str(uuid.uuid4())
-    dependencies, last_key = job_dependency_dynamo.listDependencies(
+    dependencies, last_key = job_dependency_dynamo.list_dependencies(
         dependent_job_id=dependent_job_id
     )
     assert dependencies == []
@@ -299,7 +299,7 @@ def test_listDependencies_empty_result(job_dependency_dynamo):
 
 
 @pytest.mark.integration
-def test_listDependents_success(job_dependency_dynamo):
+def test_list_dependents_success(job_dependency_dynamo):
     """Test listing job dependents successfully."""
     # Create a dependency chain with multiple dependent jobs
     dependency_job_id = str(uuid.uuid4())
@@ -315,11 +315,11 @@ def test_listDependents_success(job_dependency_dynamo):
             created_at=datetime.now().isoformat(),
             condition=f"Test condition {i}",
         )
-        job_dependency_dynamo.addJobDependency(dependency)
+        job_dependency_dynamo.add_job_dependency(dependency)
         dependent_jobs.append(dependency)
 
     # List the dependents
-    dependents, last_key = job_dependency_dynamo.listDependents(
+    dependents, last_key = job_dependency_dynamo.list_dependents(
         dependency_job_id=dependency_job_id
     )
 
@@ -344,7 +344,7 @@ def test_listDependents_success(job_dependency_dynamo):
 
 
 @pytest.mark.integration
-def test_listDependents_with_limit(job_dependency_dynamo):
+def test_list_dependents_with_limit(job_dependency_dynamo):
     """Test listing job dependents with a limit."""
     # Create a dependency chain with multiple dependent jobs
     dependency_job_id = str(uuid.uuid4())
@@ -360,12 +360,12 @@ def test_listDependents_with_limit(job_dependency_dynamo):
             created_at=datetime.now().isoformat(),
             condition=f"Test condition {i}",
         )
-        job_dependency_dynamo.addJobDependency(dependency)
+        job_dependency_dynamo.add_job_dependency(dependency)
         dependent_jobs.append(dependency)
 
     # List the dependents with a limit
     limit = 2
-    dependents, last_key = job_dependency_dynamo.listDependents(
+    dependents, last_key = job_dependency_dynamo.list_dependents(
         dependency_job_id=dependency_job_id, limit=limit
     )
 
@@ -379,7 +379,7 @@ def test_listDependents_with_limit(job_dependency_dynamo):
 
     # Use the last key to get the next batch
     if last_key is not None:
-        next_dependents, next_last_key = job_dependency_dynamo.listDependents(
+        next_dependents, next_last_key = job_dependency_dynamo.list_dependents(
             dependency_job_id=dependency_job_id,
             limit=limit,
             lastEvaluatedKey=last_key,
@@ -397,23 +397,23 @@ def test_listDependents_with_limit(job_dependency_dynamo):
 
 
 @pytest.mark.integration
-def test_listDependents_raises_value_error_dependency_job_id_none(
+def test_list_dependents_raises_value_error_dependency_job_id_none(
     job_dependency_dynamo,
 ):
     """
     Test that listDependents raises ValueError when dependency_job_id is None.
     """
     with pytest.raises(ValueError, match="dependency_job_id cannot be None"):
-        job_dependency_dynamo.listDependents(dependency_job_id=None)
+        job_dependency_dynamo.list_dependents(dependency_job_id=None)
 
 
 @pytest.mark.integration
-def test_listDependents_empty_result(job_dependency_dynamo):
+def test_list_dependents_empty_result(job_dependency_dynamo):
     """
     Test listing job dependents when there are none returns an empty list.
     """
     dependency_job_id = str(uuid.uuid4())
-    dependents, last_key = job_dependency_dynamo.listDependents(
+    dependents, last_key = job_dependency_dynamo.list_dependents(
         dependency_job_id=dependency_job_id
     )
     assert dependents == []
@@ -421,33 +421,33 @@ def test_listDependents_empty_result(job_dependency_dynamo):
 
 
 @pytest.mark.integration
-def test_deleteJobDependency_success(
+def test_delete_job_dependency_success(
     job_dependency_dynamo, sample_job_dependency
 ):
     """Test deleting a job dependency successfully."""
     # Add the job dependency
-    job_dependency_dynamo.addJobDependency(sample_job_dependency)
+    job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
     # Verify it was added
-    retrieved_dependency = job_dependency_dynamo.getJobDependency(
+    retrieved_dependency = job_dependency_dynamo.get_job_dependency(
         dependent_job_id=sample_job_dependency.dependent_job_id,
         dependency_job_id=sample_job_dependency.dependency_job_id,
     )
     assert retrieved_dependency == sample_job_dependency
 
     # Delete the job dependency
-    job_dependency_dynamo.deleteJobDependency(sample_job_dependency)
+    job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
     # Verify it was deleted
     with pytest.raises(ValueError, match="not found"):
-        job_dependency_dynamo.getJobDependency(
+        job_dependency_dynamo.get_job_dependency(
             dependent_job_id=sample_job_dependency.dependent_job_id,
             dependency_job_id=sample_job_dependency.dependency_job_id,
         )
 
 
 @pytest.mark.integration
-def test_deleteJobDependency_raises_value_error_dependency_none(
+def test_delete_job_dependency_raises_value_error_dependency_none(
     job_dependency_dynamo,
 ):
     """
@@ -455,11 +455,11 @@ def test_deleteJobDependency_raises_value_error_dependency_none(
     None.
     """
     with pytest.raises(ValueError, match="job_dependency cannot be None"):
-        job_dependency_dynamo.deleteJobDependency(None)
+        job_dependency_dynamo.delete_job_dependency(None)
 
 
 @pytest.mark.integration
-def test_deleteJobDependency_raises_value_error_dependency_not_instance(
+def test_delete_job_dependency_raises_value_error_dependency_not_instance(
     job_dependency_dynamo,
 ):
     """
@@ -469,11 +469,11 @@ def test_deleteJobDependency_raises_value_error_dependency_not_instance(
     with pytest.raises(
         ValueError, match="job_dependency must be a JobDependency instance"
     ):
-        job_dependency_dynamo.deleteJobDependency("not a job dependency")
+        job_dependency_dynamo.delete_job_dependency("not a job dependency")
 
 
 @pytest.mark.integration
-def test_deleteJobDependency_raises_conditional_check_failed(
+def test_delete_job_dependency_raises_conditional_check_failed(
     job_dependency_dynamo, sample_job_dependency
 ):
     """
@@ -482,39 +482,39 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     """
     # Try to delete a job dependency that doesn't exist
     with pytest.raises(ValueError, match="not found"):
-        job_dependency_dynamo.deleteJobDependency(sample_job_dependency)
+        job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
 
 @pytest.mark.integration
-def test_deleteAllDependencies_success(
+def test_delete_all_dependencies_success(
     job_dependency_dynamo, multiple_job_dependencies
 ):
     """Test deleting all dependencies for a job successfully."""
     # Add the job dependencies
     for dependency in multiple_job_dependencies:
-        job_dependency_dynamo.addJobDependency(dependency)
+        job_dependency_dynamo.add_job_dependency(dependency)
 
     # Verify they were added
     dependent_job_id = multiple_job_dependencies[0].dependent_job_id
-    dependencies, _ = job_dependency_dynamo.listDependencies(
+    dependencies, _ = job_dependency_dynamo.list_dependencies(
         dependent_job_id=dependent_job_id
     )
     assert len(dependencies) == len(multiple_job_dependencies)
 
     # Delete all dependencies
-    job_dependency_dynamo.deleteAllDependencies(
+    job_dependency_dynamo.delete_all_dependencies(
         dependent_job_id=dependent_job_id
     )
 
     # Verify they were deleted
-    dependencies, _ = job_dependency_dynamo.listDependencies(
+    dependencies, _ = job_dependency_dynamo.list_dependencies(
         dependent_job_id=dependent_job_id
     )
     assert len(dependencies) == 0
 
 
 @pytest.mark.integration
-def test_deleteAllDependencies_raises_value_error_dependent_job_id_none(
+def test_delete_all_dependencies_raises_value_error_dependent_job_id_none(
     job_dependency_dynamo,
 ):
     """
@@ -522,14 +522,14 @@ def test_deleteAllDependencies_raises_value_error_dependent_job_id_none(
     None.
     """
     with pytest.raises(ValueError, match="dependent_job_id cannot be None"):
-        job_dependency_dynamo.deleteAllDependencies(dependent_job_id=None)
+        job_dependency_dynamo.delete_all_dependencies(dependent_job_id=None)
 
 
 @pytest.mark.integration
-def test_deleteAllDependencies_no_dependencies(job_dependency_dynamo):
+def test_delete_all_dependencies_no_dependencies(job_dependency_dynamo):
     """Test deleteAllDependencies when there are no dependencies to delete."""
     dependent_job_id = str(uuid.uuid4())
     # This should not raise an error
-    job_dependency_dynamo.deleteAllDependencies(
+    job_dependency_dynamo.delete_all_dependencies(
         dependent_job_id=dependent_job_id
     )

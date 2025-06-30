@@ -50,7 +50,7 @@ def sample_receipt_line_item_analysis():
 
 
 @pytest.mark.integration
-def test_addReceiptLineItemAnalysis_success(
+def test_add_receipt_line_item_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -89,7 +89,7 @@ def test_addReceiptLineItemAnalysis_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLineItemAnalysis_duplicate_raises(
+def test_add_receipt_line_item_analysis_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -117,7 +117,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptLineItemAnalysis_invalid_parameters(
+def test_add_receipt_line_item_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -174,7 +174,7 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptLineItemAnalysis_client_errors(
+def test_add_receipt_line_item_analysis_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -207,7 +207,7 @@ def test_addReceiptLineItemAnalysis_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptLineItemAnalyses_success(
+def test_add_receipt_line_item_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -249,7 +249,7 @@ def test_addReceiptLineItemAnalyses_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLineItemAnalyses_with_large_batch(
+def test_add_receipt_line_item_analyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test addition of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
@@ -291,7 +291,7 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
 
 
 @pytest.mark.integration
-def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
+def test_add_receipt_line_item_analyses_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test that unprocessed items are retried when adding multiple ReceiptLineItemAnalyses."""
@@ -349,7 +349,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         ),
     ],
 )
-def test_addReceiptLineItemAnalyses_invalid_parameters(
+def test_add_receipt_line_item_analyses_invalid_parameters(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -405,7 +405,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptLineItemAnalyses_client_errors(
+def test_add_receipt_line_item_analyses_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -433,7 +433,7 @@ def test_addReceiptLineItemAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptLineItemAnalysis_success(
+def test_update_receipt_line_item_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -487,7 +487,7 @@ def test_updateReceiptLineItemAnalysis_success(
         ),
     ],
 )
-def test_updateReceiptLineItemAnalysis_invalid_parameters(
+def test_update_receipt_line_item_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -548,7 +548,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptLineItemAnalysis_client_errors(
+def test_update_receipt_line_item_analysis_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -581,7 +581,7 @@ def test_updateReceiptLineItemAnalysis_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptLineItemAnalyses_success(
+def test_update_receipt_line_item_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -655,7 +655,7 @@ def test_updateReceiptLineItemAnalyses_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLineItemAnalyses_with_large_batch(
+def test_update_receipt_line_item_analyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test update of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
@@ -731,7 +731,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         ),
     ],
 )
-def test_updateReceiptLineItemAnalyses_invalid_inputs(
+def test_update_receipt_line_item_analyses_invalid_inputs(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -799,7 +799,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         ),
     ],
 )
-def test_updateReceiptLineItemAnalyses_client_errors(
+def test_update_receipt_line_item_analyses_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -842,7 +842,7 @@ def test_updateReceiptLineItemAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLineItemAnalysis_success(
+def test_delete_receipt_line_item_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -895,7 +895,7 @@ def test_deleteReceiptLineItemAnalysis_success(
         ),
     ],
 )
-def test_deleteReceiptLineItemAnalysis_invalid_parameters(
+def test_delete_receipt_line_item_analysis_invalid_parameters(
     dynamodb_table, mocker, invalid_input, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when deleting a ReceiptLineItemAnalysis."""
@@ -948,7 +948,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptLineItemAnalysis_client_errors(
+def test_delete_receipt_line_item_analysis_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -975,7 +975,7 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLineItemAnalyses_not_found(
+def test_delete_receipt_line_item_analyses_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1016,7 +1016,7 @@ def test_deleteReceiptLineItemAnalyses_not_found(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLineItemAnalyses_success(
+def test_delete_receipt_line_item_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1078,7 +1078,7 @@ def test_deleteReceiptLineItemAnalyses_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLineItemAnalyses_with_large_batch(
+def test_delete_receipt_line_item_analyses_with_large_batch(
     dynamodb_table, sample_receipt_line_item_analysis
 ):
     """Test deletion of a large batch of ReceiptLineItemAnalyses (requiring multiple batches)."""
@@ -1149,7 +1149,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         ),
     ],
 )
-def test_deleteReceiptLineItemAnalyses_invalid_inputs(
+def test_delete_receipt_line_item_analyses_invalid_inputs(
     dynamodb_table,
     mocker,
     invalid_input,
@@ -1200,7 +1200,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
         ),
     ],
 )
-def test_deleteReceiptLineItemAnalyses_client_errors(
+def test_delete_receipt_line_item_analyses_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -1228,7 +1228,7 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
+def test_delete_receipt_line_item_analyses_with_unprocessed_items_retries(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test that unprocessed items are retried when deleting multiple analyses."""
@@ -1279,7 +1279,7 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
 
 
 @pytest.mark.integration
-def test_getReceiptLineItemAnalysis_success(
+def test_get_receipt_line_item_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1314,7 +1314,7 @@ def test_getReceiptLineItemAnalysis_success(
 
 
 @pytest.mark.integration
-def test_getReceiptLineItemAnalysis_not_found(
+def test_get_receipt_line_item_analysis_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1364,7 +1364,7 @@ def test_getReceiptLineItemAnalysis_not_found(
         ),
     ],
 )
-def test_getReceiptLineItemAnalysis_invalid_parameters(
+def test_get_receipt_line_item_analysis_invalid_parameters(
     dynamodb_table, mocker, image_id, receipt_id, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when getting a ReceiptLineItemAnalysis."""
@@ -1414,7 +1414,7 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptLineItemAnalysis_client_errors(
+def test_get_receipt_line_item_analysis_client_errors(
     dynamodb_table,
     sample_receipt_line_item_analysis,
     mocker,
@@ -1442,7 +1442,7 @@ def test_getReceiptLineItemAnalysis_client_errors(
 
 
 @pytest.mark.integration
-def test_getReceiptLineItemAnalysis_malformed_item(
+def test_get_receipt_line_item_analysis_malformed_item(
     dynamodb_table, sample_receipt_line_item_analysis, mocker
 ):
     """Test handling of malformed items when getting a ReceiptLineItemAnalysis."""
@@ -1471,7 +1471,7 @@ def test_getReceiptLineItemAnalysis_malformed_item(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalyses_success(
+def test_list_receipt_line_item_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1519,7 +1519,7 @@ def test_listReceiptLineItemAnalyses_success(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalyses_empty(
+def test_list_receipt_line_item_analyses_empty(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing ReceiptLineItemAnalyses when the table is empty."""
@@ -1536,7 +1536,7 @@ def test_listReceiptLineItemAnalyses_empty(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalyses_with_prefix(
+def test_list_receipt_line_item_analyses_with_prefix(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1600,7 +1600,7 @@ def test_listReceiptLineItemAnalyses_with_prefix(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalyses_with_pagination(
+def test_list_receipt_line_item_analyses_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
     mocker,
@@ -1749,7 +1749,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         ),
     ],
 )
-def test_listReceiptLineItemAnalyses_invalid_parameters(
+def test_list_receipt_line_item_analyses_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     mocker: MockerFixture,
     limit: int | None,
@@ -1806,7 +1806,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptLineItemAnalyses_client_errors(
+def test_list_receipt_line_item_analyses_client_errors(
     dynamodb_table, mocker, error_code, error_message, expected_error
 ):
     """Test handling of various client errors when listing ReceiptLineItemAnalyses."""
@@ -1831,7 +1831,7 @@ def test_listReceiptLineItemAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalysesForImage_success(
+def test_list_receipt_line_item_analyses_for_image_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
 ):
@@ -1889,7 +1889,7 @@ def test_listReceiptLineItemAnalysesForImage_success(
 
 
 @pytest.mark.integration
-def test_listReceiptLineItemAnalysesForImage_not_found(
+def test_list_receipt_line_item_analyses_for_image_not_found(
     dynamodb_table: Literal["MyMockedTable"],
 ):
     """Test listing ReceiptLineItemAnalyses for a non-existent image (should return empty list)."""
@@ -1918,7 +1918,7 @@ def test_listReceiptLineItemAnalysesForImage_not_found(
         ("", "uuid must be a valid UUIDv4"),
     ],
 )
-def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
+def test_list_receipt_line_item_analyses_for_image_invalid_parameters(
     dynamodb_table, mocker, image_id, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when listing analyses for an image."""
@@ -1970,7 +1970,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptLineItemAnalysesForImage_client_errors(
+def test_list_receipt_line_item_analyses_for_image_client_errors(
     dynamodb_table: str,
     sample_receipt_line_item_analysis: ReceiptLineItemAnalysis,
     mocker: MockerFixture,

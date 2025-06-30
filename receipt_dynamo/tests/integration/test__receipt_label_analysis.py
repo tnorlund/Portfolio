@@ -32,12 +32,12 @@ def sample_receipt_label_analysis():
 
 
 # -------------------------------------------------------------------
-#                        addReceiptLabelAnalysis
+#                        add_receipt_label_analysis
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptLabelAnalysis_success(
+def test_add_receipt_label_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -56,7 +56,7 @@ def test_addReceiptLabelAnalysis_success(
 
 
 @pytest.mark.integration
-def test_addReceiptLabelAnalysis_duplicate_raises(
+def test_add_receipt_label_analysis_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -83,7 +83,7 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
         ),
     ],
 )
-def test_addReceiptLabelAnalysis_invalid_parameters(
+def test_add_receipt_label_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -137,7 +137,7 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
 )
-def test_addReceiptLabelAnalysis_client_errors(
+def test_add_receipt_label_analysis_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -176,12 +176,12 @@ def test_addReceiptLabelAnalysis_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        addReceiptLabelAnalyses
+#                        add_receipt_label_analyses
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_addReceiptLabelAnalyses_success(
+def test_add_receipt_label_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -237,7 +237,7 @@ def test_addReceiptLabelAnalyses_success(
         ),
     ],
 )
-def test_addReceiptLabelAnalyses_invalid_parameters(
+def test_add_receipt_label_analyses_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -282,7 +282,7 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_addReceiptLabelAnalyses_client_errors(
+def test_add_receipt_label_analyses_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -320,7 +320,7 @@ def test_addReceiptLabelAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_addReceiptLabelAnalyses_unprocessed_items(
+def test_add_receipt_label_analyses_unprocessed_items(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -359,12 +359,12 @@ def test_addReceiptLabelAnalyses_unprocessed_items(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptLabelAnalysis
+#                        update_receipt_label_analysis
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptLabelAnalysis_success(
+def test_update_receipt_label_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -404,7 +404,7 @@ def test_updateReceiptLabelAnalysis_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLabelAnalysis_nonexistent_raises(
+def test_update_receipt_label_analysis_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -430,7 +430,7 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptLabelAnalysis_invalid_parameters(
+def test_update_receipt_label_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -479,7 +479,7 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptLabelAnalysis_client_errors(
+def test_update_receipt_label_analysis_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -517,12 +517,12 @@ def test_updateReceiptLabelAnalysis_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        updateReceiptLabelAnalyses
+#                        update_receipt_label_analyses
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_updateReceiptLabelAnalyses_success(
+def test_update_receipt_label_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -602,7 +602,7 @@ def test_updateReceiptLabelAnalyses_success(
 
 
 @pytest.mark.integration
-def test_updateReceiptLabelAnalyses_nonexistent_raises(
+def test_update_receipt_label_analyses_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -633,7 +633,7 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
         ),
     ],
 )
-def test_updateReceiptLabelAnalyses_invalid_parameters(
+def test_update_receipt_label_analyses_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -683,7 +683,7 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_updateReceiptLabelAnalyses_client_errors(
+def test_update_receipt_label_analyses_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -716,7 +716,7 @@ def test_updateReceiptLabelAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_updateReceiptLabelAnalyses_chunking(
+def test_update_receipt_label_analyses_chunking(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -770,12 +770,12 @@ def test_updateReceiptLabelAnalyses_chunking(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptLabelAnalysis
+#                        delete_receipt_label_analysis
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptLabelAnalysis_success(
+def test_delete_receipt_label_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -795,7 +795,7 @@ def test_deleteReceiptLabelAnalysis_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLabelAnalysis_nonexistent_raises(
+def test_delete_receipt_label_analysis_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -821,7 +821,7 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptLabelAnalysis_invalid_parameters(
+def test_delete_receipt_label_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -870,7 +870,7 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptLabelAnalysis_client_errors(
+def test_delete_receipt_label_analysis_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -908,12 +908,12 @@ def test_deleteReceiptLabelAnalysis_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        deleteReceiptLabelAnalyses
+#                        delete_receipt_label_analyses
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_deleteReceiptLabelAnalyses_success(
+def test_delete_receipt_label_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -957,7 +957,7 @@ def test_deleteReceiptLabelAnalyses_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLabelAnalyses_nonexistent_raises(
+def test_delete_receipt_label_analyses_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -988,7 +988,7 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
         ),
     ],
 )
-def test_deleteReceiptLabelAnalyses_invalid_parameters(
+def test_delete_receipt_label_analyses_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1038,7 +1038,7 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_deleteReceiptLabelAnalyses_client_errors(
+def test_delete_receipt_label_analyses_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1071,7 +1071,7 @@ def test_deleteReceiptLabelAnalyses_client_errors(
 
 
 @pytest.mark.integration
-def test_deleteReceiptLabelAnalyses_chunking(
+def test_delete_receipt_label_analyses_chunking(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1125,12 +1125,12 @@ def test_deleteReceiptLabelAnalyses_chunking(
 
 
 # -------------------------------------------------------------------
-#                        getReceiptLabelAnalysis
+#                        get_receipt_label_analysis
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptLabelAnalysis_success(
+def test_get_receipt_label_analysis_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1149,7 +1149,7 @@ def test_getReceiptLabelAnalysis_success(
 
 
 @pytest.mark.integration
-def test_getReceiptLabelAnalysis_nonexistent_raises(
+def test_get_receipt_label_analysis_nonexistent_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1186,7 +1186,7 @@ def test_getReceiptLabelAnalysis_nonexistent_raises(
         ),
     ],
 )
-def test_getReceiptLabelAnalysis_invalid_parameters(
+def test_get_receipt_label_analysis_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1232,7 +1232,7 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
         ),
     ],
 )
-def test_getReceiptLabelAnalysis_client_errors(
+def test_get_receipt_label_analysis_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1272,12 +1272,12 @@ def test_getReceiptLabelAnalysis_client_errors(
 
 
 # -------------------------------------------------------------------
-#                        listReceiptLabelAnalyses
+#                        list_receipt_label_analyses
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_listReceiptLabelAnalyses_success(
+def test_list_receipt_label_analyses_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1295,7 +1295,7 @@ def test_listReceiptLabelAnalyses_success(
 
 
 @pytest.mark.integration
-def test_listReceiptLabelAnalyses_with_limit(
+def test_list_receipt_label_analyses_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1335,7 +1335,7 @@ def test_listReceiptLabelAnalyses_with_limit(
 
 
 @pytest.mark.integration
-def test_listReceiptLabelAnalyses_with_last_evaluated_key(
+def test_list_receipt_label_analyses_with_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
     mocker,
@@ -1405,7 +1405,7 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
         ),
     ],
 )
-def test_listReceiptLabelAnalyses_invalid_parameters(
+def test_list_receipt_label_analyses_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1462,7 +1462,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         ),
     ],
 )
-def test_listReceiptLabelAnalyses_client_errors(
+def test_list_receipt_label_analyses_client_errors(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1494,12 +1494,12 @@ def test_listReceiptLabelAnalyses_client_errors(
 
 
 # -------------------------------------------------------------------
-#                  getReceiptLabelAnalysesByImage
+#                  get_receipt_label_analyses_by_image
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptLabelAnalysesByImage_success(
+def test_get_receipt_label_analyses_by_image_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1519,7 +1519,7 @@ def test_getReceiptLabelAnalysesByImage_success(
 
 
 @pytest.mark.integration
-def test_getReceiptLabelAnalysesByImage_with_limit(
+def test_get_receipt_label_analyses_by_image_with_limit(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1610,7 +1610,7 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         ),
     ],
 )
-def test_getReceiptLabelAnalysesByImage_invalid_parameters(
+def test_get_receipt_label_analyses_by_image_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
@@ -1641,12 +1641,12 @@ def test_getReceiptLabelAnalysesByImage_invalid_parameters(
 
 
 # -------------------------------------------------------------------
-#                  getReceiptLabelAnalysesByReceipt
+#                  get_receipt_label_analyses_by_receipt
 # -------------------------------------------------------------------
 
 
 @pytest.mark.integration
-def test_getReceiptLabelAnalysesByReceipt_success(
+def test_get_receipt_label_analyses_by_receipt_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_label_analysis: ReceiptLabelAnalysis,
 ):
@@ -1720,7 +1720,7 @@ def test_getReceiptLabelAnalysesByReceipt_success(
         ),
     ],
 )
-def test_getReceiptLabelAnalysesByReceipt_invalid_parameters(
+def test_get_receipt_label_analyses_by_receipt_invalid_parameters(
     dynamodb_table,
     sample_receipt_label_analysis,
     mocker,
