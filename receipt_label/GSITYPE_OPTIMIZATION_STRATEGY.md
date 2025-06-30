@@ -34,58 +34,68 @@ All entities in the receipt_dynamo package use a consistent `TYPE` field pattern
 1. **User scope queries**: `scope:user:{user_id}` - No efficient query path
 2. **Environment scope queries**: `scope:environment:{env}` - No efficient query path
 
-## Proposed Composite GSITYPE Strategy
+## Revised Strategy: Composite Keys with Existing GSIs
 
-### Option 1: Enhanced GSITYPE (Recommended)
+**Key Insight**: We can eliminate scans using composite keys within existing GSIs without adding new infrastructure.
 
-Transform the underutilized GSITYPE into a powerful multi-dimensional index:
+### Option 1: Enhanced GSI3 Composite Keys (Recommended)
 
-#### **Index Design**
+Extend the existing GSI3 to support user and environment scopes using a priority hierarchy:
+
+#### **Enhanced GSI3 Design**
 ```
-GSITYPE Index:
-- PK (GSITYPEPK): "SCOPE#{scope_type}#{scope_value}#{entity_type}"
-- SK (GSITYPESK): "DATE#{date}#{timestamp}"
-```
-
-#### **Key Generation Examples**
-```python
-# User scope for AI usage metrics
-GSITYPEPK = "SCOPE#USER#john_doe#AIUsageMetric"
-GSITYPESK = "DATE#2024-01-01#2024-01-01T12:00:00Z"
-
-# Environment scope for AI usage metrics  
-GSITYPEPK = "SCOPE#ENV#production#AIUsageMetric"
-GSITYPESK = "DATE#2024-01-01#2024-01-01T12:00:00Z"
-
-# Job scope for AI usage metrics (alternative to GSI3)
-GSITYPEPK = "SCOPE#JOB#batch-123#AIUsageMetric"  
-GSITYPESK = "DATE#2024-01-01#2024-01-01T12:00:00Z"
+GSI3 Index (Enhanced):
+- PK (GSI3PK): "JOB#{job_id}" | "USER#{user_id}" | "BATCH#{batch_id}" | "ENV#{environment}"
+- SK (GSI3SK): "AI_USAGE#{timestamp}"
 ```
 
-#### **AIUsageMetric Implementation**
+#### **Priority Hierarchy Implementation**
 ```python
 @property
-def gsitype_pk(self) -> Optional[str]:
-    """Generate GSITYPE PK for scope-based queries."""
-    # Generate keys for all applicable scopes
-    scopes = []
-    
-    if self.user_id:
-        scopes.append(f"SCOPE#USER#{self.user_id}#{self.item_type}")
-    if self.environment:
-        scopes.append(f"SCOPE#ENV#{self.environment}#{self.item_type}")
+def gsi3pk(self) -> Optional[str]:
+    """Enhanced GSI3 PK with priority hierarchy for scope-based queries."""
+    # Priority: job_id > user_id > batch_id > environment
     if self.job_id:
-        scopes.append(f"SCOPE#JOB#{self.job_id}#{self.item_type}")
-    
-    # Return first scope (could store multiple with separate items)
-    return scopes[0] if scopes else None
+        return f"JOB#{self.job_id}"
+    elif self.user_id:
+        return f"USER#{self.user_id}"  # NEW: User scope support
+    elif self.batch_id:
+        return f"BATCH#{self.batch_id}"
+    elif self.environment:
+        return f"ENV#{self.environment}"  # NEW: Environment scope support
+    return None
 
 @property  
-def gsitype_sk(self) -> Optional[str]:
-    """Generate GSITYPE SK for temporal ordering."""
-    if self.user_id or self.environment or self.job_id:
-        return f"DATE#{self.date}#{self.timestamp.isoformat()}"
+def gsi3sk(self) -> Optional[str]:
+    """GSI3 SK for temporal ordering."""
+    if self.job_id or self.user_id or self.batch_id or self.environment:
+        return f"AI_USAGE#{self.timestamp.isoformat()}"
     return None
+```
+
+#### **Query Examples**
+```python
+# User scope query using enhanced GSI3
+query_params = {
+    "IndexName": "GSI3",
+    "KeyConditionExpression": "GSI3PK = :pk AND GSI3SK BETWEEN :start AND :end",
+    "ExpressionAttributeValues": {
+        ":pk": {"S": "USER#john_doe"},
+        ":start": {"S": "AI_USAGE#2024-01-01T00:00:00Z"},
+        ":end": {"S": "AI_USAGE#2024-01-31T23:59:59Z"}
+    }
+}
+
+# Environment scope query using enhanced GSI3
+query_params = {
+    "IndexName": "GSI3",
+    "KeyConditionExpression": "GSI3PK = :pk AND GSI3SK BETWEEN :start AND :end",
+    "ExpressionAttributeValues": {
+        ":pk": {"S": "ENV#production"},
+        ":start": {"S": "AI_USAGE#2024-01-01T00:00:00Z"},
+        ":end": {"S": "AI_USAGE#2024-01-31T23:59:59Z"}
+    }
+}
 ```
 
 #### **Query Examples**

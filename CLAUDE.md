@@ -324,42 +324,43 @@ The receipt processing system uses a single DynamoDB table with 4 Global Seconda
 | **GSI3** | ✅ Active | Medium | Job/batch queries (`JOB#{job_id}` / `AI_USAGE#{timestamp}`) |
 | **GSITYPE** | ❌ Underutilized | Low | Only contains TYPE field discriminator |
 
-## GSITYPE Composite Optimization Strategy
+## GSI Composite Key Strategy (Revised)
 
 **Problem**: Cost monitoring system uses expensive scan operations for user and environment scope queries.
 
-**Solution**: Transform the underutilized GSITYPE index into a powerful multi-dimensional query interface.
+**Solution**: Enhance existing GSI3 with composite keys to support all scope types without new infrastructure.
 
-### Proposed GSITYPE Design
+### Enhanced GSI3 Design
 
 ```
-GSITYPE Index:
-- PK (GSITYPEPK): "SCOPE#{scope_type}#{scope_value}#{entity_type}"
-- SK (GSITYPESK): "DATE#{date}#{timestamp}"
+GSI3 Index (Enhanced):
+- PK: "JOB#{job_id}" | "USER#{user_id}" | "BATCH#{batch_id}" | "ENV#{environment}"
+- SK: "AI_USAGE#{timestamp}"
 ```
 
 ### Query Patterns Enabled
 
 ```python
-# User scope queries - eliminate scans
-GSITYPEPK = "SCOPE#USER#john_doe#AIUsageMetric"
-GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+# User scope queries - eliminate scans using GSI3
+GSI3PK = "USER#john_doe"
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 
-# Environment scope queries - eliminate scans  
-GSITYPEPK = "SCOPE#ENV#production#AIUsageMetric"
-GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+# Environment scope queries - eliminate scans using GSI3
+GSI3PK = "ENV#production"  
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 
-# Job scope queries - alternative to GSI3
-GSITYPEPK = "SCOPE#JOB#batch-123#AIUsageMetric"
-GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+# Job scope queries - existing functionality preserved
+GSI3PK = "JOB#batch-123"
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 ```
 
 ### Benefits
 
 - **Eliminate scan operations**: User/environment queries become O(log n) instead of O(n)
-- **Zero additional GSI costs**: Uses existing GSITYPE infrastructure
-- **Unified query interface**: Single pattern for all scope-based queries
-- **Better resource utilization**: Transform underused index into high-value query path
+- **Zero additional GSI costs**: Uses existing GSI3 infrastructure with enhanced composite keys
+- **Preserve TYPE GSI**: Maintains efficient entity-wide queries using GSITYPE as intended
+- **Priority hierarchy**: Smart scope assignment ensures optimal query performance
+- **Backward compatible**: Existing job/batch queries continue to work unchanged
 
 ### Implementation Status
 
@@ -368,13 +369,13 @@ GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
 - ✅ Added fallback scan operations for reliability
 
 **Phase 2 Planned**:
-- 🔄 Implement GSITYPE composite keys for user/environment scopes
-- 🔄 Migrate CostMonitor to use GSITYPE queries
-- 🔄 Backfill historical records with GSITYPE keys
+- 🔄 Enhance GSI3 composite keys for user/environment scopes  
+- 🔄 Migrate CostMonitor to use enhanced GSI3 queries
+- 🔄 Backfill historical records with enhanced GSI3 keys
 
 **Performance Impact**:
-- Job queries: Scan → GSI3 query (60-80% faster)
-- User/environment queries: Scan → GSITYPE query (planned 60-80% faster)
+- Job queries: Scan → GSI3 query (60-80% faster) ✅ **Completed**
+- User/environment queries: Scan → Enhanced GSI3 query (planned 60-80% faster)
 - Cost monitoring scalability: Linear → Logarithmic performance
 
 ### Reference Documentation
