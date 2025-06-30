@@ -363,12 +363,9 @@ class CostMonitor:
                 end_date=end_date,
             )
         elif scope_type == "user":
-            # Query by GSI3 (user index)
-            return AIUsageMetric.query_by_user(
-                self.dynamo_client,
-                user_id=scope_value,
-                start_date=start_date,
-                end_date=end_date,
+            # User queries require scan until GSI is available
+            return self._scan_metrics_with_filters(
+                scope_type, scope_value, start_date, end_date, service
             )
         elif scope_type == "global":
             # Query all services and aggregate
@@ -383,12 +380,82 @@ class CostMonitor:
                     )
                     all_metrics.extend(metrics)
             return all_metrics
+        elif scope_type == "job":
+            # Use GSI3 for job queries (more efficient than scan)
+            return self._query_by_job_gsi3(scope_value, start_date, end_date, service)
         else:
-            # For job/environment, use scan with filters
-            # This is less efficient but necessary for these access patterns
+            # For environment and other scopes, use scan with filters
+            # This is less efficient but necessary until dedicated GSIs are available
             return self._scan_metrics_with_filters(
                 scope_type, scope_value, start_date, end_date, service
             )
+
+    def _query_by_job_gsi3(
+        self,
+        job_id: str,
+        start_date: str,
+        end_date: str,
+        service: Optional[str] = None,
+    ) -> List[AIUsageMetric]:
+        """
+        Query metrics by job_id using GSI3.
+        
+        This is more efficient than scanning as it uses the existing GSI3
+        which has PK=JOB#{job_id} for job-based queries.
+        """
+        try:
+            # Build GSI3 query
+            key_condition = "GSI3PK = :pk"
+            expression_values = {
+                ":pk": {"S": f"JOB#{job_id}"},
+            }
+            
+            # Add date filtering if needed (though GSI3SK uses timestamp, not date)
+            # We'll filter results after querying since GSI3SK is AI_USAGE#{timestamp}
+            
+            # Add service filter if specified
+            filter_expression = None
+            if service:
+                filter_expression = "#service = :service"
+                expression_values[":service"] = {"S": service}
+            
+            query_params = {
+                "TableName": self.dynamo_client.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": key_condition,
+                "ExpressionAttributeValues": expression_values,
+            }
+            
+            if filter_expression:
+                query_params["FilterExpression"] = filter_expression
+                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+            
+            # Perform GSI3 query
+            response = self.dynamo_client._client.query(**query_params)
+            
+            # Convert items to AIUsageMetric objects and filter by date
+            metrics = []
+            for item in response.get("Items", []):
+                try:
+                    metric = self._dynamodb_item_to_metric(item)
+                    if metric and start_date <= metric.date <= end_date:
+                        metrics.append(metric)
+                except Exception as e:
+                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    continue
+            
+            logger.info(
+                f"Queried {len(metrics)} metrics for job:{job_id} "
+                f"between {start_date} and {end_date} using GSI3"
+            )
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Failed to query metrics for job:{job_id} using GSI3: {e}")
+            # Fallback to scan if GSI3 query fails
+            logger.info(f"Falling back to scan for job:{job_id}")
+            return self._scan_metrics_with_filters("job", job_id, start_date, end_date, service)
 
     def _scan_metrics_with_filters(
         self,

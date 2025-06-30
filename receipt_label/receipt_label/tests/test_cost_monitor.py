@@ -340,11 +340,11 @@ class TestCostMonitor:
             assert alert is None
 
     def test_query_metrics_job_scope(self, mock_dynamo_client):
-        """Test querying metrics for job scope using scan."""
+        """Test querying metrics for job scope using GSI3."""
         monitor = CostMonitor(mock_dynamo_client)
         
-        # Mock scan response
-        mock_scan_response = {
+        # Mock GSI3 query response
+        mock_query_response = {
             "Items": [
                 {
                     "service": {"S": "openai"},
@@ -358,7 +358,7 @@ class TestCostMonitor:
             ]
         }
         
-        mock_dynamo_client._client.scan.return_value = mock_scan_response
+        mock_dynamo_client._client.query.return_value = mock_query_response
         
         # Test job scope query
         metrics = monitor._query_metrics(
@@ -373,11 +373,11 @@ class TestCostMonitor:
         assert metrics[0].service == "openai"
         assert metrics[0].cost_usd == Decimal("1.50")
         
-        # Verify scan was called with correct parameters
-        mock_dynamo_client._client.scan.assert_called_once()
-        call_kwargs = mock_dynamo_client._client.scan.call_args[1]
-        assert call_kwargs["ExpressionAttributeNames"]["#scope_attr"] == "job_id"
-        assert call_kwargs["ExpressionAttributeValues"][":scope_value"]["S"] == "test-job-123"
+        # Verify GSI3 query was called instead of scan
+        mock_dynamo_client._client.query.assert_called_once()
+        call_kwargs = mock_dynamo_client._client.query.call_args[1]
+        assert call_kwargs["IndexName"] == "GSI3"
+        assert call_kwargs["ExpressionAttributeValues"][":pk"]["S"] == "JOB#test-job-123"
 
     def test_query_metrics_environment_scope(self, mock_dynamo_client):
         """Test querying metrics for environment scope using scan."""
