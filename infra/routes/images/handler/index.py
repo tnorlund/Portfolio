@@ -40,7 +40,7 @@ def handler(event, _):
 
         if image_type:
             # If image_type is specified, use listImagesByType
-            raw_images, lek = client.listImagesByType(
+            raw_images, lek = client.list_images_by_type(
                 image_type=image_type,
                 limit=limit,
                 lastEvaluatedKey=last_evaluated_key,
@@ -66,7 +66,7 @@ def handler(event, _):
                 scan_limit = None
 
             # Fetch Photo images
-            photo_images, photo_lek = client.listImagesByType(
+            photo_images, photo_lek = client.list_images_by_type(
                 image_type=ImageType.PHOTO.value,
                 limit=photo_limit,
                 lastEvaluatedKey=(
@@ -78,7 +78,7 @@ def handler(event, _):
             )
 
             # Fetch Scan images
-            scan_images, scan_lek = client.listImagesByType(
+            scan_images, scan_lek = client.list_images_by_type(
                 image_type=ImageType.SCAN.value,
                 limit=scan_limit,
                 lastEvaluatedKey=(
