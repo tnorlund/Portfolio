@@ -16,10 +16,10 @@ from receipt_label.data.places_api import (
 def dynamodb_table(dynamodb_table_and_s3_bucket, monkeypatch):
     """
     Set up environment variables and return the test table name.
-    This ensures the DYNAMO_TABLE_NAME is set before any imports happen.
+    This ensures the DYNAMODB_TABLE_NAME is set before any imports happen.
     """
     table_name, _ = dynamodb_table_and_s3_bucket
-    monkeypatch.setenv("DYNAMO_TABLE_NAME", table_name)
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", table_name)
     monkeypatch.setenv("OPENAI_API_KEY", "test_api_key")
     monkeypatch.setenv("PINECONE_API_KEY", "test_pinecone_key")
     monkeypatch.setenv("PINECONE_INDEX_NAME", "test_index")

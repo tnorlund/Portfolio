@@ -62,6 +62,15 @@ __all__ = [
     "ReceiptValidationCategory",
     "item_to_receipt_validation_category",
     "ReceiptChatGPTValidation",
+    "AIUsageMetric",
+    "itemToAIUsageMetric",
+    "ResilientDynamoClient",
+    # Resilience patterns (moved from receipt_label)
+    "BatchQueue",
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+    "RetryManager",
+    "retry_with_backoff",
 ]
 
 # Entities must be imported first to avoid circular imports
@@ -102,6 +111,10 @@ from receipt_dynamo.entities import (
     item_to_receipt_word_label,
     item_to_word,
 )
+from receipt_dynamo.entities.ai_usage_metric import (
+    AIUsageMetric,
+    itemToAIUsageMetric,
+)
 from receipt_dynamo.entities.instance import Instance, item_to_instance
 from receipt_dynamo.entities.instance_job import (
     InstanceJob,
@@ -128,13 +141,26 @@ from receipt_dynamo.entities.word_tag import WordTag, item_to_word_tag
 # Only import what's actually used elsewhere in the package
 try:  # Optional dependency
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_dynamo.data.resilient_dynamo_client import (
+        ResilientDynamoClient,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     class DynamoClient:  # type: ignore
         """Placeholder for DynamoClient when boto3 is unavailable."""
 
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for DynamoClient") from exc
+            raise ModuleNotFoundError(
+                "boto3 is required for DynamoClient"
+            ) from exc
+
+    class ResilientDynamoClient:  # type: ignore
+        """Placeholder for ResilientDynamoClient when boto3 is unavailable."""
+
+        def __init__(self, *_, **__):
+            raise ModuleNotFoundError(
+                "boto3 is required for ResilientDynamoClient"
+            ) from exc
 
 
 try:  # Optional dependency
@@ -142,7 +168,9 @@ try:  # Optional dependency
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def export_image(*_, **__):
-        raise ModuleNotFoundError("boto3 is required for export_image") from exc
+        raise ModuleNotFoundError(
+            "boto3 is required for export_image"
+        ) from exc
 
 
 try:
@@ -150,7 +178,9 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def import_image(*_, **__):
-        raise ModuleNotFoundError("boto3 is required for import_image") from exc
+        raise ModuleNotFoundError(
+            "boto3 is required for import_image"
+        ) from exc
 
 
 try:  # Optional dependency
@@ -161,10 +191,21 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     class _ServicePlaceholder:  # type: ignore
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for service classes") from exc
+            raise ModuleNotFoundError(
+                "boto3 is required for service classes"
+            ) from exc
 
     InstanceService = _ServicePlaceholder
     JobService = _ServicePlaceholder
     QueueService = _ServicePlaceholder
+
+# Import resilience patterns
+from receipt_dynamo.utils import (
+    BatchQueue,
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+    RetryManager,
+    retry_with_backoff,
+)
 
 # For backward compatibility:
