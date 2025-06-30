@@ -19,7 +19,7 @@ def setup_test_environment():
     """
     # Set environment variables if not already set
     env_defaults = {
-        "DYNAMO_TABLE_NAME": "test-table",
+        "DYNAMODB_TABLE_NAME": "test-table",
         "OPENAI_API_KEY": "test-openai-key",
         "PINECONE_API_KEY": "test-pinecone-key",
         "PINECONE_INDEX_NAME": "test-index",

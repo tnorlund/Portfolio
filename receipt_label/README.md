@@ -2,6 +2,40 @@
 
 A Python package for labeling and validating receipt data using GPT and Pinecone.
 
+## Package Responsibilities
+
+**IMPORTANT**: This package handles business logic and AI integrations. It must NOT contain DynamoDB-specific code.
+
+### What belongs in receipt_label:
+- ✅ Receipt labeling and analysis logic
+- ✅ AI service integrations (OpenAI, Anthropic)
+- ✅ Pinecone vector database operations
+- ✅ Google Places API integration
+- ✅ Label validation and correction logic
+
+### What does NOT belong here:
+- ❌ Direct DynamoDB operations (use receipt_dynamo interfaces)
+- ❌ DynamoDB retry logic or resilience patterns (use ResilientDynamoClient from receipt_dynamo)
+- ❌ DynamoDB batch processing logic (use receipt_dynamo's batch methods)
+- ❌ OCR text extraction (belongs in receipt_ocr)
+
+### Example: Proper DynamoDB Usage
+```python
+# ✅ CORRECT: Use receipt_dynamo's high-level interfaces
+from receipt_dynamo import ResilientDynamoClient
+
+client = ResilientDynamoClient(table_name="my-table")
+client.put_ai_usage_metric(metric)  # Let receipt_dynamo handle resilience
+
+# ❌ WRONG: Don't implement DynamoDB logic here
+def put_with_retry(item):
+    for attempt in range(3):  # This belongs in receipt_dynamo!
+        try:
+            dynamo.put_item(...)
+        except:
+            time.sleep(2 ** attempt)
+```
+
 ## Embedding Strategy
 
 For each receipt word, we generate two embeddings to capture both semantic and spatial context:
@@ -57,5 +91,39 @@ The final pass uses the OpenAI Agents SDK to resolve remaining ambiguous or inco
 - Query DynamoDB for past receipt structure
 - Apply logical rules (e.g., label propagation across lines)
 - Chain multiple reasoning steps before finalizing a label
+
+## AI Usage Tracking
+
+This package includes comprehensive AI usage tracking with context manager patterns for automatic cost monitoring.
+
+### Context Manager Patterns
+
+```python
+from receipt_label.utils import ai_usage_context, ai_usage_tracked
+
+# Decorator for automatic tracking
+@ai_usage_tracked(operation_type="receipt_processing")
+def process_receipt(receipt_id: str):
+    # Function is automatically tracked
+    result = openai_client.chat.completions.create(...)
+    return result
+
+# Context manager for complex operations
+with ai_usage_context("batch_processing", job_id="job-123") as tracker:
+    for receipt in receipts:
+        process_receipt(receipt)
+    # Metrics automatically flushed
+```
+
+### Features
+
+- **Automatic tracking** via decorators
+- **Context propagation** across function calls
+- **Error recovery** - metrics flushed even on exceptions
+- **Partial failure handling** for batch operations
+- **Thread-safe** concurrent operations
+- **< 5ms overhead** per operation
+
+See [Context Manager Documentation](docs/context_managers.md) for detailed usage.
 
 This stage is ideal for advanced logic, correction propagation, and multi-hop validation workflows.
