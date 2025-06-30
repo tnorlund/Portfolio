@@ -7,7 +7,7 @@ import pytest
 # Set environment variables before any imports
 os.environ.update(
     {
-        "DYNAMO_TABLE_NAME": "test-table",
+        "DYNAMODB_TABLE_NAME": "test-table",
         "PINECONE_API_KEY": "test-key",
         "OPENAI_API_KEY": "test-key",
         "PINECONE_INDEX_NAME": "test-index",

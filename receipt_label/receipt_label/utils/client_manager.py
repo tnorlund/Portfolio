@@ -6,14 +6,17 @@ This module provides a cleaner way to manage external service clients
 """
 
 import os
+import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
+
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
+from .ai_usage_tracker_resilient import ResilientAIUsageTracker
 
 
 @dataclass
@@ -27,12 +30,28 @@ class ClientConfig:
     pinecone_host: str
     track_usage: bool = True
     user_id: Optional[str] = None
+    use_resilient_tracker: bool = True
 
     @classmethod
     def from_env(cls) -> "ClientConfig":
         """Load configuration from environment variables."""
+        # Standardize on DYNAMODB_TABLE_NAME with backward compatibility
+        dynamo_table = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not dynamo_table:
+            dynamo_table = os.environ.get("DYNAMO_TABLE_NAME")
+            if dynamo_table:
+                warnings.warn(
+                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            else:
+                raise KeyError(
+                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"
+                )
+
         return cls(
-            dynamo_table=os.environ["DYNAMO_TABLE_NAME"],
+            dynamo_table=dynamo_table,
             openai_api_key=os.environ["OPENAI_API_KEY"],
             pinecone_api_key=os.environ["PINECONE_API_KEY"],
             pinecone_index_name=os.environ["PINECONE_INDEX_NAME"],
@@ -40,6 +59,10 @@ class ClientConfig:
             track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
             == "true",
             user_id=os.environ.get("USER_ID"),
+            use_resilient_tracker=os.environ.get(
+                "USE_RESILIENT_TRACKER", "true"
+            ).lower()
+            == "true",
         )
 
 
@@ -84,6 +107,71 @@ class ClientManager:
                 == "true",
                 validate_table_environment=False,  # Allow custom table names for test configurations
             )
+
+            # Override with resilient tracker if configured
+            if self.config.use_resilient_tracker:
+                # In tests, we need to pass the mock client to avoid creating real DynamoDB connections
+                # In production, pass None to let ResilientAIUsageTracker create its own ResilientDynamoClient
+                test_client = None
+
+                # Detect test environments by table name patterns
+                # Only match explicit test patterns, not any table containing "test"
+                test_table_patterns = [
+                    "test-table",
+                    "integration-test-table",
+                    "perf-test-table",
+                    "stress-test-table",
+                    "resilient-test-table",
+                    "TestTable",
+                ]
+                is_test_env = (
+                    any(
+                        pattern in self.config.dynamo_table
+                        for pattern in test_table_patterns
+                    )
+                    or self.config.dynamo_table.lower().endswith("-test")
+                    or self.config.dynamo_table.lower().startswith("test-")
+                    or self.config.dynamo_table.lower() == "test"
+                    # Removed: "test" in table_name - too broad, matches "contest-results"
+                )
+
+                if is_test_env:
+                    # We're in a test environment, use the mock client
+                    test_client = self.dynamo
+
+                self._usage_tracker = ResilientAIUsageTracker(
+                    dynamo_client=test_client,
+                    table_name=self.config.dynamo_table,
+                    user_id=self.config.user_id,
+                    track_to_dynamo=True,
+                    track_to_file=os.environ.get(
+                        "TRACK_TO_FILE", "false"
+                    ).lower()
+                    == "true",
+                    validate_table_environment=test_client
+                    is None,  # Only validate in production
+                    # Resilience configuration
+                    circuit_breaker_threshold=int(
+                        os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
+                    ),
+                    circuit_breaker_timeout=float(
+                        os.environ.get("CIRCUIT_BREAKER_TIMEOUT", "30.0")
+                    ),
+                    max_retry_attempts=int(
+                        os.environ.get("MAX_RETRY_ATTEMPTS", "3")
+                    ),
+                    retry_base_delay=float(
+                        os.environ.get("RETRY_BASE_DELAY", "1.0")
+                    ),
+                    batch_size=int(os.environ.get("BATCH_SIZE", "25")),
+                    batch_flush_interval=float(
+                        os.environ.get("BATCH_FLUSH_INTERVAL", "5.0")
+                    ),
+                    enable_batch_processing=os.environ.get(
+                        "ENABLE_BATCH_PROCESSING", "true"
+                    ).lower()
+                    == "true",
+                )
         return self._usage_tracker
 
     @property

@@ -100,7 +100,7 @@ def test_label_receipt_returns_labeling_result(mocker, sample_receipt_data):
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -110,7 +110,7 @@ def test_label_receipt_returns_labeling_result(mocker, sample_receipt_data):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
-            dynamodb_table_name=os.environ.get("DYNAMO_TABLE_NAME", "Test"),
+            dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
             validation_level="none",
         )
         # Replace the processors with mocks
@@ -194,7 +194,7 @@ def test_label_receipt_handles_processor_failures(mocker, sample_receipt_data):
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -204,7 +204,7 @@ def test_label_receipt_handles_processor_failures(mocker, sample_receipt_data):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
-            dynamodb_table_name=os.environ.get("DYNAMO_TABLE_NAME", "Test"),
+            dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
             validation_level="none",
         )
         # Replace the processors with mocks
@@ -305,7 +305,7 @@ def test_label_receipt_validation_levels(
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -315,7 +315,7 @@ def test_label_receipt_validation_levels(
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
-            dynamodb_table_name=os.environ.get("DYNAMO_TABLE_NAME", "Test"),
+            dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
             validation_level=validation_level,
         )
         # Replace the processors with mocks
@@ -364,7 +364,7 @@ def test_label_receipt_places_api_disabled(mocker, sample_receipt_data):
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -374,7 +374,7 @@ def test_label_receipt_places_api_disabled(mocker, sample_receipt_data):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
-            dynamodb_table_name=os.environ.get("DYNAMO_TABLE_NAME", "Test"),
+            dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
             validation_level="none",
         )
         # Replace the processors with mocks
@@ -498,7 +498,7 @@ def test_label_receipt_with_large_receipt(mocker):
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -620,7 +620,7 @@ def test_label_receipt_with_malformed_data(mocker):
     with patch.dict(
         os.environ,
         {
-            "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+            "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
             "PINECONE_API_KEY": TEST_API_KEY,
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
@@ -721,7 +721,7 @@ def test_label_receipt_concurrent_processing(mocker):
         with patch.dict(
             os.environ,
             {
-                "DYNAMO_TABLE_NAME": TEST_DYNAMO_TABLE,
+                "DYNAMODB_TABLE_NAME": TEST_DYNAMO_TABLE,
                 "PINECONE_API_KEY": TEST_API_KEY,
                 "OPENAI_API_KEY": TEST_API_KEY,
                 "PINECONE_INDEX_NAME": "test-index",

@@ -68,5 +68,6 @@
   "files.associations": {
     "*.toml": "toml"
   },
-  "python.analysis.autoSearchPaths": true
+  "python.analysis.autoSearchPaths": true,
+  "cursorpyright.analysis.autoSearchPaths": true
 }
