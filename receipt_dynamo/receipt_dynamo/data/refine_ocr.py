@@ -116,7 +116,7 @@ def refine_receipt_ocr(
             old_receipt_letters,
             old_receipt_word_tags,
             old_receipt_word_labels,
-        ) = client.getReceiptDetails(image_id, receipt_id)
+        ) = client.get_receipt_details(image_id, receipt_id)
     except Exception as e:
         if debug:
             print(f"Error getting receipt details: {e}")
@@ -290,7 +290,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Deleting {len(entities_to_delete['tags'])} tags in batch..."
                     )
-                client.deleteReceiptWordTags(entities_to_delete["tags"])
+                client.delete_receipt_word_tags(entities_to_delete["tags"])
                 commit_results["deleted"]["tags"] = len(entities_to_delete["tags"])
 
             # Delete letters
@@ -299,7 +299,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Deleting {len(entities_to_delete['letters'])} letters in batch..."
                     )
-                client.deleteReceiptLetters(entities_to_delete["letters"])
+                client.delete_receipt_letters(entities_to_delete["letters"])
                 commit_results["deleted"]["letters"] = len(
                     entities_to_delete["letters"]
                 )
@@ -310,7 +310,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Deleting {len(entities_to_delete['words'])} words in batch..."
                     )
-                client.deleteReceiptWords(entities_to_delete["words"])
+                client.delete_receipt_words(entities_to_delete["words"])
                 commit_results["deleted"]["words"] = len(entities_to_delete["words"])
 
             # Delete lines
@@ -319,7 +319,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Deleting {len(entities_to_delete['lines'])} lines in batch..."
                     )
-                client.deleteReceiptLines(entities_to_delete["lines"])
+                client.delete_receipt_lines(entities_to_delete["lines"])
                 commit_results["deleted"]["lines"] = len(entities_to_delete["lines"])
 
         except Exception as delete_error:
@@ -373,7 +373,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Creating {len(entities_to_create['lines'])} lines in batch..."
                     )
-                client.addReceiptLines(entities_to_create["lines"])
+                client.add_receipt_lines(entities_to_create["lines"])
                 commit_results["created"]["lines"] = len(entities_to_create["lines"])
 
             # Create words
@@ -382,7 +382,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Creating {len(entities_to_create['words'])} words in batch..."
                     )
-                client.addReceiptWords(entities_to_create["words"])
+                client.add_receipt_words(entities_to_create["words"])
                 commit_results["created"]["words"] = len(entities_to_create["words"])
 
             # Create letters
@@ -391,7 +391,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Creating {len(entities_to_create['letters'])} letters in batch..."
                     )
-                client.addReceiptLetters(entities_to_create["letters"])
+                client.add_receipt_letters(entities_to_create["letters"])
                 commit_results["created"]["letters"] = len(
                     entities_to_create["letters"]
                 )
@@ -402,7 +402,7 @@ def commit_ocr_changes(client, results, debug=False):
                     print(
                         f"Creating {len(entities_to_create['tags'])} tags in batch..."
                     )
-                client.addReceiptWordTags(entities_to_create["tags"])
+                client.add_receipt_word_tags(entities_to_create["tags"])
                 commit_results["created"]["tags"] = len(entities_to_create["tags"])
 
         except Exception as creation_error:
@@ -415,13 +415,13 @@ def commit_ocr_changes(client, results, debug=False):
             # If creation fails, we need to rollback any created entities
             try:
                 if commit_results["created"]["tags"] > 0:
-                    client.deleteReceiptWordTags(entities_to_create["tags"])
+                    client.delete_receipt_word_tags(entities_to_create["tags"])
                 if commit_results["created"]["letters"] > 0:
-                    client.deleteReceiptLetters(entities_to_create["letters"])
+                    client.delete_receipt_letters(entities_to_create["letters"])
                 if commit_results["created"]["words"] > 0:
-                    client.deleteReceiptWords(entities_to_create["words"])
+                    client.delete_receipt_words(entities_to_create["words"])
                 if commit_results["created"]["lines"] > 0:
-                    client.deleteReceiptLines(entities_to_create["lines"])
+                    client.delete_receipt_lines(entities_to_create["lines"])
 
                 if debug:
                     print("Successfully rolled back partial changes")
@@ -860,7 +860,7 @@ def process_all_receipts(env=None, debug=False, commit_changes=False):
     client = DynamoClient(env["dynamodb_table_name"])
 
     # Get receipts
-    receipts_details, last_evaluated_key = client.listReceiptDetails()
+    receipts_details, last_evaluated_key = client.list_receipt_details()
 
     results = {"processed": 0, "succeeded": 0, "failed": 0, "details": {}}
 
