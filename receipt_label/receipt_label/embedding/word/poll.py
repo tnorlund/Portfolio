@@ -25,6 +25,7 @@ from typing import List
 
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -73,11 +74,13 @@ def list_pending_embedding_batches(
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
-            status="PENDING",
-            batch_type=BatchType.EMBEDDING,
-            limit=25,
-            lastEvaluatedKey=lek,
+        next_summaries, lek = (
+            client_manager.dynamo.get_batch_summaries_by_status(
+                status="PENDING",
+                batch_type=BatchType.EMBEDDING,
+                limit=25,
+                lastEvaluatedKey=lek,
+            )
         )
         summaries.extend(next_summaries)
     return summaries

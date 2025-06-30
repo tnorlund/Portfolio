@@ -29,6 +29,7 @@ from receipt_dynamo.entities import (
     EmbeddingBatchResult,
     ReceiptSection,
 )
+
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -78,11 +79,13 @@ def list_pending_line_embedding_batches(
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
-            status="PENDING",
-            batch_type=BatchType.LINE_EMBEDDING,
-            limit=25,
-            lastEvaluatedKey=lek,
+        next_summaries, lek = (
+            client_manager.dynamo.get_batch_summaries_by_status(
+                status="PENDING",
+                batch_type=BatchType.LINE_EMBEDDING,
+                limit=25,
+                lastEvaluatedKey=lek,
+            )
         )
         summaries.extend(next_summaries)
     return summaries
@@ -170,11 +173,11 @@ def get_receipt_descriptions(
                 receipt_id=receipt_id,
             )
         )
-        receipt_metadata = client_manager.dynamo.getReceiptMetadata(
+        receipt_metadata = client_manager.dynamo.get_receipt_metadata(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        receipt_sections = client_manager.dynamo.getReceiptSectionsFromReceipt(
+        receipt_sections = client_manager.dynamo.get_receipt_sections_from_receipt(
             image_id=image_id,
             receipt_id=receipt_id,
         )
