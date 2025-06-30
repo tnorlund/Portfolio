@@ -47,13 +47,30 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python environment
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
+        run: |
+          # Create and activate virtual environment for self-hosted runner
+          echo "Setting up Python virtual environment on self-hosted runner"
+          python3 --version
+
+          # Create fresh venv for this job
+          python3 -m venv .venv-ci
+          source .venv-ci/bin/activate
+
+          # Upgrade pip for faster installs
+          python -m pip install --upgrade pip wheel
+
+          # Verify environment
+          echo "Python: $(which python)"
+          echo "Pip: $(which pip)"
+          python --version
+          pip --version
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
         run: |
+          # Activate virtual environment
+          source ../.venv-ci/bin/activate
+
           # Install package with test dependencies
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
             echo "Installing package with test dependencies"
@@ -69,6 +86,10 @@ jobs:
             echo "Installing receipt_dynamo dependency for receipt_label"
             pip install -e "../receipt_dynamo"
           fi
+
+          # Verify installation
+          echo "=== Installed packages ==="
+          pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
 
           # Run only fast unit tests
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
