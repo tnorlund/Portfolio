@@ -67,7 +67,7 @@ class QueueService:
             # TODO: Add max_concurrent_jobs and priority as needed
         )
 
-        self.dynamo_client.addQueue(queue)
+        self.dynamo_client.add_queue(queue)
         return queue
 
     def get_queue(self, queue_id: str) -> Queue:
@@ -83,7 +83,7 @@ class QueueService:
         Raises:
             Exception: When the queue is not found
         """
-        return self.dynamo_client.getQueue(queue_id)
+        return self.dynamo_client.get_queue(queue_id)
 
     def update_queue(self, queue: Queue) -> None:
         """
@@ -95,7 +95,7 @@ class QueueService:
         Raises:
             Exception: When the queue does not exist
         """
-        self.dynamo_client.updateQueue(queue)
+        self.dynamo_client.update_queue(queue)
 
     def delete_queue(self, queue: Queue) -> None:
         """
@@ -107,7 +107,7 @@ class QueueService:
         Raises:
             Exception: When the queue does not exist
         """
-        self.dynamo_client.deleteQueue(queue)
+        self.dynamo_client.delete_queue(queue)
 
     def list_queues(
         self,
@@ -124,7 +124,7 @@ class QueueService:
         Returns:
             A tuple containing a list of Queue objects and the last evaluated key
         """
-        return self.dynamo_client.listQueues(limit, last_evaluated_key)
+        return self.dynamo_client.list_queues(limit, last_evaluated_key)
 
     def list_queues_by_user(
         self,
@@ -143,7 +143,7 @@ class QueueService:
         Returns:
             A tuple containing a list of Queue objects and the last evaluated key
         """
-        return self.dynamo_client.listQueuesByUser(
+        return self.dynamo_client.list_queues_by_user(
             user_id, limit, last_evaluated_key
         )
 
@@ -178,7 +178,7 @@ class QueueService:
             # TODO: Set position based on queue position logic if needed
         )
 
-        self.dynamo_client.addQueueJob(queue_job)
+        self.dynamo_client.add_queue_job(queue_job)
         return queue_job
 
     def get_queue_job(self, queue_id: str, job_id: str) -> QueueJob:
@@ -195,7 +195,7 @@ class QueueService:
         Raises:
             Exception: When the queue job is not found
         """
-        return self.dynamo_client.getQueueJob(queue_id, job_id)
+        return self.dynamo_client.get_queue_job(queue_id, job_id)
 
     def update_queue_job(self, queue_job: QueueJob) -> None:
         """
@@ -207,7 +207,7 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        self.dynamo_client.updateQueueJob(queue_job)
+        self.dynamo_client.update_queue_job(queue_job)
 
     def delete_queue_job(self, queue_job: QueueJob) -> None:
         """
@@ -219,7 +219,7 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        self.dynamo_client.deleteQueueJob(queue_job)
+        self.dynamo_client.delete_queue_job(queue_job)
 
     def list_jobs_in_queue(
         self,
@@ -238,7 +238,7 @@ class QueueService:
         Returns:
             A tuple containing a list of QueueJob objects and the last evaluated key
         """
-        return self.dynamo_client.listQueueJobsByQueue(
+        return self.dynamo_client.list_queue_jobs_by_queue(
             queue_id, limit, last_evaluated_key
         )
 
@@ -259,7 +259,7 @@ class QueueService:
         Returns:
             A tuple containing a list of QueueJob objects and the last evaluated key
         """
-        return self.dynamo_client.listQueueJobsByJob(
+        return self.dynamo_client.list_queue_jobs_by_job(
             job_id, limit, last_evaluated_key
         )
 
@@ -274,7 +274,7 @@ class QueueService:
             The next QueueJob object, or None if the queue is empty
         """
         # Get pending jobs and sort by priority (desc) and added_at (asc)
-        jobs, _ = self.dynamo_client.listQueueJobsByQueue(
+        jobs, _ = self.dynamo_client.list_queue_jobs_by_queue(
             queue_id, status="pending"
         )
         if not jobs:

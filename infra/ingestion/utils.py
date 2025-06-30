@@ -217,16 +217,16 @@ def backup_dynamo_items(
     dynamo_client = DynamoClient(dynamo_name)
     os.makedirs(backup_dir, exist_ok=True)
 
-    images, _ = dynamo_client.listImages()
-    lines = dynamo_client.listLines()
-    words = dynamo_client.listWords()
-    word_tags = dynamo_client.listWordTags()
-    letters = dynamo_client.listLetters()
-    receipts = dynamo_client.listReceipts()
-    receipt_lines = dynamo_client.listReceiptLines()
-    receipt_words = dynamo_client.listReceiptWords()
-    receipt_word_tags = dynamo_client.listReceiptWordTags()
-    receipt_letters = dynamo_client.listReceiptLetters()
+    images, _ = dynamo_client.list_images()
+    lines = dynamo_client.list_lines()
+    words = dynamo_client.list_words()
+    word_tags = dynamo_client.list_word_tags()
+    letters = dynamo_client.list_letters()
+    receipts = dynamo_client.list_receipts()
+    receipt_lines = dynamo_client.list_receipt_lines()
+    receipt_words = dynamo_client.list_receipt_words()
+    receipt_word_tags = dynamo_client.list_receipt_word_tags()
+    receipt_letters = dynamo_client.list_receipt_letters()
 
     backup_path = Path(backup_dir) / "dynamo_backup.json"
     with open(backup_path, "w") as f:
@@ -477,45 +477,45 @@ def delete_dynamo_items(dynamo_name: str) -> None:
     """
     dynamo_client = DynamoClient(dynamo_name)
 
-    images, _ = dynamo_client.listImages()
+    images, _ = dynamo_client.list_images()
     pulumi.log.info(f" - Deleting {len(images)} image items")
     delete_in_batches(dynamo_client.deleteImages, images)
 
-    lines = dynamo_client.listLines()
+    lines = dynamo_client.list_lines()
     pulumi.log.info(f" - Deleting {len(lines)} line items")
     delete_in_batches(dynamo_client.deleteLines, lines)
 
-    words = dynamo_client.listWords()
+    words = dynamo_client.list_words()
     pulumi.log.info(f" - Deleting {len(words)} word items")
     delete_in_batches(dynamo_client.deleteWords, words)
 
-    word_tags = dynamo_client.listWordTags()
+    word_tags = dynamo_client.list_word_tags()
     pulumi.log.info(f" - Deleting {len(word_tags)} word tag items")
     delete_in_batches(dynamo_client.deleteWordTags, word_tags)
 
-    letters = dynamo_client.listLetters()
+    letters = dynamo_client.list_letters()
     pulumi.log.info(f" - Deleting {len(letters)} letter items")
     delete_in_batches(dynamo_client.deleteLetters, letters)
 
-    receipts = dynamo_client.listReceipts()
+    receipts = dynamo_client.list_receipts()
     pulumi.log.info(f" - Deleting {len(receipts)} receipt items")
     delete_in_batches(dynamo_client.deleteReceipts, receipts)
 
-    receipt_lines = dynamo_client.listReceiptLines()
+    receipt_lines = dynamo_client.list_receipt_lines()
     pulumi.log.info(f" - Deleting {len(receipt_lines)} receipt line items")
     delete_in_batches(dynamo_client.deleteReceiptLines, receipt_lines)
 
-    receipt_words = dynamo_client.listReceiptWords()
+    receipt_words = dynamo_client.list_receipt_words()
     pulumi.log.info(f" - Deleting {len(receipt_words)} receipt word items")
     delete_in_batches(dynamo_client.deleteReceiptWords, receipt_words)
 
-    receipt_word_tags = dynamo_client.listReceiptWordTags()
+    receipt_word_tags = dynamo_client.list_receipt_word_tags()
     pulumi.log.info(
         f" - Deleting {len(receipt_word_tags)} receipt word tag items"
     )
     delete_in_batches(dynamo_client.deleteReceiptWordTags, receipt_word_tags)
 
-    receipt_letters = dynamo_client.listReceiptLetters()
+    receipt_letters = dynamo_client.list_receipt_letters()
     pulumi.log.info(f" - Deleting {len(receipt_letters)} receipt letter items")
     delete_in_batches(dynamo_client.deleteReceiptLetters, receipt_letters)
 
@@ -544,35 +544,35 @@ def restore_dynamo_items(dynamo_name: str, backup_path: str) -> None:
 
     images = [Image(**image) for image in backup["images"]]
     pulumi.log.info(f" - Restoring {len(images)} image items")
-    dynamo_client.addImages(images)
+    dynamo_client.add_images(images)
 
     lines = [Line(**line) for line in backup["lines"]]
     pulumi.log.info(f" - Restoring {len(lines)} line items")
-    dynamo_client.addLines(lines)
+    dynamo_client.add_lines(lines)
 
     words = [Word(**word) for word in backup["words"]]
     pulumi.log.info(f" - Restoring {len(words)} word items")
-    dynamo_client.addWords(words)
+    dynamo_client.add_words(words)
 
     word_tags = [WordTag(**tag) for tag in backup["word_tags"]]
     pulumi.log.info(f" - Restoring {len(word_tags)} word tag items")
-    dynamo_client.addWordTags(word_tags)
+    dynamo_client.add_word_tags(word_tags)
 
     letters = [Letter(**letter) for letter in backup["letters"]]
     pulumi.log.info(f" - Restoring {len(letters)} letter items")
-    dynamo_client.addLetters(letters)
+    dynamo_client.add_letters(letters)
 
     receipts = [Receipt(**receipt) for receipt in backup["receipts"]]
     pulumi.log.info(f" - Restoring {len(receipts)} receipt items")
-    dynamo_client.addReceipts(receipts)
+    dynamo_client.add_receipts(receipts)
 
     receipt_lines = [ReceiptLine(**line) for line in backup["receipt_lines"]]
     pulumi.log.info(f" - Restoring {len(receipt_lines)} receipt line items")
-    dynamo_client.addReceiptLines(receipt_lines)
+    dynamo_client.add_receipt_lines(receipt_lines)
 
     receipt_words = [ReceiptWord(**word) for word in backup["receipt_words"]]
     pulumi.log.info(f" - Restoring {len(receipt_words)} receipt word items")
-    dynamo_client.addReceiptWords(receipt_words)
+    dynamo_client.add_receipt_words(receipt_words)
 
     receipt_word_tags = [
         ReceiptWordTag(**tag) for tag in backup["receipt_word_tags"]
@@ -580,7 +580,7 @@ def restore_dynamo_items(dynamo_name: str, backup_path: str) -> None:
     pulumi.log.info(
         f" - Restoring {len(receipt_word_tags)} receipt word tag items"
     )
-    dynamo_client.addReceiptWordTags(receipt_word_tags)
+    dynamo_client.add_receipt_word_tags(receipt_word_tags)
 
     receipt_letters = [
         ReceiptLetter(**letter) for letter in backup["receipt_letters"]
@@ -588,7 +588,7 @@ def restore_dynamo_items(dynamo_name: str, backup_path: str) -> None:
     pulumi.log.info(
         f" - Restoring {len(receipt_letters)} receipt letter items"
     )
-    dynamo_client.addReceiptLetters(receipt_letters)
+    dynamo_client.add_receipt_letters(receipt_letters)
 
     os.remove(backup_path)
 

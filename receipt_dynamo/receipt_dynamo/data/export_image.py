@@ -29,7 +29,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     # Get all data from DynamoDB
-    details = dynamo_client.getImageDetails(image_id)
+    details = dynamo_client.get_image_details(image_id)
 
     (
         images,
