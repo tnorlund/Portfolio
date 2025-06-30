@@ -251,10 +251,7 @@ class CostMonitor:
         alert_key = f"{scope}:{period}:{threshold_percent}"
         last_alert = self._sent_alerts.get(alert_key)
 
-        if (
-            last_alert
-            and datetime.now(timezone.utc) - last_alert < self.alert_cooldown
-        ):
+        if last_alert and datetime.now(timezone.utc) - last_alert < self.alert_cooldown:
             return None
 
         # Create alert
@@ -318,9 +315,7 @@ class CostMonitor:
             start = now - timedelta(days=days_since_monday)
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == "monthly":
-            start = now.replace(
-                day=1, hour=0, minute=0, second=0, microsecond=0
-            )
+            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         else:
             raise ValueError(f"Invalid period: {period}")
 
@@ -363,10 +358,8 @@ class CostMonitor:
                 end_date=end_date,
             )
         elif scope_type == "user":
-            # User queries require scan until GSI is available
-            return self._scan_metrics_with_filters(
-                scope_type, scope_value, start_date, end_date, service
-            )
+            # Use enhanced GSI3 for user queries (eliminates scans)
+            return self._query_by_user_gsi3(scope_value, start_date, end_date, service)
         elif scope_type == "global":
             # Query all services and aggregate
             all_metrics = []
@@ -383,9 +376,13 @@ class CostMonitor:
         elif scope_type == "job":
             # Use GSI3 for job queries (more efficient than scan)
             return self._query_by_job_gsi3(scope_value, start_date, end_date, service)
+        elif scope_type == "environment":
+            # Use enhanced GSI3 for environment queries (eliminates scans)
+            return self._query_by_environment_gsi3(
+                scope_value, start_date, end_date, service
+            )
         else:
-            # For environment and other scopes, use scan with filters
-            # This is less efficient but necessary until dedicated GSIs are available
+            # For other scopes, use scan with filters as fallback
             return self._scan_metrics_with_filters(
                 scope_type, scope_value, start_date, end_date, service
             )
@@ -399,7 +396,7 @@ class CostMonitor:
     ) -> List[AIUsageMetric]:
         """
         Query metrics by job_id using GSI3.
-        
+
         This is more efficient than scanning as it uses the existing GSI3
         which has PK=JOB#{job_id} for job-based queries.
         """
@@ -409,53 +406,204 @@ class CostMonitor:
             expression_values = {
                 ":pk": {"S": f"JOB#{job_id}"},
             }
-            
+
             # Add date filtering if needed (though GSI3SK uses timestamp, not date)
             # We'll filter results after querying since GSI3SK is AI_USAGE#{timestamp}
-            
+
             # Add service filter if specified
             filter_expression = None
             if service:
                 filter_expression = "#service = :service"
                 expression_values[":service"] = {"S": service}
-            
+
             query_params = {
                 "TableName": self.dynamo_client.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": key_condition,
                 "ExpressionAttributeValues": expression_values,
             }
-            
+
             if filter_expression:
                 query_params["FilterExpression"] = filter_expression
                 query_params["ExpressionAttributeNames"] = {"#service": "service"}
-            
+
             # Perform GSI3 query
             response = self.dynamo_client._client.query(**query_params)
-            
+
             # Convert items to AIUsageMetric objects and filter by date
             metrics = []
             for item in response.get("Items", []):
                 try:
                     metric = self._dynamodb_item_to_metric(item)
-                    if metric and start_date <= metric.date <= end_date:
+                    if (
+                        metric
+                        and start_date
+                        <= metric.timestamp.strftime("%Y-%m-%d")
+                        <= end_date
+                    ):
                         metrics.append(metric)
                 except Exception as e:
                     logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
                     continue
-            
+
             logger.info(
                 f"Queried {len(metrics)} metrics for job:{job_id} "
                 f"between {start_date} and {end_date} using GSI3"
             )
-            
+
             return metrics
-            
+
         except Exception as e:
             logger.error(f"Failed to query metrics for job:{job_id} using GSI3: {e}")
             # Fallback to scan if GSI3 query fails
             logger.info(f"Falling back to scan for job:{job_id}")
-            return self._scan_metrics_with_filters("job", job_id, start_date, end_date, service)
+            return self._scan_metrics_with_filters(
+                "job", job_id, start_date, end_date, service
+            )
+
+    def _query_by_user_gsi3(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+        service: Optional[str] = None,
+    ) -> List[AIUsageMetric]:
+        """
+        Query metrics by user_id using enhanced GSI3.
+
+        Uses the enhanced GSI3 with PK=USER#{user_id} for user-based queries.
+        """
+        try:
+            # Build GSI3 query
+            key_condition = "GSI3PK = :pk"
+            expression_values = {
+                ":pk": {"S": f"USER#{user_id}"},
+            }
+
+            # Add service filter if specified
+            filter_expression = None
+            if service:
+                filter_expression = "#service = :service"
+                expression_values[":service"] = {"S": service}
+
+            query_params = {
+                "TableName": self.dynamo_client.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": key_condition,
+                "ExpressionAttributeValues": expression_values,
+            }
+
+            if filter_expression:
+                query_params["FilterExpression"] = filter_expression
+                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+
+            # Perform GSI3 query
+            response = self.dynamo_client._client.query(**query_params)
+
+            # Convert items to AIUsageMetric objects and filter by date
+            metrics = []
+            for item in response.get("Items", []):
+                try:
+                    metric = self._dynamodb_item_to_metric(item)
+                    if (
+                        metric
+                        and start_date
+                        <= metric.timestamp.strftime("%Y-%m-%d")
+                        <= end_date
+                    ):
+                        metrics.append(metric)
+                except Exception as e:
+                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    continue
+
+            logger.info(
+                f"Queried {len(metrics)} metrics for user:{user_id} "
+                f"between {start_date} and {end_date} using enhanced GSI3"
+            )
+
+            return metrics
+
+        except Exception as e:
+            logger.error(
+                f"Failed to query metrics for user:{user_id} using enhanced GSI3: {e}"
+            )
+            # Fallback to scan if GSI3 query fails
+            logger.info(f"Falling back to scan for user:{user_id}")
+            return self._scan_metrics_with_filters(
+                "user", user_id, start_date, end_date, service
+            )
+
+    def _query_by_environment_gsi3(
+        self,
+        environment: str,
+        start_date: str,
+        end_date: str,
+        service: Optional[str] = None,
+    ) -> List[AIUsageMetric]:
+        """
+        Query metrics by environment using enhanced GSI3.
+
+        Uses the enhanced GSI3 with PK=ENV#{environment} for environment-based queries.
+        """
+        try:
+            # Build GSI3 query
+            key_condition = "GSI3PK = :pk"
+            expression_values = {
+                ":pk": {"S": f"ENV#{environment}"},
+            }
+
+            # Add service filter if specified
+            filter_expression = None
+            if service:
+                filter_expression = "#service = :service"
+                expression_values[":service"] = {"S": service}
+
+            query_params = {
+                "TableName": self.dynamo_client.table_name,
+                "IndexName": "GSI3",
+                "KeyConditionExpression": key_condition,
+                "ExpressionAttributeValues": expression_values,
+            }
+
+            if filter_expression:
+                query_params["FilterExpression"] = filter_expression
+                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+
+            # Perform GSI3 query
+            response = self.dynamo_client._client.query(**query_params)
+
+            # Convert items to AIUsageMetric objects and filter by date
+            metrics = []
+            for item in response.get("Items", []):
+                try:
+                    metric = self._dynamodb_item_to_metric(item)
+                    if (
+                        metric
+                        and start_date
+                        <= metric.timestamp.strftime("%Y-%m-%d")
+                        <= end_date
+                    ):
+                        metrics.append(metric)
+                except Exception as e:
+                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    continue
+
+            logger.info(
+                f"Queried {len(metrics)} metrics for environment:{environment} "
+                f"between {start_date} and {end_date} using enhanced GSI3"
+            )
+
+            return metrics
+
+        except Exception as e:
+            logger.error(
+                f"Failed to query metrics for environment:{environment} using enhanced GSI3: {e}"
+            )
+            # Fallback to scan if GSI3 query fails
+            logger.info(f"Falling back to scan for environment:{environment}")
+            return self._scan_metrics_with_filters(
+                "environment", environment, start_date, end_date, service
+            )
 
     def _scan_metrics_with_filters(
         self,
@@ -467,25 +615,27 @@ class CostMonitor:
     ) -> List[AIUsageMetric]:
         """
         Scan metrics with filters for job/environment scopes.
-        
+
         This is less efficient than indexed queries but necessary
         for scope types that don't have dedicated GSIs.
         """
         try:
             # Build filter expression
-            filter_expression = "attribute_exists(#scope_attr) AND #scope_attr = :scope_value"
+            filter_expression = (
+                "attribute_exists(#scope_attr) AND #scope_attr = :scope_value"
+            )
             filter_expression += " AND #date BETWEEN :start_date AND :end_date"
-            
+
             expression_attribute_names = {
                 "#date": "date",
             }
-            
+
             expression_attribute_values = {
                 ":scope_value": {"S": scope_value},
                 ":start_date": {"S": start_date},
                 ":end_date": {"S": end_date},
             }
-            
+
             if scope_type == "job":
                 expression_attribute_names["#scope_attr"] = "job_id"
             elif scope_type == "environment":
@@ -493,13 +643,13 @@ class CostMonitor:
             else:
                 logger.warning(f"Unsupported scope type for scan: {scope_type}")
                 return []
-            
+
             # Add service filter if specified
             if service:
                 filter_expression += " AND #service = :service"
                 expression_attribute_names["#service"] = "service"
                 expression_attribute_values[":service"] = {"S": service}
-            
+
             # Perform scan
             response = self.dynamo_client._client.scan(
                 TableName=self.dynamo_client.table_name,
@@ -507,7 +657,7 @@ class CostMonitor:
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values,
             )
-            
+
             # Convert items back to AIUsageMetric objects
             metrics = []
             for item in response.get("Items", []):
@@ -519,14 +669,14 @@ class CostMonitor:
                 except Exception as e:
                     logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
                     continue
-            
+
             logger.info(
                 f"Scanned {len(metrics)} metrics for {scope_type}:{scope_value} "
                 f"between {start_date} and {end_date}"
             )
-            
+
             return metrics
-            
+
         except Exception as e:
             logger.error(f"Failed to scan metrics for {scope_type}:{scope_value}: {e}")
             return []
@@ -539,14 +689,15 @@ class CostMonitor:
             model = item.get("model", {}).get("S", "")
             operation = item.get("operation", {}).get("S", "")
             timestamp_str = item.get("timestamp", {}).get("S", "")
-            
+
             if not all([service, model, operation, timestamp_str]):
                 return None
-            
+
             # Parse timestamp
             from datetime import datetime
+
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-            
+
             # Extract optional fields with proper type conversion
             def get_decimal_value(field_name: str) -> Optional[Decimal]:
                 field = item.get(field_name, {})
@@ -558,17 +709,17 @@ class CostMonitor:
                     except:
                         return None
                 return None
-            
+
             def get_int_value(field_name: str) -> Optional[int]:
                 field = item.get(field_name, {})
                 if "N" in field:
                     return int(field["N"])
                 return None
-            
+
             def get_string_value(field_name: str) -> Optional[str]:
                 field = item.get(field_name, {})
                 return field.get("S")
-            
+
             # Create AIUsageMetric object
             metric = AIUsageMetric(
                 service=service,
@@ -589,9 +740,9 @@ class CostMonitor:
                 environment=get_string_value("environment"),
                 error=get_string_value("error"),
             )
-            
+
             return metric
-            
+
         except Exception as e:
             logger.warning(f"Failed to parse DynamoDB item: {e}")
             return None
