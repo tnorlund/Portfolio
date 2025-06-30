@@ -177,9 +177,11 @@ def get_receipt_descriptions(
             image_id=image_id,
             receipt_id=receipt_id,
         )
-        receipt_sections = client_manager.dynamo.get_receipt_sections_from_receipt(
-            image_id=image_id,
-            receipt_id=receipt_id,
+        receipt_sections = (
+            client_manager.dynamo.get_receipt_sections_from_receipt(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
         )
         descriptions.setdefault(image_id, {})[receipt_id] = {
             "receipt": receipt,

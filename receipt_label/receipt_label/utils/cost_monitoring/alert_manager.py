@@ -30,6 +30,17 @@ class AlertChannel:
     min_level: ThresholdLevel = ThresholdLevel.INFO
     metadata: Dict[str, Any] = None
 
+    def __post_init__(self):
+        """Convert string min_level to ThresholdLevel enum if needed."""
+        if isinstance(self.min_level, str):
+            try:
+                self.min_level = ThresholdLevel[self.min_level.upper()]
+            except KeyError:
+                logger.warning(
+                    f"Invalid threshold level '{self.min_level}', defaulting to INFO"
+                )
+                self.min_level = ThresholdLevel.INFO
+
     def should_send(self, alert: ThresholdAlert) -> bool:
         """Check if this channel should receive the alert."""
         if not self.enabled:

@@ -124,7 +124,11 @@ class CostMonitor:
         new_total = current_spend + (current_usage.cost_usd or Decimal("0"))
 
         # Calculate percentage of budget used
-        percent_used = float(new_total / budget_limit * 100)
+        if budget_limit == 0:
+            # If budget is 0, consider any spend as exceeding the budget
+            percent_used = 100.0 if new_total > 0 else 0.0
+        else:
+            percent_used = float(new_total / budget_limit * 100)
 
         # Check which threshold we've crossed
         alert = self._check_thresholds(

@@ -392,3 +392,38 @@ class TestCostMonitoringIntegration:
 
             # Verify Slack was called
             mock_slack.assert_called_once()
+
+    def test_alert_channel_string_level_conversion(self):
+        """Test that AlertChannel correctly converts string levels to enums."""
+        # Test valid string levels
+        channel1 = AlertChannel(
+            channel_type="email",
+            destination="test@example.com",
+            min_level="WARNING",  # String instead of enum
+        )
+        assert channel1.min_level == ThresholdLevel.WARNING
+
+        channel2 = AlertChannel(
+            channel_type="slack",
+            destination="webhook_url",
+            min_level="critical",  # Lowercase string
+        )
+        assert channel2.min_level == ThresholdLevel.CRITICAL
+
+        # Test invalid string level (should default to INFO)
+        with patch("receipt_label.utils.cost_monitoring.alert_manager.logger") as mock_logger:
+            channel3 = AlertChannel(
+                channel_type="email",
+                destination="test@example.com",
+                min_level="INVALID_LEVEL",
+            )
+            assert channel3.min_level == ThresholdLevel.INFO
+            mock_logger.warning.assert_called_once()
+
+        # Test that enum values still work
+        channel4 = AlertChannel(
+            channel_type="email",
+            destination="test@example.com",
+            min_level=ThresholdLevel.EXCEEDED,
+        )
+        assert channel4.min_level == ThresholdLevel.EXCEEDED

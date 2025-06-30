@@ -7,7 +7,7 @@ budgets and send alerts when AI usage is tracked.
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Set
 
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
@@ -57,6 +57,8 @@ class CostAwareAIUsageTracker(AIUsageTracker):
         self.enable_cost_monitoring = enable_cost_monitoring and bool(
             cost_monitor
         )
+        # Store references to alert tasks to prevent garbage collection
+        self._alert_tasks: Set[asyncio.Task] = set()
 
     def _store_metric(self, metric: AIUsageMetric) -> None:
         """Override to add cost monitoring checks."""
@@ -118,7 +120,10 @@ class CostAwareAIUsageTracker(AIUsageTracker):
 
         if alert and self.alert_manager:
             # Send alert asynchronously
-            asyncio.create_task(self._send_alert_async(alert, budget_name))
+            task = asyncio.create_task(self._send_alert_async(alert, budget_name))
+            self._alert_tasks.add(task)
+            # Clean up completed tasks
+            task.add_done_callback(lambda t: self._alert_tasks.discard(t))
 
     async def _send_alert_async(self, alert, budget_name: str) -> None:
         """Send alert asynchronously to avoid blocking."""

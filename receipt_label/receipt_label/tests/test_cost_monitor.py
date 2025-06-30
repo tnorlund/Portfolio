@@ -273,3 +273,68 @@ class TestCostMonitor:
         assert alert_dict["timestamp"] == "2024-01-01T12:00:00+00:00"
         assert alert_dict["message"] == "Test alert"
         assert alert_dict["metadata"] == {"test": "data"}
+
+    def test_check_budget_threshold_zero_budget(self, mock_dynamo_client):
+        """Test budget check with zero budget limit."""
+        monitor = CostMonitor(mock_dynamo_client)
+
+        # Mock current spend
+        with patch.object(
+            monitor, "_get_period_spend", return_value=Decimal("0")
+        ):
+            # Create usage metric
+            usage = AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="completion",
+                timestamp=datetime.now(timezone.utc),
+                input_tokens=100,
+                output_tokens=50,
+                total_tokens=150,
+                cost_usd=Decimal("0.50"),
+            )
+
+            # Test with zero budget - any spend should trigger exceeded
+            alert = monitor.check_budget_threshold(
+                current_usage=usage,
+                budget_limit=Decimal("0"),
+                scope="user:test",
+                period="daily",
+            )
+
+            assert alert is not None
+            assert alert.level == ThresholdLevel.EXCEEDED
+            assert alert.threshold_percent == 100
+            assert alert.current_spend == Decimal("0.50")
+
+    def test_check_budget_threshold_zero_budget_no_spend(
+        self, mock_dynamo_client
+    ):
+        """Test budget check with zero budget and no spend."""
+        monitor = CostMonitor(mock_dynamo_client)
+
+        # Mock current spend
+        with patch.object(
+            monitor, "_get_period_spend", return_value=Decimal("0")
+        ):
+            # Create usage metric with no cost
+            usage = AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="completion",
+                timestamp=datetime.now(timezone.utc),
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                cost_usd=Decimal("0"),
+            )
+
+            # Test with zero budget and zero spend - should not trigger alert
+            alert = monitor.check_budget_threshold(
+                current_usage=usage,
+                budget_limit=Decimal("0"),
+                scope="user:test",
+                period="daily",
+            )
+
+            assert alert is None

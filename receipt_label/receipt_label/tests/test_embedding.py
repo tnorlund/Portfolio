@@ -5,7 +5,6 @@ from typing import Literal
 
 import boto3
 import pytest
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import BatchStatus, BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
@@ -14,6 +13,7 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
 )
+
 from receipt_label.embedding.word import poll as poll_batch
 from receipt_label.embedding.word import submit as submit_batch
 
@@ -833,7 +833,9 @@ def test_embedding_batch_submit(
     # Verify the word embedding statuses have not been updated for the 4 receipts that were not embedded
     assert (
         len(
-            moto_client.list_receipt_words_by_embedding_status(EmbeddingStatus.NONE)
+            moto_client.list_receipt_words_by_embedding_status(
+                EmbeddingStatus.NONE
+            )
         )
         == 5 * 4
     ), "The words that have not been embedded have the correct status"
