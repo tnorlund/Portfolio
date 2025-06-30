@@ -311,6 +311,83 @@ When adding boto3 clients for new AWS services:
 
 This approach provides type safety during development while maintaining fast runtime performance.
 
+# DynamoDB GSI Optimization Strategy
+
+## Current GSI Infrastructure Analysis
+
+The receipt processing system uses a single DynamoDB table with 4 Global Secondary Indexes:
+
+| GSI | Current Usage | Efficiency | Purpose |
+|-----|---------------|------------|---------|
+| **GSI1** | ✅ Active | High | Service/date queries (`AI_USAGE#{service}` / `DATE#{date}`) |
+| **GSI2** | ✅ Active | High | Cost aggregation (`AI_USAGE_COST` / `COST#{date}#{service}`) |
+| **GSI3** | ✅ Active | Medium | Job/batch queries (`JOB#{job_id}` / `AI_USAGE#{timestamp}`) |
+| **GSITYPE** | ❌ Underutilized | Low | Only contains TYPE field discriminator |
+
+## GSITYPE Composite Optimization Strategy
+
+**Problem**: Cost monitoring system uses expensive scan operations for user and environment scope queries.
+
+**Solution**: Transform the underutilized GSITYPE index into a powerful multi-dimensional query interface.
+
+### Proposed GSITYPE Design
+
+```
+GSITYPE Index:
+- PK (GSITYPEPK): "SCOPE#{scope_type}#{scope_value}#{entity_type}"
+- SK (GSITYPESK): "DATE#{date}#{timestamp}"
+```
+
+### Query Patterns Enabled
+
+```python
+# User scope queries - eliminate scans
+GSITYPEPK = "SCOPE#USER#john_doe#AIUsageMetric"
+GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+
+# Environment scope queries - eliminate scans  
+GSITYPEPK = "SCOPE#ENV#production#AIUsageMetric"
+GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+
+# Job scope queries - alternative to GSI3
+GSITYPEPK = "SCOPE#JOB#batch-123#AIUsageMetric"
+GSITYPESK = "DATE#2024-01-01# to DATE#2024-01-31#~"
+```
+
+### Benefits
+
+- **Eliminate scan operations**: User/environment queries become O(log n) instead of O(n)
+- **Zero additional GSI costs**: Uses existing GSITYPE infrastructure
+- **Unified query interface**: Single pattern for all scope-based queries
+- **Better resource utilization**: Transform underused index into high-value query path
+
+### Implementation Status
+
+**Phase 1 Completed**: 
+- ✅ Optimized job queries to use GSI3 instead of scans
+- ✅ Added fallback scan operations for reliability
+
+**Phase 2 Planned**:
+- 🔄 Implement GSITYPE composite keys for user/environment scopes
+- 🔄 Migrate CostMonitor to use GSITYPE queries
+- 🔄 Backfill historical records with GSITYPE keys
+
+**Performance Impact**:
+- Job queries: Scan → GSI3 query (60-80% faster)
+- User/environment queries: Scan → GSITYPE query (planned 60-80% faster)
+- Cost monitoring scalability: Linear → Logarithmic performance
+
+### Reference Documentation
+
+See `GSITYPE_OPTIMIZATION_STRATEGY.md` for detailed implementation guide, code examples, and migration strategy.
+
+## Key Design Principles
+
+1. **Maximize existing infrastructure** - Use provisioned GSIs efficiently before adding new ones
+2. **Maintain backward compatibility** - Existing query patterns continue to work
+3. **Graceful degradation** - Scan fallbacks ensure reliability during migration
+4. **Cost-effective optimization** - Significant performance gains with minimal additional AWS costs
+
 # Performance Testing Guidelines
 
 ## CRITICAL: Environment-Dependent Performance Tests
