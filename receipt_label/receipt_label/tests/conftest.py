@@ -136,11 +136,11 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     table_name, _ = dynamodb_table_and_s3_bucket
 
     # Only set table_name from dynamodb_table_and_s3_bucket if not already in environment
-    if "DYNAMO_TABLE_NAME" not in os.environ:
-        os.environ["DYNAMO_TABLE_NAME"] = table_name
+    if "DYNAMODB_TABLE_NAME" not in os.environ:
+        os.environ["DYNAMODB_TABLE_NAME"] = table_name
 
     # Use the table name from environment (which might have been set by a specific test)
-    table_name = os.environ["DYNAMO_TABLE_NAME"]
+    table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
     # 1) Fake Dynamo + OpenAI in get_clients()
     fake_openai = mocker.Mock()

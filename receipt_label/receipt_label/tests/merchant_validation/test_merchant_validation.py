@@ -6,7 +6,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 # Set dummy environment variable before any imports
-os.environ["DYNAMO_TABLE_NAME"] = "test-table"
+os.environ["DYNAMODB_TABLE_NAME"] = "test-table"
 
 # third‑party
 import pytest
