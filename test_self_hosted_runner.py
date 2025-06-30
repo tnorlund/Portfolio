@@ -30,3 +30,4 @@ if __name__ == "__main__":
     test_self_hosted_runner()
     test_enhanced_gsi3_feature()
     print("🎉 Self-hosted runner test completed successfully!")
+    print("💰 Testing cost optimization with hybrid runners!")
