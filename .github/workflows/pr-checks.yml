@@ -32,35 +32,26 @@ jobs:
             echo "formatted=false" >> $GITHUB_OUTPUT
           fi
 
-  # Fast subset of tests for PRs
-  quick-tests:
+  # Fast subset of tests for PRs - Python packages on self-hosted
+  quick-tests-python:
     name: Quick Tests (${{ matrix.package }})
     needs: format-check
     if: always()
-    runs-on: ${{ matrix.package == 'portfolio' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: self-hosted
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label, portfolio]
+        package: [receipt_dynamo, receipt_label]
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up environment
+      - name: Set up Python environment
         uses: actions/setup-python@v4
-        if: matrix.package != 'portfolio'
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-node@v3
-        if: matrix.package == 'portfolio'
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'portfolio/package-lock.json'
-
       - name: Run Python tests
-        if: matrix.package != 'portfolio'
         working-directory: ${{ matrix.package }}
         run: |
           # Install package with test dependencies
@@ -89,8 +80,24 @@ jobs:
             pytest tests/unit -n auto -m "not slow" --tb=short -q -o addopts=""
           fi
 
+  # TypeScript tests on GitHub-hosted
+  quick-tests-typescript:
+    name: Quick Tests (portfolio)
+    needs: format-check
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+
       - name: Run TypeScript checks
-        if: matrix.package == 'portfolio'
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
@@ -100,14 +107,15 @@ jobs:
   # Status check for branch protection
   pr-status:
     name: PR Status
-    needs: [format-check, quick-tests]
+    needs: [format-check, quick-tests-python, quick-tests-typescript]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Log status
         run: |
           formatted='${{ needs.format-check.outputs.formatted }}'
-          tests_result='${{ needs.quick-tests.result }}'
+          python_tests_result='${{ needs.quick-tests-python.result }}'
+          typescript_tests_result='${{ needs.quick-tests-typescript.result }}'
 
           echo "=== PR Status Summary ==="
           if [[ "$formatted" == "true" ]]; then
@@ -116,23 +124,34 @@ jobs:
             echo "❌ Code needs formatting (run 'make format')"
           fi
 
-          if [[ "$tests_result" == "success" ]]; then
-            echo "✅ Tests pass"
+          if [[ "$python_tests_result" == "success" ]]; then
+            echo "✅ Python tests pass"
           else
-            echo "❌ Tests failed"
+            echo "❌ Python tests failed"
+          fi
+
+          if [[ "$typescript_tests_result" == "success" ]]; then
+            echo "✅ TypeScript tests pass"
+          else
+            echo "❌ TypeScript tests failed"
           fi
           echo "========================="
 
       - name: Set status
         run: |
           # Only fail if tests fail, not formatting
-          if [[ "${{ needs.quick-tests.result }}" == "success" ]]; then
+          python_result='${{ needs.quick-tests-python.result }}'
+          typescript_result='${{ needs.quick-tests-typescript.result }}'
+
+          if [[ "$python_result" == "success" && "$typescript_result" == "success" ]]; then
             echo "All critical checks passed!"
             if [[ "${{ needs.format-check.outputs.formatted }}" != "true" ]]; then
               echo "Note: Formatting issues detected but not blocking"
             fi
             exit 0
           else
-            echo "Tests failed"
+            echo "One or more test suites failed:"
+            echo "Python tests: $python_result"
+            echo "TypeScript tests: $typescript_result"
             exit 1
           fi
