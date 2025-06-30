@@ -37,7 +37,7 @@ jobs:
     name: Quick Tests (${{ matrix.package }})
     needs: format-check
     if: always()
-    runs-on: ${{ matrix.package == 'portfolio' && 'ubuntu-latest' || '[self-hosted, python-tests]' }}
+    runs-on: ${{ matrix.package == 'portfolio' && 'ubuntu-latest' || 'self-hosted' }}
     strategy:
       matrix:
         package: [receipt_dynamo, receipt_label, portfolio]
