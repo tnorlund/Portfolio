@@ -117,7 +117,7 @@ def validate_handler(event, _context):
     merchant_name = event["merchant_name"]
     receipt_count = int(event["receipt_count"])
     dynamo_client, _, _ = get_clients()
-    _, _, words, _, _, labels = dynamo_client.getReceiptDetails(
+    _, _, words, _, _, labels = dynamo_client.get_receipt_details(
         image_id=image_id,
         receipt_id=receipt_id,
     )
