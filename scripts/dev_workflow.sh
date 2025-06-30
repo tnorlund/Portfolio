@@ -30,7 +30,7 @@ show_menu() {
     echo "Quick Development (Low CI cost):"
     echo "  1) 🎨 Format code only"
     echo "  2) 🧪 Run quick local tests (receipt_dynamo)"
-    echo "  3) 🧪 Run quick local tests (receipt_label)" 
+    echo "  3) 🧪 Run quick local tests (receipt_label)"
     echo "  4) 📦 Quick check + format (all packages)"
     echo ""
     echo "Comprehensive Testing (Pre-push validation):"
@@ -48,9 +48,10 @@ show_menu() {
     echo " 14) 📊 Check GitHub Actions usage"
     echo ""
     echo "Runner Management:"
-    echo " 15) 🖥️  Start self-hosted runner"
-    echo " 16) 🛑 Stop self-hosted runner"
-    echo " 17) 📋 Check runner status"
+    echo " 15) 🖥️  Start all self-hosted runners"
+    echo " 16) 🛑 Stop all self-hosted runners"
+    echo " 17) 📋 Check all runner status"
+    echo " 18) ⚡ Quick setup additional runners"
     echo ""
     echo " 0) 🚪 Exit"
 }
@@ -150,38 +151,99 @@ run_action() {
             fi
             ;;
         15)
-            echo -e "${GREEN}🖥️  Starting self-hosted runner...${NC}"
+            echo -e "${GREEN}🖥️  Starting all self-hosted runners...${NC}"
+
+            # Start runner 1 (original)
             cd /Users/tnorlund/GitHub/actions-runner
-            nohup ./run.sh > runner.log 2>&1 &
-            echo $! > runner.pid
-            echo -e "${GREEN}✅ Runner started in background (PID: $(cat runner.pid))${NC}"
-            echo "Log file: /Users/tnorlund/GitHub/actions-runner/runner.log"
+            if [ ! -f "runner.pid" ] || ! ps -p $(cat runner.pid 2>/dev/null) > /dev/null 2>&1; then
+                nohup ./run.sh > runner.log 2>&1 &
+                echo $! > runner.pid
+                echo -e "${GREEN}✅ Runner 1 started (PID: $(cat runner.pid))${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Runner 1 already running${NC}"
+            fi
+
+            # Start additional runners
+            for i in {2..4}; do
+                local runner_dir="/Users/tnorlund/GitHub/actions-runner-${i}"
+                if [ -d "$runner_dir" ]; then
+                    cd "$runner_dir"
+                    if [ ! -f "runner.pid" ] || ! ps -p $(cat runner.pid 2>/dev/null) > /dev/null 2>&1; then
+                        nohup ./run.sh > runner.log 2>&1 &
+                        echo $! > runner.pid
+                        echo -e "${GREEN}✅ Runner $i started (PID: $(cat runner.pid))${NC}"
+                    else
+                        echo -e "${YELLOW}⚠️  Runner $i already running${NC}"
+                    fi
+                else
+                    echo -e "${BLUE}ℹ️  Runner $i not configured yet${NC}"
+                fi
+            done
+
             cd "$PROJECT_ROOT"
+            echo -e "${GREEN}🎉 All available runners started!${NC}"
             ;;
         16)
-            echo -e "${GREEN}🛑 Stopping self-hosted runner...${NC}"
-            if [ -f "/Users/tnorlund/GitHub/actions-runner/runner.pid" ]; then
-                kill $(cat /Users/tnorlund/GitHub/actions-runner/runner.pid) 2>/dev/null || true
-                rm -f /Users/tnorlund/GitHub/actions-runner/runner.pid
-                echo -e "${GREEN}✅ Runner stopped${NC}"
-            else
-                echo -e "${YELLOW}⚠️  No runner PID file found${NC}"
-            fi
+            echo -e "${GREEN}🛑 Stopping all self-hosted runners...${NC}"
+
+            # Stop all runners
+            for i in {1..4}; do
+                local runner_dir="/Users/tnorlund/GitHub/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
+                if [ -d "$runner_dir" ] && [ -f "$runner_dir/runner.pid" ]; then
+                    local pid=$(cat "$runner_dir/runner.pid")
+                    if ps -p $pid > /dev/null 2>&1; then
+                        kill $pid 2>/dev/null || true
+                        echo -e "${GREEN}✅ Runner $i stopped (PID: $pid)${NC}"
+                    fi
+                    rm -f "$runner_dir/runner.pid"
+                fi
+            done
+
+            # Also kill any stray runner processes
+            pkill -f "Runner.Listener" 2>/dev/null || true
+            echo -e "${GREEN}🎉 All runners stopped!${NC}"
             ;;
         17)
-            echo -e "${GREEN}📋 Checking runner status...${NC}"
-            if [ -f "/Users/tnorlund/GitHub/actions-runner/runner.pid" ]; then
-                local pid=$(cat /Users/tnorlund/GitHub/actions-runner/runner.pid)
-                if ps -p $pid > /dev/null 2>&1; then
-                    echo -e "${GREEN}✅ Runner is running (PID: $pid)${NC}"
-                    echo "Recent log entries:"
-                    tail -5 /Users/tnorlund/GitHub/actions-runner/runner.log 2>/dev/null || echo "No log file found"
+            echo -e "${GREEN}📋 Checking all runner status...${NC}"
+            echo ""
+
+            local active_count=0
+            for i in {1..4}; do
+                local runner_dir="/Users/tnorlund/GitHub/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
+                if [ -d "$runner_dir" ]; then
+                    if [ -f "$runner_dir/runner.pid" ]; then
+                        local pid=$(cat "$runner_dir/runner.pid")
+                        if ps -p $pid > /dev/null 2>&1; then
+                            echo -e "${GREEN}✅ Runner $i: ACTIVE (PID: $pid)${NC}"
+                            ((active_count++))
+                        else
+                            echo -e "${RED}❌ Runner $i: STOPPED (stale PID)${NC}"
+                            rm -f "$runner_dir/runner.pid"
+                        fi
+                    else
+                        echo -e "${YELLOW}⚠️  Runner $i: NOT RUNNING${NC}"
+                    fi
                 else
-                    echo -e "${RED}❌ Runner not running (stale PID file)${NC}"
-                    rm -f /Users/tnorlund/GitHub/actions-runner/runner.pid
+                    echo -e "${BLUE}ℹ️  Runner $i: NOT CONFIGURED${NC}"
                 fi
+            done
+
+            echo ""
+            echo -e "${BLUE}Total active runners: $active_count${NC}"
+            if [ $active_count -eq 0 ]; then
+                echo -e "${YELLOW}💡 Use option 15 to start runners${NC}"
+            elif [ $active_count -eq 1 ]; then
+                echo -e "${YELLOW}💡 Consider configuring more runners for parallelization${NC}"
             else
-                echo -e "${YELLOW}⚠️  Runner not running${NC}"
+                echo -e "${GREEN}🚀 Great! Multiple runners for parallel execution${NC}"
+            fi
+            ;;
+        18)
+            echo -e "${GREEN}⚡ Running quick setup for additional runners...${NC}"
+            if [ -f "$PROJECT_ROOT/scripts/quick_runner_setup.sh" ]; then
+                "$PROJECT_ROOT/scripts/quick_runner_setup.sh"
+            else
+                echo -e "${RED}❌ Setup script not found${NC}"
             fi
             ;;
         0)
@@ -198,12 +260,12 @@ run_action() {
 while true; do
     show_menu
     echo ""
-    echo -e "${BLUE}Enter your choice (0-17):${NC}"
+    echo -e "${BLUE}Enter your choice (0-18):${NC}"
     read -r choice
     echo ""
-    
+
     run_action "$choice"
-    
+
     echo ""
     echo -e "${BLUE}Press Enter to continue...${NC}"
     read -r
