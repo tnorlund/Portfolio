@@ -3,17 +3,26 @@ from typing import List, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_status import JobStatus
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBResourceNotFoundError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    OperationError,
+)
+from receipt_dynamo.entities.job import Job, item_to_job
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: dict) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -22,7 +31,7 @@ def validate_last_evaluated_key(lek: dict) -> None:
 
 
 class _Job(DynamoClientProtocol):
-    def addJob(self, job: Job):
+    def add_job(self, job: Job):
         """Adds a job to the database
 
         Args:
@@ -44,19 +53,21 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} already exists"
-                ) from e
+                raise ValueError(f"Job with ID {job.job_id} already exists") from e
             elif error_code == "ResourceNotFoundException":
-                raise Exception(f"Could not add job to DynamoDB: {e}") from e
+                raise DynamoDBResourceNotFoundError(
+                    f"Could not add job to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(f"Could not add job to DynamoDB: {e}") from e
+                raise DynamoDBError(f"Could not add job to DynamoDB: {e}") from e
 
-    def addJobs(self, jobs: list[Job]):
+    def add_jobs(self, jobs: list[Job]):
         """Adds a list of jobs to the database
 
         Args:
@@ -84,26 +95,26 @@ class _Job(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error adding jobs: {e}")
+                raise DynamoDBError(f"Error adding jobs: {e}") from e
 
-    def updateJob(self, job: Job):
+    def update_job(self, job: Job):
         """Updates a job in the database
 
         Args:
@@ -126,21 +137,25 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Job with ID {job.job_id} does not exist")
+                raise EntityNotFoundError(
+                    f"Job with ID {job.job_id} does not exist"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(f"Error updating job: {e}")
+                raise DynamoDBError(f"Error updating job: {e}") from e
 
-    def updateJobs(self, jobs: list[Job]):
+    def update_jobs(self, jobs: list[Job]):
         """
         Updates a list of jobs in the database using transactions.
         Each job update is conditional upon the job already existing.
@@ -185,21 +200,11 @@ class _Job(DynamoClientProtocol):
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more jobs do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise Exception(
+                    raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
-                    raise Exception(f"Internal server error: {e}") from e
-                elif error_code == "ValidationException":
-                    raise Exception(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise Exception(f"Access denied: {e}") from e
-                else:
-                    raise ValueError(f"Error updating jobs: {e}") from e
 
-    def deleteJob(self, job: Job):
+    def delete_job(self, job: Job):
         """Deletes a job from the database
 
         Args:
@@ -221,21 +226,23 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Job with ID {job.job_id} does not exist")
+                raise ValueError(f"Job with ID {job.job_id} does not exist") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
                 raise ValueError(f"Error deleting job: {e}") from e
 
-    def deleteJobs(self, jobs: list[Job]):
+    def delete_jobs(self, jobs: list[Job]):
         """
         Deletes a list of jobs from the database using transactions.
         Each delete operation is conditional upon the job existing.
@@ -276,19 +283,21 @@ class _Job(DynamoClientProtocol):
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError("One or more jobs do not exist") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
                 raise ValueError(f"Error deleting jobs: {e}") from e
 
-    def getJob(self, job_id: str) -> Job:
+    def get_job(self, job_id: str) -> Job:
         """
         Retrieves a job from the database.
 
@@ -317,23 +326,25 @@ class _Job(DynamoClientProtocol):
                 },
             )
             if "Item" in response:
-                return itemToJob(response["Item"])
+                return item_to_job(response["Item"])
             else:
-                raise ValueError(f"Job with ID {job_id} does not exist.")
+                raise EntityNotFoundError(f"Job with ID {job_id} does not exist.")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(f"Validation error: {e}") from e
+                raise OperationError(f"Validation error: {e}") from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise Exception(f"Access denied: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise Exception(f"Error getting job: {e}") from e
+                raise OperationError(f"Error getting job: {e}") from e
 
-    def getJobWithStatus(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
+    def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
         """Get a job with all its status updates
 
         Args:
@@ -342,17 +353,50 @@ class _Job(DynamoClientProtocol):
         Returns:
             Tuple[Job, List[JobStatus]]: A tuple containing the job and a list of its status updates
         """
-        # Use the protected method instead of trying to access a private method
-        job_item, statuses = self._getJobWithStatus(job_id)
+        if job_id is None:
+            raise ValueError("Job ID is required and cannot be None.")
 
-        if job_item is None:
-            raise ValueError(f"Job with ID {job_id} does not exist.")
+        # Validate job_id as a UUID
+        assert_valid_uuid(job_id)
 
-        job = itemToJob(job_item)
+        try:
+            # Get the job first
+            job = self.get_job(job_id)
 
-        return job, statuses
+            # Get the job status updates
+            status_response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"JOB#{job_id}"},
+                    ":sk": {"S": "STATUS#"},
+                },
+            )
 
-    def listJobs(
+            statuses = []
+            if "Items" in status_response:
+                # Convert DynamoDB items to JobStatus objects
+                for item in status_response["Items"]:
+                    statuses.append(item_to_job_status(item))
+
+            return job, statuses
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            elif error_code == "ValidationException":
+                raise OperationError(f"Validation error: {e}") from e
+            elif error_code == "InternalServerError":
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            elif error_code == "AccessDeniedException":
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
+            else:
+                raise OperationError(f"Error getting job with status: {e}") from e
+
+    def list_jobs(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[Job], dict | None]:
         """
@@ -400,7 +444,7 @@ class _Job(DynamoClientProtocol):
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                jobs.extend([itemToJob(item) for item in response["Items"]])
+                jobs.extend([item_to_job(item) for item in response["Items"]])
 
                 # If we have reached or exceeded the limit, trim the list and
                 # break.
@@ -412,9 +456,7 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -423,23 +465,25 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs from the database: {e}"
                 ) from e
 
-    def listJobsByStatus(
+    def list_jobs_by_status(
         self,
         status: str,
         limit: int = None,
@@ -481,9 +525,7 @@ class _Job(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
-            if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
-            ):
+            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
                 )
@@ -512,7 +554,7 @@ class _Job(DynamoClientProtocol):
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                jobs.extend([itemToJob(item) for item in response["Items"]])
+                jobs.extend([item_to_job(item) for item in response["Items"]])
 
                 # If we have reached or exceeded the limit, trim the list and
                 # break.
@@ -524,9 +566,7 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -535,23 +575,25 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs by status from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs by status from the database: {e}"
                 ) from e
 
-    def listJobsByUser(
+    def list_jobs_by_user(
         self,
         user_id: str,
         limit: int = None,
@@ -585,9 +627,7 @@ class _Job(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
-            if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
-            ):
+            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
                 )
@@ -619,7 +659,7 @@ class _Job(DynamoClientProtocol):
                     query_params["Limit"] = remaining
 
                 response = self._client.query(**query_params)
-                jobs.extend([itemToJob(item) for item in response["Items"]])
+                jobs.extend([item_to_job(item) for item in response["Items"]])
 
                 # If we have reached or exceeded the limit, trim the list and
                 # break.
@@ -631,9 +671,7 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -642,18 +680,20 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs by user from the database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
             elif error_code == "ValidationException":
-                raise Exception(
+                raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not list jobs by user from the database: {e}"
                 ) from e

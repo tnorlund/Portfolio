@@ -2,11 +2,17 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    OperationError,
+)
 
 # Fix circular import by importing directly from the entity module
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
-    itemToReceiptSection,
+    item_to_receipt_section,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -20,25 +26,25 @@ class _ReceiptSection(DynamoClientProtocol):
 
     Methods
     -------
-    addReceiptSection(section: ReceiptSection)
+    add_receipt_section(section: ReceiptSection)
         Adds a single ReceiptSection.
-    addReceiptSections(sections: list[ReceiptSection])
+    add_receipt_sections(sections: list[ReceiptSection])
         Adds multiple ReceiptSections.
-    updateReceiptSection(section: ReceiptSection)
+    update_receipt_section(section: ReceiptSection)
         Updates a ReceiptSection.
-    updateReceiptSections(sections: list[ReceiptSection])
+    update_receipt_sections(sections: list[ReceiptSection])
         Updates multiple ReceiptSections.
-    deleteReceiptSection(receipt_id: int, image_id: str, section_type: str)
+    delete_receipt_section(receipt_id: int, image_id: str, section_type: str)
         Deletes a single ReceiptSection by IDs.
-    deleteReceiptSections(sections: list[ReceiptSection])
+    delete_receipt_sections(sections: list[ReceiptSection])
         Deletes multiple ReceiptSections.
-    getReceiptSection(receipt_id: int, image_id: str, section_type: str) -> ReceiptSection
+    get_receipt_section(receipt_id: int, image_id: str, section_type: str) -> ReceiptSection
         Retrieves a single ReceiptSection by IDs.
-    listReceiptSections() -> list[ReceiptSection]
+    list_receipt_sections() -> list[ReceiptSection]
         Returns all ReceiptSections from the table.
     """
 
-    def addReceiptSection(self, section: ReceiptSection):
+    def add_receipt_section(self, section: ReceiptSection):
         """Adds a single ReceiptSection to DynamoDB."""
         try:
             self._client.put_item(
@@ -52,12 +58,12 @@ class _ReceiptSection(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} already exists"
+                    "ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} already exists"
                 )
             else:
                 raise
 
-    def addReceiptSections(self, sections: list[ReceiptSection]):
+    def add_receipt_sections(self, sections: list[ReceiptSection]):
         """Adds multiple ReceiptSections to DynamoDB in batches of CHUNK_SIZE."""
         if sections is None:
             raise ValueError(
@@ -91,7 +97,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 "Could not add ReceiptSections to the database"
             ) from e
 
-    def updateReceiptSection(self, section: ReceiptSection):
+    def update_receipt_section(self, section: ReceiptSection):
         """Updates an existing ReceiptSection in DynamoDB."""
         try:
             self._client.put_item(
@@ -105,12 +111,12 @@ class _ReceiptSection(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} does not exist"
+                    "ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} does not exist"
                 )
             else:
                 raise
 
-    def updateReceiptSections(self, sections: list[ReceiptSection]):
+    def update_receipt_sections(self, sections: list[ReceiptSection]):
         """Updates multiple existing ReceiptSections in DynamoDB."""
         if sections is None:
             raise ValueError(
@@ -159,7 +165,7 @@ class _ReceiptSection(DynamoClientProtocol):
                         f"Could not update ReceiptSections in the database: {e}"
                     )
 
-    def deleteReceiptSection(
+    def delete_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ):
         """Deletes a single ReceiptSection by IDs."""
@@ -167,9 +173,9 @@ class _ReceiptSection(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
+                        "S": "RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
                     },
                 },
                 ConditionExpression="attribute_exists(PK)",
@@ -185,7 +191,7 @@ class _ReceiptSection(DynamoClientProtocol):
             else:
                 raise
 
-    def deleteReceiptSections(self, sections: list[ReceiptSection]):
+    def delete_receipt_sectionsion(self, sections: list[ReceiptSection]):
         """Deletes multiple ReceiptSections in batch."""
         try:
             for i in range(0, len(sections), CHUNK_SIZE):
@@ -207,7 +213,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 "Could not delete ReceiptSections from the database"
             ) from e
 
-    def getReceiptSection(
+    def get_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ) -> ReceiptSection:
         """Retrieves a single ReceiptSection by IDs."""
@@ -215,19 +221,19 @@ class _ReceiptSection(DynamoClientProtocol):
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "PK": {"S": "IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
+                        "S": "RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
                     },
                 },
             )
-            return itemToReceiptSection(response["Item"])
+            return item_to_receipt_section(response["Item"])
         except KeyError:
             raise ValueError(
                 f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
             )
 
-    def getReceiptSectionsFromReceipt(
+    def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptSection]:
         """Retrieves all ReceiptSections for a given receipt."""
@@ -237,8 +243,8 @@ class _ReceiptSection(DynamoClientProtocol):
             raise ValueError("receipt_id is required")
         try:
             # Query by the image ID for the PK and
-            expected_pk = f"IMAGE#{image_id}"
-            start_of_sk = f"RECEIPT#{receipt_id:05d}#SECTION#"
+            expected_pk = "IMAGE#{image_id}"
+            start_of_sk = "RECEIPT#{receipt_id:05d}#SECTION#"
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk and begins_with(SK, :sk)",
@@ -247,23 +253,23 @@ class _ReceiptSection(DynamoClientProtocol):
                     ":sk": {"S": start_of_sk},
                 },
             )
-            return [itemToReceiptSection(item) for item in response["Items"]]
+            return [item_to_receipt_section(item) for item in response["Items"]]
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise ValueError(
-                    f"Could not get ReceiptSections from DynamoDB: {e}"
+                    "Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise ValueError(
-                    f"Provisioned throughput exceeded: {e}"
+                    "Provisioned throughput exceeded: {e}"
                 ) from e
             else:
                 raise ValueError(
-                    f"Could not get ReceiptSections from DynamoDB: {e}"
+                    "Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
 
-    def listReceiptSections(
+    def list_receipt_sections(
         self, limit: int = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptSection], dict | None]:
         """Returns all ReceiptSections from the table with optional pagination."""
@@ -292,7 +298,7 @@ class _ReceiptSection(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             receipt_sections.extend(
-                [itemToReceiptSection(item) for item in response["Items"]]
+                [item_to_receipt_section(item) for item in response["Items"]]
             )
 
             if limit is None:
@@ -304,7 +310,7 @@ class _ReceiptSection(DynamoClientProtocol):
                     response = self._client.query(**query_params)
                     receipt_sections.extend(
                         [
-                            itemToReceiptSection(item)
+                            item_to_receipt_section(item)
                             for item in response["Items"]
                         ]
                     )
@@ -318,16 +324,14 @@ class _ReceiptSection(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise Exception(
-                    f"Could not list receipt sections from DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError("Could not list receipt sections from DynamoDB: {e}")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise Exception(f"Provisioned throughput exceeded: {e}") from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
+                    "One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise Exception(f"Internal server error: {e}") from e
+                raise DynamoDBServerError("Internal server error: {e}")
             else:
-                raise Exception(f"Error listing receipt sections: {e}") from e
+                raise OperationError("Error listing receipt sections: {e}")

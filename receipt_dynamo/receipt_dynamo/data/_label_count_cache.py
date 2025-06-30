@@ -3,16 +3,17 @@ from typing import Dict, List, Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
-    itemToLabelCountCache,
+    item_to_label_count_cache,
 )
 
 
 class _LabelCountCache(DynamoClientProtocol):
     """Accessor methods for LabelCountCache items in DynamoDB."""
 
-    def addLabelCountCache(self, item: LabelCountCache) -> None:
+    def add_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
@@ -32,18 +33,18 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"LabelCountCache for label {item.label} already exists"
                 ) from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add label count cache to DynamoDB: {e}"
-                ) from e
+                )
 
-    def addLabelCountCaches(self, items: list[LabelCountCache]) -> None:
+    def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
             raise ValueError("items parameter is required and cannot be None.")
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
             raise ValueError(
-                "items must be a list of LabelCountCache objects."
+                "items must be a list of LabelCountCache objects.f"
             )
         try:
             for i in range(0, len(items), 25):
@@ -69,11 +70,11 @@ class _LabelCountCache(DynamoClientProtocol):
                     "LabelCountCache already exists for one or more labels"
                 ) from e
             else:
-                raise Exception(
+                raise DynamoDBError(
                     f"Could not add label count caches to DynamoDB: {e}"
-                ) from e
+                )
 
-    def updateLabelCountCache(self, item: LabelCountCache) -> None:
+    def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
@@ -93,11 +94,11 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"LabelCountCache for label {item.label} does not exist"
                 ) from e
             else:
-                raise Exception(
-                    f"Could not update label count cache in DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError(
+                    f"Could not update label count cache in DynamoDB: {e}f"
+                )
 
-    def getLabelCountCache(self, label: str) -> Optional[LabelCountCache]:
+    def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -108,11 +109,11 @@ class _LabelCountCache(DynamoClientProtocol):
             )
             if "Item" not in response:
                 return None
-            return itemToLabelCountCache(response["Item"])
+            return item_to_label_count_cache(response["Item"])
         except ClientError as e:
-            raise Exception(f"Error getting LabelCountCache: {e}")
+            raise OperationError(f"Error getting LabelCountCache: {e}f") from e
 
-    def listLabelCountCaches(
+    def list_label_count_caches(
         self,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
@@ -135,7 +136,7 @@ class _LabelCountCache(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             counts.extend(
-                [itemToLabelCountCache(item) for item in response["Items"]]
+                [item_to_label_count_cache(item) for item in response["Items"]]
             )
             if limit is None:
                 while "LastEvaluatedKey" in response:
@@ -145,7 +146,7 @@ class _LabelCountCache(DynamoClientProtocol):
                     response = self._client.query(**query_params)
                     counts.extend(
                         [
-                            itemToLabelCountCache(item)
+                            item_to_label_count_cache(item)
                             for item in response["Items"]
                         ]
                     )
@@ -156,6 +157,6 @@ class _LabelCountCache(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
-                raise ValueError("LabelCountCache table does not exist") from e
+                raise ValueError("LabelCountCache table does not exist")
             else:
-                raise Exception(f"Error listing LabelCountCaches: {e}") from e
+                raise OperationError(f"Error listing LabelCountCaches: {e}")

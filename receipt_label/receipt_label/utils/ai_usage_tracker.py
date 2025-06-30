@@ -244,6 +244,9 @@ class AIUsageTracker:
             error = None
             response = None
 
+            # Extract metadata BEFORE calling the function
+            extracted_metadata = kwargs.pop("metadata", None)
+
             try:
                 response = func(*args, **kwargs)
                 return response
@@ -282,6 +285,19 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
+
+                # Include metadata from extracted metadata (added by context manager)
+                if extracted_metadata:
+                    # Extract context fields
+                    if extracted_metadata.get("operation_type"):
+                        metadata["operation_type"] = extracted_metadata[
+                            "operation_type"
+                        ]
+                    if extracted_metadata.get("job_id"):
+                        self.current_job_id = extracted_metadata["job_id"]
+                    if extracted_metadata.get("batch_id"):
+                        self.current_batch_id = extracted_metadata["batch_id"]
+
                 metadata.update(
                     {
                         "function": func.__name__,
@@ -324,6 +340,9 @@ class AIUsageTracker:
             error = None
             response = None
 
+            # Extract metadata BEFORE calling the function
+            extracted_metadata = kwargs.pop("metadata", None)
+
             try:
                 response = func(*args, **kwargs)
                 return response
@@ -355,6 +374,19 @@ class AIUsageTracker:
 
                 # Create base metadata with environment auto-tags
                 metadata = self._create_base_metadata()
+
+                # Include metadata from extracted metadata (added by context manager)
+                if extracted_metadata:
+                    # Extract context fields
+                    if extracted_metadata.get("operation_type"):
+                        metadata["operation_type"] = extracted_metadata[
+                            "operation_type"
+                        ]
+                    if extracted_metadata.get("job_id"):
+                        self.current_job_id = extracted_metadata["job_id"]
+                    if extracted_metadata.get("batch_id"):
+                        self.current_batch_id = extracted_metadata["batch_id"]
+
                 metadata.update(
                     {
                         "function": func.__name__,
@@ -632,6 +664,32 @@ class AIUsageTracker:
                                     self._tracker = tracker
 
                                 def create(self, **kwargs):
+                                    # Import here to avoid circular dependency
+                                    from .ai_usage_context import (
+                                        get_current_context,
+                                    )
+
+                                    # Merge thread-local context with kwargs
+                                    current_context = get_current_context()
+                                    if current_context:
+                                        # Add context metadata to kwargs
+                                        if "metadata" not in kwargs:
+                                            kwargs["metadata"] = {}
+                                        kwargs["metadata"].update(
+                                            {
+                                                "operation_type": current_context.get(
+                                                    "operation_type"
+                                                ),
+                                                "job_id": current_context.get(
+                                                    "job_id"
+                                                ),
+                                                "batch_id": current_context.get(
+                                                    "batch_id"
+                                                ),
+                                            }
+                                        )
+
+                                    # The decorator will extract and remove metadata
                                     @self._tracker.track_openai_completion
                                     def _create(**kw):
                                         return self._completions.create(**kw)
@@ -653,6 +711,29 @@ class AIUsageTracker:
                             self._tracker = tracker
 
                         def create(self, **kwargs):
+                            # Import here to avoid circular dependency
+                            from .ai_usage_context import get_current_context
+
+                            # Merge thread-local context with kwargs
+                            current_context = get_current_context()
+                            if current_context:
+                                # Add context metadata to kwargs
+                                if "metadata" not in kwargs:
+                                    kwargs["metadata"] = {}
+                                kwargs["metadata"].update(
+                                    {
+                                        "operation_type": current_context.get(
+                                            "operation_type"
+                                        ),
+                                        "job_id": current_context.get(
+                                            "job_id"
+                                        ),
+                                        "batch_id": current_context.get(
+                                            "batch_id"
+                                        ),
+                                    }
+                                )
+
                             @self._tracker.track_openai_embedding
                             def _create(**kw):
                                 return self._embeddings.create(**kw)

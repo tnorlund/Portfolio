@@ -75,9 +75,7 @@ class Instance:
         elif isinstance(launched_at, str):
             self.launched_at = launched_at
         else:
-            raise ValueError(
-                "launched_at must be a datetime object or a string"
-            )
+            raise ValueError("launched_at must be a datetime object or a string")
 
         if not isinstance(ip_address, str):
             raise ValueError("ip_address must be a string")
@@ -96,9 +94,7 @@ class Instance:
             not isinstance(health_status, str)
             or health_status.lower() not in valid_health_statuses
         ):
-            raise ValueError(
-                f"health_status must be one of {valid_health_statuses}"
-            )
+            raise ValueError(f"health_status must be one of {valid_health_statuses}")
         self.health_status = health_status.lower()
 
     def key(self) -> dict:
@@ -227,7 +223,7 @@ class Instance:
         )
 
 
-def itemToInstance(item: dict) -> Instance:
+def item_to_instance(item: dict) -> Instance:
     """Converts a DynamoDB item to an Instance object.
 
     Args:

@@ -2,7 +2,7 @@ import pytest
 
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
-    itemToReceiptWordTag,
+    item_to_receipt_word_tag,
 )
 
 
@@ -24,10 +24,7 @@ def example_receipt_word_tag():
 @pytest.mark.unit
 def test_receipt_word_tag_init_valid(example_receipt_word_tag):
     """Test constructor initializes the correct fields."""
-    assert (
-        example_receipt_word_tag.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_word_tag.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_word_tag.receipt_id == 45
     assert example_receipt_word_tag.line_id == 6
     assert example_receipt_word_tag.word_id == 789
@@ -38,9 +35,7 @@ def test_receipt_word_tag_init_valid(example_receipt_word_tag):
 def test_receipt_word_tag_init_invalid_image_id():
     """Test constructor raises ValueError if image_id is not a valid UUID."""
     with pytest.raises(ValueError, match="uuid must be a string"):
-        ReceiptWordTag(
-            123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
-        )
+        ReceiptWordTag(123, 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00")
     with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
         ReceiptWordTag(
             "bad-uuid", 2, 3, 4, "tag", timestamp_added="2021-01-01T00:00:00"
@@ -156,9 +151,7 @@ def test_receipt_word_tag_init_invalid_tag():
             long_tag,
             "2021-01-01T00:00:00",
         )
-    with pytest.raises(
-        ValueError, match="tag must not start with an underscore"
-    ):
+    with pytest.raises(ValueError, match="tag must not start with an underscore"):
         ReceiptWordTag(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -179,9 +172,7 @@ def test_receipt_word_tag_init_invalid_timestamp_added():
         ValueError,
         match="timestamp_added must be a datetime object or a string",
     ):
-        ReceiptWordTag(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123
-        )
+        ReceiptWordTag("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3, 4, "tag", 123)
 
 
 @pytest.mark.unit
@@ -354,8 +345,8 @@ def test_receipt_word_tag_to_item(example_receipt_word_tag):
 
 @pytest.mark.unit
 def test_receipt_word_tag_to_receipt_word_key(example_receipt_word_tag):
-    """Test the to_ReceiptWord_key method."""
-    key = example_receipt_word_tag.to_ReceiptWord_key()
+    """Test the to_receipt_word_key method."""
+    key = example_receipt_word_tag.to_receipt_word_key()
     assert key["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert key["SK"]["S"] == "RECEIPT#00045#LINE#00006#WORD#00789"
 
@@ -363,7 +354,7 @@ def test_receipt_word_tag_to_receipt_word_key(example_receipt_word_tag):
 @pytest.mark.unit
 def test_item_to_receipt_word_tag():
     """
-    Test itemToReceiptWordTag reconstructs a ReceiptWordTag from a DynamoDB
+    Test item_to_receipt_word_tag reconstructs a ReceiptWordTag from a DynamoDB
     item.
     """
     raw_item = {
@@ -385,7 +376,7 @@ def test_item_to_receipt_word_tag():
         "validated": {"BOOL": True},
     }
 
-    obj = itemToReceiptWordTag(raw_item)
+    obj = item_to_receipt_word_tag(raw_item)
     assert obj.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert obj.receipt_id == 5
     assert obj.line_id == 2
@@ -398,7 +389,7 @@ def test_item_to_receipt_word_tag():
 @pytest.mark.unit
 def test_item_to_receipt_word_tag_missing_keys():
     """
-    Test that itemToReceiptWordTag raises ValueError if PK, SK, or GSI1SK is
+    Test that item_to_receipt_word_tag raises ValueError if PK, SK, or GSI1SK is
     missing.
     """
     bad_item = {  # "PK" is missing
@@ -412,13 +403,13 @@ def test_item_to_receipt_word_tag_missing_keys():
         "TYPE": {"S": "RECEIPT_WORD_TAG"},
     }
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
-        itemToReceiptWordTag(bad_item)
+        item_to_receipt_word_tag(bad_item)
 
 
 @pytest.mark.unit
 def test_item_to_receipt_word_tag_invalid_format():
     """
-    Test that itemToReceiptWordTag raises ValueError if the PK/SK is badly
+    Test that item_to_receipt_word_tag raises ValueError if the PK/SK is badly
     formatted.
     """
     # Missing receipt ID portion or incorrectly formatted SK
@@ -437,7 +428,5 @@ def test_item_to_receipt_word_tag_invalid_format():
         "timestamp_added": {"N": "2021-01-01T00:00:00"},
         "validated": {"BOOL": True},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to ReceiptWordTag"
-    ):
-        itemToReceiptWordTag(bad_item)
+    with pytest.raises(ValueError, match="Error converting item to ReceiptWordTag"):
+        item_to_receipt_word_tag(bad_item)

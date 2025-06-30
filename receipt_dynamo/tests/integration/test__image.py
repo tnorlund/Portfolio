@@ -38,7 +38,7 @@ def test_addImage_raises_value_error_for_none_image(dynamodb_table):
     # Use the real table name from the fixture
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="Image parameter is required"):
-        client.addImage(None)
+        client.add_image(None)
 
 
 @pytest.mark.integration
@@ -48,7 +48,7 @@ def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="image must be an instance"):
-        client.addImage("not-an-image")
+        client.add_image("not-an-image")
 
 
 @pytest.mark.integration
@@ -77,7 +77,7 @@ def test_addImage_raises_conditional_check_failed(
     )
 
     with pytest.raises(ValueError, match="already exists"):
-        client.addImage(example_image)
+        client.add_image(example_image)
 
     mock_put.assert_called_once()
 
@@ -109,7 +109,7 @@ def test_addImage_raises_provisioned_throughput(
     )
 
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.addImage(example_image)
+        client.add_image(example_image)
 
     mock_put.assert_called_once()
 
@@ -142,7 +142,7 @@ def test_addImage_raises_internal_server_error(
     )
 
     with pytest.raises(Exception, match="Internal server error:"):
-        client.addImage(example_image)
+        client.add_image(example_image)
 
     mock_put.assert_called_once()
 
@@ -175,7 +175,7 @@ def test_addImage_raises_unknown_exception(
     )
 
     with pytest.raises(Exception, match="Error putting image:"):
-        client.addImage(example_image)
+        client.add_image(example_image)
 
     mock_put.assert_called_once()
 
@@ -186,10 +186,10 @@ def test_addImage(dynamodb_table, example_image):
     Verifies a successful addImage call actually persists data to DynamoDB.
     """
     client = DynamoClient(dynamodb_table)
-    client.addImage(example_image)
+    client.add_image(example_image)
 
     # Immediately call getImage after adding to prove integration.
-    retrieved_image = client.getImage(example_image.image_id)
+    retrieved_image = client.get_image(example_image.image_id)
     assert (
         retrieved_image == example_image
     ), "Retrieved image should match the image just added."
@@ -216,10 +216,10 @@ def test_getImage(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
 
     # We must add the image so there's something to retrieve.
-    client.addImage(example_image)
+    client.add_image(example_image)
 
     # Now specifically test getImage.
-    retrieved_image = client.getImage(example_image.image_id)
+    retrieved_image = client.get_image(example_image.image_id)
     assert (
         retrieved_image == example_image
     ), "The image retrieved via getImage should match the one added."
@@ -289,10 +289,10 @@ def test_image_get_details(dynamodb_table, example_image):
         1,
     )
 
-    client.addImage(image)
-    client.addLine(line)
-    client.addWord(word)
-    client.addLetter(letter)
+    client.add_image(image)
+    client.add_line(line)
+    client.add_word(word)
+    client.add_letter(letter)
     receipt_metadata = ReceiptMetadata(
         image_id=image.image_id,
         receipt_id=1,
@@ -302,7 +302,7 @@ def test_image_get_details(dynamodb_table, example_image):
         validated_by="NEARBY_LOOKUP",
         timestamp=datetime(2025, 1, 1, 0, 0, 0),
     )
-    client.addReceiptMetadata(receipt_metadata)
+    client.add_receipt_metadata(receipt_metadata)
     ocr_job = OCRJob(
         image_id=image.image_id,
         job_id="4f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -323,10 +323,10 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_count=1,
         status=OCRStatus.PENDING,
     )
-    client.addOCRJob(ocr_job)
-    client.addOCRRoutingDecision(routing_decision)
+    client.add_ocr_job(ocr_job)
+    client.add_ocr_routing_decision(routing_decision)
 
-    details = client.getImageDetails(image.image_id)
+    details = client.get_image_details(image.image_id)
 
     (
         images,
@@ -372,7 +372,7 @@ def test_image_get_details_multiple_receipt_metadatas(
     image = example_image
 
     # Add the image
-    client.addImage(image)
+    client.add_image(image)
 
     # Create multiple receipt metadatas for the same image
     receipt_metadata1 = ReceiptMetadata(
@@ -406,12 +406,12 @@ def test_image_get_details_multiple_receipt_metadatas(
     )
 
     # Add all receipt metadatas
-    client.addReceiptMetadata(receipt_metadata1)
-    client.addReceiptMetadata(receipt_metadata2)
-    client.addReceiptMetadata(receipt_metadata3)
+    client.add_receipt_metadata(receipt_metadata1)
+    client.add_receipt_metadata(receipt_metadata2)
+    client.add_receipt_metadata(receipt_metadata3)
 
     # Get image details
-    details = client.getImageDetails(image.image_id)
+    details = client.get_image_details(image.image_id)
 
     (
         images,
@@ -456,7 +456,7 @@ def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
     image = example_image
 
     # Add image with some basic data but no receipt metadata
-    client.addImage(image)
+    client.add_image(image)
 
     # Add a line just to have some data
     line = Line(
@@ -477,10 +477,10 @@ def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
         -0.10448461,
         1,
     )
-    client.addLine(line)
+    client.add_line(line)
 
     # Get image details
-    details = client.getImageDetails(image.image_id)
+    details = client.get_image_details(image.image_id)
 
     (
         images,
@@ -507,17 +507,17 @@ def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
 @pytest.mark.integration
 def test_image_delete(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
-    client.addImage(example_image)
-    client.deleteImage(example_image.image_id)
+    client.add_image(example_image)
+    client.delete_image(example_image.image_id)
     with pytest.raises(ValueError):
-        client.getImage(example_image.image_id)
+        client.get_image(example_image.image_id)
 
 
 @pytest.mark.integration
 def test_image_delete_error(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError):
-        client.deleteImage(example_image.image_id)
+        client.delete_image(example_image.image_id)
 
 
 @pytest.mark.integration
@@ -532,9 +532,9 @@ def test_image_delete_all(dynamodb_table):
     }
     # Generate 1000 images with random UUIDs.
     images = [Image(str(uuid4()), **correct_image_params) for _ in range(1000)]
-    client.addImages(images)
-    client.deleteImages(images)
-    response_images, _ = client.listImages()
+    client.add_images(images)
+    client.delete_images(images)
+    response_images, _ = client.list_images()
     assert len(response_images) == 0, "all images should be deleted"
 
 
@@ -553,15 +553,15 @@ def test_updateImages_success(dynamodb_table, example_image):
         "bucket",
         "key2",
     )
-    client.addImages([img1, img2])
+    client.add_images([img1, img2])
 
     # Now update them
     img1.raw_s3_key = "updated/path/1"
     img2.raw_s3_key = "updated/path/2"
-    client.updateImages([img1, img2])
+    client.update_images([img1, img2])
 
     # Verify updates
-    stored_images, _ = client.listImages()
+    stored_images, _ = client.list_images()
     assert len(stored_images) == 2
     # Confirm the updated s3_keys
     for img in stored_images:
@@ -583,7 +583,7 @@ def test_updateImages_raises_value_error_images_none(
     with pytest.raises(
         ValueError, match="Images parameter is required and cannot be None."
     ):
-        client.updateImages(None)  # type: ignore
+        client.update_images(None)  # type: ignore
 
 
 @pytest.mark.integration
@@ -596,7 +596,7 @@ def test_updateImages_raises_value_error_images_not_list(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="Images must be provided as a list."):
-        client.updateImages("not-a-list")  # type: ignore
+        client.update_images("not-a-list")  # type: ignore
 
 
 @pytest.mark.integration
@@ -615,7 +615,7 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
             "Image class."
         ),
     ):
-        client.updateImages([example_image, "not-an-image"])  # type: ignore
+        client.update_images([example_image, "not-an-image"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -641,7 +641,7 @@ def test_updateImages_raises_clienterror_conditional_check_failed(
         ),
     )
     with pytest.raises(ValueError, match="One or more images do not exist"):
-        client.updateImages([example_image])
+        client.update_images([example_image])
     mock_transact.assert_called_once()
 
 
@@ -668,7 +668,7 @@ def test_updateImages_raises_clienterror_provisioned_throughput_exceeded(
         ),
     )
     with pytest.raises(Exception, match="Provisioned throughput exceeded"):
-        client.updateImages([example_image])
+        client.update_images([example_image])
     mock_transact.assert_called_once()
 
 
@@ -695,7 +695,7 @@ def test_updateImages_raises_clienterror_internal_server_error(
         ),
     )
     with pytest.raises(Exception, match="Internal server error"):
-        client.updateImages([example_image])
+        client.update_images([example_image])
     mock_transact.assert_called_once()
 
 
@@ -724,7 +724,7 @@ def test_updateImages_raises_clienterror_validation_exception(
     with pytest.raises(
         Exception, match="One or more parameters given were invalid"
     ):
-        client.updateImages([example_image])
+        client.update_images([example_image])
     mock_transact.assert_called_once()
 
 
@@ -751,7 +751,7 @@ def test_updateImages_raises_clienterror_access_denied(
         ),
     )
     with pytest.raises(Exception, match="Access denied"):
-        client.updateImages([example_image])
+        client.update_images([example_image])
     mock_transact.assert_called_once()
 
 
@@ -778,7 +778,7 @@ def test_updateImages_raises_client_error(
     )
 
     with pytest.raises(ValueError, match="Error updating images"):
-        client.updateImages([example_image])
+        client.update_images([example_image])
 
     mock_transact.assert_called_once()
 
@@ -786,9 +786,9 @@ def test_updateImages_raises_client_error(
 @pytest.mark.integration
 def test_listImagesByType_no_limit(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
-    client.addImage(example_image)
+    client.add_image(example_image)
 
-    images, lek = client.listImagesByType(example_image.image_type)
+    images, lek = client.list_images_by_type(example_image.image_type)
 
     assert images == [example_image]
     assert lek is None
@@ -797,10 +797,10 @@ def test_listImagesByType_no_limit(dynamodb_table, example_image):
 @pytest.mark.integration
 def test_listImagesByType_invalid_type(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
-    client.addImage(example_image)
+    client.add_image(example_image)
 
     with pytest.raises(ValueError):
-        client.listImagesByType("INVALID")
+        client.list_images_by_type("INVALID")
 
 
 @pytest.mark.integration
@@ -819,7 +819,9 @@ def test_listImagesByType_with_pagination(
         client._client, "query", side_effect=[first_page, second_page]
     )
 
-    images, lek = client.listImagesByType(example_image.image_type, limit=10)
+    images, lek = client.list_images_by_type(
+        example_image.image_type, limit=10
+    )
 
     assert len(images) == 1
     assert lek == first_page["LastEvaluatedKey"]

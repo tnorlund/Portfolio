@@ -9,13 +9,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.job import Job, itemToJob
+from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
 from receipt_dynamo.entities.job_dependency import JobDependency
 from receipt_dynamo.entities.job_log import JobLog
 from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_resource import JobResource
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 
 
 class JobService:
@@ -84,7 +84,7 @@ class JobService:
             tags=tags,
         )
 
-        self.dynamo_client.addJob(job)
+        self.dynamo_client.add_job(job)
         return job
 
     def get_job(self, job_id: str) -> Job:
@@ -100,7 +100,7 @@ class JobService:
         Raises:
             Exception: When the job is not found
         """
-        return self.dynamo_client.getJob(job_id)
+        return self.dynamo_client.get_job(job_id)
 
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
         """
@@ -115,7 +115,7 @@ class JobService:
         Raises:
             Exception: When the job is not found
         """
-        return self.dynamo_client.getJobWithStatus(job_id)
+        return self.dynamo_client.get_job_with_status(job_id)
 
     def update_job(self, job: Job) -> None:
         """
@@ -127,7 +127,7 @@ class JobService:
         Raises:
             Exception: When the job does not exist
         """
-        self.dynamo_client.updateJob(job)
+        self.dynamo_client.update_job(job)
 
     def delete_job(self, job: Job) -> None:
         """
@@ -139,7 +139,7 @@ class JobService:
         Raises:
             Exception: When the job does not exist
         """
-        self.dynamo_client.deleteJob(job)
+        self.dynamo_client.delete_job(job)
 
     def list_jobs(
         self,
@@ -156,7 +156,7 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.listJobs(limit, last_evaluated_key)
+        return self.dynamo_client.list_jobs(limit, last_evaluated_key)
 
     def list_jobs_by_status(
         self,
@@ -175,9 +175,7 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.listJobsByStatus(
-            status, limit, last_evaluated_key
-        )
+        return self.dynamo_client.list_jobs_by_status(status, limit, last_evaluated_key)
 
     def list_jobs_by_user(
         self,
@@ -196,14 +194,10 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.listJobsByUser(
-            user_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.list_jobs_by_user(user_id, limit, last_evaluated_key)
 
     # Job status operations
-    def add_job_status(
-        self, job_id: str, status: str, message: str
-    ) -> JobStatus:
+    def add_job_status(self, job_id: str, status: str, message: str) -> JobStatus:
         """
         Add a new status record for a job.
 
@@ -221,7 +215,7 @@ class JobService:
             status=status,
             message=message,
         )
-        self.dynamo_client.addJobStatus(job_status)
+        self.dynamo_client.add_job_status(job_status)
         return job_status
 
     def get_job_status_history(self, job_id: str) -> List[JobStatus]:
@@ -234,7 +228,7 @@ class JobService:
         Returns:
             A list of JobStatus objects
         """
-        return self.dynamo_client.listJobStatusesByJob(job_id)
+        return self.dynamo_client.list_job_statuses_by_job(job_id)
 
     # Job log operations
     def add_job_log(self, job_id: str, log_level: str, message: str) -> JobLog:
@@ -255,7 +249,7 @@ class JobService:
             log_level=log_level,
             message=message,
         )
-        self.dynamo_client.addJobLog(job_log)
+        self.dynamo_client.add_job_log(job_log)
         return job_log
 
     def get_job_logs(self, job_id: str) -> List[JobLog]:
@@ -268,7 +262,7 @@ class JobService:
         Returns:
             A list of JobLog objects
         """
-        return self.dynamo_client.listJobLogsByJob(job_id)
+        return self.dynamo_client.list_job_logs_by_job(job_id)
 
     # Job metric operations
     def add_job_metric(
@@ -297,7 +291,7 @@ class JobService:
             value=metric_value,  # Changed from metric_value to value
             # unit, step, and epoch are optional
         )
-        self.dynamo_client.addJobMetric(job_metric)
+        self.dynamo_client.add_job_metric(job_metric)
         return job_metric
 
     def get_job_metrics(self, job_id: str) -> List[JobMetric]:
@@ -310,7 +304,7 @@ class JobService:
         Returns:
             A list of JobMetric objects
         """
-        return self.dynamo_client.listJobMetricsByJob(job_id)
+        return self.dynamo_client.list_job_metrics_by_job(job_id)
 
     # Job resource operations
     def add_job_resource(
@@ -342,7 +336,7 @@ class JobService:
             status="allocated",  # TODO: Set appropriate status
             # gpu_count, released_at, and resource_config are optional
         )
-        self.dynamo_client.addJobResource(job_resource)
+        self.dynamo_client.add_job_resource(job_resource)
         return job_resource
 
     def get_job_resources(self, job_id: str) -> List[JobResource]:
@@ -355,12 +349,10 @@ class JobService:
         Returns:
             A list of JobResource objects
         """
-        return self.dynamo_client.listJobResourcesByJob(job_id)
+        return self.dynamo_client.list_job_resources_by_job(job_id)
 
     # Job dependency operations
-    def add_job_dependency(
-        self, job_id: str, depends_on_job_id: str
-    ) -> JobDependency:
+    def add_job_dependency(self, job_id: str, depends_on_job_id: str) -> JobDependency:
         """
         Add a dependency between jobs.
 
@@ -378,7 +370,7 @@ class JobService:
             created_at=datetime.now(),
             # condition is optional
         )
-        self.dynamo_client.addJobDependency(job_dependency)
+        self.dynamo_client.add_job_dependency(job_dependency)
         return job_dependency
 
     def get_job_dependencies(self, job_id: str) -> List[JobDependency]:
@@ -391,7 +383,7 @@ class JobService:
         Returns:
             A list of JobDependency objects representing what this job depends on
         """
-        return self.dynamo_client.listJobDependenciesByJob(job_id)
+        return self.dynamo_client.list_job_dependencies_by_job(job_id)
 
     def get_dependent_jobs(self, job_id: str) -> List[JobDependency]:
         """
@@ -403,11 +395,9 @@ class JobService:
         Returns:
             A list of JobDependency objects representing jobs that depend on this job
         """
-        return self.dynamo_client.listDependents(job_id)
+        return self.dynamo_client.list_dependents(job_id)
 
-    def check_dependencies_satisfied(
-        self, job_id: str
-    ) -> Tuple[bool, List[Dict]]:
+    def check_dependencies_satisfied(self, job_id: str) -> Tuple[bool, List[Dict]]:
         """
         Check if all dependencies for a job are satisfied.
 
@@ -458,9 +448,7 @@ class JobService:
                     is_satisfied = dependency_job.status == "failed"
                 elif dependency.type == "ARTIFACT":
                     # Special condition for artifact dependency
-                    if dependency.condition and hasattr(
-                        dependency_job, "job_config"
-                    ):
+                    if dependency.condition and hasattr(dependency_job, "job_config"):
                         # Check if the artifact exists based on condition
                         # This would need to be implemented based on your artifact storage system
                         is_satisfied = self._check_artifact_exists(
@@ -481,9 +469,7 @@ class JobService:
 
         return all_satisfied, unsatisfied
 
-    def _check_artifact_exists(
-        self, job: Job, artifact_condition: str
-    ) -> bool:
+    def _check_artifact_exists(self, job: Job, artifact_condition: str) -> bool:
         """
         Check if an artifact exists for a job based on a condition.
 
@@ -527,7 +513,7 @@ class JobService:
             epoch=0,  # TODO: Get actual epoch
             # model_state, optimizer_state, metrics, and is_best have defaults
         )
-        self.dynamo_client.addJobCheckpoint(job_checkpoint)
+        self.dynamo_client.add_job_checkpoint(job_checkpoint)
         return job_checkpoint
 
     def get_job_checkpoints(self, job_id: str) -> List[JobCheckpoint]:
@@ -540,4 +526,4 @@ class JobService:
         Returns:
             A list of JobCheckpoint objects
         """
-        return self.dynamo_client.listJobCheckpointsByJob(job_id)
+        return self.dynamo_client.list_job_checkpoints_by_job(job_id)

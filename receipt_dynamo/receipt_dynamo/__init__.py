@@ -14,41 +14,41 @@ __all__ = [
     "ReceiptLine",
     "ReceiptWord",
     "Word",
-    "itemToImage",
-    "itemToLetter",
-    "itemToLine",
-    "itemToReceipt",
-    "itemToReceiptLetter",
-    "itemToReceiptLine",
-    "itemToReceiptWord",
-    "itemToWord",
+    "item_to_image",
+    "item_to_letter",
+    "item_to_line",
+    "item_to_receipt",
+    "item_to_receipt_letter",
+    "item_to_receipt_line",
+    "item_to_receipt_word",
+    "item_to_word",
     "ReceiptWordTag",
-    "itemToReceiptWordTag",
+    "item_to_receipt_word_tag",
     "ReceiptWordLabel",
-    "itemToReceiptWordLabel",
+    "item_to_receipt_word_label",
     "ReceiptField",
-    "itemToReceiptField",
+    "item_to_receipt_field",
     "ReceiptLabelAnalysis",
-    "itemToReceiptLabelAnalysis",
+    "item_to_receipt_label_analysis",
     "ReceiptStructureAnalysis",
-    "itemToReceiptStructureAnalysis",
+    "item_to_receipt_structure_analysis",
     "ReceiptLineItemAnalysis",
-    "itemToReceiptLineItemAnalysis",
+    "item_to_receipt_line_item_analysis",
     "ReceiptAnalysis",
     "WordTag",
-    "itemToWordTag",
+    "item_to_word_tag",
     "Job",
-    "itemToJob",
+    "item_to_job",
     "JobMetric",
-    "itemToJobMetric",
+    "item_to_job_metric",
     "JobResource",
-    "itemToJobResource",
+    "item_to_job_resource",
     "JobStatus",
-    "itemToJobStatus",
+    "item_to_job_status",
     "Instance",
-    "itemToInstance",
+    "item_to_instance",
     "InstanceJob",
-    "itemToInstanceJob",
+    "item_to_instance_job",
     "DynamoClient",
     "export_image",
     "import_image",
@@ -56,11 +56,11 @@ __all__ = [
     "QueueService",
     "InstanceService",
     "ReceiptValidationSummary",
-    "itemToReceiptValidationSummary",
+    "item_to_receipt_validation_summary",
     "ReceiptValidationResult",
-    "itemToReceiptValidationResult",
+    "item_to_receipt_validation_result",
     "ReceiptValidationCategory",
-    "itemToReceiptValidationCategory",
+    "item_to_receipt_validation_category",
     "ReceiptChatGPTValidation",
     "AIUsageMetric",
     "itemToAIUsageMetric",
@@ -93,34 +93,40 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
     Word,
-    itemToImage,
-    itemToLetter,
-    itemToLine,
-    itemToReceipt,
-    itemToReceiptChatGPTValidation,
-    itemToReceiptField,
-    itemToReceiptLabelAnalysis,
-    itemToReceiptLetter,
-    itemToReceiptLine,
-    itemToReceiptLineItemAnalysis,
-    itemToReceiptStructureAnalysis,
-    itemToReceiptValidationCategory,
-    itemToReceiptValidationResult,
-    itemToReceiptValidationSummary,
-    itemToReceiptWord,
-    itemToReceiptWordLabel,
-    itemToWord,
+    item_to_image,
+    item_to_letter,
+    item_to_line,
+    item_to_receipt,
+    item_to_receipt_chat_gpt_validation,
+    item_to_receipt_field,
+    item_to_receipt_label_analysis,
+    item_to_receipt_letter,
+    item_to_receipt_line,
+    item_to_receipt_line_item_analysis,
+    item_to_receipt_structure_analysis,
+    item_to_receipt_validation_category,
+    item_to_receipt_validation_result,
+    item_to_receipt_validation_summary,
+    item_to_receipt_word,
+    item_to_receipt_word_label,
+    item_to_word,
 )
 from receipt_dynamo.entities.ai_usage_metric import (
     AIUsageMetric,
     itemToAIUsageMetric,
 )
-from receipt_dynamo.entities.instance import Instance, itemToInstance
-from receipt_dynamo.entities.instance_job import InstanceJob, itemToInstanceJob
-from receipt_dynamo.entities.job import Job, itemToJob
-from receipt_dynamo.entities.job_metric import JobMetric, itemToJobMetric
-from receipt_dynamo.entities.job_resource import JobResource, itemToJobResource
-from receipt_dynamo.entities.job_status import JobStatus, itemToJobStatus
+from receipt_dynamo.entities.instance import Instance, item_to_instance
+from receipt_dynamo.entities.instance_job import (
+    InstanceJob,
+    item_to_instance_job,
+)
+from receipt_dynamo.entities.job import Job, item_to_job
+from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
+from receipt_dynamo.entities.job_resource import (
+    JobResource,
+    item_to_job_resource,
+)
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ContentPattern,
     ReceiptSection,
@@ -128,9 +134,9 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
 )
 from receipt_dynamo.entities.receipt_word_tag import (
     ReceiptWordTag,
-    itemToReceiptWordTag,
+    item_to_receipt_word_tag,
 )
-from receipt_dynamo.entities.word_tag import WordTag, itemToWordTag
+from receipt_dynamo.entities.word_tag import WordTag, item_to_word_tag
 
 # Only import what's actually used elsewhere in the package
 try:  # Optional dependency

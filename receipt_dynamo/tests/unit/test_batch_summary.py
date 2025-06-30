@@ -5,7 +5,7 @@ import pytest
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
-    itemToBatchSummary,
+    item_to_batch_summary,
 )
 
 
@@ -45,7 +45,7 @@ def test_batch_summary_init_valid(example_batch_summary):
 @pytest.mark.unit
 def test_batch_summary_to_item_and_back(example_batch_summary):
     item = example_batch_summary.to_item()
-    reconstructed = itemToBatchSummary(item)
+    reconstructed = item_to_batch_summary(item)
     assert reconstructed == example_batch_summary
 
 
@@ -178,7 +178,7 @@ def test_batch_summary_invalid_receipt_refs_type():
 @pytest.mark.unit
 def test_batch_summary_missing_keys():
     with pytest.raises(ValueError, match="missing keys"):
-        itemToBatchSummary({})
+        item_to_batch_summary({})
 
 
 @pytest.mark.unit
@@ -193,10 +193,8 @@ def test_batch_summary_invalid_dynamodb_format():
         "result_file_id": {"S": "file-456"},
         "receipt_refs": {"L": []},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to BatchSummary"
-    ):
-        itemToBatchSummary(item)
+    with pytest.raises(ValueError, match="Error converting item to BatchSummary"):
+        item_to_batch_summary(item)
 
 
 # === EQUALITY, HASHING, STR, ITER ===
@@ -204,7 +202,7 @@ def test_batch_summary_invalid_dynamodb_format():
 
 @pytest.mark.unit
 def test_batch_summary_eq_and_hash(example_batch_summary):
-    duplicate = itemToBatchSummary(example_batch_summary.to_item())
+    duplicate = item_to_batch_summary(example_batch_summary.to_item())
     assert duplicate == example_batch_summary
     assert hash(duplicate) == hash(example_batch_summary)
     assert example_batch_summary != "not-a-batch"
@@ -221,6 +219,4 @@ def test_batch_summary_iter(example_batch_summary):
     assert keys["batch_id"] == example_batch_summary.batch_id
     assert keys["receipt_refs"] == example_batch_summary.receipt_refs
     # Test end to end serialization and deserialization
-    example_batch_summary_item = BatchSummary(
-        **example_batch_summary.to_dict()
-    )
+    example_batch_summary_item = BatchSummary(**example_batch_summary.to_dict())
