@@ -494,7 +494,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     health_status='healthy',
 # )
 
-# dynamo_client.addInstance(instance)
+# dynamo_client.add_instance(instance)
 # " || echo "Failed to register instance"
 
 # # Subscribe to spot interruption notifications
@@ -529,7 +529,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # dynamo_client = DynamoClient(table_name=table_name, region_name=region)
 
 # # Fetch the current record
-# instance = dynamo_client.getInstance(instance_id)
+# instance = dynamo_client.get_instance(instance_id)
 
 # # Adjust fields to reflect termination
 # instance.status = 'terminated'
@@ -537,7 +537,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # instance.health_status = 'unhealthy'
 
 # # Write changes back to DynamoDB
-# dynamo_client.updateInstance(instance)
+# dynamo_client.update_instance(instance)
 # " || echo "Failed to update instance"
 #         break
 #     fi

@@ -58,7 +58,7 @@ def handler(event, context):
             job_type=OCRJobType.FIRST_PASS,
             receipt_id=None,
         )
-        dynamo_client.addOCRJob(job)
+        dynamo_client.add_ocr_job(job)
         logger.info(f"Added OCR job for image {job.image_id}")
 
         # Send a message to the OCR job queue

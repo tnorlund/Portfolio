@@ -30,7 +30,7 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
         client = DynamoClient(DYNAMODB_TABLE_NAME)
 
         # Query DynamoDB for all receipts
-        receipts, _ = client.listReceipts()
+        receipts, _ = client.list_receipts()
         logger.info(f"Found {len(receipts)} receipts to process")
 
         # Format receipts for Step Functions

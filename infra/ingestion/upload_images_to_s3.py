@@ -114,7 +114,7 @@ def compare_local_files_with_dynamo(
         list[Path]: Files that do not exist in DynamoDB (by hash).
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    images, _ = dynamo_client.listImages()
+    images, _ = dynamo_client.list_images()
     hashes_in_dynamo = {image.sha256 for image in images}
     new_files = []
 
@@ -317,47 +317,47 @@ def delete_items_in_table(dynamo_client: DynamoClient) -> None:
     Args:
         dynamo_client (DynamoClient): The DynamoClient instance pointing to the correct table.
     """
-    images, _ = dynamo_client.listImages()
+    images, _ = dynamo_client.list_images()
     pulumi.log.info(f" - Deleting {len(images)} image items")
-    dynamo_client.deleteImages(images)
+    dynamo_client.delete_images(images)
 
-    lines = dynamo_client.listLines()
+    lines = dynamo_client.list_lines()
     pulumi.log.info(f" - Deleting {len(lines)} line items")
-    dynamo_client.deleteLines(lines)
+    dynamo_client.delete_lines(lines)
 
-    words = dynamo_client.listWords()
+    words = dynamo_client.list_words()
     pulumi.log.info(f" - Deleting {len(words)} word items")
-    dynamo_client.deleteWords(words)
+    dynamo_client.delete_words(words)
 
-    word_tags, _ = dynamo_client.listWordTags()
+    word_tags, _ = dynamo_client.list_word_tags()
     pulumi.log.info(f" - Deleting {len(word_tags)} word tag items")
-    dynamo_client.deleteWordTags(word_tags)
+    dynamo_client.delete_word_tags(word_tags)
 
-    letters = dynamo_client.listLetters()
+    letters = dynamo_client.list_letters()
     pulumi.log.info(f" - Deleting {len(letters)} letter items")
-    dynamo_client.deleteLetters(letters)
+    dynamo_client.delete_letters(letters)
 
-    receipts, _ = dynamo_client.listReceipts()
+    receipts, _ = dynamo_client.list_receipts()
     pulumi.log.info(f" - Deleting {len(receipts)} receipt items")
-    dynamo_client.deleteReceipts(receipts)
+    dynamo_client.delete_receipts(receipts)
 
-    receipt_lines = dynamo_client.listReceiptLines()
+    receipt_lines = dynamo_client.list_receipt_lines()
     pulumi.log.info(f" - Deleting {len(receipt_lines)} receipt line items")
-    dynamo_client.deleteReceiptLines(receipt_lines)
+    dynamo_client.delete_receipt_lines(receipt_lines)
 
-    receipt_words = dynamo_client.listReceiptWords()
+    receipt_words = dynamo_client.list_receipt_words()
     pulumi.log.info(f" - Deleting {len(receipt_words)} receipt word items")
-    dynamo_client.deleteReceiptWords(receipt_words)
+    dynamo_client.delete_receipt_words(receipt_words)
 
-    receipt_word_tags, _ = dynamo_client.listReceiptWordTags()
+    receipt_word_tags, _ = dynamo_client.list_receipt_word_tags()
     pulumi.log.info(
         f" - Deleting {len(receipt_word_tags)} receipt word tag items"
     )
-    dynamo_client.deleteReceiptWordTags(receipt_word_tags)
+    dynamo_client.delete_receipt_word_tags(receipt_word_tags)
 
-    receipt_letters = dynamo_client.listReceiptLetters()
+    receipt_letters = dynamo_client.list_receipt_letters()
     pulumi.log.info(f" - Deleting {len(receipt_letters)} receipt letter items")
-    dynamo_client.deleteReceiptLetters(receipt_letters)
+    dynamo_client.delete_receipt_letters(receipt_letters)
 
     # Pause briefly for eventual consistency
     sleep(1)

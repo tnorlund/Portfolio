@@ -38,9 +38,9 @@ def handler(event, context):
         try:
             # Use the client to list the first 50 images
             client = DynamoClient(dynamodb_table_name)
-            receipts, lek = client.listReceipts(QUERY_LIMIT)
+            receipts, lek = client.list_receipts(QUERY_LIMIT)
             while lek:
-                next_receipts, lek = client.listReceipts(QUERY_LIMIT, lek)
+                next_receipts, lek = client.list_receipts(QUERY_LIMIT, lek)
                 receipts.extend(next_receipts)
 
             # Group all receipts by their image_id
@@ -60,7 +60,7 @@ def handler(event, context):
                 }
 
             # List all images of the requested type
-            images, last_evaluated_key = client.listImagesByType(image_type)
+            images, last_evaluated_key = client.list_images_by_type(image_type)
             images = [
                 image
                 for image in images

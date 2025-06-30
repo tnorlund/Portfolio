@@ -76,37 +76,37 @@ def import_image(table_name: str, json_path: str) -> None:
 
     # Import data in batches using existing DynamoClient methods
     if entities["images"]:
-        dynamo_client.addImages(entities["images"])
+        dynamo_client.add_images(entities["images"])
 
     if entities["lines"]:
-        dynamo_client.addLines(entities["lines"])
+        dynamo_client.add_lines(entities["lines"])
 
     if entities["words"]:
-        dynamo_client.addWords(entities["words"])
+        dynamo_client.add_words(entities["words"])
 
     if entities["word_tags"]:
-        dynamo_client.addWordTags(entities["word_tags"])
+        dynamo_client.add_word_tags(entities["word_tags"])
 
     if entities["letters"]:
-        dynamo_client.addLetters(entities["letters"])
+        dynamo_client.add_letters(entities["letters"])
 
     if entities["receipts"]:
-        dynamo_client.addReceipts(entities["receipts"])
+        dynamo_client.add_receipts(entities["receipts"])
 
     if entities["receipt_lines"]:
-        dynamo_client.addReceiptLines(entities["receipt_lines"])
+        dynamo_client.add_receipt_lines(entities["receipt_lines"])
 
     if entities["receipt_words"]:
-        dynamo_client.addReceiptWords(entities["receipt_words"])
+        dynamo_client.add_receipt_words(entities["receipt_words"])
 
     if entities["receipt_word_tags"]:
-        dynamo_client.addReceiptWordTags(entities["receipt_word_tags"])
+        dynamo_client.add_receipt_word_tags(entities["receipt_word_tags"])
 
     if entities["receipt_letters"]:
-        dynamo_client.addReceiptLetters(entities["receipt_letters"])
+        dynamo_client.add_receipt_letters(entities["receipt_letters"])
 
     if entities["ocr_jobs"]:
-        dynamo_client.addOCRJobs(entities["ocr_jobs"])
+        dynamo_client.add_ocr_jobs(entities["ocr_jobs"])
 
     if entities["ocr_routing_decisions"]:
-        dynamo_client.addOCRRoutingDecisions(entities["ocr_routing_decisions"])
+        dynamo_client.add_ocr_routing_decisions(entities["ocr_routing_decisions"])
