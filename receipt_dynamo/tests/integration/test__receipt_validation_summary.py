@@ -5,7 +5,6 @@ from typing import Literal
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-
 from receipt_dynamo import DynamoClient, ReceiptValidationSummary
 from receipt_dynamo.data._receipt_validation_summary import (
     _ReceiptValidationSummary,
@@ -119,9 +118,7 @@ def test_addReceiptValidationSummary_duplicate_raises(
 
     # Attempt to add the same validation summary again, which should raise an error
     with pytest.raises(ValueError) as excinfo:
-        client.add_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Check that the error message contains useful information
     receipt_id = sample_receipt_validation_summary.receipt_id
@@ -235,14 +232,10 @@ def test_addReceiptValidationSummary_client_errors(
     # Attempt to add the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_exception):
-            client.add_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.add_receipt_validation_summary(sample_receipt_validation_summary)
     else:
         with pytest.raises(Exception, match=expected_exception):
-            client.add_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Verify the mocked method was called
     mock_put_item.assert_called_once()
@@ -279,9 +272,7 @@ def test_updateReceiptValidationSummary_success(
         TableName=dynamodb_table,
         Key={
             "PK": {"S": f"IMAGE#{updated_summary.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{updated_summary.receipt_id}#ANALYSIS#VALIDATION"
-            },
+            "SK": {"S": f"RECEIPT#{updated_summary.receipt_id}#ANALYSIS#VALIDATION"},
         },
     )
 
@@ -293,9 +284,7 @@ def test_updateReceiptValidationSummary_success(
             "field_summary" in response["Item"]
             and "M" in response["Item"]["field_summary"]
         ):
-            print(
-                f"Total field: {response['Item']['field_summary']['M'].get('total')}"
-            )
+            print(f"Total field: {response['Item']['field_summary']['M'].get('total')}")
             if (
                 "total" in response["Item"]["field_summary"]["M"]
                 and "M" in response["Item"]["field_summary"]["M"]["total"]
@@ -311,8 +300,7 @@ def test_updateReceiptValidationSummary_success(
         == "Some validation errors were found"
     )
     assert (
-        response["Item"]["field_summary"]["M"]["total"]["M"]["status"]["S"]
-        == "invalid"
+        response["Item"]["field_summary"]["M"]["total"]["M"]["status"]["S"] == "invalid"
     )
     # Check how has_errors is stored - it's stored as a string in the N field, not as a BOOL
     assert (
@@ -320,20 +308,15 @@ def test_updateReceiptValidationSummary_success(
         == "True"
     )
     assert (
-        response["Item"]["field_summary"]["M"]["total"]["M"]["total_fields"][
-            "N"
-        ]
+        response["Item"]["field_summary"]["M"]["total"]["M"]["total_fields"]["N"]
         == "10"
     )
     assert (
-        response["Item"]["field_summary"]["M"]["total"]["M"][
-            "fields_with_errors"
-        ]["N"]
+        response["Item"]["field_summary"]["M"]["total"]["M"]["fields_with_errors"]["N"]
         == "2"
     )
     assert (
-        response["Item"]["field_summary"]["M"]["total"]["M"]["error_rate"]["N"]
-        == "0.2"
+        response["Item"]["field_summary"]["M"]["total"]["M"]["error_rate"]["N"] == "0.2"
     )
     assert response["Item"]["metadata"]["M"]["test"]["S"] == "value"
 
@@ -349,9 +332,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
 
     # Attempt to update a validation summary that wasn't previously added
     with pytest.raises(ValueError) as excinfo:
-        client.update_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.update_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Check that the error message contains useful information
     receipt_id = sample_receipt_validation_summary.receipt_id
@@ -469,14 +450,10 @@ def test_updateReceiptValidationSummary_client_errors(
     # Attempt to update the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_error):
-            client.update_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.update_receipt_validation_summary(sample_receipt_validation_summary)
     else:
         with pytest.raises(Exception, match=expected_error):
-            client.update_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.update_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Verify the mocked method was called
     mock_put_item.assert_called_once()
@@ -533,9 +510,7 @@ def test_deleteReceiptValidationSummary_not_exists_raises(
 
     # Attempt to delete a validation summary that wasn't previously added
     with pytest.raises(ValueError) as excinfo:
-        client.delete_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.delete_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Check that the error message contains useful information
     receipt_id = sample_receipt_validation_summary.receipt_id
@@ -667,14 +642,10 @@ def test_deleteReceiptValidationSummary_client_errors(
     # Attempt to delete the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(ValueError, match=expected_error):
-            client.delete_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.delete_receipt_validation_summary(sample_receipt_validation_summary)
     else:
         with pytest.raises(Exception, match=expected_error):
-            client.delete_receipt_validation_summary(
-                sample_receipt_validation_summary
-            )
+            client.delete_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Verify the mocked method was called
     mock_delete_item.assert_called_once()
@@ -702,13 +673,9 @@ def test_getReceiptValidationSummary_success(
     assert isinstance(result, ReceiptValidationSummary)
     assert result.receipt_id == sample_receipt_validation_summary.receipt_id
     assert result.image_id == sample_receipt_validation_summary.image_id
+    assert result.overall_status == sample_receipt_validation_summary.overall_status
     assert (
-        result.overall_status
-        == sample_receipt_validation_summary.overall_status
-    )
-    assert (
-        result.overall_reasoning
-        == sample_receipt_validation_summary.overall_reasoning
+        result.overall_reasoning == sample_receipt_validation_summary.overall_reasoning
     )
     assert result.version == sample_receipt_validation_summary.version
 
@@ -773,9 +740,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
 
     # Try to retrieve with invalid input
     with pytest.raises(ValueError) as excinfo:
-        client.get_receipt_validation_summary(
-            receipt_id=receipt_id, image_id=image_id
-        )
+        client.get_receipt_validation_summary(receipt_id=receipt_id, image_id=image_id)
 
     # Verify the error message
     assert expected_error in str(excinfo.value)

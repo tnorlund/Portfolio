@@ -1,5 +1,4 @@
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import (
     ReceiptLineItemAnalysis,
     item_to_receipt_line_item_analysis,

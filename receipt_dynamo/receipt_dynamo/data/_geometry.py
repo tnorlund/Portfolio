@@ -143,9 +143,7 @@ def solve_8x8_system(A, b):
         # 3) Normalize pivot row (so A[i][i] = 1)
         pivot_val = A[i][i]
         if abs(pivot_val) < 1e-12:
-            raise ValueError(
-                "Matrix is singular or poorly conditioned for pivoting."
-            )
+            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
         inv_pivot = 1.0 / pivot_val
         A[i] = [val * inv_pivot for val in A[i]]
         b[i] = b[i] * inv_pivot
@@ -323,15 +321,11 @@ def compute_receipt_box_from_skewed_extents(
         x_int = x1 + t * (x2 - x1)
         return (x_int, desired_y)
 
-    left_top_point = interpolate_vertex(
-        left_top_vertex, left_bottom_vertex, top_y
-    )
+    left_top_point = interpolate_vertex(left_top_vertex, left_bottom_vertex, top_y)
     left_bottom_point = interpolate_vertex(
         left_top_vertex, left_bottom_vertex, bottom_y
     )
-    right_top_point = interpolate_vertex(
-        right_top_vertex, right_bottom_vertex, top_y
-    )
+    right_top_point = interpolate_vertex(right_top_vertex, right_bottom_vertex, top_y)
     right_bottom_point = interpolate_vertex(
         right_top_vertex, right_bottom_vertex, bottom_y
     )
@@ -439,9 +433,7 @@ def find_hull_extents_relative_to_centroid(
 
     results = {}
     for key, direction_vector in directions.items():
-        pt = _intersection_point_for_direction(
-            hull_pts, cx, cy, direction_vector
-        )
+        pt = _intersection_point_for_direction(hull_pts, cx, cy, direction_vector)
         if pt is not None:
             x_int = int(round(pt[0]))
             y_int = int(round(pt[1]))

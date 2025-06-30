@@ -80,9 +80,7 @@ class EmailAlertSender(AlertSender):
     async def send(self, alert: ThresholdAlert, destination: str) -> bool:
         """Send alert via email."""
         try:
-            subject = (
-                f"[{alert.level.value.upper()}] AI Usage Alert: {alert.scope}"
-            )
+            subject = f"[{alert.level.value.upper()}] AI Usage Alert: {alert.scope}"
 
             body_html = self._format_html_body(alert)
             body_text = self._format_text_body(alert)
@@ -99,9 +97,7 @@ class EmailAlertSender(AlertSender):
                 },
             )
 
-            logger.info(
-                f"Sent email alert to {destination}: {response['MessageId']}"
-            )
+            logger.info(f"Sent email alert to {destination}: {response['MessageId']}")
             return True
 
         except ClientError as e:
@@ -330,9 +326,7 @@ class AlertManager:
         """
         # Check rate limiting
         if not force and self._is_rate_limited(alert):
-            logger.info(
-                f"Alert rate limited: {alert.scope}:{alert.threshold_percent}"
-            )
+            logger.info(f"Alert rate limited: {alert.scope}:{alert.threshold_percent}")
             return {}
 
         results = {}
@@ -343,16 +337,12 @@ class AlertManager:
 
             sender = self.senders.get(channel.channel_type)
             if not sender:
-                logger.warning(
-                    f"No sender for channel type: {channel.channel_type}"
-                )
+                logger.warning(f"No sender for channel type: {channel.channel_type}")
                 continue
 
             try:
                 success = await sender.send(alert, channel.destination)
-                results[f"{channel.channel_type}:{channel.destination}"] = (
-                    success
-                )
+                results[f"{channel.channel_type}:{channel.destination}"] = success
 
                 if success:
                     # Update rate limiting
@@ -360,12 +350,8 @@ class AlertManager:
                     self._sent_alerts[alert_key] = datetime.now(timezone.utc)
 
             except Exception as e:
-                logger.error(
-                    f"Failed to send alert to {channel.channel_type}: {e}"
-                )
-                results[f"{channel.channel_type}:{channel.destination}"] = (
-                    False
-                )
+                logger.error(f"Failed to send alert to {channel.channel_type}: {e}")
+                results[f"{channel.channel_type}:{channel.destination}"] = False
 
         return results
 
@@ -379,9 +365,7 @@ class AlertManager:
         self.channels = [
             c
             for c in self.channels
-            if not (
-                c.channel_type == channel_type and c.destination == destination
-            )
+            if not (c.channel_type == channel_type and c.destination == destination)
         ]
         return len(self.channels) < original_count
 

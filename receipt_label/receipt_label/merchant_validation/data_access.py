@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
@@ -97,8 +96,7 @@ def list_receipts_for_merchant_validation(
         raise
     # Create a set of tuples with (image_id, receipt_id) from metadata for efficient lookup
     metadata_keys = {
-        (metadata.image_id, metadata.receipt_id)
-        for metadata in receipt_metadatas
+        (metadata.image_id, metadata.receipt_id) for metadata in receipt_metadatas
     }
 
     # Return receipts that don't have corresponding metadata
@@ -158,15 +156,9 @@ def get_receipt_details(
 
     try:
         receipt = client_manager.dynamo.getReceipt(image_id, receipt_id)
-        receipt_lines = client_manager.dynamo.getReceiptLines(
-            image_id, receipt_id
-        )
-        receipt_words = client_manager.dynamo.getReceiptWords(
-            image_id, receipt_id
-        )
-        receipt_letters = client_manager.dynamo.getReceiptLetters(
-            image_id, receipt_id
-        )
+        receipt_lines = client_manager.dynamo.getReceiptLines(image_id, receipt_id)
+        receipt_words = client_manager.dynamo.getReceiptWords(image_id, receipt_id)
+        receipt_letters = client_manager.dynamo.getReceiptLetters(image_id, receipt_id)
         receipt_word_tags = client_manager.dynamo.getReceiptWordTags(
             image_id, receipt_id
         )
@@ -174,9 +166,7 @@ def get_receipt_details(
             image_id, receipt_id
         )
     except (ClientError, BotoCoreError) as e:
-        logger.error(
-            f"Failed to get receipt details for {image_id}/{receipt_id}: {e}"
-        )
+        logger.error(f"Failed to get receipt details for {image_id}/{receipt_id}: {e}")
         raise
 
     return (
@@ -261,9 +251,7 @@ def query_records_by_place_id(
 
     try:
         all_records = list_receipt_metadatas(client_manager)
-        return [
-            record for record in all_records if record.place_id == place_id
-        ]
+        return [record for record in all_records if record.place_id == place_id]
     except Exception as e:
         logger.error("Failed to query records by place_id %s: %s", place_id, e)
         raise
@@ -341,9 +329,7 @@ def persist_alias_updates(
     batch_size = 25  # DynamoDB batch write limit
     total_batches = (len(records) + batch_size - 1) // batch_size
 
-    logger.info(
-        f"Persisting {len(records)} records in {total_batches} batches"
-    )
+    logger.info(f"Persisting {len(records)} records in {total_batches} batches")
 
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
@@ -352,11 +338,7 @@ def persist_alias_updates(
         try:
             for record in batch:
                 client_manager.dynamo.updateReceiptMetadata(record)
-            logger.debug(
-                f"Successfully processed batch {batch_num}/{total_batches}"
-            )
+            logger.debug(f"Successfully processed batch {batch_num}/{total_batches}")
         except (ClientError, BotoCoreError) as e:
-            logger.error(
-                f"Failed to process batch {batch_num}/{total_batches}: {e}"
-            )
+            logger.error(f"Failed to process batch {batch_num}/{total_batches}: {e}")
             raise

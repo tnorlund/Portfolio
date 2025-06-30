@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 """

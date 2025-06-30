@@ -208,9 +208,7 @@ class PRAnalyzer:
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        validation_status = (
-            "✅ PASSED" if fast_validation_passed else "❌ FAILED"
-        )
+        validation_status = "✅ PASSED" if fast_validation_passed else "❌ FAILED"
 
         summary = f"""# 🤖 Claude Code Review Summary
 
@@ -229,7 +227,9 @@ class PRAnalyzer:
 """
 
         if cursor_findings:
-            summary += f"Found {len(cursor_findings)} Cursor bot comments to validate:\n\n"
+            summary += (
+                f"Found {len(cursor_findings)} Cursor bot comments to validate:\n\n"
+            )
             for i, finding in enumerate(cursor_findings, 1):
                 summary += f"### {i}. {finding['author']} Comment\n"
                 summary += f"```\n{finding['body'][:500]}{'...' if len(finding['body']) > 500 else ''}\n```\n\n"
@@ -307,12 +307,8 @@ class PRAnalyzer:
 
 
 @click.command()
-@click.option(
-    "--pr-number", required=True, type=int, help="PR number to analyze"
-)
-@click.option(
-    "--repository", required=True, help="Repository in format owner/repo"
-)
+@click.option("--pr-number", required=True, type=int, help="PR number to analyze")
+@click.option("--repository", required=True, help="Repository in format owner/repo")
 @click.option(
     "--output-file",
     default="claude_review_results.md",
@@ -391,9 +387,7 @@ def main(
         # Print key findings
         click.echo(f"\n📊 Summary:")
         click.echo(f"   • Cursor findings: {len(cursor_findings)}")
-        click.echo(
-            f"   • Architecture concerns: {len(architecture['concerns'])}"
-        )
+        click.echo(f"   • Architecture concerns: {len(architecture['concerns'])}")
         click.echo(
             f"   • Performance optimizations: {len(performance['optimizations'])}"
         )

@@ -88,9 +88,7 @@ class CostMonitoringConfig:
             os.environ.get("ENABLE_EMAIL_ALERTS", "false").lower() == "true"
         )
         if recipients := os.environ.get("EMAIL_ALERT_RECIPIENTS"):
-            config.email_recipients = [
-                r.strip() for r in recipients.split(",")
-            ]
+            config.email_recipients = [r.strip() for r in recipients.split(",")]
         if from_addr := os.environ.get("EMAIL_FROM_ADDRESS"):
             config.email_from_address = from_addr
 
@@ -156,9 +154,7 @@ class BudgetTemplate:
     scope_pattern: str  # e.g., "user:*", "service:openai"
     amount: Decimal
     period: BudgetPeriod
-    alert_thresholds: List[float] = field(
-        default_factory=lambda: [50, 80, 95, 100]
-    )
+    alert_thresholds: List[float] = field(default_factory=lambda: [50, 80, 95, 100])
     rollover_enabled: bool = False
     metadata: Dict[str, str] = field(default_factory=dict)
 

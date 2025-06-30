@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-
 from receipt_label.utils.cost_monitoring import (
     AlertChannel,
     AlertManager,
@@ -173,9 +172,7 @@ class TestCostMonitoringIntegration:
                 metric = MagicMock()
                 metric.service = "openai"
                 metric.cost_usd = daily_cost / 5
-                metric.timestamp = datetime.now(timezone.utc).replace(
-                    day=day + 1
-                )
+                metric.timestamp = datetime.now(timezone.utc).replace(day=day + 1)
                 mock_metrics.append(metric)
 
         # Mock query to return our metrics
@@ -190,9 +187,7 @@ class TestCostMonitoringIntegration:
                 forecast_days=7,
             )
 
-            assert (
-                trend.direction == "increasing"
-            )  # Should detect increasing trend
+            assert trend.direction == "increasing"  # Should detect increasing trend
             assert trend.change_percent > 0
             assert trend.forecast_value is not None
             assert trend.forecast_value > trend.current_value
@@ -233,9 +228,7 @@ class TestCostMonitoringIntegration:
 
         assert new_budget is not None
         assert new_budget.scope == updated_budget.scope
-        assert (
-            new_budget.metadata["rolled_over_from"] == updated_budget.budget_id
-        )
+        assert new_budget.metadata["rolled_over_from"] == updated_budget.budget_id
 
     def test_anomaly_detection_integration(self, mock_dynamo_client):
         """Test anomaly detection with realistic data."""
@@ -257,9 +250,7 @@ class TestCostMonitoringIntegration:
                 metric = MagicMock()
                 metric.service = "openai"
                 metric.cost_usd = cost_per_metric
-                metric.timestamp = datetime.now(timezone.utc).replace(
-                    day=day + 1
-                )
+                metric.timestamp = datetime.now(timezone.utc).replace(day=day + 1)
                 mock_metrics.append(metric)
 
         with patch.object(analytics, "_get_service_daily_costs") as mock_costs:
@@ -327,11 +318,7 @@ class TestCostMonitoringIntegration:
 
             # Should recommend model optimization
             model_rec = next(
-                (
-                    r
-                    for r in recommendations
-                    if r.category == "model_selection"
-                ),
+                (r for r in recommendations if r.category == "model_selection"),
                 None,
             )
             assert model_rec is not None
@@ -364,9 +351,7 @@ class TestCostMonitoringIntegration:
         # Create channels
         channels = [
             AlertChannel("email", "test@example.com", enabled=True),
-            AlertChannel(
-                "slack", "https://hooks.slack.com/test", enabled=True
-            ),
+            AlertChannel("slack", "https://hooks.slack.com/test", enabled=True),
         ]
 
         # Mock SES client

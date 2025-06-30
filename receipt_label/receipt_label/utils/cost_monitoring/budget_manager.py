@@ -55,9 +55,7 @@ class Budget:
     effective_from: datetime
     effective_until: Optional[datetime] = None
     rollover_enabled: bool = False
-    alert_thresholds: List[float] = field(
-        default_factory=lambda: [50, 80, 95, 100]
-    )
+    alert_thresholds: List[float] = field(default_factory=lambda: [50, 80, 95, 100])
     metadata: Dict[str, Any] = field(default_factory=dict)
     is_active: bool = True
 
@@ -71,9 +69,7 @@ class Budget:
             "created_at": self.created_at.isoformat(),
             "effective_from": self.effective_from.isoformat(),
             "effective_until": (
-                self.effective_until.isoformat()
-                if self.effective_until
-                else None
+                self.effective_until.isoformat() if self.effective_until else None
             ),
             "rollover_enabled": self.rollover_enabled,
             "alert_thresholds": self.alert_thresholds,
@@ -176,9 +172,7 @@ class BudgetManager:
         # Store in DynamoDB
         self._store_budget(budget)
 
-        logger.info(
-            f"Created budget: {budget_id} for {scope} with limit ${amount}"
-        )
+        logger.info(f"Created budget: {budget_id} for {scope} with limit ${amount}")
 
         return budget
 

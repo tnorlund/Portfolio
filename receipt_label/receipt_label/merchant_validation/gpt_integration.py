@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from typing import Any, Dict, List
 
 from openai import OpenAIError
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -196,14 +195,10 @@ def validate_match_with_gpt(
             else:
                 receipt_phone_str = str(phone_field)
             # Strip spaces and hyphens
-            receipt_phone_str = receipt_phone_str.replace(" ", "").replace(
-                "-", ""
-            )
+            receipt_phone_str = receipt_phone_str.replace(" ", "").replace("-", "")
 
             # Normalize Google phone
-            cleaned_google_phone = google_phone.replace(" ", "").replace(
-                "-", ""
-            )
+            cleaned_google_phone = google_phone.replace(" ", "").replace("-", "")
 
             # Compare normalized phone strings
             if receipt_phone_str and receipt_phone_str == cleaned_google_phone:
@@ -220,18 +215,13 @@ def validate_match_with_gpt(
             # Lowercase and tokenize
             address_str = address_str.lower()
             addr_tokens = address_str.split()
-            alpha_tokens = [
-                tok for tok in addr_tokens if any(c.isalpha() for c in tok)
-            ]
-            if alpha_tokens and all(
-                tok in google_addr for tok in alpha_tokens
-            ):
+            alpha_tokens = [tok for tok in addr_tokens if any(c.isalpha() for c in tok)]
+            if alpha_tokens and all(tok in google_addr for tok in alpha_tokens):
                 field_matches.append("address")
 
             # Apply override rules
             if len(field_matches) >= 2 or (
-                len(field_matches) == 1
-                and result["confidence"] >= CONFIDENCE_THRESHOLD
+                len(field_matches) == 1 and result["confidence"] >= CONFIDENCE_THRESHOLD
             ):
                 result["decision"] = "YES"
                 result["matched_fields"] = field_matches
@@ -240,9 +230,7 @@ def validate_match_with_gpt(
                     result["confidence"] = max(
                         result["confidence"], CONFIDENCE_THRESHOLD
                     )
-                result["reason"] = (
-                    f"Validated by field matching: {field_matches}"
-                )
+                result["reason"] = f"Validated by field matching: {field_matches}"
         except JSONDecodeError:
             pass
 

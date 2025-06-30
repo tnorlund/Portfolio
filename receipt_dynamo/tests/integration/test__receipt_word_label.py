@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
-
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus
 
@@ -335,11 +334,7 @@ def test_addReceiptWordLabels_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {
-                            "PutRequest": {
-                                "Item": sample_receipt_word_label.to_item()
-                            }
-                        }
+                        {"PutRequest": {"Item": sample_receipt_word_label.to_item()}}
                     ]
                 }
             },
@@ -1555,9 +1550,7 @@ def test_getReceiptWordLabelsByLabel_success(
     client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.get_receipt_word_labels_by_label(
-        "ITEM"
-    )
+    labels, last_evaluated_key = client.get_receipt_word_labels_by_label("ITEM")
 
     # Assert
     assert len(labels) == 2
@@ -1844,8 +1837,8 @@ def test_getReceiptWordLabelsByValidationStatus_success(
     client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act
-    labels, last_evaluated_key = (
-        client.get_receipt_word_labels_by_validation_status("VALID")
+    labels, last_evaluated_key = client.get_receipt_word_labels_by_validation_status(
+        "VALID"
     )
 
     # Assert
@@ -2042,15 +2035,11 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
             "LastEvaluatedKey": {"PK": {"S": "k2"}, "SK": {"S": "k2"}},
         },
         {
-            "Items": [
-                sample_receipt_word_label.to_item()
-            ],  # total = 3 (hits limit)
+            "Items": [sample_receipt_word_label.to_item()],  # total = 3 (hits limit)
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status(
-        "VALID", limit=3
-    )
+    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=3)
 
     assert len(labels) == 3
     assert lek is None
@@ -2078,9 +2067,7 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status(
-        "VALID", limit=2
-    )
+    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=2)
 
     assert len(labels) == 2
     assert lek is None
@@ -2111,9 +2098,7 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status(
-        "VALID", limit=3
-    )
+    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=3)
 
     assert len(labels) == 3
     assert lek is None  # loop completed

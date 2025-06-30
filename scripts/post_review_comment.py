@@ -28,9 +28,7 @@ class ReviewCommentManager:
 
         return None
 
-    def post_or_update_review(
-        self, pr_number: int, review_content: str
-    ) -> bool:
+    def post_or_update_review(self, pr_number: int, review_content: str) -> bool:
         """Post new review or update existing one."""
         try:
             pr = self.repo.get_pull_request(pr_number)
@@ -62,18 +60,12 @@ class ReviewCommentManager:
 
 @click.command()
 @click.option("--pr-number", required=True, type=int, help="PR number")
-@click.option(
-    "--repository", required=True, help="Repository in format owner/repo"
-)
-@click.option(
-    "--review-file", required=True, help="File containing review content"
-)
+@click.option("--repository", required=True, help="Repository in format owner/repo")
+@click.option("--review-file", required=True, help="File containing review content")
 @click.option(
     "--update-existing", is_flag=True, help="Update existing comment if found"
 )
-def main(
-    pr_number: int, repository: str, review_file: str, update_existing: bool
-):
+def main(pr_number: int, repository: str, review_file: str, update_existing: bool):
     """Post Claude review comment to GitHub PR."""
 
     github_token = os.getenv("GITHUB_TOKEN")
@@ -97,9 +89,7 @@ def main(
         success = manager.post_or_update_review(pr_number, review_content)
 
         if success:
-            click.echo(
-                f"✅ Successfully posted Claude review to PR #{pr_number}"
-            )
+            click.echo(f"✅ Successfully posted Claude review to PR #{pr_number}")
         else:
             click.echo(f"❌ Failed to post review comment")
             return 1

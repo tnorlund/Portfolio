@@ -26,7 +26,6 @@ from openai.resources.batches import Batch
 from openai.types import FileObject
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -134,9 +133,7 @@ def chunk_into_embedding_batches(
     """
     # Build a mapping image_id -> receipt_id ->
     # dict[(line_id, word_id) -> ReceiptWord] for uniqueness
-    words_by_image: dict[
-        str, dict[int, dict[tuple[int, int], ReceiptWord]]
-    ] = {}
+    words_by_image: dict[str, dict[int, dict[tuple[int, int], ReceiptWord]]] = {}
     for word in words:
         image_dict = words_by_image.setdefault(word.image_id, {})
         receipt_dict = image_dict.setdefault(word.receipt_id, {})
@@ -261,9 +258,7 @@ def format_word_context_embedding(
             f"LINE#{word.line_id:05d}#"
             f"WORD#{word.word_id:05d}"
         )
-        body_input = _format_word_context_embedding_input(
-            word, all_words_in_receipt
-        )
+        body_input = _format_word_context_embedding_input(word, all_words_in_receipt)
         entry = {
             "custom_id": pinecone_id,
             "method": "POST",
@@ -292,14 +287,10 @@ def upload_to_openai(
     """Upload the NDJSON file to OpenAI."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.openai.files.create(
-        file=filepath.open("rb"), purpose="batch"
-    )
+    return client_manager.openai.files.create(file=filepath.open("rb"), purpose="batch")
 
 
-def submit_openai_batch(
-    file_id: str, client_manager: ClientManager = None
-) -> Batch:
+def submit_openai_batch(file_id: str, client_manager: ClientManager = None) -> Batch:
     """Submit a batch embedding job to OpenAI using the uploaded file."""
     if client_manager is None:
         client_manager = get_client_manager()

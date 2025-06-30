@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
-
 from receipt_dynamo import DynamoClient, ReceiptField
 
 # -------------------------------------------------------------------
@@ -344,11 +343,7 @@ def test_addReceiptFields_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {
-                            "PutRequest": {
-                                "Item": sample_receipt_field.to_item()
-                            }
-                        }
+                        {"PutRequest": {"Item": sample_receipt_field.to_item()}}
                     ]
                 }
             },
@@ -1819,9 +1814,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="Could not list receipt fields by image ID"
-    ):
+    with pytest.raises(Exception, match="Could not list receipt fields by image ID"):
         client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     mock_query.assert_called_once()
 
@@ -1843,9 +1836,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
         ),
     ]
 
-    with pytest.raises(
-        Exception, match="Could not list receipt fields by image ID"
-    ):
+    with pytest.raises(Exception, match="Could not list receipt fields by image ID"):
         client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     assert mock_query.call_count == 2
 
@@ -2176,9 +2167,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="Could not list receipt fields by receipt ID"
-    ):
+    with pytest.raises(Exception, match="Could not list receipt fields by receipt ID"):
         client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -2203,9 +2192,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
         ),
     ]
 
-    with pytest.raises(
-        Exception, match="Could not list receipt fields by receipt ID"
-    ):
+    with pytest.raises(Exception, match="Could not list receipt fields by receipt ID"):
         client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,

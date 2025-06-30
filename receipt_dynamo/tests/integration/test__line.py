@@ -2,7 +2,6 @@ from typing import Literal
 
 import boto3
 import pytest
-
 from receipt_dynamo import DynamoClient, Line
 
 correct_line_params = {
@@ -204,9 +203,7 @@ def test_line_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     client.add_line(line_2)
 
     # Act
-    lines = client.list_lines_from_image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    lines = client.list_lines_from_image("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
 
     # Assert
     assert line_1 in lines

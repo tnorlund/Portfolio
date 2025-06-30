@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 import pytest
-
 from receipt_dynamo import (
     ReceiptValidationResult,
     item_to_receipt_validation_result,

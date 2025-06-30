@@ -42,9 +42,7 @@ def _is_phone_number(text: str) -> bool:
     return any(re.match(pattern, text.strip()) for pattern in common_patterns)
 
 
-def _merged_phone_candidate_from_text(
-    word: ReceiptWord, metadata: dict
-) -> list[str]:
+def _merged_phone_candidate_from_text(word: ReceiptWord, metadata: dict) -> list[str]:
     """Return possible phone number strings from the word and neighbors."""
 
     current = word.text.strip()
@@ -106,9 +104,7 @@ def validate_phone_number(
 
     matches = query_response.matches
     avg_similarity = (
-        sum(match.score for match in matches) / len(matches)
-        if matches
-        else 0.0
+        sum(match.score for match in matches) / len(matches) if matches else 0.0
     )
 
     variants = _merged_phone_candidate_from_text(word, vector_data.metadata)
