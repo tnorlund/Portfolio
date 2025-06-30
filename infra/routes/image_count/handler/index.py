@@ -22,9 +22,9 @@ def handler(event, context):
             client = DynamoClient(dynamodb_table_name)
 
             # Paginate through all images to get the final count
-            images, lek = client.listImages(QUERY_LIMIT)
+            images, lek = client.list_images(QUERY_LIMIT)
             while lek:
-                next_images, lek = client.listImages(QUERY_LIMIT, lek)
+                next_images, lek = client.list_images(QUERY_LIMIT, lek)
                 images.extend(next_images)
 
             return {

@@ -79,7 +79,7 @@ def get_cached_label_counts():
 
     try:
         # Get all cached label counts in a single efficient query
-        cached_entries, _ = dynamo_client.listLabelCountCaches()
+        cached_entries, _ = dynamo_client.list_label_count_caches()
 
         # Convert to dictionary for quick lookup
         cached_by_label = {entry.label: entry for entry in cached_entries}

@@ -78,7 +78,7 @@ class InstanceService:
             health_status="healthy",  # TODO: Get actual health status
         )
 
-        self.dynamo_client.addInstance(instance)
+        self.dynamo_client.add_instance(instance)
         return instance
 
     def get_instance(self, instance_id: str) -> Instance:
@@ -94,7 +94,7 @@ class InstanceService:
         Raises:
             Exception: When the instance is not found
         """
-        return self.dynamo_client.getInstance(instance_id)
+        return self.dynamo_client.get_instance(instance_id)
 
     def update_instance(self, instance: Instance) -> None:
         """
@@ -106,7 +106,7 @@ class InstanceService:
         Raises:
             Exception: When the instance does not exist
         """
-        self.dynamo_client.updateInstance(instance)
+        self.dynamo_client.update_instance(instance)
 
     def update_instance_status(
         self, instance_id: str, status: str
@@ -158,7 +158,7 @@ class InstanceService:
         Raises:
             Exception: When the instance does not exist
         """
-        self.dynamo_client.deleteInstance(instance)
+        self.dynamo_client.delete_instance(instance)
 
     def list_instances(
         self,
@@ -175,7 +175,7 @@ class InstanceService:
         Returns:
             A tuple containing a list of Instance objects and the last evaluated key
         """
-        return self.dynamo_client.listInstances(limit, last_evaluated_key)
+        return self.dynamo_client.list_instances(limit, last_evaluated_key)
 
     def list_instances_by_status(
         self,
@@ -194,7 +194,7 @@ class InstanceService:
         Returns:
             A tuple containing a list of Instance objects and the last evaluated key
         """
-        return self.dynamo_client.listInstancesByStatus(
+        return self.dynamo_client.list_instances_by_status(
             status, limit, last_evaluated_key
         )
 
@@ -215,7 +215,7 @@ class InstanceService:
         Returns:
             A tuple containing a list of Instance objects and the last evaluated key
         """
-        return self.dynamo_client.listInstancesByType(
+        return self.dynamo_client.list_instances_by_type(
             instance_type, limit, last_evaluated_key
         )
 
@@ -238,7 +238,7 @@ class InstanceService:
         idle_instances = []
         for instance in running_instances:
             # Get active jobs for this instance
-            active_jobs, _ = self.dynamo_client.listInstanceJobsByInstance(
+            active_jobs, _ = self.dynamo_client.list_instance_jobs_by_instance(
                 instance.instance_id, status="running"
             )
 
@@ -281,7 +281,7 @@ class InstanceService:
             # resource_utilization is optional, defaults to None
         )
 
-        self.dynamo_client.addInstanceJob(instance_job)
+        self.dynamo_client.add_instance_job(instance_job)
         return instance_job
 
     def get_instance_job(self, instance_id: str, job_id: str) -> InstanceJob:
@@ -298,7 +298,7 @@ class InstanceService:
         Raises:
             Exception: When the instance job is not found
         """
-        return self.dynamo_client.getInstanceJob(instance_id, job_id)
+        return self.dynamo_client.get_instance_job(instance_id, job_id)
 
     def update_instance_job(self, instance_job: InstanceJob) -> None:
         """
@@ -310,7 +310,7 @@ class InstanceService:
         Raises:
             Exception: When the instance job does not exist
         """
-        self.dynamo_client.updateInstanceJob(instance_job)
+        self.dynamo_client.update_instance_job(instance_job)
 
     def update_instance_job_status(
         self,
@@ -356,7 +356,7 @@ class InstanceService:
         Raises:
             Exception: When the instance job does not exist
         """
-        self.dynamo_client.deleteInstanceJob(instance_job)
+        self.dynamo_client.delete_instance_job(instance_job)
 
     def list_jobs_for_instance(
         self,
@@ -377,7 +377,7 @@ class InstanceService:
         Returns:
             A tuple containing a list of InstanceJob objects and the last evaluated key
         """
-        return self.dynamo_client.listInstanceJobsByInstance(
+        return self.dynamo_client.list_instance_jobs_by_instance(
             instance_id, status, limit, last_evaluated_key
         )
 
@@ -400,6 +400,6 @@ class InstanceService:
         Returns:
             A tuple containing a list of InstanceJob objects and the last evaluated key
         """
-        return self.dynamo_client.listInstanceJobsByJob(
+        return self.dynamo_client.list_instance_jobs_by_job(
             job_id, status, limit, last_evaluated_key
         )
