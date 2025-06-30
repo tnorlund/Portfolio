@@ -29,7 +29,7 @@ class TestListReceiptMetadatas:
             Mock(spec=ReceiptMetadata),
         ]
         mock_client_manager = Mock()
-        mock_client_manager.dynamo.listReceiptMetadatas.return_value = (
+        mock_client_manager.dynamo.list_receipt_metadatas.return_value = (
             mock_metadatas,
             None,
         )
@@ -40,7 +40,7 @@ class TestListReceiptMetadatas:
 
         # Assert
         assert result == mock_metadatas
-        mock_client_manager.dynamo.listReceiptMetadatas.assert_called_once()
+        mock_client_manager.dynamo.list_receipt_metadatas.assert_called_once()
 
     @patch("receipt_label.merchant_validation.data_access.get_client_manager")
     def test_list_receipt_metadatas_empty_result(
@@ -49,7 +49,7 @@ class TestListReceiptMetadatas:
         """Test handling of empty result from DynamoDB."""
         # Arrange
         mock_client_manager = Mock()
-        mock_client_manager.dynamo.listReceiptMetadatas.return_value = None
+        mock_client_manager.dynamo.list_receipt_metadatas.return_value = None
         mock_get_client_manager.return_value = mock_client_manager
 
         # Act
@@ -65,10 +65,10 @@ class TestListReceiptMetadatas:
         """Test handling of DynamoDB client errors."""
         # Arrange
         mock_client_manager = Mock()
-        mock_client_manager.dynamo.listReceiptMetadatas.side_effect = (
+        mock_client_manager.dynamo.list_receipt_metadatas.side_effect = (
             ClientError(
                 {"Error": {"Code": "ValidationException"}},
-                "listReceiptMetadatas",
+                "list_receipt_metadatas",
             )
         )
         mock_get_client_manager.return_value = mock_client_manager
@@ -97,12 +97,12 @@ class TestGetReceiptDetails:
 
         mock_client_manager = Mock()
         mock_dynamo = mock_client_manager.dynamo
-        mock_dynamo.getReceipt.return_value = mock_receipt
-        mock_dynamo.getReceiptLines.return_value = mock_lines
-        mock_dynamo.getReceiptWords.return_value = mock_words
-        mock_dynamo.getReceiptLetters.return_value = mock_letters
-        mock_dynamo.getReceiptWordTags.return_value = mock_tags
-        mock_dynamo.getReceiptWordLabels.return_value = mock_labels
+        mock_dynamo.get_receipt.return_value = mock_receipt
+        mock_dynamo.get_receipt_lines.return_value = mock_lines
+        mock_dynamo.get_receipt_words.return_value = mock_words
+        mock_dynamo.get_receipt_letters.return_value = mock_letters
+        mock_dynamo.get_receipt_word_tags.return_value = mock_tags
+        mock_dynamo.get_receipt_word_labels.return_value = mock_labels
         mock_get_client_manager.return_value = mock_client_manager
 
         # Act
@@ -117,20 +117,20 @@ class TestGetReceiptDetails:
             mock_tags,
             mock_labels,
         )
-        mock_dynamo.getReceipt.assert_called_once_with(image_id, receipt_id)
-        mock_dynamo.getReceiptLines.assert_called_once_with(
+        mock_dynamo.get_receipt.assert_called_once_with(image_id, receipt_id)
+        mock_dynamo.get_receipt_lines.assert_called_once_with(
             image_id, receipt_id
         )
-        mock_dynamo.getReceiptWords.assert_called_once_with(
+        mock_dynamo.get_receipt_words.assert_called_once_with(
             image_id, receipt_id
         )
-        mock_dynamo.getReceiptLetters.assert_called_once_with(
+        mock_dynamo.get_receipt_letters.assert_called_once_with(
             image_id, receipt_id
         )
-        mock_dynamo.getReceiptWordTags.assert_called_once_with(
+        mock_dynamo.get_receipt_word_tags.assert_called_once_with(
             image_id, receipt_id
         )
-        mock_dynamo.getReceiptWordLabels.assert_called_once_with(
+        mock_dynamo.get_receipt_word_labels.assert_called_once_with(
             image_id, receipt_id
         )
 
@@ -169,7 +169,7 @@ class TestWriteReceiptMetadataToDynamo:
         write_receipt_metadata_to_dynamo(metadata)
 
         # Assert
-        mock_client_manager.dynamo.addReceiptMetadata.assert_called_once_with(
+        mock_client_manager.dynamo.add_receipt_metadata.assert_called_once_with(
             metadata
         )
 
@@ -249,9 +249,9 @@ class TestPersistAliasUpdates:
         persist_alias_updates(records)
 
         # Assert
-        assert mock_client_manager.dynamo.updateReceiptMetadata.call_count == 3
+        assert mock_client_manager.dynamo.update_receipt_metadata.call_count == 3
         for record in records:
-            mock_client_manager.dynamo.updateReceiptMetadata.assert_any_call(
+            mock_client_manager.dynamo.update_receipt_metadata.assert_any_call(
                 record
             )
 
@@ -269,7 +269,7 @@ class TestPersistAliasUpdates:
 
         # Assert
         assert (
-            mock_client_manager.dynamo.updateReceiptMetadata.call_count == 50
+            mock_client_manager.dynamo.update_receipt_metadata.call_count == 50
         )
 
     def test_persist_alias_updates_empty_list(self):

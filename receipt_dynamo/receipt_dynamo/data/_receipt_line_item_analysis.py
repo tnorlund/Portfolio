@@ -397,7 +397,7 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SKf": {
+                    "SK": {
                         "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                     },
                 },
@@ -456,7 +456,7 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValuesf": {
+                "ExpressionAttributeValues": {
                     ":val": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
                 },
             }
@@ -537,10 +537,10 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             # Query using just the partition key without a filter expression
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)f",
+                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefixf": {"S": "RECEIPT#"},
+                    ":skPrefix": {"S": "RECEIPT#"},
                 },
             )
 
@@ -552,10 +552,10 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)f",
+                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefixf": {"S": "RECEIPT#"},
+                        ":skPrefix": {"S": "RECEIPT#"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )

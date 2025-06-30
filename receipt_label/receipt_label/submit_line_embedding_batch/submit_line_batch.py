@@ -257,7 +257,7 @@ def deserialize_receipt_lines(filepath: Path) -> list[ReceiptLine]:
 
 def query_receipt_lines(image_id: str, receipt_id: int) -> list[ReceiptLine]:
     """Query the ReceiptLines from DynamoDB."""
-    _, lines, _, _, _, _ = dynamo_client.getReceiptDetails(
+    _, lines, _, _, _, _ = dynamo_client.get_receipt_details(
         image_id, receipt_id
     )
     return lines
@@ -331,7 +331,7 @@ def create_batch_summary(
 
 def add_batch_summary(summary: BatchSummary) -> None:
     """Write the BatchSummary entity to DynamoDB."""
-    dynamo_client.addBatchSummary(summary)
+    dynamo_client.add_batch_summary(summary)
 
 
 def update_line_embedding_status(lines: list[ReceiptLine]) -> None:

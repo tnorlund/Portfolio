@@ -66,14 +66,14 @@ def list_pending_embedding_batches(
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+    summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
         status="PENDING",
         batch_type=BatchType.EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+        next_summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
             status="PENDING",
             batch_type=BatchType.EMBEDDING,
             limit=25,
@@ -167,7 +167,7 @@ def get_receipt_descriptions(
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
         receipt, lines, words, letters, tags, labels = (
-            client_manager.dynamo.getReceiptDetails(
+            client_manager.dynamo.get_receipt_details(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )

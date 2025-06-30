@@ -41,7 +41,7 @@ def list_receipt_metadatas(
     if client_manager is None:
         client_manager = get_client_manager()
     try:
-        result = client_manager.dynamo.listReceiptMetadatas()
+        result = client_manager.dynamo.list_receipt_metadatas()
         return result[0] if result else []
     except (ClientError, BotoCoreError) as e:
         logger.error("Failed to list receipt metadatas: %s", e)
@@ -72,9 +72,9 @@ def list_receipts_for_merchant_validation(
     if client_manager is None:
         client_manager = get_client_manager()
     try:
-        receipts, lek = client_manager.dynamo.listReceipts(limit=25)
+        receipts, lek = client_manager.dynamo.list_receipts(limit=25)
         while lek:
-            next_receipts, lek = client_manager.dynamo.listReceipts(
+            next_receipts, lek = client_manager.dynamo.list_receipts(
                 limit=25, lastEvaluatedKey=lek
             )
             receipts.extend(next_receipts)
@@ -83,7 +83,7 @@ def list_receipts_for_merchant_validation(
         raise
     # Filter out receipts that have receipt metadata
     try:
-        receipt_metadatas = client_manager.dynamo.getReceiptMetadatas(
+        receipt_metadatas = client_manager.dynamo.get_receipt_metadatas(
             [
                 {
                     "PK": {"S": f"IMAGE#{receipt.image_id}"},
@@ -157,20 +157,20 @@ def get_receipt_details(
         client_manager = get_client_manager()
 
     try:
-        receipt = client_manager.dynamo.getReceipt(image_id, receipt_id)
-        receipt_lines = client_manager.dynamo.getReceiptLines(
+        receipt = client_manager.dynamo.get_receipt(image_id, receipt_id)
+        receipt_lines = client_manager.dynamo.get_receipt_lines(
             image_id, receipt_id
         )
-        receipt_words = client_manager.dynamo.getReceiptWords(
+        receipt_words = client_manager.dynamo.get_receipt_words(
             image_id, receipt_id
         )
-        receipt_letters = client_manager.dynamo.getReceiptLetters(
+        receipt_letters = client_manager.dynamo.get_receipt_letters(
             image_id, receipt_id
         )
-        receipt_word_tags = client_manager.dynamo.getReceiptWordTags(
+        receipt_word_tags = client_manager.dynamo.get_receipt_word_tags(
             image_id, receipt_id
         )
-        receipt_word_labels = client_manager.dynamo.getReceiptWordLabels(
+        receipt_word_labels = client_manager.dynamo.get_receipt_word_labels(
             image_id, receipt_id
         )
     except (ClientError, BotoCoreError) as e:
@@ -223,7 +223,7 @@ def write_receipt_metadata_to_dynamo(
         client_manager = get_client_manager()
 
     try:
-        client_manager.dynamo.addReceiptMetadata(metadata)
+        client_manager.dynamo.add_receipt_metadata(metadata)
         logger.debug(
             f"Successfully wrote metadata for {metadata.image_id}/{metadata.receipt_id}"
         )
@@ -351,7 +351,7 @@ def persist_alias_updates(
 
         try:
             for record in batch:
-                client_manager.dynamo.updateReceiptMetadata(record)
+                client_manager.dynamo.update_receipt_metadata(record)
             logger.debug(
                 f"Successfully processed batch {batch_num}/{total_batches}"
             )

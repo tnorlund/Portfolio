@@ -81,7 +81,7 @@ def main():
                 s3_bucket=image_s3_bucket,
                 s3_key=ocr_json_file_s3_key,
             )
-            dynamo_client.addOCRRoutingDecision(
+            dynamo_client.add_ocr_routing_decision(
                 OCRRoutingDecision(
                     image_id=image_id,
                     job_id=job_id,

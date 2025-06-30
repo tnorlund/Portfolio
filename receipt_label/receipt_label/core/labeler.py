@@ -1312,7 +1312,7 @@ class ReceiptLabeler:
             receipt_words_data,
             receipt_letters,
             receipt_word_labels,
-        ) = client.getReceiptDetails(image_id, receipt_id)
+        ) = client.get_receipt_details(image_id, receipt_id)
         if not receipt_data:
             raise ValueError(
                 f"Receipt {receipt_id} not found for image {image_id}"

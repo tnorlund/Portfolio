@@ -272,8 +272,8 @@ def test_validate_match_with_gpt_branches(
 def test_list_receipts_for_merchant_validation(mock_dynamo):
     R1 = type("R", (), {"image_id": "i1", "receipt_id": 1})
     R2 = type("R", (), {"image_id": "i2", "receipt_id": 2})
-    mock_dynamo.listReceipts.return_value = ([R1, R2], None)
-    mock_dynamo.getReceiptMetadatas.return_value = [
+    mock_dynamo.list_receipts.return_value = ([R1, R2], None)
+    mock_dynamo.get_receipt_metadatas.return_value = [
         type("M", (), {"image_id": "i1", "receipt_id": 1})()
     ]
     assert mv.list_receipts_for_merchant_validation() == [("i2", 2)]
@@ -281,12 +281,12 @@ def test_list_receipts_for_merchant_validation(mock_dynamo):
 
 def test_get_receipt_details(mock_dynamo):
     dummy = ("r", ["l"], ["w"], ["let"], ["tag"], ["lbl"])
-    mock_dynamo.getReceipt.return_value = dummy[0]
-    mock_dynamo.getReceiptLines.return_value = dummy[1]
-    mock_dynamo.getReceiptWords.return_value = dummy[2]
-    mock_dynamo.getReceiptLetters.return_value = dummy[3]
-    mock_dynamo.getReceiptWordTags.return_value = dummy[4]
-    mock_dynamo.getReceiptWordLabels.return_value = dummy[5]
+    mock_dynamo.get_receipt.return_value = dummy[0]
+    mock_dynamo.get_receipt_lines.return_value = dummy[1]
+    mock_dynamo.get_receipt_words.return_value = dummy[2]
+    mock_dynamo.get_receipt_letters.return_value = dummy[3]
+    mock_dynamo.get_receipt_word_tags.return_value = dummy[4]
+    mock_dynamo.get_receipt_word_labels.return_value = dummy[5]
     assert mv.get_receipt_details("img", 1) == dummy
 
 
@@ -616,12 +616,12 @@ def test_validate_match_with_gpt_bad_json(mock_openai):
 def test_list_receipts_pagination(mock_dynamo):
     R1 = type("R", (), {"image_id": "i1", "receipt_id": 1})
     R2 = type("R", (), {"image_id": "i2", "receipt_id": 2})
-    mock_dynamo.listReceipts.side_effect = [
+    mock_dynamo.list_receipts.side_effect = [
         ([R1], "token"),
         ([R2], None),
     ]
     # Only R1 has metadata, so R2 should be returned
-    mock_dynamo.getReceiptMetadatas.return_value = [
+    mock_dynamo.get_receipt_metadatas.return_value = [
         type("M", (), {"image_id": "i1", "receipt_id": 1})()
     ]
     out = mv.list_receipts_for_merchant_validation()
@@ -645,7 +645,7 @@ def test_write_receipt_metadata_to_dynamo_success(mock_dynamo):
         reasoning="test",
     )
     mv.write_receipt_metadata_to_dynamo(meta)
-    mock_dynamo.addReceiptMetadata.assert_called_once_with(meta)
+    mock_dynamo.add_receipt_metadata.assert_called_once_with(meta)
 
 
 # is_valid_google_match: empty types but matching fragment

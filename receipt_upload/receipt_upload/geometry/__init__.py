@@ -11,6 +11,8 @@ This package provides geometric operations for:
 # Re-export main functions to maintain backward compatibility
 from .edge_detection import (compute_edge, compute_final_receipt_tilt,
                              compute_receipt_box_from_boundaries,
+                             create_boundary_line_from_points,
+                             create_boundary_line_from_theil_sen,
                              find_hull_extremes_along_angle,
                              find_line_edges_at_secondary_extremes,
                              refine_hull_extremes_with_hull_edge_alignment)
@@ -27,6 +29,8 @@ __all__ = [
     "compute_edge",
     "compute_final_receipt_tilt",
     "compute_receipt_box_from_boundaries",
+    "create_boundary_line_from_points",
+    "create_boundary_line_from_theil_sen",
     "find_hull_extremes_along_angle",
     "find_line_edges_at_secondary_extremes",
     "refine_hull_extremes_with_hull_edge_alignment",

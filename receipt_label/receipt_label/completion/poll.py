@@ -51,7 +51,7 @@ def list_pending_completion_batches(
     if client_manager is None:
         client_manager = get_client_manager()
     pending_completion_batches, _ = (
-        client_manager.dynamo.getBatchSummariesByStatus(
+        client_manager.dynamo.get_batch_summaries_by_status(
             status=BatchStatus.PENDING, batch_type=BatchType.COMPLETION
         )
     )
@@ -160,7 +160,7 @@ def download_openai_batch_result(  # pylint: disable=too-many-locals,too-many-st
                     _,
                     _,
                     all_labels_from_receipt,
-                ) = client_manager.dynamo.getReceiptDetails(
+                ) = client_manager.dynamo.get_receipt_details(
                     image_id=image_id, receipt_id=receipt_id
                 )
                 receipt_details_cache[cache_key] = all_labels_from_receipt

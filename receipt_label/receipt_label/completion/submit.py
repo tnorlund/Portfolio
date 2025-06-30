@@ -46,7 +46,7 @@ def get_receipt_details(
         _,
         _,
         labels,
-    ) = client_manager.dynamo.getReceiptDetails(
+    ) = client_manager.dynamo.get_receipt_details(
         image_id, receipt_id
     )  # type: ignore
     metadata = client_manager.dynamo.getReceiptMetadata(image_id, receipt_id)
@@ -185,7 +185,7 @@ def query_receipt_words(
         _,
         _,
         _,
-    ) = client_manager.dynamo.getReceiptDetails(
+    ) = client_manager.dynamo.get_receipt_details(
         image_id, receipt_id
     )  # type: ignore
     return words  # type: ignore
@@ -356,7 +356,7 @@ def add_batch_summary(
     """Write the BatchSummary entity to DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    client_manager.dynamo.addBatchSummary(summary)
+    client_manager.dynamo.add_batch_summary(summary)
 
 
 def update_label_validation_status(

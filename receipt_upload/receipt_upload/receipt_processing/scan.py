@@ -84,10 +84,10 @@ def process_scan(
         image_type=ImageType.SCAN,
     )
     # Add the image and OCR data to the database
-    dynamo_client.addImage(ocr_image)
-    dynamo_client.addLines(ocr_lines)
-    dynamo_client.addWords(ocr_words)
-    dynamo_client.addLetters(ocr_letters)
+    dynamo_client.add_image(ocr_image)
+    dynamo_client.add_lines(ocr_lines)
+    dynamo_client.add_words(ocr_words)
+    dynamo_client.add_letters(ocr_letters)
 
     # Get the average diagonal length of the lines
     cluster_dict = dbscan_lines_x_axis(ocr_lines)
@@ -214,7 +214,7 @@ def process_scan(
             cdn_s3_bucket=site_bucket,
             cdn_s3_key=f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
         )
-        dynamo_client.addReceipt(receipt)
+        dynamo_client.add_receipt(receipt)
 
         # 6) Submit a new OCR job for the receipt
         new_ocr_job = OCRJob(
@@ -228,7 +228,7 @@ def process_scan(
             job_type=OCRJobType.REFINEMENT,
             receipt_id=cluster_id,
         )
-        dynamo_client.addOCRJob(new_ocr_job)
+        dynamo_client.add_ocr_job(new_ocr_job)
 
         # 7) Send a message to the OCR job queue
         send_message_to_sqs(
@@ -244,4 +244,4 @@ def process_scan(
     ocr_routing_decision.status = OCRStatus.COMPLETED.value
     ocr_routing_decision.receipt_count = len(cluster_dict)
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)

@@ -40,7 +40,7 @@ def get_unique_merchants_and_data(
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    receipt_metadatas, _ = client_manager.dynamo.listReceiptMetadatas()
+    receipt_metadatas, _ = client_manager.dynamo.list_receipt_metadatas()
     merchant_counts = Counter(
         metadata.canonical_merchant_name for metadata in receipt_metadatas
     )

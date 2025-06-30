@@ -69,14 +69,14 @@ def list_pending_line_embedding_batches() -> List[BatchSummary]:
     List line embedding batches that are pending processing.
     Returns a list of pending batch identifiers.
     """
-    summaries, lek = dynamo_client.getBatchSummariesByStatus(
+    summaries, lek = dynamo_client.get_batch_summaries_by_status(
         status="PENDING",
         batch_type=BatchType.LINE_EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = dynamo_client.getBatchSummariesByStatus(
+        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
             status="PENDING",
             batch_type=BatchType.LINE_EMBEDDING,
             limit=25,
@@ -149,7 +149,7 @@ def get_receipt_descriptions(
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
         receipt, lines, words, letters, tags, labels = (
-            dynamo_client.getReceiptDetails(
+            dynamo_client.get_receipt_details(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )

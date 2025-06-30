@@ -39,19 +39,19 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata already exists") from e
+                raise ValueError("receipt_metadata already exists")
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error adding receipt metadata: {e}") from e
+                raise ValueError(f"Error adding receipt metadata: {e}")
 
     def add_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
         """
@@ -64,7 +64,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If receipt_metadatas is None, not a list, or contains None or non-ReceiptMetadata items.
         """
         if receipt_metadatas is None:
-            raise ValueError("receipt_metadatas cannot be None") from e
+            raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
         if not all(
@@ -92,19 +92,19 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata already exists") from e
+                raise ValueError("receipt_metadata already exists")
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error adding receipt metadata: {e}") from e
+                raise ValueError(f"Error adding receipt metadata: {e}")
 
     def update_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
@@ -117,7 +117,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If receipt_metadata is None, not a ReceiptMetadata, or if the record does not exist.
         """
         if receipt_metadata is None:
-            raise ValueError("receipt_metadata cannot be None") from e
+            raise ValueError("receipt_metadata cannot be None")
         if not isinstance(receipt_metadata, ReceiptMetadata):
             raise ValueError("receipt_metadata must be a ReceiptMetadata")
 
@@ -130,21 +130,21 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata does not exist") from e
+                raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
                 raise ValueError(
                     f"Error updating receipt metadata: {e}"
-                ) from e
+                )
 
     def update_receipt_metadatas(
         self, receipt_metadatas: List[ReceiptMetadata]
@@ -159,7 +159,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If receipt_metadatas is None, not a list, or contains None or non-ReceiptMetadata items.
         """
         if receipt_metadatas is None:
-            raise ValueError("receipt_metadatas cannot be None") from e
+            raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
         if not all(
@@ -194,21 +194,21 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata does not exist") from e
+                raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
                 raise ValueError(
                     f"Error updating receipt metadata: {e}"
-                ) from e
+                )
 
     def delete_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
@@ -221,7 +221,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If receipt_metadata is None, not a ReceiptMetadata, or if the record does not exist.
         """
         if receipt_metadata is None:
-            raise ValueError("receipt_metadata cannot be None") from e
+            raise ValueError("receipt_metadata cannot be None")
         if not isinstance(receipt_metadata, ReceiptMetadata):
             raise ValueError("receipt_metadata must be a ReceiptMetadata")
 
@@ -233,21 +233,21 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata does not exist") from e
+                raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
                 raise ValueError(
                     f"Error deleting receipt metadata: {e}"
-                ) from e
+                )
 
     def delete_receipt_metadatas(
         self, receipt_metadatas: List[ReceiptMetadata]
@@ -262,7 +262,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If receipt_metadatas is None, not a list, or contains None or non-ReceiptMetadata items.
         """
         if receipt_metadatas is None:
-            raise ValueError("receipt_metadatas cannot be None") from e
+            raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
         if not all(
@@ -297,21 +297,21 @@ class _ReceiptMetadata(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata does not exist") from e
+                raise ValueError("receipt_metadata does not exist")
             elif error_code == "ValidationException":
                 raise ValueError(
                     "receipt_metadata contains invalid attributes or values"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
                 raise ValueError(
                     f"Error deleting receipt metadata: {e}"
-                ) from e
+                )
 
     def get_receipt_metadata(
         self, image_id: str, receipt_id: int
@@ -330,12 +330,12 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If image_id is None, not a string, or receipt_id is None, not an integer.
         """
         if image_id is None:
-            raise ValueError("image_id cannot be None") from e
+            raise ValueError("image_id cannot be None")
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string")
         assert_valid_uuid(image_id)
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None") from e
+            raise ValueError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
@@ -351,7 +351,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             )
             item = response.get("Item")
             if item is None:
-                raise ValueError("receipt_metadata does not exist") from e
+                raise ValueError("receipt_metadata does not exist")
             return item_to_receipt_metadata(item)
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -360,13 +360,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
                     "receipt_metadata contains invalid attributes or values"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+                raise ValueError(f"Error getting receipt metadata: {e}")
 
     def get_receipt_metadatas_by_indices(
         self, indices: list[tuple[str, int]]
@@ -375,7 +375,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
         Retrieves a list of ReceiptMetadata records from DynamoDB by image_id and receipt_id.
         """
         if indices is None:
-            raise ValueError("indices cannot be None") from e
+            raise ValueError("indices cannot be None")
         if not isinstance(indices, list):
             raise ValueError("indices must be a list")
         if not all(isinstance(index, tuple) for index in indices):
@@ -413,20 +413,20 @@ class _ReceiptMetadata(DynamoClientProtocol):
             ValueError: If keys is None, not a list, or contains None or non-dict items.
         """
         if keys is None:
-            raise ValueError("keys cannot be None") from e
+            raise ValueError("keys cannot be None")
         if not isinstance(keys, list):
             raise ValueError("keys must be a list")
         if not all(isinstance(key, dict) for key in keys):
             raise ValueError("keys must be a list of dictionaries")
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("keys must contain 'PK' and 'SK'") from e
+                raise ValueError("keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'") from e
+                raise ValueError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'") from e
+                raise ValueError("SK must start with 'RECEIPT#'")
             if not key["SK"]["S"].split("#")[-1] == "METADATA":
-                raise ValueError("SK must contain 'METADATA'") from e
+                raise ValueError("SK must contain 'METADATA'")
         results = []
         for i in range(0, len(keys), 25):
             chunk = keys[i : i + 25]
@@ -498,13 +498,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
                     "receipt_metadata contains invalid attributes or values"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
+                raise ValueError(f"Error listing receipt metadata: {e}")
 
     def get_receipt_metadatas_by_merchant(
         self,
@@ -524,7 +524,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the list of ReceiptMetadata records and the last evaluated key.
         """
         if merchant_name is None:
-            raise ValueError("merchant_name cannot be None") from e
+            raise ValueError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
             raise ValueError("merchant_name must be a string")
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
@@ -558,13 +558,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
                     "receipt_metadata contains invalid attributes or values"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+                raise ValueError(f"Error getting receipt metadata: {e}")
 
     def list_receipt_metadatas_with_place_id(
         self,
@@ -586,7 +586,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the list of ReceiptMetadata records and the last evaluated key.
         """
         if not place_id:
-            raise ValueError("place_id cannot be empty") from e
+            raise ValueError("place_id cannot be empty")
         if not isinstance(place_id, str):
             raise ValueError("place_id must be a string")
         if limit is not None and not isinstance(limit, int):
@@ -627,13 +627,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
                     "receipt_metadata contains invalid attributes or values"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
+                raise ValueError(f"Error listing receipt metadata: {e}")
 
     def get_receipt_metadatas_by_confidence(
         self,
@@ -655,7 +655,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
             Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the list of ReceiptMetadata records and the last evaluated key.
         """
         if confidence is None:
-            raise ValueError("confidence cannot be None") from e
+            raise ValueError("confidence cannot be None")
         if not isinstance(confidence, float):
             raise ValueError("confidence must be a float")
         if confidence < 0 or confidence > 1:
@@ -700,10 +700,10 @@ class _ReceiptMetadata(DynamoClientProtocol):
                     f"receipt_metadata contains invalid attributes or values: {e}"
                 )
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise ValueError("internal server error")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise ValueError("provisioned throughput exceeded")
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise ValueError("table not found")
             else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+                raise ValueError(f"Error getting receipt metadata: {e}")
