@@ -7,13 +7,22 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
         DeleteRequestTypeDef,
-        TransactWriteItemTypeDef,
         DeleteTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
     )
 
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -58,9 +67,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.put_item(
@@ -76,9 +83,7 @@ class _PlacesCache(DynamoClientProtocol):
                     f"search_value={item.search_value} already exists."
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                ) from e
+                raise DynamoDBThroughputError("Provisioned throughput exceeded") from e
             elif error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     "One or more parameters given were invalid"
@@ -103,9 +108,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.put_item(
@@ -114,10 +117,7 @@ class _PlacesCache(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"PlacesCache for search_type={item.search_type}, "
                     f"search_value={item.search_value} does not exist."
@@ -142,9 +142,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             # Update the item's attributes
@@ -181,9 +179,7 @@ class _PlacesCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+            raise ValueError("item must be an instance of the PlacesCache class.")
 
         try:
             self._client.delete_item(
@@ -192,10 +188,7 @@ class _PlacesCache(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"PlacesCache with search_type={item.search_type}, "
                     f"search_value={item.search_value} does not exist"
@@ -213,9 +206,7 @@ class _PlacesCache(DynamoClientProtocol):
             )
         if not isinstance(places_cache_items, list):
             raise ValueError("places_cache_items must be a list.")
-        if not all(
-            isinstance(item, PlacesCache) for item in places_cache_items
-        ):
+        if not all(isinstance(item, PlacesCache) for item in places_cache_items):
             raise ValueError(
                 "All items in places_cache_items must be PlacesCache objects."
             )
@@ -264,9 +255,7 @@ class _PlacesCache(DynamoClientProtocol):
                 elif error_code == "ResourceNotFoundException":
                     raise ValueError("table not found") from e
                 else:
-                    raise ValueError(
-                        f"Error deleting places caches: {e}"
-                    ) from e
+                    raise ValueError(f"Error deleting places caches: {e}") from e
 
     def get_places_cache(
         self, search_type: str, search_value: str
@@ -300,9 +289,7 @@ class _PlacesCache(DynamoClientProtocol):
         except ClientError as e:
             raise OperationError(f"Error getting PlacesCache: {e}") from e
 
-    def get_places_cache_by_place_id(
-        self, place_id: str
-    ) -> Optional[PlacesCache]:
+    def get_places_cache_by_place_id(self, place_id: str) -> Optional[PlacesCache]:
         """
         Retrieves a PlacesCache by its place_id using GSI1.
 
@@ -330,9 +317,7 @@ class _PlacesCache(DynamoClientProtocol):
                 return None
             return item_to_places_cache(response["Items"][0])
         except ClientError as e:
-            raise OperationError(
-                f"Error getting PlacesCache by place_id: {e}"
-            ) from e
+            raise OperationError(f"Error getting PlacesCache by place_id: {e}") from e
 
     def list_places_caches(
         self,
@@ -352,9 +337,7 @@ class _PlacesCache(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         places_caches = []
@@ -379,15 +362,10 @@ class _PlacesCache(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the places caches
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     places_caches.extend(
-                        [
-                            item_to_places_cache(item)
-                            for item in response["Items"]
-                        ]
+                        [item_to_places_cache(item) for item in response["Items"]]
                     )
                 last_evaluated_key = None
             else:
@@ -412,9 +390,7 @@ class _PlacesCache(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(
-                    f"Error listing places caches: {e}"
-                ) from e
+                raise OperationError(f"Error listing places caches: {e}") from e
 
     def invalidate_old_cache_items(self, days_old: int):
         """
@@ -461,6 +437,4 @@ class _PlacesCache(DynamoClientProtocol):
                 )
 
         except ClientError as e:
-            raise OperationError(
-                f"Error invalidating old cache items: {e}"
-            ) from e
+            raise OperationError(f"Error invalidating old cache items: {e}") from e

@@ -8,10 +8,15 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        WriteRequestTypeDef,
         PutRequestTypeDef,
+        WriteRequestTypeDef,
     )
 
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
@@ -53,16 +58,12 @@ class _AIUsageMetric(DynamoClientProtocol):
             batch = items[i : i + 25]
             request_items = {
                 self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item)
-                    )
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item))
                     for item in batch
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items
             unprocessed = response.get("UnprocessedItems", {})
@@ -75,9 +76,7 @@ class _AIUsageMetric(DynamoClientProtocol):
                         item = request["PutRequest"]["Item"]
                         # Match by requestId (camelCase as per DynamoDB item format)
                         for j, metric in enumerate(metrics[i : i + 25]):
-                            if metric.request_id == item.get(
-                                "requestId", {}
-                            ).get("S"):
+                            if metric.request_id == item.get("requestId", {}).get("S"):
                                 failed_metrics.append(metric)
                                 break
 
@@ -100,9 +99,7 @@ class _AIUsageMetric(DynamoClientProtocol):
         # Query using GSI1 to get metrics by date
         # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
         if not service:
-            raise ValueError(
-                "Service parameter is required for date-based queries"
-            )
+            raise ValueError("Service parameter is required for date-based queries")
 
         key_condition = "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk"
         expression_values = {

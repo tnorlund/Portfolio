@@ -7,11 +7,19 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -55,13 +63,9 @@ class _Instance(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} already exists"
-                )
+                raise ValueError(f"Instance {instance.instance_id} already exists")
             elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add instance to DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError(f"Could not add instance to DynamoDB: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -69,9 +73,7 @@ class _Instance(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise DynamoDBError(
-                    f"Could not add instance to DynamoDB: {e}"
-                ) from e
+                raise DynamoDBError(f"Could not add instance to DynamoDB: {e}") from e
 
     def add_instances(self, instances: List[Instance]) -> None:
         """Adds multiple instances to the DynamoDB table.
@@ -89,9 +91,7 @@ class _Instance(DynamoClientProtocol):
         if not isinstance(instances, list):
             raise ValueError("instances must be a list")
         if not all(isinstance(instance, Instance) for instance in instances):
-            raise ValueError(
-                "All elements in instances must be instances of Instance"
-            )
+            raise ValueError("All elements in instances must be instances of Instance")
 
         if not instances:
             return  # Nothing to do if the list is empty
@@ -103,15 +103,11 @@ class _Instance(DynamoClientProtocol):
             # Batch write the items to DynamoDB
             request_items = {
                 self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item)
-                    )
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item))
                     for item in items
                 ]
             }
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -120,15 +116,11 @@ class _Instance(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
-                raise OperationError(
-                    "Failed to process all items after retries"
-                )
+                raise OperationError("Failed to process all items after retries")
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
@@ -136,9 +128,7 @@ class _Instance(DynamoClientProtocol):
                     "Provisioned throughput exceeded, retry later"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             elif error_code == "ValidationException":
                 raise OperationError(
                     f"Validation error: {e.response['Error']['Message']}"
@@ -176,16 +166,13 @@ class _Instance(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
+                raise ValueError(f"Instance {instance.instance_id} does not exist")
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not update instance in DynamoDB: {e}"
                 ) from e
             elif (
-                e.response["Error"]["Code"]
-                == "ProvisionedThroughputExceededException"
+                e.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -226,9 +213,7 @@ class _Instance(DynamoClientProtocol):
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
+                raise ValueError(f"Instance {instance.instance_id} does not exist")
             elif error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
@@ -238,9 +223,7 @@ class _Instance(DynamoClientProtocol):
                     "Provisioned throughput exceeded, retry later"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to delete instance: {e.response['Error']['Message']}"
@@ -285,9 +268,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to get instance: {e.response['Error']['Message']}"
@@ -359,9 +340,7 @@ class _Instance(DynamoClientProtocol):
                     "Provisioned throughput exceeded, retry later"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to add instance-job: {e.response['Error']['Message']}"
@@ -408,9 +387,7 @@ class _Instance(DynamoClientProtocol):
                     "Provisioned throughput exceeded, retry later"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to update instance-job: {e.response['Error']['Message']}"
@@ -457,9 +434,7 @@ class _Instance(DynamoClientProtocol):
                     "Provisioned throughput exceeded, retry later"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to delete instance-job: {e.response['Error']['Message']}"
@@ -509,9 +484,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to get instance-job: {e.response['Error']['Message']}"
@@ -557,9 +530,7 @@ class _Instance(DynamoClientProtocol):
         try:
             instances = []
             response = self._client.query(**query_params)
-            instances = [
-                item_to_instance(item) for item in response.get("Items", [])
-            ]
+            instances = [item_to_instance(item) for item in response.get("Items", [])]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -568,9 +539,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to list instances: {e.response['Error']['Message']}"
@@ -623,9 +592,7 @@ class _Instance(DynamoClientProtocol):
 
         try:
             response = self._client.query(**query_params)
-            instances = [
-                item_to_instance(item) for item in response.get("Items", [])
-            ]
+            instances = [item_to_instance(item) for item in response.get("Items", [])]
             return instances, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -634,9 +601,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to list instances by status: {e.response['Error']['Message']}"
@@ -688,8 +653,7 @@ class _Instance(DynamoClientProtocol):
         try:
             response = self._client.query(**query_params)
             instance_jobs = [
-                item_to_instance_job(item)
-                for item in response.get("Items", [])
+                item_to_instance_job(item) for item in response.get("Items", [])
             ]
             return instance_jobs, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
@@ -699,9 +663,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to list instance jobs: {e.response['Error']['Message']}"
@@ -754,8 +716,7 @@ class _Instance(DynamoClientProtocol):
         try:
             response = self._client.query(**query_params)
             instance_jobs = [
-                item_to_instance_job(item)
-                for item in response.get("Items", [])
+                item_to_instance_job(item) for item in response.get("Items", [])
             ]
             return instance_jobs, response.get("LastEvaluatedKey")
         except botocore.exceptions.ClientError as e:
@@ -765,9 +726,7 @@ class _Instance(DynamoClientProtocol):
                     f"Table {self.table_name} does not exist"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
+                raise DynamoDBServerError("Internal server error, retry later") from e
             else:
                 raise OperationError(
                     f"Failed to list instances for job: {e.response['Error']['Message']}"

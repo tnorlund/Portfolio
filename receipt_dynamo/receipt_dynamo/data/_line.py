@@ -7,12 +7,19 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
+        DeleteRequestTypeDef,
         PutRequestTypeDef,
+        QueryInputTypeDef,
         TransactWriteItemTypeDef,
         WriteRequestTypeDef,
-        DeleteRequestTypeDef,
     )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     OperationError,
@@ -77,9 +84,7 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add lines to the database")
@@ -97,13 +102,8 @@ class _Line(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Line with ID {line.line_id} not found"
-                ) from e
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise ValueError(f"Line with ID {line.line_id} not found") from e
             else:
                 raise OperationError(f"Error updating line: {e}") from e
 
@@ -183,9 +183,7 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete lines from the database")
@@ -240,17 +238,10 @@ class _Line(DynamoClientProtocol):
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
-                    lines.extend(
-                        [item_to_line(item) for item in response["Items"]]
-                    )
+                    lines.extend([item_to_line(item) for item in response["Items"]])
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)
@@ -292,9 +283,7 @@ class _Line(DynamoClientProtocol):
                     },
                     ExclusiveStartKey=response.get("LastEvaluatedKey", None),  # type: ignore[arg-type]
                 )
-                lines.extend(
-                    [item_to_line(item) for item in response["Items"]]
-                )
+                lines.extend([item_to_line(item) for item in response["Items"]])
             return lines
         except ClientError as e:
             raise ValueError("Could not list lines from the database") from e

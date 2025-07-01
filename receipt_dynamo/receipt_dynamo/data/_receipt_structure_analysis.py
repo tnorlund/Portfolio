@@ -10,11 +10,20 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
         DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
     )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -62,9 +71,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         Returns all ReceiptStructureAnalyses for a given receipt.
     """
 
-    def add_receipt_structure_analysis(
-        self, analysis: ReceiptStructureAnalysis
-    ):
+    def add_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
         """Adds a ReceiptStructureAnalysis to DynamoDB.
 
         Args:
@@ -75,9 +82,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be added to DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -99,9 +104,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analysis to DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -115,9 +118,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     f"Could not add receipt structure analysis to DynamoDB: {e}"
                 )
 
-    def add_receipt_structure_analyses(
-        self, analyses: list[ReceiptStructureAnalysis]
-    ):
+    def add_receipt_structure_analyses(self, analyses: list[ReceiptStructureAnalysis]):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
 
         Args:
@@ -128,9 +129,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be added to DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -143,9 +142,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
                 request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=a.to_item())
-                    )
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=a.to_item()))
                     for a in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -154,9 +151,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -172,9 +167,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             elif error_code == "TransactionCanceledException":
                 raise OperationError("Error adding receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -188,9 +181,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     f"Could not add receipt structure analyses to DynamoDB: {e}"
                 )
 
-    def update_receipt_structure_analysis(
-        self, analysis: ReceiptStructureAnalysis
-    ):
+    def update_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
         """Updates an existing ReceiptStructureAnalysis in the database.
 
         Args:
@@ -201,9 +192,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be updated in DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -225,9 +214,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analysis to DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -254,9 +241,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be updated in DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -269,9 +254,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
                 request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=a.to_item())
-                    )
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=a.to_item()))
                     for a in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -280,9 +263,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -296,13 +277,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not update receipt structure analyses in DynamoDB: Table not found"
                 )
             elif error_code == "TransactionCanceledException":
-                raise OperationError(
-                    "Error updating receipt structure analyses"
-                )
+                raise OperationError("Error updating receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -333,9 +310,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 else:
                     detailed_error = f"Validation error: {error_message}"
 
-                print(
-                    f"Error in update_receipt_structure_analyses: {detailed_error}"
-                )
+                print(f"Error in update_receipt_structure_analyses: {detailed_error}")
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {detailed_error}"
                 )
@@ -346,9 +321,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     f"Could not update receipt structure analyses in DynamoDB: {e}"
                 )
 
-    def delete_receipt_structure_analysis(
-        self, analysis: ReceiptStructureAnalysis
-    ):
+    def delete_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
         """Deletes a single ReceiptStructureAnalysis by IDs.
 
         Args:
@@ -359,9 +332,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         if analysis is None:
-            raise ValueError(
-                "analysis parameter is required and cannot be None."
-            )
+            raise ValueError("analysis parameter is required and cannot be None.")
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
                 "analysis must be an instance of the ReceiptStructureAnalysis class."
@@ -387,9 +358,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not add receipt structure analysis to DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -416,9 +385,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
         if analyses is None:
-            raise ValueError(
-                "analyses parameter is required and cannot be None."
-            )
+            raise ValueError("analyses parameter is required and cannot be None.")
         if not isinstance(analyses, list):
             raise ValueError(
                 "analyses must be a list of ReceiptStructureAnalysis instances."
@@ -449,9 +416,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 retry_count = 0
                 while unprocessed.get(self.table_name) and retry_count < 3:
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
                     retry_count += 1
                 if unprocessed.get(self.table_name):
@@ -465,13 +430,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not delete receipt structure analyses from DynamoDB: Table not found"
                 )
             elif error_code == "TransactionCanceledException":
-                raise OperationError(
-                    "Error deleting receipt structure analyses"
-                )
+                raise OperationError("Error deleting receipt structure analyses")
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -575,9 +536,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not get receipt structure analysis from DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -611,9 +570,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
+        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary or None")
 
         structure_analyses = []
@@ -633,18 +590,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
             structure_analyses.extend(
-                [
-                    item_to_receipt_structure_analysis(item)
-                    for item in response["Items"]
-                ]
+                [item_to_receipt_structure_analysis(item) for item in response["Items"]]
             )
 
             if limit is None:
                 # Paginate through all the structure analyses
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                     response = self._client.query(**query_params)
                     structure_analyses.extend(
                         [
@@ -664,9 +616,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not list receipt structure analyses from DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":
@@ -728,15 +678,12 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             analyses = [
-                item_to_receipt_structure_analysis(item)
-                for item in response["Items"]
+                item_to_receipt_structure_analysis(item) for item in response["Items"]
             ]
 
             # Continue querying if there are more results
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 response = self._client.query(**query_params)
                 analyses.extend(
                     [
@@ -753,9 +700,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Could not list receipt structure analyses from DynamoDB: Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
+                raise DynamoDBThroughputError("Provisioned throughput exceeded")
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError("Internal server error")
             elif error_code == "ValidationException":

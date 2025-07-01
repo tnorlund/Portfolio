@@ -6,16 +6,24 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
+        DeleteTypeDef,
         PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
         TransactWriteItemTypeDef,
         WriteRequestTypeDef,
-        PutTypeDef,
-        DeleteTypeDef,
     )
 
+# These are used at runtime, not just for type checking
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -60,9 +68,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -71,9 +77,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _ReceiptLabelAnalysis(DynamoClientProtocol):
-    def add_receipt_label_analysis(
-        self, receipt_label_analysis: ReceiptLabelAnalysis
-    ):
+    def add_receipt_label_analysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
         """Adds a receipt label analysis to the database
 
         Args:
@@ -159,9 +163,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -178,9 +180,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error adding receipt label analyses: {e}"
-                ) from e
+                raise ValueError(f"Error adding receipt label analyses: {e}") from e
 
     def update_receipt_label_analysis(
         self, receipt_label_analysis: ReceiptLabelAnalysis
@@ -227,9 +227,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error updating receipt label analysis: {e}"
-                ) from e
+                raise ValueError(f"Error updating receipt label analysis: {e}") from e
 
     def update_receipt_label_analyses(
         self, receipt_label_analyses: list[ReceiptLabelAnalysis]
@@ -290,17 +288,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                             "One or more receipt label analyses do not exist"
                         ) from e
                     else:
-                        raise DynamoDBError(
-                            f"Transaction canceled: {e}"
-                        ) from e
+                        raise DynamoDBError(f"Transaction canceled: {e}") from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -356,9 +350,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error deleting receipt label analysis: {e}"
-                ) from e
+                raise ValueError(f"Error deleting receipt label analysis: {e}") from e
 
     def delete_receipt_label_analyses(
         self, receipt_label_analyses: list[ReceiptLabelAnalysis]
@@ -430,9 +422,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error deleting receipt label analyses: {e}"
-                ) from e
+                raise ValueError(f"Error deleting receipt label analyses: {e}") from e
 
     def get_receipt_label_analysis(
         self, image_id: str, receipt_id: int
@@ -528,9 +518,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LABEL_ANALYSIS"}},
             }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
@@ -542,10 +530,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [
-                        item_to_receipt_label_analysis(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -554,9 +539,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -630,9 +613,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "PK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": f"IMAGE#{image_id}"}
-                },
+                "ExpressionAttributeValues": {":pk_val": {"S": f"IMAGE#{image_id}"}},
             }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
@@ -659,9 +640,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -723,11 +702,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         # Validate image_id as a UUID
         assert_valid_uuid(image_id)
 
-        if (
-            receipt_id is None
-            or not isinstance(receipt_id, int)
-            or receipt_id <= 0
-        ):
+        if receipt_id is None or not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("Receipt ID must be a positive integer")
 
         if limit is not None and not isinstance(limit, int):
@@ -747,9 +722,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
-                    },
+                    ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
                 },
             }
             if last_evaluated_key is not None:
@@ -762,10 +735,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 analyses.extend(
-                    [
-                        item_to_receipt_label_analysis(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(analyses) >= limit:
@@ -774,9 +744,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -836,9 +804,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             raise ValueError("Receipt ID must be a positive integer.")
 
         # Create a ReceiptAnalysis object to store all analyses
-        receipt_analysis = ReceiptAnalysis(
-            image_id=image_id, receipt_id=receipt_id
-        )
+        receipt_analysis = ReceiptAnalysis(image_id=image_id, receipt_id=receipt_id)
 
         try:
             # Query for all analysis items for this receipt in a single operation
@@ -886,14 +852,10 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                             receipt_analysis.validation_results = []
                         receipt_analysis.validation_results.append(result)
                     elif item_type == "RECEIPT_CHATGPT_VALIDATION":
-                        chatgpt_validation = (
-                            item_to_receipt_chat_gpt_validation(item)
-                        )
+                        chatgpt_validation = item_to_receipt_chat_gpt_validation(item)
                         if receipt_analysis.chatgpt_validations is None:
                             receipt_analysis.chatgpt_validations = []
-                        receipt_analysis.chatgpt_validations.append(
-                            chatgpt_validation
-                        )
+                        receipt_analysis.chatgpt_validations.append(chatgpt_validation)
                 except Exception as e:
                     # Skip if conversion fails, but log the error
                     print(f"Error converting {item_type}: {str(e)}")
@@ -914,6 +876,4 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise OperationError(
-                    f"Error getting receipt analysis: {e}"
-                ) from e
+                raise OperationError(f"Error getting receipt analysis: {e}") from e

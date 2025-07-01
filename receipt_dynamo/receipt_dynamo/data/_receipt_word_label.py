@@ -8,15 +8,24 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
         BatchGetItemInputTypeDef,
+        DeleteTypeDef,
         GetItemInputTypeDef,
-        QueryInputTypeDef,
         KeysAndAttributesTypeDef,
         PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
         TransactWriteItemTypeDef,
         WriteRequestTypeDef,
-        PutTypeDef,
-        DeleteTypeDef,
     )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -35,9 +44,7 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -90,9 +97,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                     f"Could not add receipt word label to DynamoDB: {e}"
                 ) from e
 
-    def add_receipt_word_labels(
-        self, receipt_word_labels: list[ReceiptWordLabel]
-    ):
+    def add_receipt_word_labels(self, receipt_word_labels: list[ReceiptWordLabel]):
         """Adds a list of receipt word labels to the database
 
         Args:
@@ -110,8 +115,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 "receipt_word_labels must be a list of ReceiptWordLabel instances."
             )
         if not all(
-            isinstance(label, ReceiptWordLabel)
-            for label in receipt_word_labels
+            isinstance(label, ReceiptWordLabel) for label in receipt_word_labels
         ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
@@ -132,9 +136,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -151,9 +153,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error adding receipt word labels: {e}"
-                ) from e
+                raise ValueError(f"Error adding receipt word labels: {e}") from e
 
     def update_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
         """Updates a receipt word label in the database
@@ -198,13 +198,9 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error updating receipt word label: {e}"
-                ) from e
+                raise ValueError(f"Error updating receipt word label: {e}") from e
 
-    def update_receipt_word_labels(
-        self, receipt_word_labels: list[ReceiptWordLabel]
-    ):
+    def update_receipt_word_labels(self, receipt_word_labels: list[ReceiptWordLabel]):
         """
         Updates a list of receipt word labels in the database using transactions.
         Each receipt word label update is conditional upon the label already existing.
@@ -225,8 +221,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 "receipt_word_labels must be a list of ReceiptWordLabel instances."
             )
         if not all(
-            isinstance(label, ReceiptWordLabel)
-            for label in receipt_word_labels
+            isinstance(label, ReceiptWordLabel) for label in receipt_word_labels
         ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
@@ -269,9 +264,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -279,9 +272,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 elif error_code == "AccessDeniedException":
                     raise DynamoDBAccessError(f"Access denied: {e}") from e
                 elif error_code == "ResourceNotFoundException":
-                    raise ValueError(
-                        f"Error updating receipt word labels: {e}"
-                    ) from e
+                    raise ValueError(f"Error updating receipt word labels: {e}") from e
                 else:
                     raise DynamoDBError(
                         f"Error updating receipt word labels: {e}"
@@ -329,13 +320,9 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise ValueError(
-                    f"Error deleting receipt word label: {e}"
-                ) from e
+                raise ValueError(f"Error deleting receipt word label: {e}") from e
 
-    def delete_receipt_word_labels(
-        self, receipt_word_labels: list[ReceiptWordLabel]
-    ):
+    def delete_receipt_word_labels(self, receipt_word_labels: list[ReceiptWordLabel]):
         """
         Deletes a list of receipt word labels from the database using transactions.
         Each delete operation is conditional upon the label existing.
@@ -355,8 +342,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 "receipt_word_labels must be a list of ReceiptWordLabel instances."
             )
         if not all(
-            isinstance(label, ReceiptWordLabel)
-            for label in receipt_word_labels
+            isinstance(label, ReceiptWordLabel) for label in receipt_word_labels
         ):
             raise ValueError(
                 "All receipt word labels must be instances of the ReceiptWordLabel class."
@@ -383,9 +369,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    "One or more receipt word labels do not exist"
-                ) from e
+                raise ValueError("One or more receipt word labels do not exist") from e
             elif error_code == "TransactionCanceledException":
                 if "ConditionalCheckFailed" in str(e):
                     raise ValueError(
@@ -408,9 +392,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(f"Resource not found: {e}") from e
             else:
-                raise DynamoDBError(
-                    f"Error deleting receipt word labels: {e}"
-                ) from e
+                raise DynamoDBError(f"Error deleting receipt word labels: {e}") from e
 
     def get_receipt_word_label(
         self,
@@ -488,9 +470,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise OperationError(
-                    f"Error getting receipt word label: {e}"
-                ) from e
+                raise OperationError(f"Error getting receipt word label: {e}") from e
 
     def get_receipt_word_labels_by_indices(
         self, indices: list[tuple[str, int, int, int, str]]
@@ -504,9 +484,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             raise ValueError("Indices must be a list of tuples.")
         for index in indices:
             if len(index) != 5:
-                raise ValueError(
-                    "Indices must be a list of tuples with 5 elements."
-                )
+                raise ValueError("Indices must be a list of tuples with 5 elements.")
             if not isinstance(index[0], str):
                 raise ValueError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
@@ -580,24 +558,16 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 results.extend(batch_items)
 
                 # Retry unprocessed keys if any
-                unprocessed: Dict[str, Any] = response.get(
-                    "UnprocessedKeys", {}
-                )
+                unprocessed: Dict[str, Any] = response.get("UnprocessedKeys", {})
                 while unprocessed.get(self.table_name, {}).get("Keys"):
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
+                    response = self._client.batch_get_item(RequestItems=unprocessed)
+                    batch_items = response["Responses"].get(self.table_name, [])
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
 
             return [item_to_receipt_word_label(result) for result in results]
         except ClientError as e:
-            raise ValueError(
-                f"Could not get ReceiptWordLabels from the database: {e}"
-            )
+            raise ValueError(f"Could not get ReceiptWordLabels from the database: {e}")
 
     def list_receipt_word_labels(
         self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
@@ -635,9 +605,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_WORD_LABEL"}
-                },
+                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_LABEL"}},
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -649,10 +617,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_word_label(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(labels) >= limit:
@@ -661,9 +626,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -746,10 +709,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_word_label(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(labels) >= limit:
@@ -758,9 +718,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break
@@ -902,9 +860,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "GSI3PK = :pk",
                 "ExpressionAttributeValues": {
-                    ":pk": {
-                        "S": f"VALIDATION_STATUS#{validation_status.upper()}"
-                    }
+                    ":pk": {"S": f"VALIDATION_STATUS#{validation_status.upper()}"}
                 },
             }
             if lastEvaluatedKey is not None:
@@ -917,10 +873,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
+                    [item_to_receipt_word_label(item) for item in response["Items"]]
                 )
 
                 if limit is not None and len(labels) >= limit:
@@ -929,9 +882,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
+                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 else:
                     last_evaluated_key = None
                     break

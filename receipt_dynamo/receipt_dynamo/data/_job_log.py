@@ -6,10 +6,16 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 
@@ -33,9 +39,7 @@ class _JobLog(DynamoClientProtocol):
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(
-                f"job_log must be a JobLog instance, got {type(job_log)}"
-            )
+            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
 
         try:
             self._client.put_item(
@@ -44,10 +48,7 @@ class _JobLog(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists"
                 )
@@ -87,9 +88,7 @@ class _JobLog(DynamoClientProtocol):
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
+            response = self._client.batch_write_item(RequestItems=request_items)
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -98,9 +97,7 @@ class _JobLog(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
+                response = self._client.batch_write_item(RequestItems=unprocessed_items)
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:
@@ -196,9 +193,7 @@ class _JobLog(DynamoClientProtocol):
         response = self._client.query(**query_params)
 
         # Process results
-        job_logs = [
-            item_to_job_log(item) for item in response.get("Items", [])
-        ]
+        job_logs = [item_to_job_log(item) for item in response.get("Items", [])]
         last_evaluated_key = response.get("LastEvaluatedKey")
 
         return job_logs, last_evaluated_key
@@ -216,9 +211,7 @@ class _JobLog(DynamoClientProtocol):
         if job_log is None:
             raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(
-                f"job_log must be a JobLog instance, got {type(job_log)}"
-            )
+            raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
 
         try:
             self._client.delete_item(
@@ -230,10 +223,7 @@ class _JobLog(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
                     f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
                 )
