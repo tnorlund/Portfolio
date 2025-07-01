@@ -246,9 +246,7 @@ def test_addReceiptWords_with_unprocessed_items_retries(
     # First response has unprocessed items
     first_response = {
         "UnprocessedItems": {
-            dynamodb_table: [
-                {"PutRequest": {"Item": sample_receipt_word.to_item()}}
-            ]
+            dynamodb_table: [{"PutRequest": {"Item": sample_receipt_word.to_item()}}]
         }
     }
     # Second response has no unprocessed items
@@ -405,12 +403,7 @@ def test_delete_receipt_word(
     client.add_receipt_word(sample_receipt_word)
 
     # Act
-    client.delete_receipt_word(
-        sample_receipt_word.receipt_id,
-        sample_receipt_word.image_id,
-        sample_receipt_word.line_id,
-        sample_receipt_word.word_id,
-    )
+    client.delete_receipt_word(sample_receipt_word)
 
     # Assert
     with pytest.raises(ValueError, match="not found"):
@@ -542,9 +535,7 @@ def test_list_receipt_words_by_embedding_status(
     )
     client.add_receipt_word(word_pending)
     # Act
-    found_words = client.list_receipt_words_by_embedding_status(
-        EmbeddingStatus.NONE
-    )
+    found_words = client.list_receipt_words_by_embedding_status(EmbeddingStatus.NONE)
 
     # Assert
     assert len(found_words) == 1

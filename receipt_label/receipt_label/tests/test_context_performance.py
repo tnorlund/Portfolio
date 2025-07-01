@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from receipt_label.utils import (
     ai_usage_context,
     ai_usage_tracked,
@@ -128,9 +127,7 @@ class TestContextPerformance:
 
         def worker(worker_id: int):
             try:
-                with ai_usage_context(
-                    f"worker_{worker_id}", tracker=mock_tracker
-                ):
+                with ai_usage_context(f"worker_{worker_id}", tracker=mock_tracker):
                     # Each worker sets its own context
                     context = get_current_context()
                     time.sleep(0.001)  # Simulate work
@@ -233,14 +230,10 @@ class TestContextPerformance:
     def test_large_context_performance(self, mock_tracker, context_size):
         """Test performance with different context sizes."""
         # Create context with many keys
-        large_context = {
-            f"key_{i}": f"value_{i}" * 10 for i in range(context_size)
-        }
+        large_context = {f"key_{i}": f"value_{i}" * 10 for i in range(context_size)}
 
         start = time.perf_counter()
-        with ai_usage_context(
-            "large_op", tracker=mock_tracker, **large_context
-        ):
+        with ai_usage_context("large_op", tracker=mock_tracker, **large_context):
             # Access context
             ctx = get_current_context()
             assert len(ctx) >= context_size

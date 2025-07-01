@@ -7,6 +7,13 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptChatGPTValidation
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -54,7 +61,7 @@ def test_addReceiptChatGPTValidation_success(
     client = DynamoClient(dynamodb_table)
 
     # Act
-    client.add_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Assert
     response = client._client.get_item(
@@ -92,7 +99,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
     client = DynamoClient(dynamodb_table)
 
     # Add the validation first time
-    client.add_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Act & Assert
     with pytest.raises(
@@ -100,7 +107,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
         match=f"ReceiptChatGPTValidation for receipt {sample_receipt_chatgpt_validation.receipt_id} and timestamp {sample_receipt_chatgpt_validation.timestamp} already exists",
     ):
         # Try to add the same validation again
-        client.add_receipt_chatgpt_validation(
+        client.add_receipt_chat_gpt_validation(
             sample_receipt_chatgpt_validation
         )
 
@@ -132,7 +139,7 @@ def test_addReceiptChatGPTValidation_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.add_receipt_chatgpt_validation(invalid_input)
+        client.add_receipt_chat_gpt_validation(invalid_input)
 
     # Verify put_item was not called
     client._client.put_item.assert_not_called()
@@ -209,7 +216,7 @@ def test_addReceiptChatGPTValidation_client_errors(
         else Exception
     )
     with pytest.raises(exception_type, match=expected_exception):
-        client.add_receipt_chatgpt_validation(
+        client.add_receipt_chat_gpt_validation(
             sample_receipt_chatgpt_validation
         )
 
@@ -506,7 +513,7 @@ def test_updateReceiptChatGPTValidation_success(
     client = DynamoClient(dynamodb_table)
 
     # First, add the validation to DynamoDB
-    client.add_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Create an updated version of the validation
     updated_validation = ReceiptChatGPTValidation(
@@ -857,48 +864,55 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptChatGPTValidations in the database",
+            DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptChatGPTValidations do not exist",
+            ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
             None,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
+            DynamoDBAccessError,
             None,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
             "Could not update ReceiptChatGPTValidations in the database",
+            DynamoDBError,
             None,
         ),
     ],
@@ -910,6 +924,7 @@ def test_updateReceiptChatGPTValidations_client_errors(
     error_code,
     error_message,
     expected_error,
+    expected_exception,
     cancellation_reasons,
 ):
     """Test handling of client errors when updating multiple ChatGPT validations."""
@@ -952,7 +967,7 @@ def test_updateReceiptChatGPTValidations_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=expected_error):
         client.update_receipt_chatgpt_validations(validations)
 
 
@@ -966,7 +981,7 @@ def test_deleteReceiptChatGPTValidation_success(
     client = DynamoClient(dynamodb_table)
 
     # First, add the validation to DynamoDB
-    client.add_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Verify it exists
     response_before = client._client.get_item(
@@ -981,7 +996,9 @@ def test_deleteReceiptChatGPTValidation_success(
     assert "Item" in response_before
 
     # Act
-    client.delete_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.delete_receipt_chat_gpt_validation(
+        sample_receipt_chatgpt_validation
+    )
 
     # Assert
     response_after = client._client.get_item(
@@ -1023,7 +1040,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.delete_receipt_chatgpt_validation(invalid_input)
+        client.delete_receipt_chat_gpt_validation(invalid_input)
 
     # Verify delete_item was not called
     client._client.delete_item.assert_not_called()
@@ -1100,7 +1117,7 @@ def test_deleteReceiptChatGPTValidation_client_errors(
         else Exception
     )
     with pytest.raises(exception_type, match=expected_error):
-        client.delete_receipt_chatgpt_validation(
+        client.delete_receipt_chat_gpt_validation(
             sample_receipt_chatgpt_validation
         )
 
@@ -1155,7 +1172,7 @@ def test_deleteReceiptChatGPTValidations_success(
     assert "Item" in response2_before
 
     # Act
-    client.delete_receipt_chatgpt_validations(validations)
+    client.delete_receipt_chat_gpt_validations(validations)
 
     # Assert
     response1_after = client._client.get_item(
@@ -1211,7 +1228,7 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.delete_receipt_chatgpt_validations(invalid_input)
+        client.delete_receipt_chat_gpt_validations(invalid_input)
 
     # Verify batch_write_item was not called
     client._client.batch_write_item.assert_not_called()
@@ -1299,7 +1316,7 @@ def test_deleteReceiptChatGPTValidations_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.delete_receipt_chatgpt_validations(validations)
+        client.delete_receipt_chat_gpt_validations(validations)
 
 
 @pytest.mark.integration
@@ -1350,7 +1367,7 @@ def test_deleteReceiptChatGPTValidations_with_unprocessed_items_retries(
     )
 
     # Act
-    client.delete_receipt_chatgpt_validations(validations)
+    client.delete_receipt_chat_gpt_validations(validations)
 
     # Assert - Should have called batch_write_item twice
     assert client._client.batch_write_item.call_count == 2
@@ -1398,7 +1415,7 @@ def test_deleteReceiptChatGPTValidations_with_large_batch(
         assert "Item" in response_before
 
     # Act
-    client.delete_receipt_chatgpt_validations(validations)
+    client.delete_receipt_chat_gpt_validations(validations)
 
     # Assert - Verify the validations no longer exist
     for idx in [0, 15, 29]:  # Check first, middle, and last
@@ -1424,10 +1441,10 @@ def test_getReceiptChatGPTValidation_success(
     client = DynamoClient(dynamodb_table)
 
     # First, add the validation to DynamoDB
-    client.add_receipt_chatgpt_validation(sample_receipt_chatgpt_validation)
+    client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Act
-    result = client.get_receipt_chatgpt_validation(
+    result = client.get_receipt_chat_gpt_validation(
         receipt_id=sample_receipt_chatgpt_validation.receipt_id,
         image_id=sample_receipt_chatgpt_validation.image_id,
         timestamp=sample_receipt_chatgpt_validation.timestamp,
@@ -1467,7 +1484,7 @@ def test_getReceiptChatGPTValidation_not_found(
         ValueError,
         match=f"ReceiptChatGPTValidation with receipt ID {sample_receipt_chatgpt_validation.receipt_id}, image ID {sample_receipt_chatgpt_validation.image_id}, and timestamp {non_existent_timestamp} not found",
     ):
-        client.get_receipt_chatgpt_validation(
+        client.get_receipt_chat_gpt_validation(
             receipt_id=sample_receipt_chatgpt_validation.receipt_id,
             image_id=sample_receipt_chatgpt_validation.image_id,
             timestamp=non_existent_timestamp,
@@ -1523,7 +1540,7 @@ def test_getReceiptChatGPTValidation_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.get_receipt_chatgpt_validation(
+        client.get_receipt_chat_gpt_validation(
             receipt_id=receipt_id,
             image_id=image_id,
             timestamp=timestamp,
@@ -1595,7 +1612,7 @@ def test_getReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.get_receipt_chatgpt_validation(
+        client.get_receipt_chat_gpt_validation(
             receipt_id=sample_receipt_chatgpt_validation.receipt_id,
             image_id=sample_receipt_chatgpt_validation.image_id,
             timestamp=sample_receipt_chatgpt_validation.timestamp,
@@ -1655,7 +1672,7 @@ def test_listReceiptChatGPTValidations_success(
 
     # Act
     result_validations, last_evaluated_key = (
-        client.list_receipt_chatgpt_validations()
+        client.list_receipt_chat_gpt_validations()
     )
 
     # Assert
@@ -1775,7 +1792,7 @@ def test_listReceiptChatGPTValidations_with_pagination(
 
     # Act - request without a limit to get all pages
     result_validations, last_evaluated_key = (
-        client.list_receipt_chatgpt_validations()
+        client.list_receipt_chat_gpt_validations()
     )
 
     # Assert
@@ -1792,7 +1809,7 @@ def test_listReceiptChatGPTValidations_with_pagination(
 
     # Act - request with a limit to get only first page
     result_validations, last_evaluated_key = (
-        client.list_receipt_chatgpt_validations(limit=1)
+        client.list_receipt_chat_gpt_validations(limit=1)
     )
 
     # Assert
@@ -1825,7 +1842,7 @@ def test_listReceiptChatGPTValidations_empty_results(
 
     # Act
     result_validations, last_evaluated_key = (
-        client.list_receipt_chatgpt_validations()
+        client.list_receipt_chat_gpt_validations()
     )
 
     # Assert
@@ -1901,7 +1918,7 @@ def test_listReceiptChatGPTValidations_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.list_receipt_chatgpt_validations()
+        client.list_receipt_chat_gpt_validations()
 
 
 @pytest.mark.integration
@@ -1958,7 +1975,7 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
     mock_query.return_value = mock_response
 
     # Act
-    result_validations = client.list_receipt_chatgpt_validations_for_receipt(
+    result_validations = client.list_receipt_chat_gpt_validations_for_receipt(
         receipt_id=validation1.receipt_id,
         image_id=validation1.image_id,
     )
@@ -2023,7 +2040,7 @@ def test_listReceiptChatGPTValidationsForReceipt_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.list_receipt_chatgpt_validations_for_receipt(
+        client.list_receipt_chat_gpt_validations_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
         )
@@ -2085,7 +2102,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
 
     # Act
     result_validations, last_evaluated_key = (
-        client.list_receipt_chatgpt_validations_by_status(status="VALID")
+        client.list_receipt_chat_gpt_validations_by_status(status="VALID")
     )
 
     # Assert
@@ -2127,7 +2144,7 @@ def test_listReceiptChatGPTValidationsByStatus_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.list_receipt_chatgpt_validations_by_status(status=status)
+        client.list_receipt_chat_gpt_validations_by_status(status=status)
 
 
 @pytest.mark.integration
@@ -2194,4 +2211,4 @@ def test_listReceiptChatGPTValidationsByStatus_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error):
-        client.list_receipt_chatgpt_validations_by_status(status="VALID")
+        client.list_receipt_chat_gpt_validations_by_status(status="VALID")

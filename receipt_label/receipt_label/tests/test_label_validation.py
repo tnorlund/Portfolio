@@ -45,9 +45,7 @@ DEFAULT_WORD_ID = 1
 
 
 class FakePineconeIndex:
-    def __init__(
-        self, metadata=None, query_score=DEFAULT_QUERY_SCORE, has_vector=True
-    ):
+    def __init__(self, metadata=None, query_score=DEFAULT_QUERY_SCORE, has_vector=True):
         self.metadata = metadata or {}
         self.query_score = query_score
         self.has_vector = has_vector
@@ -55,9 +53,7 @@ class FakePineconeIndex:
     def fetch(self, ids, namespace="words"):
         if not self.has_vector:
             return SimpleNamespace(vectors={})
-        vector = SimpleNamespace(
-            id=ids[0], values=[0.0], metadata=self.metadata
-        )
+        vector = SimpleNamespace(id=ids[0], values=[0.0], metadata=self.metadata)
         return SimpleNamespace(vectors={ids[0]: vector})
 
     def query(
@@ -74,9 +70,7 @@ class FakePineconeIndex:
         match_metadata = {
             "text": "test text",
             "label": (
-                filter.get("label", {}).get("$eq", "ADDRESS")
-                if filter
-                else "ADDRESS"
+                filter.get("label", {}).get("$eq", "ADDRESS") if filter else "ADDRESS"
             ),
         }
         match = SimpleNamespace(
@@ -950,9 +944,7 @@ class TestTextNormalizationInValidation:
         for receipt_name, canonical_name, should_match in test_cases:
             word = SimpleNamespace(text=receipt_name)
             label = _make_label("MERCHANT_NAME")
-            result = validate_merchant_name_pinecone(
-                word, label, canonical_name
-            )
+            result = validate_merchant_name_pinecone(word, label, canonical_name)
             assert result.status == "VALIDATED"
 
 
@@ -1151,11 +1143,7 @@ class TestAPIErrorHandling:
                 raise ConnectionError("Temporary network issue")
             # Success on third try
             return SimpleNamespace(
-                vectors={
-                    ids[0]: SimpleNamespace(
-                        id=ids[0], values=[0.0], metadata={}
-                    )
-                }
+                vectors={ids[0]: SimpleNamespace(id=ids[0], values=[0.0], metadata={})}
             )
 
         fake_index = FakePineconeIndex()
@@ -1273,9 +1261,7 @@ class TestValidationIntegrationScenarios:
             **vars(base_label), line_id=2, word_id=5, label="ADDRESS"
         )
         labels["address"] = address_label
-        address_meta = SimpleNamespace(
-            canonical_address="456 oak avenue suite 200"
-        )
+        address_meta = SimpleNamespace(canonical_address="456 oak avenue suite 200")
         validation_results["address"] = validate_address(
             address_word, address_label, address_meta
         )
@@ -1286,9 +1272,7 @@ class TestValidationIntegrationScenarios:
             **vars(base_label), line_id=3, word_id=10, label="PHONE_NUMBER"
         )
         labels["phone"] = phone_label
-        validation_results["phone"] = validate_phone_number(
-            phone_word, phone_label
-        )
+        validation_results["phone"] = validate_phone_number(phone_word, phone_label)
 
         # Date validation
         date_word = SimpleNamespace(text=receipt["date"])
@@ -1321,9 +1305,7 @@ class TestValidationIntegrationScenarios:
         # Verify all validations completed successfully
         assert len(validation_results) == 8
         for field, result in validation_results.items():
-            assert (
-                result.status == "VALIDATED"
-            ), f"Validation failed for {field}"
+            assert result.status == "VALIDATED", f"Validation failed for {field}"
             assert result.is_consistent, f"Inconsistent validation for {field}"
             assert_complete_validation_result(result, labels[field])
 

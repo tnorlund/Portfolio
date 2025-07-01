@@ -51,12 +51,8 @@ def cluster_by_metadata(
         return []
     if not isinstance(metadata_list, list):
         raise ValueError("metadata_list must be a list")
-    if not all(
-        isinstance(record, ReceiptMetadata) for record in metadata_list
-    ):
-        raise ValueError(
-            "All items in metadata_list must be ReceiptMetadata objects"
-        )
+    if not all(isinstance(record, ReceiptMetadata) for record in metadata_list):
+        raise ValueError("All items in metadata_list must be ReceiptMetadata objects")
 
     logger.info("Clustering %s metadata records", len(metadata_list))
 
@@ -81,9 +77,7 @@ def cluster_by_metadata(
                     cluster.append(record2)
                     used_indices.add(j)
             except Exception as e:
-                logger.warning(
-                    "Error comparing records %s and %s: %s", i, j, e
-                )
+                logger.warning("Error comparing records %s and %s: %s", i, j, e)
                 continue
 
         clusters.append(cluster)
@@ -94,9 +88,7 @@ def cluster_by_metadata(
     return clusters
 
 
-def are_records_similar(
-    record1: ReceiptMetadata, record2: ReceiptMetadata
-) -> bool:
+def are_records_similar(record1: ReceiptMetadata, record2: ReceiptMetadata) -> bool:
     """
     Determine if two ReceiptMetadata records represent the same merchant.
 
@@ -118,21 +110,15 @@ def are_records_similar(
     )
 
     # Compare phone numbers
-    phone_similarity = get_phone_similarity(
-        record1.phone_number, record2.phone_number
-    )
+    phone_similarity = get_phone_similarity(record1.phone_number, record2.phone_number)
 
     # Compare addresses
-    address_similarity = get_address_similarity(
-        record1.address, record2.address
-    )
+    address_similarity = get_address_similarity(record1.address, record2.address)
 
     # Records are similar if:
     # - Name similarity > 80% AND (phone match OR address similarity > 70%)
     # - OR phone match AND address similarity > 70%
-    if name_similarity > 80 and (
-        phone_similarity == 100 or address_similarity > 70
-    ):
+    if name_similarity > 80 and (phone_similarity == 100 or address_similarity > 70):
         return True
     elif phone_similarity == 100 and address_similarity > 70:
         return True
@@ -307,18 +293,13 @@ def collapse_canonical_aliases(
     # For each place_id, find the most preferred name
     place_preferred_names = {}
     for place_id in set(key[0] for key in place_name_groups.keys()):
-        place_names = [
-            key[1] for key in place_name_groups.keys() if key[0] == place_id
-        ]
+        place_names = [key[1] for key in place_name_groups.keys() if key[0] == place_id]
         if place_names:
             # Choose the most common name, or alphabetically first if tie
             name_counts = {
-                name: len(place_name_groups[(place_id, name)])
-                for name in place_names
+                name: len(place_name_groups[(place_id, name)]) for name in place_names
             }
-            preferred = max(
-                name_counts.items(), key=lambda x: (x[1], -ord(x[0][0]))
-            )[0]
+            preferred = max(name_counts.items(), key=lambda x: (x[1], -ord(x[0][0])))[0]
             place_preferred_names[place_id] = preferred
 
     # Update records with preferred names
@@ -369,12 +350,9 @@ def merge_place_id_aliases_by_address(records: List[ReceiptMetadata]) -> int:
 
         # Choose the "primary" place_id (most common, or alphabetically first)
         place_id_counts = {
-            pid: sum(1 for r in group_records if r.place_id == pid)
-            for pid in place_ids
+            pid: sum(1 for r in group_records if r.place_id == pid) for pid in place_ids
         }
-        primary_place_id = max(
-            place_id_counts.items(), key=lambda x: (x[1], x[0])
-        )[0]
+        primary_place_id = max(place_id_counts.items(), key=lambda x: (x[1], x[0]))[0]
 
         # Update all records to use the primary place_id
         for record in group_records:

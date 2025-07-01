@@ -3,8 +3,6 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer, upload_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -19,6 +17,9 @@ from pulumi_aws.s3 import Bucket
 from pulumi_aws.sfn import StateMachine
 from pulumi_aws.sqs import Queue
 
+from dynamo_db import dynamodb_table
+from lambda_layer import dynamo_layer, label_layer, upload_layer
+
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 pinecone_api_key = config.require_secret("PINECONE_API_KEY")
@@ -26,11 +27,7 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 
 code = AssetArchive(
-    {
-        "lambda.py": FileAsset(
-            os.path.join(os.path.dirname(__file__), "lambda.py")
-        )
-    }
+    {"lambda.py": FileAsset(os.path.join(os.path.dirname(__file__), "lambda.py"))}
 )
 stack = pulumi.get_stack()
 
@@ -184,9 +181,7 @@ class UploadImages(ComponentResource):
             code=AssetArchive(
                 {
                     "upload_receipt.py": FileAsset(
-                        os.path.join(
-                            os.path.dirname(__file__), "upload_receipt.py"
-                        )
+                        os.path.join(os.path.dirname(__file__), "upload_receipt.py")
                     )
                 }
             ),
@@ -281,9 +276,7 @@ class UploadImages(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": "sqs:SendMessage",
-                                "Resource": args[
-                                    4
-                                ],  # ocr_queue.arn (now args[4])
+                                "Resource": args[4],  # ocr_queue.arn (now args[4])
                             },
                         ],
                     }
@@ -383,9 +376,7 @@ class UploadImages(ComponentResource):
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(
-                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
-            ),
+            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

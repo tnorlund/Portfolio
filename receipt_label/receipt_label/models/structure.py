@@ -28,9 +28,7 @@ class SpatialPattern:
     """
 
     pattern_type: str  # e.g., "alignment", "grouping", "spacing", "position"
-    description: (
-        str  # e.g., "left-aligned", "top of receipt", "items grouped together"
-    )
+    description: str  # e.g., "left-aligned", "top of receipt", "items grouped together"
     metadata: Dict = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
@@ -74,7 +72,9 @@ class ContentPattern:
     """
 
     pattern_type: str  # e.g., "keywords", "formatting", "semantic"
-    description: str  # e.g., "contains business name", "has date format", "shows prices"
+    description: (
+        str  # e.g., "contains business name", "has date format", "shows prices"
+    )
     examples: List[str] = field(default_factory=list)
     metadata: Dict = field(default_factory=dict)
 
@@ -237,9 +237,7 @@ class StructureAnalysis(MetadataMixin):
         # Sort sections by start line for consistent order
         self.sections.sort(
             key=lambda section: (
-                section.start_line
-                if section.start_line is not None
-                else float("inf")
+                section.start_line if section.start_line is not None else float("inf")
             )
         )
 
@@ -253,12 +251,8 @@ class StructureAnalysis(MetadataMixin):
 
         # Track patterns
         pattern_counts = {
-            "spatial_patterns": sum(
-                len(s.spatial_patterns) for s in self.sections
-            ),
-            "content_patterns": sum(
-                len(s.content_patterns) for s in self.sections
-            ),
+            "spatial_patterns": sum(len(s.spatial_patterns) for s in self.sections),
+            "content_patterns": sum(len(s.content_patterns) for s in self.sections),
         }
         self.add_processing_metric("pattern_counts", pattern_counts)
 
@@ -286,9 +280,7 @@ class StructureAnalysis(MetadataMixin):
                 return section
         return None
 
-    def get_sections_with_pattern(
-        self, pattern_type: str
-    ) -> List[ReceiptSection]:
+    def get_sections_with_pattern(self, pattern_type: str) -> List[ReceiptSection]:
         """Find sections that contain a specific pattern type."""
         matching_sections = []
         for section in self.sections:
@@ -339,17 +331,13 @@ class StructureAnalysis(MetadataMixin):
                 section_summary.append(f"  Reasoning: {section.reasoning}")
 
             if section.spatial_patterns:
-                pattern_texts = [
-                    p.description for p in section.spatial_patterns
-                ]
+                pattern_texts = [p.description for p in section.spatial_patterns]
                 section_summary.append(
                     f"  Spatial patterns: {', '.join(pattern_texts[:3])}"
                 )
 
             if section.content_patterns:
-                pattern_texts = [
-                    p.description for p in section.content_patterns
-                ]
+                pattern_texts = [p.description for p in section.content_patterns]
                 section_summary.append(
                     f"  Content patterns: {', '.join(pattern_texts[:3])}"
                 )
@@ -400,9 +388,7 @@ class StructureAnalysis(MetadataMixin):
         )
 
     @classmethod
-    def from_dynamo(
-        cls, analysis: "ReceiptStructureAnalysis"
-    ) -> "StructureAnalysis":
+    def from_dynamo(cls, analysis: "ReceiptStructureAnalysis") -> "StructureAnalysis":
         """
         Create a StructureAnalysis instance from a DynamoDB ReceiptStructureAnalysis entity.
 
@@ -453,9 +439,7 @@ class StructureAnalysis(MetadataMixin):
         instance.image_id = analysis.image_id
         instance.version = analysis.version
         instance.timestamp_added = (
-            analysis.timestamp_added.isoformat()
-            if analysis.timestamp_added
-            else None
+            analysis.timestamp_added.isoformat() if analysis.timestamp_added else None
         )
         instance.timestamp_updated = (
             analysis.timestamp_updated.isoformat()
@@ -488,9 +472,7 @@ class StructureAnalysis(MetadataMixin):
         """
         # Check if required fields are set
         if self.receipt_id is None:
-            raise ValueError(
-                "receipt_id must be set before calling to_dynamo()"
-            )
+            raise ValueError("receipt_id must be set before calling to_dynamo()")
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
 
@@ -502,9 +484,7 @@ class StructureAnalysis(MetadataMixin):
             for sp in section.spatial_patterns:
                 if isinstance(sp, str):
                     spatial_patterns.append(
-                        DynamoSpatialPattern(
-                            pattern_type="legacy", description=sp
-                        )
+                        DynamoSpatialPattern(pattern_type="legacy", description=sp)
                     )
                 else:
                     spatial_patterns.append(
@@ -555,9 +535,7 @@ class StructureAnalysis(MetadataMixin):
                 from datetime import datetime
 
                 try:
-                    timestamp_added = datetime.fromisoformat(
-                        self.timestamp_added
-                    )
+                    timestamp_added = datetime.fromisoformat(self.timestamp_added)
                 except ValueError:
                     timestamp_added = datetime.now()
             else:
@@ -569,9 +547,7 @@ class StructureAnalysis(MetadataMixin):
                 from datetime import datetime
 
                 try:
-                    timestamp_updated = datetime.fromisoformat(
-                        self.timestamp_updated
-                    )
+                    timestamp_updated = datetime.fromisoformat(self.timestamp_updated)
                 except ValueError:
                     timestamp_updated = datetime.now()
             else:
@@ -586,8 +562,7 @@ class StructureAnalysis(MetadataMixin):
         metadata = {
             k: v
             for k, v in self.metadata.items()
-            if k
-            not in ["processing_metrics", "source_info", "processing_history"]
+            if k not in ["processing_metrics", "source_info", "processing_history"]
         }
 
         # Create the DynamoDB ReceiptStructureAnalysis
@@ -613,9 +588,7 @@ class StructureAnalysis(MetadataMixin):
         # Sort sections by start line for consistent order
         self.sections.sort(
             key=lambda section: (
-                section.start_line
-                if section.start_line is not None
-                else float("inf")
+                section.start_line if section.start_line is not None else float("inf")
             )
         )
 

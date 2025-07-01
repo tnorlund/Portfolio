@@ -118,9 +118,7 @@ class CostOptimizer:
         characteristics["is_test_only"] = len(test_files) == len(changed_files)
 
         # Complexity scoring
-        characteristics["complexity_score"] = self._calculate_complexity(
-            pr_data
-        )
+        characteristics["complexity_score"] = self._calculate_complexity(pr_data)
 
         return characteristics
 
@@ -146,8 +144,7 @@ class CostOptimizer:
         if len(description) > 100:
             score += 10
         if any(
-            word in description.lower()
-            for word in ["breaking", "major", "refactor"]
+            word in description.lower() for word in ["breaking", "major", "refactor"]
         ):
             score += 10
 
@@ -199,9 +196,7 @@ class CostOptimizer:
 
         return model, reason
 
-    def estimate_cost(
-        self, model: str, input_tokens: int, output_tokens: int
-    ) -> float:
+    def estimate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Estimate cost for a review."""
         model_info = self.MODELS[model]
 
@@ -218,8 +213,7 @@ class CostOptimizer:
         return {
             "monthly_used": usage["monthly_cost"],
             "monthly_limit": config["monthly_budget"],
-            "monthly_remaining": config["monthly_budget"]
-            - usage["monthly_cost"],
+            "monthly_remaining": config["monthly_budget"] - usage["monthly_cost"],
             "daily_used": usage["daily_cost"],
             "daily_limit": config["daily_limit"],
             "daily_remaining": config["daily_limit"] - usage["daily_cost"],
@@ -299,7 +293,7 @@ class CostOptimizer:
             model_usage[model]["cost"] += log["cost"]
 
         report = f"""# 💰 Claude Review Cost Report
-        
+
 ## Current Usage
 - **Monthly**: ${usage['monthly_cost']:.2f} / ${budget['monthly_limit']:.2f} ({usage['monthly_cost']/budget['monthly_limit']*100:.1f}%)
 - **Daily**: ${usage['daily_cost']:.2f} / ${budget['daily_limit']:.2f} ({usage['daily_cost']/budget['daily_limit']*100:.1f}%)
@@ -312,9 +306,7 @@ class CostOptimizer:
             report += f"- **{model.title()}**: {stats['count']} reviews, ${stats['cost']:.2f}\n"
 
         # Recent reviews
-        recent_logs = sorted(logs, key=lambda x: x["timestamp"], reverse=True)[
-            :5
-        ]
+        recent_logs = sorted(logs, key=lambda x: x["timestamp"], reverse=True)[:5]
         report += f"\n## Recent Reviews\n"
         for log in recent_logs:
             report += f"- PR #{log['pr_number']}: {log['model']} (${log['cost']:.3f}) - {log['reason']}\n"
@@ -345,11 +337,7 @@ def main(
 
     if check_budget:
         budget = optimizer.check_budget_limits()
-        status = (
-            "✅ WITHIN BUDGET"
-            if budget["can_proceed"]
-            else "❌ BUDGET EXCEEDED"
-        )
+        status = "✅ WITHIN BUDGET" if budget["can_proceed"] else "❌ BUDGET EXCEEDED"
         print(
             f"""
 Budget Status: {status}

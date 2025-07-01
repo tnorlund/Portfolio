@@ -114,9 +114,7 @@ class DynamoClient(
             table_name (str): The name of the DynamoDB table.
         """
 
-        self._client: DynamoDBClient = boto3.client(
-            "dynamodb", region_name=region
-        )
+        self._client: DynamoDBClient = boto3.client("dynamodb", region_name=region)
         self.table_name = table_name
         # Ensure the table already exists
         try:

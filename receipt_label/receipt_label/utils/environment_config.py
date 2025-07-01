@@ -83,19 +83,14 @@ class AIUsageEnvironmentConfig:
             stack_name = os.getenv("PULUMI_STACK_NAME", "")
             if "prod" in stack_name.lower():
                 return Environment.PRODUCTION
-            elif (
-                "staging" in stack_name.lower()
-                or "stage" in stack_name.lower()
-            ):
+            elif "staging" in stack_name.lower() or "stage" in stack_name.lower():
                 return Environment.STAGING
 
         # Default to development
         return Environment.DEVELOPMENT
 
     @classmethod
-    def get_config(
-        cls, environment: Optional[Environment] = None
-    ) -> EnvironmentConfig:
+    def get_config(cls, environment: Optional[Environment] = None) -> EnvironmentConfig:
         """
         Get configuration for the specified or detected environment.
 
@@ -176,9 +171,7 @@ class AIUsageEnvironmentConfig:
         else:  # DEVELOPMENT
             tags.update(
                 {
-                    "developer": os.getenv(
-                        "USER", os.getenv("USERNAME", "unknown")
-                    ),
+                    "developer": os.getenv("USER", os.getenv("USERNAME", "unknown")),
                     "machine": os.getenv("HOSTNAME", "unknown"),
                     "local_branch": os.getenv("GIT_BRANCH"),
                 }

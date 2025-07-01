@@ -24,9 +24,7 @@ def gpt_request_line_item_analysis(
 
     This is a stub implementation that returns mock data for testing.
     """
-    logger.warning(
-        "Using stub implementation of gpt_request_line_item_analysis"
-    )
+    logger.warning("Using stub implementation of gpt_request_line_item_analysis")
 
     # Return mock line item analysis
     mock_response = {
@@ -50,9 +48,7 @@ def gpt_request_spatial_currency_analysis(
 
     This is a stub implementation that returns mock data for testing.
     """
-    logger.warning(
-        "Using stub implementation of gpt_request_spatial_currency_analysis"
-    )
+    logger.warning("Using stub implementation of gpt_request_spatial_currency_analysis")
 
     # Return mock spatial currency analysis
     mock_response = {

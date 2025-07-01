@@ -202,10 +202,10 @@ def _validate_gpt_response_tagging_validation(response: Response) -> dict:
             f"The response message content is not valid JSON.\n{response.text}"
         ) from e
     if not isinstance(content, list):
-        raise ValueError("The response message content is not a list.") from e
+        raise ValueError("The response message content is not a list.")
     for item in content:
         if not isinstance(item, dict):
-            raise ValueError("The response items are not dictionaries.") from e
+            raise ValueError("The response items are not dictionaries.")
         if not all(
             key in item
             for key in [
@@ -952,7 +952,7 @@ def gpt_request_field_labeling(
 
     # Combine results
     if not all_labels:
-        raise ValueError("No labels were generated for any section.") from e
+        raise ValueError("No labels were generated for any section.")
 
     final_result = {
         "labels": all_labels,
