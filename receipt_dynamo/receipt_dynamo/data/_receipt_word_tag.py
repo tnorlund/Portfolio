@@ -1,9 +1,27 @@
 # _receipt_word_tag.py
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptWordTag, item_to_receipt_word_tag
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import OperationError
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -66,7 +84,10 @@ class _ReceiptWordTag(DynamoClientProtocol):
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": rwt.to_item()}} for rwt in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=rwt.to_item())
+                    )
+                    for rwt in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -99,7 +120,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
 
     def delete_receipt_word_tag(
         self,
-        image_id: int,
+        image_id: str,
         receipt_id: int,
         line_id: int,
         word_id: int,
@@ -120,12 +141,12 @@ class _ReceiptWordTag(DynamoClientProtocol):
             ValueError: If the item does not exist.
         """
         rwt = ReceiptWordTag(
-            image_id=image_id,
+            image_id=str(image_id),
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2000-01-01T00:00:00"),
         )  # placeholder
         try:
             self._client.delete_item(
@@ -153,7 +174,12 @@ class _ReceiptWordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(receipt_word_tags), CHUNK_SIZE):
                 chunk = receipt_word_tags[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": rwt.key()}} for rwt in chunk]
+                request_items = [
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=rwt.key())
+                    )
+                    for rwt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -166,7 +192,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 "Could not delete ReceiptWordTags from the database"
             ) from e
 
-    def delete_receipt_word_tags_from_image(self, image_id: int):
+    def delete_receipt_word_tags_from_image(self, image_id: str):
         """
         Deletes all ReceiptWordTag items for a given image by first listing them
         and then calling delete_receipt_word_tags.
@@ -179,7 +205,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
 
     def get_receipt_word_tag(
         self,
-        image_id: int,
+        image_id: str,
         receipt_id: int,
         line_id: int,
         word_id: int,
@@ -202,12 +228,12 @@ class _ReceiptWordTag(DynamoClientProtocol):
             ValueError: If the item does not exist.
         """
         rwt = ReceiptWordTag(
-            image_id=image_id,
+            image_id=str(image_id),
             receipt_id=receipt_id,
             line_id=line_id,
             word_id=word_id,
             tag=tag,
-            timestamp_added="2000-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2000-01-01T00:00:00"),
         )  # placeholder
         try:
             response = self._client.get_item(
@@ -226,7 +252,10 @@ class _ReceiptWordTag(DynamoClientProtocol):
             raise OperationError(f"Error getting ReceiptWordTag: {e}") from e
 
     def get_receipt_word_tags(
-        self, tag: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        tag: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
         Retrieves ReceiptWordTag items with a given tag from the database, using the GSI1 index
@@ -255,7 +284,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
             batch_limit = limit if limit is not None else 100
 
             # Set up the base query parameters.
-            base_params = {
+            base_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 # Ensure this is the correct name of your GSI.
                 "IndexName": "GSI1",
@@ -305,7 +334,9 @@ class _ReceiptWordTag(DynamoClientProtocol):
             raise ValueError("Could not list ReceiptWordTags from the database") from e
 
     def list_receipt_word_tags(
-        self, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[ReceiptWordTag], dict | None]:
         """
         Lists ReceiptWordTag items from the database via the GSITYPE index (using the "TYPE" attribute).
@@ -325,7 +356,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
         """
         receipt_tags: list[ReceiptWordTag] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -365,7 +396,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
         except ClientError as e:
             raise ValueError("Could not list ReceiptWordTags from the database") from e
 
-    def list_receipt_word_tags_from_image(self, image_id: int) -> list[ReceiptWordTag]:
+    def list_receipt_word_tags_from_image(self, image_id: str) -> list[ReceiptWordTag]:
         """
         Lists all ReceiptWordTag items for a given image by querying:
             PK = "IMAGE#<image_id>"

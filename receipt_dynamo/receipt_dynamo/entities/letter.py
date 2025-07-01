@@ -1,5 +1,5 @@
 from math import atan2, cos, degrees, pi, radians, sin
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -42,11 +42,11 @@ class Letter:
         word_id: int,
         letter_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
@@ -78,19 +78,19 @@ class Letter:
             raise ValueError("line_id must be an integer")
         if line_id <= 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer")
         if word_id <= 0:
             raise ValueError("word_id must be positive")
-        self.word_id = word_id
+        self.word_id: int = word_id
 
         if not isinstance(letter_id, int):
             raise ValueError("id must be an integer")
         if letter_id <= 0:
             raise ValueError("id must be positive")
-        self.letter_id = letter_id
+        self.letter_id: int = letter_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -115,11 +115,11 @@ class Letter:
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(angle_degrees)
+        self.angle_degrees: float = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(angle_radians)
+        self.angle_radians: float = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -129,7 +129,7 @@ class Letter:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the Letter.
 
         Returns:
@@ -144,7 +144,7 @@ class Letter:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Letter object to a DynamoDB item.
 
         Returns:
@@ -158,8 +158,12 @@ class Letter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -519,7 +523,9 @@ class Letter:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -614,11 +620,11 @@ class Letter:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Letter object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "word_id", self.word_id
@@ -634,7 +640,7 @@ class Letter:
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Returns a dictionary representation of the Letter object."""
         return {
             "image_id": self.image_id,
@@ -704,7 +710,7 @@ class Letter:
         )
 
 
-def item_to_letter(item: dict) -> Letter:
+def item_to_letter(item: Dict[str, Any]) -> Letter:
     """Converts a DynamoDB item to a Letter object.
 
     Args:
@@ -745,10 +751,12 @@ def item_to_letter(item: dict) -> Letter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

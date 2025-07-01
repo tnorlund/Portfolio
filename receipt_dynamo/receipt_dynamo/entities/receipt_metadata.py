@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from typing import Any, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.util import (
@@ -73,7 +73,7 @@ class ReceiptMetadata:
             raise ValueError("receipt id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -116,7 +116,7 @@ class ReceiptMetadata:
 
         if not isinstance(reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning = reasoning
+        self.reasoning: str = reasoning
 
         # Initialize canonical fields
         if not isinstance(canonical_place_id, str):
@@ -174,13 +174,15 @@ class ReceiptMetadata:
                     high_quality_fields.append(field)
             elif field == "phone":
                 # Phone must have at least 7 digits (tolerate missing area code)
-                phone_digits = "".join(c for c in self.phone_number if c.isdigit())
+                phone_digits = "".join(
+                    c for c in self.phone_number if c.isdigit()
+                )
                 if len(phone_digits) >= MIN_PHONE_DIGITS:
                     high_quality_fields.append(field)
             elif field == "address":
                 # Address must have at least 2 meaningful components
                 tokens = self.address.split()
-                meaningful_tokens = 0
+                meaningful_tokens: float = 0.0
                 has_number = False
 
                 for i, token in enumerate(tokens):
@@ -196,7 +198,8 @@ class ReceiptMetadata:
                         meaningful_tokens += 1
                     # 3. It's a word with 3+ letters
                     elif (
-                        len(token_clean) >= MIN_ADDRESS_TOKENS and token_clean.isalpha()
+                        len(token_clean) >= MIN_ADDRESS_TOKENS
+                        and token_clean.isalpha()
                     ):
                         meaningful_tokens += 1
                     # 4. It's a short token (likely abbreviation) but not the only token
@@ -208,7 +211,11 @@ class ReceiptMetadata:
                 # components (e.g., "123 Main").
                 if (
                     meaningful_tokens >= 2
-                    or (len(tokens) == 1 and meaningful_tokens >= 1 and not has_number)
+                    or (
+                        len(tokens) == 1
+                        and meaningful_tokens >= 1
+                        and not has_number
+                    )
                     or (has_number and len(tokens) > 1)
                 ):
                     high_quality_fields.append(field)
@@ -218,14 +225,14 @@ class ReceiptMetadata:
 
         return high_quality_fields
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#METADATA"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """
         Returns the key for GSI1: used to index all receipts associated with a given merchant.
 
@@ -241,7 +248,9 @@ class ReceiptMetadata:
             if self.canonical_merchant_name
             else self.merchant_name
         )
-        normalized_merchant_name = merchant_name_to_use.upper().replace(" ", "_")
+        normalized_merchant_name = merchant_name_to_use.upper().replace(
+            " ", "_"
+        )
 
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
@@ -250,7 +259,7 @@ class ReceiptMetadata:
             },
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """
         Returns the key for GSI2: used to query records by place_id.
         This index supports the incremental consolidation process by enabling efficient
@@ -268,7 +277,7 @@ class ReceiptMetadata:
             },
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         """
         Returns the key for GSI3: used to sort ReceiptMetadata entries by validation status.
         Supports filtering low/high-confidence merchant matches across receipts.
@@ -278,7 +287,7 @@ class ReceiptMetadata:
             "GSI3SK": {"S": f"STATUS#{self.validation_status}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """
         Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
         Includes primary key and GSI keys, as well as all merchant-related metadata.
@@ -406,7 +415,7 @@ class ReceiptMetadata:
         )
 
 
-def item_to_receipt_metadata(item: dict) -> ReceiptMetadata:
+def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
     required_keys = {
         "PK",
         "SK",
@@ -431,7 +440,11 @@ def item_to_receipt_metadata(item: dict) -> ReceiptMetadata:
 
         # Parse sort key components
         sk_parts = item["SK"]["S"].split("#")
-        if len(sk_parts) != 3 or sk_parts[0] != "RECEIPT" or sk_parts[2] != "METADATA":
+        if (
+            len(sk_parts) != 3
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "METADATA"
+        ):
             raise ValueError(f"Invalid SK format: {item['SK']['S']}")
 
         try:
@@ -451,9 +464,13 @@ def item_to_receipt_metadata(item: dict) -> ReceiptMetadata:
         validated_by = item.get("validated_by", {}).get("S") or ""
         reasoning = item.get("reasoning", {}).get("S") or ""
         canonical_place_id = item.get("canonical_place_id", {}).get("S") or ""
-        canonical_merchant_name = item.get("canonical_merchant_name", {}).get("S") or ""
+        canonical_merchant_name = (
+            item.get("canonical_merchant_name", {}).get("S") or ""
+        )
         canonical_address = item.get("canonical_address", {}).get("S") or ""
-        canonical_phone_number = item.get("canonical_phone_number", {}).get("S") or ""
+        canonical_phone_number = (
+            item.get("canonical_phone_number", {}).get("S") or ""
+        )
 
         # Parse timestamp
         timestamp_str = item["timestamp"]["S"]

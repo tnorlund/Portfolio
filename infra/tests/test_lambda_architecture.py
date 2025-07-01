@@ -114,18 +114,16 @@ def test_all_lambdas_use_consistent_runtime():
             error_msg += f"\n{runtime}:\n"
             for func in functions:
                 error_msg += f"  - {func['file']}:{func['line']} - {func['function']}\n"
-        error_msg += (
-            "\nStandardize all functions to use the same Python runtime version."
-        )
+        error_msg += "\nStandardize all functions to use Python 3.12 runtime."
 
         pytest.fail(error_msg)
 
     # Also check that we're using a supported runtime
     if runtime_usage:
         runtime = list(runtime_usage.keys())[0]
-        if runtime not in ["python3.11", "python3.12"]:
+        if runtime != "python3.12":
             pytest.fail(
-                f"Lambda functions are using {runtime}. Use python3.11 or python3.12 for better support."
+                f"Lambda functions are using {runtime}. Use python3.12 for consistency across the project."
             )
 
 

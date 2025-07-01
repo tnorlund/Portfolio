@@ -1,14 +1,19 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
     OperationError,
+    ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_resource import (
     JobResource,
@@ -17,7 +22,7 @@ from receipt_dynamo.entities.job_resource import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
@@ -213,7 +218,7 @@ class _JobResource(DynamoClientProtocol):
     def list_job_resources(
         self,
         job_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
@@ -246,9 +251,9 @@ class _JobResource(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        resources = []
+        resources: List[JobResource] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
                 "ExpressionAttributeValues": {
@@ -309,7 +314,7 @@ class _JobResource(DynamoClientProtocol):
     def list_resources_by_type(
         self,
         resource_type: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
@@ -343,9 +348,9 @@ class _JobResource(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        resources = []
+        resources: List[JobResource] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
@@ -439,7 +444,7 @@ class _JobResource(DynamoClientProtocol):
                 },
             )
 
-            resources = []
+            resources: List[JobResource] = []
             for item in response["Items"]:
                 if item.get("TYPE", {}).get("S") == "JOB_RESOURCE":
                     resources.append(item_to_job_resource(item))

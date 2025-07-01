@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -60,17 +60,25 @@ class JobStatus:
         ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        self.status = status.lower()
+        self.status: str = status.lower()
 
+        self.updated_at: str
         if isinstance(updated_at, datetime):
             self.updated_at = updated_at.isoformat()
         elif isinstance(updated_at, str):
             self.updated_at = updated_at
         else:
-            raise ValueError("updated_at must be a datetime object or a string")
+            raise ValueError(
+                "updated_at must be a datetime object or a string"
+            )
 
+        self.progress: Optional[float]
         if progress is not None:
-            if not isinstance(progress, (int, float)) or progress < 0 or progress > 100:
+            if (
+                not isinstance(progress, (int, float))
+                or progress < 0
+                or progress > 100
+            ):
                 raise ValueError("progress must be a number between 0 and 100")
             self.progress = float(progress)
         else:
@@ -78,17 +86,17 @@ class JobStatus:
 
         if message is not None and not isinstance(message, str):
             raise ValueError("message must be a string")
-        self.message = message
+        self.message: Optional[str] = message
 
         if updated_by is not None and not isinstance(updated_by, str):
             raise ValueError("updated_by must be a string")
-        self.updated_by = updated_by
+        self.updated_by: Optional[str] = updated_by
 
         if instance_id is not None and not isinstance(instance_id, str):
             raise ValueError("instance_id must be a string")
-        self.instance_id = instance_id
+        self.instance_id: Optional[str] = instance_id
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job status.
 
         Returns:
@@ -99,7 +107,7 @@ class JobStatus:
             "SK": {"S": f"STATUS#{self.updated_at}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job status.
 
         Returns:
@@ -110,7 +118,7 @@ class JobStatus:
             "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobStatus object to a DynamoDB item.
 
         Returns:
@@ -213,7 +221,7 @@ class JobStatus:
         )
 
 
-def item_to_job_status(item: dict) -> JobStatus:
+def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
     """Converts a DynamoDB item to a JobStatus object.
 
     Args:
@@ -251,7 +259,9 @@ def item_to_job_status(item: dict) -> JobStatus:
         progress = float(item["progress"]["N"]) if "progress" in item else None
         message = item["message"]["S"] if "message" in item else None
         updated_by = item["updated_by"]["S"] if "updated_by" in item else None
-        instance_id = item["instance_id"]["S"] if "instance_id" in item else None
+        instance_id = (
+            item["instance_id"]["S"] if "instance_id" in item else None
+        )
 
         return JobStatus(
             job_id=job_id,

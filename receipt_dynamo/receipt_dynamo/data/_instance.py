@@ -1,8 +1,25 @@
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import botocore
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -85,7 +102,10 @@ class _Instance(DynamoClientProtocol):
 
             # Batch write the items to DynamoDB
             request_items = {
-                self.table_name: [{"PutRequest": {"Item": item}} for item in items]
+                self.table_name: [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item))
+                    for item in items
+                ]
             }
             response = self._client.batch_write_item(RequestItems=request_items)
 
@@ -471,7 +491,9 @@ class _Instance(DynamoClientProtocol):
                 ) from e
 
     def list_instances(
-        self, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Instance], Optional[Dict]]:
         """Lists instances in the DynamoDB table.
 
@@ -491,7 +513,7 @@ class _Instance(DynamoClientProtocol):
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSITYPE",
             "KeyConditionExpression": "#t = :val",
@@ -524,7 +546,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
 
     def list_instances_by_status(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        status: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Instance], Optional[Dict]]:
         """Lists instances by status in the DynamoDB table.
 
@@ -550,7 +575,7 @@ class _Instance(DynamoClientProtocol):
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :gsi1pk",
@@ -585,8 +610,8 @@ class _Instance(DynamoClientProtocol):
     def list_instance_jobs(
         self,
         instance_id: str,
-        limit: int = None,
-        lastEvaluatedKey: dict = None,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists jobs associated with an instance in the DynamoDB table.
 
@@ -610,7 +635,7 @@ class _Instance(DynamoClientProtocol):
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
             "ExpressionAttributeValues": {
@@ -645,7 +670,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
 
     def list_instances_for_job(
-        self, job_id: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        job_id: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists instances associated with a job in the DynamoDB table.
 
@@ -669,7 +697,7 @@ class _Instance(DynamoClientProtocol):
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk_prefix)",

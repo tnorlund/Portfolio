@@ -30,7 +30,7 @@ class ReceiptValidationResult:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -45,7 +45,7 @@ class ReceiptValidationResult:
             raise ValueError("result_index must be an integer")
         if result_index < 0:
             raise ValueError("result_index must be positive")
-        self.result_index = result_index
+        self.result_index: int = result_index
 
         if not isinstance(type, str):
             raise ValueError("type must be a string")
@@ -78,11 +78,17 @@ class ReceiptValidationResult:
         self.actual_value = actual_value
 
         if isinstance(validation_timestamp, datetime):
-            self.validation_timestamp = validation_timestamp.isoformat()
+            self.validation_timestamp: Optional[str] = (
+                validation_timestamp.isoformat()
+            )
         elif isinstance(validation_timestamp, str):
             self.validation_timestamp = validation_timestamp
+        elif validation_timestamp is None:
+            self.validation_timestamp = None
         else:
-            raise ValueError("validation_timestamp must be a datetime or string")
+            raise ValueError(
+                "validation_timestamp must be a datetime or string"
+            )
 
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary or None")
@@ -129,7 +135,9 @@ class ReceiptValidationResult:
         elif isinstance(value, bool):
             return {"BOOL": value}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -139,7 +147,7 @@ class ReceiptValidationResult:
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
-        item = {
+        item: Dict[str, Any] = {
             **self.key,
             **self.gsi1_key,
             **self.gsi3_key,
@@ -150,7 +158,11 @@ class ReceiptValidationResult:
         item["type"] = {"S": self.type}
         item["message"] = {"S": self.message}
         item["reasoning"] = {"S": self.reasoning}
-        item["validation_timestamp"] = {"S": self.validation_timestamp}
+        # Add validation_timestamp conditionally to avoid type conflicts
+        if self.validation_timestamp is not None:
+            item["validation_timestamp"] = {"S": self.validation_timestamp}
+        else:
+            item["validation_timestamp"] = {"NULL": True}
 
         # Add metadata as a map
         item["metadata"] = self._python_to_dynamo(self.metadata)
@@ -188,7 +200,9 @@ class ReceiptValidationResult:
             else None
         )
         actual_value = (
-            item.get("actual_value", {}).get("S") if "actual_value" in item else None
+            item.get("actual_value", {}).get("S")
+            if "actual_value" in item
+            else None
         )
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
