@@ -10,6 +10,13 @@ from moto import mock_aws
 from pytest_mock import MockerFixture
 
 from receipt_dynamo import DynamoClient, ReceiptLineItemAnalysis
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -753,48 +760,55 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptLineItemAnalyses in the database",
+            DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptLineItemAnalyses do not exist",
+            ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
             None,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
+            DynamoDBAccessError,
             None,
         ),
         (
             "Exception",
             "Unknown error occurred",
             "Could not update ReceiptLineItemAnalyses in the database",
+            DynamoDBError,
             None,
         ),
     ],
@@ -806,6 +820,7 @@ def test_updateReceiptLineItemAnalyses_client_errors(
     error_code,
     error_message,
     expected_error,
+    expected_exception,
     cancellation_reasons,
 ):
     """Test handling of various client errors when updating multiple ReceiptLineItemAnalyses."""
@@ -834,7 +849,7 @@ def test_updateReceiptLineItemAnalyses_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(expected_exception) as excinfo:
         client.update_receipt_line_item_analyses(
             [sample_receipt_line_item_analysis]
         )

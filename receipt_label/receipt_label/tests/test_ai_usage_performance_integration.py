@@ -21,20 +21,18 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.client_manager import ClientConfig, ClientManager
+from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     MockServiceFactory,
     create_mock_openai_response,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.client_manager import ClientConfig, ClientManager
-from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.fixture
@@ -170,10 +168,33 @@ class TestAIUsagePerformanceIntegration:
                     mock_high_performance_dynamo._write_latencies, n=100
                 )[98]
 
-                # Performance assertions
-                assert throughput > 100  # At least 100 req/s
-                assert avg_latency < 10  # Average write latency < 10ms
-                assert p99_latency < 50  # 99th percentile < 50ms
+                # Performance assertions using environment-aware thresholds
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+
+                # Adjust expectations based on environment
+                min_throughput = thresholds.get_threshold("throughput_ops")
+                max_avg_latency = thresholds.get_threshold("latency_ms")
+                max_p99_latency = max_avg_latency * 5  # P99 can be 5x average
+
+                # Log environment info for debugging
+                print(f"Environment: {perf_class}")
+                print(f"Expected min throughput: {min_throughput:.0f} req/s")
+
+                assert (
+                    throughput > min_throughput
+                ), f"Throughput {throughput:.2f} req/s below threshold {min_throughput:.0f} req/s"
+                assert (
+                    avg_latency < max_avg_latency
+                ), f"Avg latency {avg_latency:.2f}ms exceeds threshold {max_avg_latency:.2f}ms"
+                assert (
+                    p99_latency < max_p99_latency
+                ), f"P99 latency {p99_latency:.2f}ms exceeds threshold {max_p99_latency:.2f}ms"
 
                 # Verify all metrics stored
                 assert len(mock_high_performance_dynamo._stored_items) == 1000
@@ -288,13 +309,43 @@ class TestAIUsagePerformanceIntegration:
                 )
                 max_worker_latency = max(r["max_latency"] for r in results)
 
-                # Performance assertions
-                # Note: CI environments are less performant than local development
+                # Performance assertions with environment awareness
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+
+                # Concurrent operations should achieve better throughput
+                min_concurrent_throughput = (
+                    thresholds.get_threshold("throughput_ops") * 1.5
+                )
+                # IMPORTANT: These thresholds are environment-dependent
+                # CI environments are less performant than local development machines
+                # Concurrent operations experience higher latency due to contention
+                max_avg_latency = (
+                    thresholds.get_threshold("latency_ms") * 5
+                )  # More lenient for concurrent operations in CI
+                max_peak_latency = (
+                    max_avg_latency * 7
+                )  # Peak can be much higher under concurrent load in CI
+
+                print(f"Concurrent performance (env: {perf_class}):")
+                print(f"  Overall throughput: {overall_throughput:.1f} req/s")
+                print(f"  Avg worker latency: {avg_worker_latency:.1f}ms")
+                print(f"  Max worker latency: {max_worker_latency:.1f}ms")
+
                 assert (
-                    overall_throughput > 100  # CI-tuned: was 200
-                )  # Higher throughput with concurrency
-                assert avg_worker_latency < 50  # CI-tuned: was 20
-                assert max_worker_latency < 200  # CI-tuned: was 100
+                    overall_throughput > min_concurrent_throughput
+                ), f"Concurrent throughput {overall_throughput:.1f} below threshold {min_concurrent_throughput:.1f}"
+                assert (
+                    avg_worker_latency < max_avg_latency
+                ), f"Avg latency {avg_worker_latency:.1f}ms exceeds threshold {max_avg_latency:.1f}ms"
+                assert (
+                    max_worker_latency < max_peak_latency
+                ), f"Peak latency {max_worker_latency:.1f}ms exceeds threshold {max_peak_latency:.1f}ms"
 
                 # Verify data integrity
                 assert (
@@ -383,14 +434,40 @@ class TestAIUsagePerformanceIntegration:
                 memory_after = process.memory_info().rss / 1024 / 1024  # MB
                 memory_increase = memory_after - memory_before
 
-                # Memory efficiency assertions (CI-tuned threshold)
-                # CI environments have different memory characteristics
+                # Memory efficiency assertions with environment awareness
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+                max_memory_increase = thresholds.get_threshold("memory_mb")
+
+                # Calculate total operations
+                total_operations = batch_size * num_batches
+
+                # Also check relative memory usage
+                memory_per_operation = (
+                    memory_increase / total_operations * 1000
+                )  # MB per 1k ops
+
+                print(f"Memory usage (env: {perf_class}):")
+                print(f"  Total increase: {memory_increase:.1f}MB")
+                print(f"  Per 1k operations: {memory_per_operation:.2f}MB")
+                print(f"  Threshold: {max_memory_increase:.0f}MB")
+
                 assert (
-                    memory_increase < 120
-                )  # Less than 120MB increase (CI-tuned)
+                    memory_increase < max_memory_increase
+                ), f"Memory increase {memory_increase:.1f}MB exceeds threshold {max_memory_increase:.0f}MB (env: {perf_class})"
+
+                # Relative assertion: memory per operation should be reasonable
+                # Allow up to 20MB per 1k operations (accounts for Python object overhead)
+                assert (
+                    memory_per_operation < 20
+                ), f"Memory per 1k operations {memory_per_operation:.1f}MB seems excessive"
 
                 # Verify operations completed
-                total_operations = batch_size * num_batches
                 assert (
                     len(mock_high_performance_dynamo._stored_items)
                     >= total_operations * 0.95
@@ -590,10 +667,39 @@ class TestAIUsagePerformanceIntegration:
                     "result_count": len(metrics),
                 }
 
-            # Performance assertions
-            assert query_performance["single_day"]["total_time_ms"] < 50
-            assert query_performance["week"]["total_time_ms"] < 100
-            assert query_performance["month"]["total_time_ms"] < 500
+            # Performance assertions using relative thresholds
+            from receipt_label.tests.utils.performance_utils import (
+                EnvironmentProfile,
+            )
+
+            # Establish baseline with simplest query
+            baseline_time = query_performance["single_day"]["total_time_ms"]
+            perf_class = EnvironmentProfile.get_performance_class()
+
+            # Scale expectations based on environment
+            scaling_factor = EnvironmentProfile.get_scaling_factor()
+            base_single_day_ms = 50 / scaling_factor  # Adjust base expectation
+
+            # Relative assertions - week should be < 3x single day, month < 10x
+            assert (
+                query_performance["single_day"]["total_time_ms"]
+                < base_single_day_ms
+            ), f"Single day query {query_performance['single_day']['total_time_ms']:.1f}ms exceeds threshold {base_single_day_ms:.1f}ms (env: {perf_class})"
+
+            assert (
+                query_performance["week"]["total_time_ms"] < baseline_time * 3
+            ), f"Week query should be < 3x single day query time"
+
+            assert (
+                query_performance["month"]["total_time_ms"]
+                < baseline_time * 10
+            ), f"Month query should be < 10x single day query time"
+
+            print(f"Query performance (env: {perf_class}):")
+            for pattern, perf in query_performance.items():
+                print(
+                    f"  {pattern}: {perf['total_time_ms']:.1f}ms ({perf['result_count']} results)"
+                )
 
     def test_graceful_degradation_under_stress(self, performance_env):
         """Test system degrades gracefully under extreme stress."""
