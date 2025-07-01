@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -13,13 +13,17 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_merchant_counts():
-    receipt_metadatas, last_evaluated_key = dynamo_client.listReceiptMetadatas(
-        limit=1000,
+    receipt_metadatas, last_evaluated_key = (
+        dynamo_client.list_receipt_metadatas(
+            limit=1000,
+        )
     )
     while last_evaluated_key is not None:
-        next_receipt_metadatas, last_evaluated_key = dynamo_client.listReceiptMetadatas(
-            limit=1000,
-            lastEvaluatedKey=last_evaluated_key,
+        next_receipt_metadatas, last_evaluated_key = (
+            dynamo_client.list_receipt_metadatas(
+                limit=1000,
+                lastEvaluatedKey=last_evaluated_key,
+            )
         )
         receipt_metadatas.extend(next_receipt_metadatas)
 

@@ -3,8 +3,8 @@ import logging
 import os
 import random
 
-from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -62,7 +62,9 @@ def handler(event, context):
             # List all images of the requested type
             images, last_evaluated_key = client.list_images_by_type(image_type)
             images = [
-                image for image in images if image.image_id in receipts_by_image_id
+                image
+                for image in images
+                if image.image_id in receipts_by_image_id
             ]
 
             # Randomly chose an image_id of the images with 2 receipts
@@ -74,19 +76,22 @@ def handler(event, context):
 
             image_id = random.choice([image.image_id for image in images])
 
-            image_details = client.getImageClusterDetails(image_id)
-            (
-                image,
-                lines,
-                receipts,
-            ) = image_details
+            # Get all details for the randomly selected image
+            image_details = client.get_image_details(image_id)
+
+            # Extract relevant fields from ImageDetails object
+            image = (
+                dict(image_details.images[0]) if image_details.images else None
+            )
+            lines = [dict(line) for line in image_details.lines]
+            receipts = [dict(receipt) for receipt in image_details.receipts]
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
-                        "image": dict(image),
-                        "lines": [dict(line) for line in lines],
-                        "receipts": [dict(receipt) for receipt in receipts],
+                        "image": image,
+                        "lines": lines,
+                        "receipts": receipts,
                     }
                 ),
             }
