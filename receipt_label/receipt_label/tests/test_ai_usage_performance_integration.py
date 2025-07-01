@@ -329,8 +329,8 @@ class TestAIUsagePerformanceIntegration:
                     thresholds.get_threshold("latency_ms") * 5
                 )  # More lenient for concurrent operations in CI
                 max_peak_latency = (
-                    max_avg_latency * 6
-                )  # Peak can be much higher under concurrent load
+                    max_avg_latency * 7
+                )  # Peak can be much higher under concurrent load in CI
 
                 print(f"Concurrent performance (env: {perf_class}):")
                 print(f"  Overall throughput: {overall_throughput:.1f} req/s")

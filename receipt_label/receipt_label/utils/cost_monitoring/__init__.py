@@ -13,6 +13,7 @@ from .cost_analytics import (
     CostAnomaly,
     CostOptimizationRecommendation,
     CostTrend,
+    TrendDirection,
 )
 from .cost_monitor import CostMonitor, ThresholdAlert, ThresholdLevel
 from .tracking_integration import (
@@ -35,6 +36,7 @@ __all__ = [
     # Analytics
     "CostAnalytics",
     "CostTrend",
+    "TrendDirection",
     "CostAnomaly",
     "CostOptimizationRecommendation",
     # Integration

@@ -553,7 +553,7 @@ class CostAnalytics:
             causes.append("Significant spike in usage volume")
             causes.append("Possible runaway process or infinite loop")
 
-        if service == "openai" and actual_cost > expected_cost * 1.5:
+        if service == "openai" and actual_cost > expected_cost * Decimal("1.5"):
             causes.append("Increased usage of expensive models (GPT-4)")
             causes.append("Longer prompt/completion tokens than usual")
 
