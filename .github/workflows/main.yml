@@ -242,6 +242,8 @@ jobs:
           (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
           needs.fast-checks.outputs.workflows_changed == 'true' ||
           github.event_name == 'schedule'
+        env:
+          SKIP_PERFORMANCE_TESTS: "true"
         run: |
           # Activate virtual environment
           source .venv-ci/bin/activate

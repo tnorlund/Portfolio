@@ -4,6 +4,7 @@ This file is automatically loaded by pytest for all test runs.
 """
 
 import logging
+import os
 import warnings
 
 import pytest
@@ -21,6 +22,7 @@ def pytest_configure(config: Config) -> None:
         "end_to_end: End-to-end tests (requires AWS resources)",
         "slow: Slow tests that should be skipped in quick runs",
         "flaky: Tests that may fail intermittently",
+        "performance: Performance tests that may be sensitive to environment",
     ]
 
     for marker in markers:
@@ -79,6 +81,11 @@ def pytest_runtest_setup(item: Item) -> None:
     if item.get_closest_marker("requires_aws"):
         if not item.config.getoption("--run-aws-tests", default=False):
             pytest.skip("Skipping AWS tests (use --run-aws-tests to run)")
+
+    # Skip performance tests if SKIP_PERFORMANCE_TESTS is set
+    if item.get_closest_marker("performance"):
+        if os.environ.get("SKIP_PERFORMANCE_TESTS", "").lower() == "true":
+            pytest.skip("Skipping performance tests (SKIP_PERFORMANCE_TESTS=true)")
 
 
 # Configure pytest-xdist for optimal performance

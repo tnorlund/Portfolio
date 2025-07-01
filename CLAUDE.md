@@ -506,7 +506,7 @@ git commit -m "feat: new authentication system"     # All tests needed
 
 **Optimized Workflow:**
 - Self-hosted Python tests: $0/month (was ~$40)
-- Reduced GitHub-hosted usage: ~$5/month (was ~$8) 
+- Reduced GitHub-hosted usage: ~$5/month (was ~$8)
 - Local testing prevents failed CI runs: Additional ~$2-3/month savings
 
 **Total monthly cost:** ~$2-5/month (down from $48)
@@ -515,7 +515,7 @@ git commit -m "feat: new authentication system"     # All tests needed
 ## Implementation Checklist
 
 - [x] Set up Apple Silicon self-hosted runner
-- [x] Update workflows for hybrid approach  
+- [x] Update workflows for hybrid approach
 - [x] Document local testing strategies
 - [x] Create local testing scripts
   - [x] `./scripts/local_ci_check.sh` - Mirror PR quick-tests
@@ -579,7 +579,7 @@ GSI3PK = "USER#john_doe"
 GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 
 # Environment scope queries - eliminate scans using GSI3
-GSI3PK = "ENV#production"  
+GSI3PK = "ENV#production"
 GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 
 # Job scope queries - existing functionality preserved
@@ -597,12 +597,12 @@ GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
 
 ### Implementation Status
 
-**Phase 1 Completed**: 
+**Phase 1 Completed**:
 - ✅ Optimized job queries to use GSI3 instead of scans
 - ✅ Added fallback scan operations for reliability
 
 **Phase 2 Planned**:
-- 🔄 Enhance GSI3 composite keys for user/environment scopes  
+- 🔄 Enhance GSI3 composite keys for user/environment scopes
 - 🔄 Migrate CostMonitor to use enhanced GSI3 queries
 - 🔄 Backfill historical records with enhanced GSI3 keys
 
@@ -632,7 +632,7 @@ See `GSITYPE_OPTIMIZATION_STRATEGY.md` for detailed implementation guide, code e
 
 Performance tests that pass locally often fail in CI because:
 - CI runners have limited CPU and memory resources
-- Network latency varies between environments  
+- Network latency varies between environments
 - Shared infrastructure causes unpredictable performance
 - Background processes affect timing measurements
 
@@ -692,4 +692,38 @@ When reviewing performance tests:
 ### Historical Context
 
 This documentation was added after issue #130 where performance tests expected 10% throughput under stress but CI achieved only ~3%. The tests were updated to use CI-tuned thresholds (3%) to prevent spurious failures while maintaining the functional verification of resilience patterns.
-EOF < /dev/null
+
+## Performance Testing Strategy (Updated 2025-07-01)
+
+### Short-term Solution: Skip Performance Tests in CI
+
+Due to continued flakiness of time-based performance tests in CI environments, we have implemented a strategy to skip performance tests in CI while preserving the ability to run them locally.
+
+**Implementation:**
+1. CI workflows set `SKIP_PERFORMANCE_TESTS=true` environment variable
+2. `conftest.py` automatically skips tests marked with `@pytest.mark.performance` when this variable is set
+3. Developers can still run performance tests locally for validation
+
+**Running Performance Tests:**
+```bash
+# Run all tests including performance (default local behavior)
+pytest
+
+# Run only performance tests
+pytest -m performance
+
+# Skip performance tests locally (mimics CI behavior)
+SKIP_PERFORMANCE_TESTS=true pytest
+```
+
+**Rationale:**
+- Performance tests against mocked services don't measure real performance
+- Time-based assertions are inherently brittle in shared CI environments
+- The maintenance cost of flaky tests outweighs their value in CI
+
+**Future Work:**
+- Implement production monitoring with APM tools for real performance insights
+- Set up dedicated performance testing pipeline with consistent resources
+- Convert time-based tests to algorithmic complexity validation
+
+See [Design Decision: Performance Testing Strategy](docs/design-decisions/performance-testing-strategy.md) for detailed rationale and migration plan.
