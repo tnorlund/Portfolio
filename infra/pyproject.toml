@@ -14,10 +14,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black==24.10.0",
-    "isort",
+    "black==25.1.0",
+    "isort==6.0.1",
     "flake8",
-    "mypy",
+    "mypy>=1.16.1",
     "pytest",
     "pytest-cov",
 ]
@@ -27,7 +27,7 @@ packages = ["infra"]
 
 [tool.black]
 line-length = 79
-target-version = ["py38"]
+target-version = ["py312"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -50,11 +50,11 @@ max-line-length = 79
 disable = [
     "too-few-public-methods",
     "too-many-arguments",
-    "too-many-locals", 
+    "too-many-locals",
     "too-many-instance-attributes",
     "too-many-branches",
     "missing-module-docstring",
-    "missing-class-docstring", 
+    "missing-class-docstring",
     "missing-function-docstring",
 ]
 

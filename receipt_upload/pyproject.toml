@@ -45,9 +45,9 @@ test = [
     "pytest-mock>=3.13.0",
 ]
 dev = [
-    "black>=23.0",
-    "isort>=5.0",
-    "mypy>=1.0",
+    "black==25.1.0",
+    "isort==6.0.1",
+    "mypy>=1.16.1",
     "pylint>=3.0.0,<4.0.0",
 ]
 
@@ -82,7 +82,7 @@ testpaths = [
 python_files = ["test_*.py"]
 markers = [
     "unit: mark test as unit test",
-    "integration: mark test as integration test", 
+    "integration: mark test as integration test",
     "end_to_end: mark test as end-to-end test",
 ]
 
@@ -93,11 +93,11 @@ max-line-length = 79
 disable = [
     "too-few-public-methods",
     "too-many-arguments",
-    "too-many-locals", 
+    "too-many-locals",
     "too-many-instance-attributes",
     "too-many-branches",
     "missing-module-docstring",
-    "missing-class-docstring", 
+    "missing-class-docstring",
     "missing-function-docstring",
 ]
 
@@ -106,4 +106,4 @@ good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk", "A", "B", "C", 
 
 [tool.pylint.design]
 max-args = 10
-max-locals = 20 
+max-locals = 20
