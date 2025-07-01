@@ -12,7 +12,6 @@ from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
@@ -56,8 +55,7 @@ class ClientConfig:
             pinecone_api_key=os.environ["PINECONE_API_KEY"],
             pinecone_index_name=os.environ["PINECONE_INDEX_NAME"],
             pinecone_host=os.environ["PINECONE_HOST"],
-            track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
-            == "true",
+            track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower() == "true",
             user_id=os.environ.get("USER_ID"),
             use_resilient_tracker=os.environ.get(
                 "USE_RESILIENT_TRACKER", "true"
@@ -144,9 +142,7 @@ class ClientManager:
                     table_name=self.config.dynamo_table,
                     user_id=self.config.user_id,
                     track_to_dynamo=True,
-                    track_to_file=os.environ.get(
-                        "TRACK_TO_FILE", "false"
-                    ).lower()
+                    track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
                     == "true",
                     validate_table_environment=test_client
                     is None,  # Only validate in production
@@ -157,12 +153,8 @@ class ClientManager:
                     circuit_breaker_timeout=float(
                         os.environ.get("CIRCUIT_BREAKER_TIMEOUT", "30.0")
                     ),
-                    max_retry_attempts=int(
-                        os.environ.get("MAX_RETRY_ATTEMPTS", "3")
-                    ),
-                    retry_base_delay=float(
-                        os.environ.get("RETRY_BASE_DELAY", "1.0")
-                    ),
+                    max_retry_attempts=int(os.environ.get("MAX_RETRY_ATTEMPTS", "3")),
+                    retry_base_delay=float(os.environ.get("RETRY_BASE_DELAY", "1.0")),
                     batch_size=int(os.environ.get("BATCH_SIZE", "25")),
                     batch_flush_interval=float(
                         os.environ.get("BATCH_FLUSH_INTERVAL", "5.0")

@@ -140,9 +140,7 @@ def test_addReceiptStructureAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=re.escape(expected_error)):
-        client.add_receipt_structure_analysis(
-            sample_receipt_structure_analysis
-        )
+        client.add_receipt_structure_analysis(sample_receipt_structure_analysis)
 
     # Verify put_item was called
     mock_put_item.assert_called_once()
@@ -363,10 +361,7 @@ def test_updateReceiptStructureAnalyses_success(
             },
         )
         assert "Item" in response, f"Item {idx} should exist in DynamoDB"
-        assert (
-            response["Item"]["overall_reasoning"]["S"]
-            == f"Updated Analysis {idx}"
-        )
+        assert response["Item"]["overall_reasoning"]["S"] == f"Updated Analysis {idx}"
 
 
 @pytest.mark.integration
@@ -488,12 +483,8 @@ def test_listReceiptStructureAnalysesFromReceipt_success(
             ],
             overall_reasoning=f"Analysis version {i}",
             version=f"1.0.{i}",
-            timestamp_added=datetime(
-                2023, 1, 1, 12, 0, i
-            ),  # Different timestamps
-            timestamp_updated=datetime(
-                2023, 1, 2, 12, 0, i
-            ),  # Different timestamps
+            timestamp_added=datetime(2023, 1, 1, 12, 0, i),  # Different timestamps
+            timestamp_updated=datetime(2023, 1, 2, 12, 0, i),  # Different timestamps
         )
         analyses.append(analysis)
 
@@ -504,7 +495,7 @@ def test_listReceiptStructureAnalysesFromReceipt_success(
     if existing_analyses:
         client.delete_receipt_structure_analyses(existing_analyses)
 
-    # Add all analyses at once
+    # Add analyses using batch operation as originally intended
     client.add_receipt_structure_analyses(analyses)
 
     # Act

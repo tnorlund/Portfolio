@@ -41,15 +41,15 @@ class _ReceiptWordTag(DynamoClientProtocol):
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptWordTag already exists for "
-                    "image_id={receipt_word_tag.image_id}, "
-                    "receipt_id={receipt_word_tag.receipt_id}, "
-                    "word_id={receipt_word_tag.word_id}, "
-                    "tag={receipt_word_tag.tag}"
-                    "timestamp_added={receipt_word_tag.timestamp_added}"
+                    f"ReceiptWordTag already exists for "
+                    f"image_id={receipt_word_tag.image_id}, "
+                    f"receipt_id={receipt_word_tag.receipt_id}, "
+                    f"word_id={receipt_word_tag.word_id}, "
+                    f"tag={receipt_word_tag.tag}"
+                    f"timestamp_added={receipt_word_tag.timestamp_added}"
                 ) from e
             else:
-                raise OperationError("Error adding ReceiptWordTag: {e}") from e
+                raise OperationError(f"Error adding ReceiptWordTag: {e}") from e
 
     def add_receipt_word_tags(self, receipt_word_tags: list[ReceiptWordTag]):
         """
@@ -78,7 +78,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise ValueError(
-                "Could not add ReceiptWordTags to the database: {e}"
+                f"Could not add ReceiptWordTags to the database: {e}"
             ) from e
 
     def update_receipt_word_tag(self, receipt_word_tag: ReceiptWordTag):
@@ -95,7 +95,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 Item=receipt_word_tag.to_item(),
             )
         except ClientError as e:
-            raise OperationError("Error updating ReceiptWordTag: {e}") from e
+            raise OperationError(f"Error updating ReceiptWordTag: {e}") from e
 
     def delete_receipt_word_tag(
         self,
@@ -136,12 +136,12 @@ class _ReceiptWordTag(DynamoClientProtocol):
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptWordTag not found for image_id={image_id}, "
-                    "receipt_id={receipt_id}, line_id={line_id}, "
-                    "word_id={word_id}, tag={tag}"
+                    f"ReceiptWordTag not found for image_id={image_id}, "
+                    f"receipt_id={receipt_id}, line_id={line_id}, "
+                    f"word_id={word_id}, tag={tag}"
                 ) from e
             else:
-                raise OperationError("Error deleting ReceiptWordTag: {e}") from e
+                raise OperationError(f"Error deleting ReceiptWordTag: {e}") from e
 
     def delete_receipt_word_tags(self, receipt_word_tags: list[ReceiptWordTag]):
         """
@@ -218,12 +218,12 @@ class _ReceiptWordTag(DynamoClientProtocol):
         except KeyError:
             # No "Item" or missing fields
             raise ValueError(
-                "ReceiptWordTag not found for image_id={image_id}, "
-                "receipt_id={receipt_id}, line_id={line_id}, "
-                "word_id={word_id}, tag={tag}"
+                f"ReceiptWordTag not found for image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}, "
+                f"word_id={word_id}, tag={tag}"
             )
         except ClientError as e:
-            raise OperationError("Error getting ReceiptWordTag: {e}") from e
+            raise OperationError(f"Error getting ReceiptWordTag: {e}") from e
 
     def get_receipt_word_tags(
         self, tag: str, limit: int = None, lastEvaluatedKey: dict = None
@@ -263,7 +263,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 "FilterExpression": "#t = :typeVal",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {
-                    ":gsi1pk": {"S": "TAG#{tag:_>40}"},
+                    ":gsi1pk": {"S": f"TAG#{tag:_>40}"},
                     ":typeVal": {"S": "RECEIPT_WORD_TAG"},
                 },
                 "Limit": batch_limit,
@@ -380,7 +380,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                 FilterExpression="contains(#sk, :tag_val)",
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
-                    ":pk_val": {"S": "IMAGE#{image_id}"},
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {"S": "RECEIPT#"},
                     # Only SKs that include '#TAG#'
                     ":tag_val": {"S": "#TAG#"},
@@ -396,7 +396,7 @@ class _ReceiptWordTag(DynamoClientProtocol):
                     FilterExpression="contains(#sk, :tag_val)",
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
-                        ":pk_val": {"S": "IMAGE#{image_id}"},
+                        ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": "RECEIPT#"},
                         ":tag_val": {"S": "#TAG#"},
                     },

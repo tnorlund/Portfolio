@@ -250,6 +250,22 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     )
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise DynamoDBError(
+                        f"Could not update ReceiptValidationCategories in the database: {e}"
+                    ) from e
+                else:
+                    raise DynamoDBError(
+                        f"Could not update ReceiptValidationCategories in the database: {e}"
+                    ) from e
 
     def delete_receipt_validation_category(self, category: ReceiptValidationCategory):
         """Deletes a single ReceiptValidationCategory.

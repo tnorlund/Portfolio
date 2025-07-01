@@ -74,9 +74,7 @@ class LLMProcessor:
         # Process missing components
         if missing_components:
             try:
-                logger.info(
-                    f"Processing {len(missing_components)} missing components"
-                )
+                logger.info(f"Processing {len(missing_components)} missing components")
                 component_updates = self._process_missing_components(
                     missing_components,
                     receipt,
@@ -88,9 +86,7 @@ class LLMProcessor:
                 if component_updates:
                     updates.update(component_updates)
             except Exception as e:
-                logger.error(
-                    f"Error in LLM processing of missing components: {str(e)}"
-                )
+                logger.error(f"Error in LLM processing of missing components: {str(e)}")
 
         # Process items with multiple amounts
         if multiple_amounts:
@@ -109,16 +105,12 @@ class LLMProcessor:
                 if amount_updates:
                     updates.update(amount_updates)
             except Exception as e:
-                logger.error(
-                    f"Error in LLM processing of multiple amounts: {str(e)}"
-                )
+                logger.error(f"Error in LLM processing of multiple amounts: {str(e)}")
 
         # Process total mismatches
         if total_mismatches:
             try:
-                logger.info(
-                    f"Processing {len(total_mismatches)} total mismatches"
-                )
+                logger.info(f"Processing {len(total_mismatches)} total mismatches")
                 mismatch_updates = self._process_total_mismatches(
                     total_mismatches,
                     receipt,
@@ -130,9 +122,7 @@ class LLMProcessor:
                 if mismatch_updates:
                     updates.update(mismatch_updates)
             except Exception as e:
-                logger.error(
-                    f"Error in LLM processing of total mismatches: {str(e)}"
-                )
+                logger.error(f"Error in LLM processing of total mismatches: {str(e)}")
 
         return updates
 
@@ -170,9 +160,7 @@ class LLMProcessor:
         context = {
             "receipt_text": "\n".join(line.text for line in receipt_lines),
             "current_results": self._serialize_for_gpt(current_results),
-            "missing_components": [
-                item.component for item in missing_components
-            ],
+            "missing_components": [item.component for item in missing_components],
         }
 
         try:
@@ -193,9 +181,7 @@ class LLMProcessor:
 
             for field in ["subtotal", "tax", "total"]:
                 value = analysis.get(field)
-                if (
-                    value is not None
-                ):  # Only try to convert if we actually got a value
+                if value is not None:  # Only try to convert if we actually got a value
                     try:
                         logger.debug(
                             f"Converting {field} value: {value} (type: {type(value)})"
@@ -211,9 +197,7 @@ class LLMProcessor:
             return updates
 
         except Exception as e:
-            logger.error(
-                f"Error in LLM processing of missing components: {str(e)}"
-            )
+            logger.error(f"Error in LLM processing of missing components: {str(e)}")
             return {}
 
     def _process_multiple_amounts(
@@ -263,9 +247,7 @@ class LLMProcessor:
                     quantity = None
                     if item_data.get("quantity"):
                         quantity = Quantity(
-                            amount=Decimal(
-                                str(item_data["quantity"]["amount"])
-                            ),
+                            amount=Decimal(str(item_data["quantity"]["amount"])),
                             unit=item_data["quantity"]["unit"],
                         )
 
@@ -278,9 +260,7 @@ class LLMProcessor:
                                 else None
                             ),
                             extended_price=(
-                                Decimal(
-                                    str(item_data["price"]["extended_price"])
-                                )
+                                Decimal(str(item_data["price"]["extended_price"]))
                                 if item_data["price"].get("extended_price")
                                 else None
                             ),
@@ -298,17 +278,13 @@ class LLMProcessor:
                     updates["line_items"].append(item)
 
                 except (KeyError, ValueError) as e:
-                    logger.warning(
-                        f"Error processing line item from LLM: {str(e)}"
-                    )
+                    logger.warning(f"Error processing line item from LLM: {str(e)}")
                     continue
 
             return updates
 
         except Exception as e:
-            logger.error(
-                f"Error in LLM processing of multiple amounts: {str(e)}"
-            )
+            logger.error(f"Error in LLM processing of multiple amounts: {str(e)}")
             return {}
 
     def _process_total_mismatches(
@@ -361,7 +337,5 @@ class LLMProcessor:
             return updates
 
         except Exception as e:
-            logger.error(
-                f"Error in LLM processing of total mismatches: {str(e)}"
-            )
+            logger.error(f"Error in LLM processing of total mismatches: {str(e)}")
             return {}

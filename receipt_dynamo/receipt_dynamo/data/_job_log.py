@@ -52,7 +52,7 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_logs is None:
-            raise ValueError("job_logs cannot be None") from e
+            raise ValueError("job_logs cannot be None")
         if not isinstance(job_logs, list):
             raise ValueError(f"job_logs must be a list, got {type(job_logs)}")
         if not all(isinstance(log, JobLog) for log in job_logs):
@@ -110,9 +110,9 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None") from e
+            raise ValueError("job_id cannot be None")
         if timestamp is None:
-            raise ValueError("timestamp cannot be None") from e
+            raise ValueError("timestamp cannot be None")
 
         response = self._client.get_item(
             TableName=self.table_name,
@@ -151,7 +151,7 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None") from e
+            raise ValueError("job_id cannot be None")
 
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
@@ -193,7 +193,7 @@ class _JobLog(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_log is None:
-            raise ValueError("job_log cannot be None") from e
+            raise ValueError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
             raise ValueError(f"job_log must be a JobLog instance, got {type(job_log)}")
 
