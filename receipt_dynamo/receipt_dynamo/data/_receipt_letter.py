@@ -2,6 +2,18 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLetter, item_to_receipt_letter
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        DeleteRequestTypeDef,
+    )
+
+from typing import TYPE_CHECKING, Dict, Optional
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -40,7 +52,7 @@ class _ReceiptLetter(DynamoClientProtocol):
     ) -> ReceiptLetter:
         Retrieves a single ReceiptLetter by IDs.
     list_receipt_letters(
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptLetter], dict | None]:
         Returns ReceiptLetters and the last evaluated key.
@@ -130,7 +142,10 @@ class _ReceiptLetter(DynamoClientProtocol):
             for i in range(0, len(letters), 25):
                 chunk = letters[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": lt.to_item()}} for lt in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=lt.to_item())
+                    )
+                    for lt in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -242,7 +257,7 @@ class _ReceiptLetter(DynamoClientProtocol):
                 for lt in chunk
             ]
             try:
-                self._client.transact_write_items(TransactItems=transact_items)
+                self._client.transact_write_items(TransactItems=transact_items)  # type: ignore[arg-type]
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "TransactionCanceledException":
@@ -350,7 +365,10 @@ class _ReceiptLetter(DynamoClientProtocol):
             for i in range(0, len(letters), 25):
                 chunk = letters[i : i + 25]
                 request_items = [
-                    {"DeleteRequest": {"Key": lt.key()}} for lt in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=lt.key())
+                    )
+                    for lt in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -452,7 +470,7 @@ class _ReceiptLetter(DynamoClientProtocol):
                 ) from e
 
     def list_receipt_letters(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptLetter], dict | None]:
         """Returns all ReceiptLetters from the table."""
         if limit is not None and not isinstance(limit, int):
@@ -464,7 +482,7 @@ class _ReceiptLetter(DynamoClientProtocol):
 
         receipt_letters = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

@@ -1,8 +1,19 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        KeysAndAttributesTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        PutTypeDef,
+        DeleteTypeDef,
+    )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -73,21 +84,30 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": item.to_item()}} for item in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item.to_item())
+                    )
+                    for item in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -142,9 +162,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error updating receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
 
-    def update_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
+    def update_receipt_metadatas(
+        self, receipt_metadatas: List[ReceiptMetadata]
+    ):
         """
         Updates multiple ReceiptMetadata records in DynamoDB using transactions.
 
@@ -158,31 +182,30 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 transact_items = [
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": item.to_item(),
-                            "ConditionExpression": "attribute_exists(PK) and attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=item.to_item(),
+                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                        )
+                    )
                     for item in chunk
                 ]
                 response = self._client.transact_write_items(
                     TransactItems=transact_items
                 )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.transact_write_items(
-                        TransactItems=unprocessed[self.table_name]
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
+                # Note: transact_write_items doesn't have UnprocessedItems - it either succeeds or fails entirely
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -211,7 +234,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(f"Resource not found: {e}") from e
             else:
-                raise DynamoDBError(f"Error updating receipt metadata: {e}") from e
+                raise DynamoDBError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
 
     def delete_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
@@ -248,9 +273,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise ValueError("table not found") from e
             else:
-                raise ValueError(f"Error deleting receipt metadata: {e}") from e
+                raise ValueError(
+                    f"Error deleting receipt metadata: {e}"
+                ) from e
 
-    def delete_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
+    def delete_receipt_metadatas(
+        self, receipt_metadatas: List[ReceiptMetadata]
+    ):
         """
         Deletes multiple ReceiptMetadata records from DynamoDB.
 
@@ -264,31 +293,30 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("receipt_metadatas cannot be None")
         if not isinstance(receipt_metadatas, list):
             raise ValueError("receipt_metadatas must be a list")
-        if not all(isinstance(item, ReceiptMetadata) for item in receipt_metadatas):
-            raise ValueError("receipt_metadatas must be a list of ReceiptMetadata")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
+            )
 
         try:
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 transact_items = [
-                    {
-                        "Delete": {
-                            "TableName": self.table_name,
-                            "Key": item.key(),
-                            "ConditionExpression": "attribute_exists(PK) and attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Delete=DeleteTypeDef(
+                            TableName=self.table_name,
+                            Key=item.key(),
+                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                        )
+                    )
                     for item in chunk
                 ]
                 response = self._client.transact_write_items(
                     TransactItems=transact_items
                 )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.transact_write_items(
-                        Items=unprocessed[self.table_name]
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
+                # Note: transact_write_items doesn't have UnprocessedItems - it either succeeds or fails entirely
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -317,9 +345,13 @@ class _ReceiptMetadata(DynamoClientProtocol):
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(f"Resource not found: {e}") from e
             else:
-                raise DynamoDBError(f"Error deleting receipt metadata: {e}") from e
+                raise DynamoDBError(
+                    f"Error deleting receipt metadata: {e}"
+                ) from e
 
-    def get_receipt_metadata(self, image_id: str, receipt_id: int) -> ReceiptMetadata:
+    def get_receipt_metadata(
+        self, image_id: str, receipt_id: int
+    ) -> ReceiptMetadata:
         """
         Retrieves a single ReceiptMetadata record from DynamoDB by image_id and receipt_id.
 
@@ -385,7 +417,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if not all(isinstance(index, tuple) for index in indices):
             raise ValueError("indices must be a list of tuples")
         if not all(
-            isinstance(index[0], str) and isinstance(index[1], int) for index in indices
+            isinstance(index[0], str) and isinstance(index[1], int)
+            for index in indices
         ):
             raise ValueError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
@@ -440,14 +473,16 @@ class _ReceiptMetadata(DynamoClientProtocol):
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name):
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
         return [item_to_receipt_metadata(result) for result in results]
 
     def list_receipt_metadatas(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
@@ -464,17 +499,21 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
 
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_METADATA"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "RECEIPT_METADATA"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -483,7 +522,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -505,7 +545,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -526,9 +566,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk",
@@ -542,7 +582,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -564,7 +605,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -588,16 +629,20 @@ class _ReceiptMetadata(DynamoClientProtocol):
             raise ValueError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
+        if lastEvaluatedKey is not None and not isinstance(
+            lastEvaluatedKey, dict
+        ):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"PLACE#{place_id}"}},
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"PLACE#{place_id}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -606,7 +651,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key
@@ -629,7 +675,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
         self,
         confidence: float,
         above: bool = True,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -660,9 +706,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         else:
             key_expr = "GSI2PK = :pk AND GSI2SK <= :sk"
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": key_expr,
@@ -678,7 +724,8 @@ class _ReceiptMetadata(DynamoClientProtocol):
 
             response = self._client.query(**query_params)
             metadatas.extend(
-                item_to_receipt_metadata(item) for item in response.get("Items", [])
+                item_to_receipt_metadata(item)
+                for item in response.get("Items", [])
             )
             last_evaluated_key = response.get("LastEvaluatedKey")
             return metadatas, last_evaluated_key

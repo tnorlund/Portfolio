@@ -1,9 +1,18 @@
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import Line, item_to_line
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        DeleteRequestTypeDef,
+    )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     OperationError,
@@ -56,7 +65,10 @@ class _Line(DynamoClientProtocol):
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": line.to_item()}} for line in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=line.to_item())
+                    )
+                    for line in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -65,7 +77,9 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not add lines to the database")
@@ -83,8 +97,13 @@ class _Line(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                raise ValueError(f"Line with ID {line.line_id} not found") from e
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                raise ValueError(
+                    f"Line with ID {line.line_id} not found"
+                ) from e
             else:
                 raise OperationError(f"Error updating line: {e}") from e
 
@@ -113,7 +132,7 @@ class _Line(DynamoClientProtocol):
                 for line in chunk
             ]
             try:
-                self._client.transact_write_items(TransactItems=transact_items)
+                self._client.transact_write_items(TransactItems=transact_items)  # type: ignore[arg-type]
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
@@ -152,7 +171,10 @@ class _Line(DynamoClientProtocol):
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"DeleteRequest": {"Key": line.key()}} for line in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=line.key())
+                    )
+                    for line in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -161,12 +183,14 @@ class _Line(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError:
             raise ValueError("Could not delete lines from the database")
 
-    def delete_lines_from_image(self, image_id: int):
+    def delete_lines_from_image(self, image_id: str):
         """Deletes all lines from an image
 
         Args:
@@ -175,7 +199,7 @@ class _Line(DynamoClientProtocol):
         lines = self.list_lines_from_image(image_id)
         self.delete_lines(lines)
 
-    def get_line(self, image_id: int, line_id: int) -> Line:
+    def get_line(self, image_id: str, line_id: int) -> Line:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -196,7 +220,7 @@ class _Line(DynamoClientProtocol):
         """Lists all lines in the database"""
         lines = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -216,10 +240,17 @@ class _Line(DynamoClientProtocol):
             if limit is None:
                 # If no limit is provided, paginate until all items are
                 # retrieved
-                while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                while (
+                    "LastEvaluatedKey" in response
+                    and response["LastEvaluatedKey"]
+                ):
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
-                    lines.extend([item_to_line(item) for item in response["Items"]])
+                    lines.extend(
+                        [item_to_line(item) for item in response["Items"]]
+                    )
                 last_evaluated_key = None
             else:
                 # If a limit is provided, capture the LastEvaluatedKey (if any)
@@ -230,7 +261,7 @@ class _Line(DynamoClientProtocol):
         except ClientError as e:
             raise ValueError("Could not list lines from the database") from e
 
-    def list_lines_from_image(self, image_id: int) -> list[Line]:
+    def list_lines_from_image(self, image_id: str) -> list[Line]:
         """Lists all lines from an image"""
         lines = []
         try:
@@ -259,9 +290,11 @@ class _Line(DynamoClientProtocol):
                         ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {"S": f"LINE#"},
                     },
-                    ExclusiveStartKey=response.get("LastEvaluatedKey", None),
+                    ExclusiveStartKey=response.get("LastEvaluatedKey", None),  # type: ignore[arg-type]
                 )
-                lines.extend([item_to_line(item) for item in response["Items"]])
+                lines.extend(
+                    [item_to_line(item) for item in response["Items"]]
+                )
             return lines
         except ClientError as e:
             raise ValueError("Could not list lines from the database") from e

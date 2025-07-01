@@ -1,10 +1,20 @@
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        PutTypeDef,
+        DeleteTypeDef,
+    )
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
     DynamoDBError,
@@ -17,10 +27,12 @@ from receipt_dynamo.entities.embedding_batch_result import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -31,7 +43,9 @@ def validate_last_evaluated_key(lek: dict) -> None:
 class _EmbeddingBatchResult(DynamoClientProtocol):
     """DynamoDB accessor for EmbeddingBatchResult items."""
 
-    def add_embedding_batch_result(self, embedding_batch_result: EmbeddingBatchResult):
+    def add_embedding_batch_result(
+        self, embedding_batch_result: EmbeddingBatchResult
+    ):
         """
         Adds an EmbeddingBatchResult to the database.
 
@@ -82,7 +96,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -91,16 +106,25 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         try:
             for i in range(0, len(embedding_batch_results), 25):
                 chunk = embedding_batch_results[i : i + 25]
-                request_items = [{"PutRequest": {"Item": r.to_item()}} for r in chunk]
+                request_items = [
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=r.to_item())
+                    )
+                    for r in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise Exception(f"Error adding embedding batch results: {e}") from e
+            raise Exception(
+                f"Error adding embedding batch results: {e}"
+            ) from e
 
     def update_embedding_batch_result(
         self, embedding_batch_result: EmbeddingBatchResult
@@ -149,7 +173,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -158,13 +183,13 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         for i in range(0, len(embedding_batch_results), 25):
             chunk = embedding_batch_results[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": r.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=r.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for r in chunk
             ]
             try:
@@ -221,7 +246,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 "embedding_batch_results must be a list of EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult)
+            for r in embedding_batch_results
         ):
             raise ValueError(
                 "All embedding batch results must be instances of EmbeddingBatchResult."
@@ -230,13 +256,13 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         for i in range(0, len(embedding_batch_results), 25):
             chunk = embedding_batch_results[i : i + 25]
             transact_items = [
-                {
-                    "Delete": {
-                        "TableName": self.table_name,
-                        "Key": r.key(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Delete=DeleteTypeDef(
+                        TableName=self.table_name,
+                        Key=r.key(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for r in chunk
             ]
             try:
@@ -283,10 +309,14 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     f"Embedding batch result for Batch ID '{batch_id}', Image ID {image_id}, Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id} does not exist."
                 )
         except ClientError as e:
-            raise Exception(f"Error getting embedding batch result: {e}") from e
+            raise Exception(
+                f"Error getting embedding batch result: {e}"
+            ) from e
 
     def list_embedding_batch_results(
-        self, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         List all EmbeddingBatchResults, paginated.
@@ -298,14 +328,16 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
+        results: List[EmbeddingBatchResult] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "EMBEDDING_BATCH_RESULT"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "EMBEDDING_BATCH_RESULT"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -317,7 +349,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [item_to_embedding_batch_result(item) for item in response["Items"]]
+                    [
+                        item_to_embedding_batch_result(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -326,17 +361,24 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
 
             return results, last_evaluated_key
         except ClientError as e:
-            raise Exception(f"Error listing embedding batch results: {e}") from e
+            raise Exception(
+                f"Error listing embedding batch results: {e}"
+            ) from e
 
     def get_embedding_batch_results_by_status(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        status: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         Query EmbeddingBatchResults by status using GSI2.
@@ -345,7 +387,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             raise ValueError("Status must be a non-empty string")
         if status not in [s.value for s in EmbeddingStatus]:
             raise ValueError(
-                "Status must be one of: " + ", ".join(s.value for s in EmbeddingStatus)
+                "Status must be one of: "
+                + ", ".join(s.value for s in EmbeddingStatus)
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer.")
@@ -354,13 +397,15 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
+        results: List[EmbeddingBatchResult] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2SK = :sk",
-                "ExpressionAttributeValues": {":sk": {"S": f"STATUS#{status}"}},
+                "ExpressionAttributeValues": {
+                    ":sk": {"S": f"STATUS#{status}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -372,7 +417,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [item_to_embedding_batch_result(item) for item in response["Items"]]
+                    [
+                        item_to_embedding_batch_result(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -381,7 +429,9 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -396,8 +446,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         self,
         image_id: str,
         receipt_id: int,
-        limit: int = None,
-        lastEvaluatedKey: dict = None,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
@@ -412,7 +462,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
+        results: List[EmbeddingBatchResult] = []
         try:
             template_embedding_batch_result = EmbeddingBatchResult(
                 batch_id=str(uuid4()),
@@ -425,7 +475,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 text="dummy",
                 error_message="dummy",
             )
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "GSI3PK = :pk",
@@ -443,7 +493,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 response = self._client.query(**query_params)
                 results.extend(
-                    [item_to_embedding_batch_result(item) for item in response["Items"]]
+                    [
+                        item_to_embedding_batch_result(item)
+                        for item in response["Items"]
+                    ]
                 )
 
                 if limit is not None and len(results) >= limit:
@@ -452,7 +505,9 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break

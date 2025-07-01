@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
@@ -5,6 +7,17 @@ from receipt_dynamo import (
     item_to_receipt_chat_gpt_validation,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        PutTypeDef,
+        DeleteRequestTypeDef,
+    )
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -36,11 +49,11 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         Deletes multiple ReceiptChatGPTValidations in batch.
     get_receipt_chat_gpt_validation(receipt_id: int, image_id: str, timestamp: str) -> ReceiptChatGPTValidation
         Retrieves a single ReceiptChatGPTValidation by IDs.
-    list_receipt_chat_gpt_validations(limit: int = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations(limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns all ReceiptChatGPTValidations and the last evaluated key.
     list_receipt_chat_gpt_validations_for_receipt(receipt_id: int, image_id: str) -> list[ReceiptChatGPTValidation]
         Returns all ReceiptChatGPTValidations for a given receipt.
-    list_receipt_chat_gpt_validations_by_status(status: str, limit: int = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations_by_status(status: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns ReceiptChatGPTValidations with a specific status."""
 
     def add_receipt_chat_gpt_validation(
@@ -126,7 +139,10 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             for i in range(0, len(validations), 25):
                 chunk = validations[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": val.to_item()}} for val in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=val.to_item())
+                    )
+                    for val in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -234,13 +250,13 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         for i in range(0, len(validations), 25):
             chunk = validations[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": val.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=val.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for val in chunk
             ]
             try:
@@ -356,7 +372,10 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             for i in range(0, len(validations), 25):
                 chunk = validations[i : i + 25]
                 request_items = [
-                    {"DeleteRequest": {"Key": val.key}} for val in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=val.key)
+                    )
+                    for val in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -458,7 +477,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                 ) from e
 
     def list_receipt_chat_gpt_validations(
-        self, limit: int = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations from the table.
 
@@ -486,7 +507,7 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         validations = []
         try:
             # Use GSI1 to query all validations
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
@@ -638,7 +659,7 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
     def list_receipt_chat_gpt_validations_by_status(
         self,
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations with a specific status.
@@ -676,7 +697,7 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         validations = []
         try:
             # Use GSI3 to query validations by status
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",

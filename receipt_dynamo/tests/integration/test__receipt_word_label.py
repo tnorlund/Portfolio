@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
@@ -26,7 +27,7 @@ def sample_receipt_word_label():
         word_id=5,
         label="ITEM",
         reasoning="This word appears to be an item description",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
 
@@ -195,7 +196,9 @@ def test_addReceiptWordLabels_success(
             word_id=5,
             label="ITEM",
             reasoning="This word appears to be an item description",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
         ),
         ReceiptWordLabel(
             receipt_id=2,
@@ -204,7 +207,9 @@ def test_addReceiptWordLabels_success(
             word_id=10,
             label="PRICE",
             reasoning="This word appears to be a price",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
         ),
     ]
 
@@ -341,7 +346,11 @@ def test_addReceiptWordLabels_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": sample_receipt_word_label.to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": sample_receipt_word_label.to_item()
+                            }
+                        }
                     ]
                 }
             },
@@ -377,7 +386,7 @@ def test_updateReceiptWordLabel_success(
         word_id=sample_receipt_word_label.word_id,
         label=sample_receipt_word_label.label,
         reasoning="Updated reasoning",
-        timestamp_added=sample_receipt_word_label.timestamp_added,
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
 
     # Act
@@ -526,7 +535,7 @@ def test_updateReceiptWordLabels_success(
         word_id=10,
         label="PRICE",
         reasoning="This word appears to be a price",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -540,7 +549,9 @@ def test_updateReceiptWordLabels_success(
             word_id=sample_receipt_word_label.word_id,
             label=sample_receipt_word_label.label,
             reasoning="Updated reasoning 1",
-            timestamp_added=sample_receipt_word_label.timestamp_added,
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
             validation_status="VALID",
         ),
         ReceiptWordLabel(
@@ -550,7 +561,9 @@ def test_updateReceiptWordLabels_success(
             word_id=second_label.word_id,
             label=second_label.label,
             reasoning="Updated reasoning 2",
-            timestamp_added=second_label.timestamp_added,
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
             validation_status="VALID",
         ),
     ]
@@ -721,7 +734,9 @@ def test_updateReceiptWordLabels_chunking(
             word_id=i * 5,
             label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
             validation_status="VALID",
         )
         for i in range(1, 31)
@@ -900,7 +915,7 @@ def test_deleteReceiptWordLabels_success(
         word_id=10,
         label="PRICE",
         reasoning="This word appears to be a price",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1061,7 +1076,9 @@ def test_deleteReceiptWordLabels_chunking(
             word_id=i * 5,
             label=f"LABEL_{i}",
             reasoning=f"Reasoning {i}",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat(
+                "2024-03-20T12:00:00+00:00"
+            ),
             validation_status="VALID",
         )
         for i in range(1, 31)
@@ -1282,7 +1299,7 @@ def test_listReceiptWordLabels_success(
         word_id=10,
         label="PRICE",
         reasoning="This word appears to be a price",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1314,7 +1331,7 @@ def test_listReceiptWordLabels_with_limit(
         word_id=10,
         label="PRICE",
         reasoning="This word appears to be a price",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1344,7 +1361,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
         word_id=10,
         label="PRICE",
         reasoning="This word appears to be a price",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1562,13 +1579,15 @@ def test_getReceiptWordLabelsByLabel_success(
         word_id=10,
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
 
     # Act
-    labels, last_evaluated_key = client.get_receipt_word_labels_by_label("ITEM")
+    labels, last_evaluated_key = client.get_receipt_word_labels_by_label(
+        "ITEM"
+    )
 
     # Assert
     assert len(labels) == 2
@@ -1594,7 +1613,7 @@ def test_getReceiptWordLabelsByLabel_with_limit(
         word_id=10,
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1626,7 +1645,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
         word_id=10,
         label="ITEM",  # Same label as sample_receipt_word_label
         reasoning="This word appears to be an item description",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         validation_status="VALID",
     )
     client.add_receipt_word_label(second_label)
@@ -1855,8 +1874,8 @@ def test_getReceiptWordLabelsByValidationStatus_success(
     client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act
-    labels, last_evaluated_key = client.get_receipt_word_labels_by_validation_status(
-        "VALID"
+    labels, last_evaluated_key = (
+        client.get_receipt_word_labels_by_validation_status("VALID")
     )
 
     # Assert
@@ -2053,11 +2072,15 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
             "LastEvaluatedKey": {"PK": {"S": "k2"}, "SK": {"S": "k2"}},
         },
         {
-            "Items": [sample_receipt_word_label.to_item()],  # total = 3 (hits limit)
+            "Items": [
+                sample_receipt_word_label.to_item()
+            ],  # total = 3 (hits limit)
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=3)
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
+        "VALID", limit=3
+    )
 
     assert len(labels) == 3
     assert lek is None
@@ -2085,7 +2108,9 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=2)
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
+        "VALID", limit=2
+    )
 
     assert len(labels) == 2
     assert lek is None
@@ -2116,7 +2141,9 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
         },
     ]
 
-    labels, lek = client.get_receipt_word_labels_by_validation_status("VALID", limit=3)
+    labels, lek = client.get_receipt_word_labels_by_validation_status(
+        "VALID", limit=3
+    )
 
     assert len(labels) == 3
     assert lek is None  # loop completed

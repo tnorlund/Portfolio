@@ -1,7 +1,16 @@
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        WriteRequestTypeDef,
+    )
+
 from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
@@ -16,7 +25,9 @@ class _LabelCountCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
-            raise ValueError("item must be an instance of the LabelCountCache class.")
+            raise ValueError(
+                "item must be an instance of the LabelCountCache class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -30,7 +41,9 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"LabelCountCache for label {item.label} already exists"
                 ) from e
             else:
-                raise DynamoDBError(f"Could not add label count cache to DynamoDB: {e}")
+                raise DynamoDBError(
+                    f"Could not add label count cache to DynamoDB: {e}"
+                )
 
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
@@ -38,12 +51,17 @@ class _LabelCountCache(DynamoClientProtocol):
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
-            raise ValueError("items must be a list of LabelCountCache objects.f")
+            raise ValueError(
+                "items must be a list of LabelCountCache objects.f"
+            )
         try:
             for i in range(0, len(items), 25):
                 chunk = items[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": item.to_item()}} for item in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item.to_item())
+                    )
+                    for item in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -52,7 +70,9 @@ class _LabelCountCache(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
@@ -69,7 +89,9 @@ class _LabelCountCache(DynamoClientProtocol):
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
         if not isinstance(item, LabelCountCache):
-            raise ValueError("item must be an instance of the LabelCountCache class.")
+            raise ValueError(
+                "item must be an instance of the LabelCountCache class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -106,15 +128,17 @@ class _LabelCountCache(DynamoClientProtocol):
         self,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
-    ) -> List[LabelCountCache]:
+    ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
         counts: list[LabelCountCache] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "LABEL_COUNT_CACHE"}},
+                "ExpressionAttributeValues": {
+                    ":val": {"S": "LABEL_COUNT_CACHE"}
+                },
                 "ScanIndexForward": True,
             }
             if lastEvaluatedKey is not None:
@@ -127,10 +151,15 @@ class _LabelCountCache(DynamoClientProtocol):
             )
             if limit is None:
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     counts.extend(
-                        [item_to_label_count_cache(item) for item in response["Items"]]
+                        [
+                            item_to_label_count_cache(item)
+                            for item in response["Items"]
+                        ]
                     )
                 last_evaluated_key = None
             else:

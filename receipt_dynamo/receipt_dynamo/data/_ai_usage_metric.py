@@ -2,12 +2,20 @@
 
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        WriteRequestTypeDef,
+        PutRequestTypeDef,
+    )
 
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
-class _AIUsageMetric:
+class _AIUsageMetric(DynamoClientProtocol):
     """Mixin for AI usage metric operations in DynamoDB."""
 
     def put_ai_usage_metric(self, metric: AIUsageMetric) -> None:
@@ -18,7 +26,7 @@ class _AIUsageMetric:
             metric: The AI usage metric to store
         """
         item = metric.to_dynamodb_item()
-        self.put_item(TableName=self.table_name, Item=item)
+        self._client.put_item(TableName=self.table_name, Item=item)
 
     def batch_put_ai_usage_metrics(
         self, metrics: List[AIUsageMetric]
@@ -44,10 +52,17 @@ class _AIUsageMetric:
         for i in range(0, len(items), 25):
             batch = items[i : i + 25]
             request_items = {
-                self.table_name: [{"PutRequest": {"Item": item}} for item in batch]
+                self.table_name: [
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item)
+                    )
+                    for item in batch
+                ]
             }
 
-            response = self.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Handle unprocessed items
             unprocessed = response.get("UnprocessedItems", {})
@@ -60,7 +75,9 @@ class _AIUsageMetric:
                         item = request["PutRequest"]["Item"]
                         # Match by requestId (camelCase as per DynamoDB item format)
                         for j, metric in enumerate(metrics[i : i + 25]):
-                            if metric.request_id == item.get("requestId", {}).get("S"):
+                            if metric.request_id == item.get(
+                                "requestId", {}
+                            ).get("S"):
                                 failed_metrics.append(metric)
                                 break
 
@@ -83,7 +100,9 @@ class _AIUsageMetric:
         # Query using GSI1 to get metrics by date
         # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
         if not service:
-            raise ValueError("Service parameter is required for date-based queries")
+            raise ValueError(
+                "Service parameter is required for date-based queries"
+            )
 
         key_condition = "GSI1PK = :gsi1pk AND GSI1SK = :gsi1sk"
         expression_values = {
@@ -91,7 +110,7 @@ class _AIUsageMetric:
             ":gsi1sk": {"S": f"DATE#{date}"},
         }
 
-        response = self.query(
+        response = self._client.query(
             TableName=self.table_name,
             IndexName="GSI1",  # Query the GSI for date-based access
             KeyConditionExpression=key_condition,
@@ -116,7 +135,7 @@ class _AIUsageMetric:
         Returns:
             The metric item if found, None otherwise
         """
-        response = self.get_item(
+        response = self._client.get_item(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"AI_USAGE#{service}#{model}"},

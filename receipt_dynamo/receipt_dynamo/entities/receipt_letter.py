@@ -1,5 +1,5 @@
 from math import atan2, pi
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -44,11 +44,11 @@ class ReceiptLetter:
         word_id: int,
         letter_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
@@ -79,7 +79,7 @@ class ReceiptLetter:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -88,19 +88,19 @@ class ReceiptLetter:
             raise ValueError("line_id must be an integer")
         if line_id < 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer")
         if word_id < 0:
             raise ValueError("word_id must be positive")
-        self.word_id = word_id
+        self.word_id: int = word_id
 
         if not isinstance(letter_id, int):
             raise ValueError("letter_id must be an integer")
         if letter_id < 0:
             raise ValueError("letter_id must be positive")
-        self.letter_id = letter_id
+        self.letter_id: int = letter_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
@@ -121,11 +121,11 @@ class ReceiptLetter:
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = angle_degrees
+        self.angle_degrees: float = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = angle_radians
+        self.angle_radians: float = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -135,7 +135,7 @@ class ReceiptLetter:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt letter.
 
@@ -154,7 +154,7 @@ class ReceiptLetter:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """
         Converts the ReceiptLetter object to a DynamoDB item.
 
@@ -169,8 +169,12 @@ class ReceiptLetter:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -231,7 +235,7 @@ class ReceiptLetter:
             and self.confidence == other.confidence
         )
 
-    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptLetter object's attributes.
 
@@ -415,7 +419,7 @@ class ReceiptLetter:
         self.angle_degrees = angle_radians * 180.0 / pi
 
 
-def item_to_receipt_letter(item: dict) -> ReceiptLetter:
+def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
     """
     Converts a DynamoDB item to a ReceiptLetter object.
 
@@ -457,10 +461,12 @@ def item_to_receipt_letter(item: dict) -> ReceiptLetter:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

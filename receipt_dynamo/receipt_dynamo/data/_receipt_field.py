@@ -1,8 +1,18 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        PutTypeDef,
+        DeleteTypeDef,
+    )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -18,7 +28,7 @@ from receipt_dynamo.entities.receipt_field import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
@@ -103,7 +113,9 @@ class _ReceiptField(DynamoClientProtocol):
             for i in range(0, len(receipt_fields), 25):
                 chunk = receipt_fields[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": field.to_item()}}
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=field.to_item())
+                    )
                     for field in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -213,13 +225,13 @@ class _ReceiptField(DynamoClientProtocol):
             transact_items = []
             for field in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": field.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=field.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -335,13 +347,13 @@ class _ReceiptField(DynamoClientProtocol):
                 transact_items = []
                 for field in chunk:
                     transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
-                                "Key": field.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=field.key(),
+                                ConditionExpression="attribute_exists(PK)",
+                            )
+                        )
                     )
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -430,7 +442,7 @@ class _ReceiptField(DynamoClientProtocol):
                 ) from e
 
     def list_receipt_fields(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt field records from the database with support for precise pagination.
@@ -458,9 +470,9 @@ class _ReceiptField(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        fields = []
+        fields: List[ReceiptField] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -518,7 +530,7 @@ class _ReceiptField(DynamoClientProtocol):
     def get_receipt_fields_by_image(
         self,
         image_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
@@ -550,9 +562,9 @@ class _ReceiptField(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        fields = []
+        fields: List[ReceiptField] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
@@ -614,7 +626,7 @@ class _ReceiptField(DynamoClientProtocol):
         self,
         image_id: str,
         receipt_id: int,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
@@ -649,9 +661,9 @@ class _ReceiptField(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        fields = []
+        fields: List[ReceiptField] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)",

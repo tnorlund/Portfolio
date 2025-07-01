@@ -1,9 +1,19 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        PutTypeDef,
+        DeleteTypeDef,
+    )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -37,7 +47,7 @@ from receipt_dynamo.entities.receipt_word_tag import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
@@ -120,7 +130,9 @@ class _Receipt(DynamoClientProtocol):
             for i in range(0, len(receipts), 25):
                 chunk = receipts[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": receipt.to_item()}}
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=receipt.to_item())
+                    )
                     for receipt in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -235,13 +247,13 @@ class _Receipt(DynamoClientProtocol):
             transact_items = []
             for receipt in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": receipt.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=receipt.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -356,13 +368,13 @@ class _Receipt(DynamoClientProtocol):
                 transact_items = []
                 for receipt in chunk:
                     transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
-                                "Key": receipt.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=receipt.key(),
+                                ConditionExpression="attribute_exists(PK)",
+                            )
+                        )
                     )
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -469,7 +481,7 @@ class _Receipt(DynamoClientProtocol):
             ReceiptDetails: Dataclass with receipt and related data
         """
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
                 "ExpressionAttributeValues": {
@@ -501,6 +513,10 @@ class _Receipt(DynamoClientProtocol):
                     ]
                 else:
                     break
+            if receipt is None:
+                raise ValueError(
+                    f"Receipt not found for image_id={image_id}, receipt_id={receipt_id}"
+                )
             return ReceiptDetails(
                 receipt=receipt,
                 lines=lines,
@@ -513,7 +529,7 @@ class _Receipt(DynamoClientProtocol):
             raise ValueError(f"Error getting receipt details: {e}") from e
 
     def list_receipts(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[Receipt], dict | None]:
         """
         Retrieve receipt records from the database with support for precise pagination.
@@ -553,9 +569,9 @@ class _Receipt(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        receipts = []
+        receipts: List[Receipt] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -626,7 +642,7 @@ class _Receipt(DynamoClientProtocol):
         Returns:
             list[Receipt]: A list of receipts from the image
         """
-        receipts = []
+        receipts: List[Receipt] = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
@@ -659,7 +675,7 @@ class _Receipt(DynamoClientProtocol):
     def list_receipt_details(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[dict] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[
         Dict[
             str,
@@ -690,7 +706,7 @@ class _Receipt(DynamoClientProtocol):
             ValueError: If there is an error querying the database
         """
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
@@ -701,7 +717,7 @@ class _Receipt(DynamoClientProtocol):
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
 
-            payload = {}
+            payload: Dict[str, Any] = {}
             current_receipt = None
             current_key = None
             receipt_count = 0
@@ -736,7 +752,11 @@ class _Receipt(DynamoClientProtocol):
                         current_receipt = receipt
                         receipt_count += 1
 
-                    elif item_type == "RECEIPT_WORD" and current_receipt:
+                    elif (
+                        item_type == "RECEIPT_WORD"
+                        and current_receipt
+                        and current_key is not None
+                    ):
                         word = item_to_receipt_word(item)
                         if (
                             word.image_id == current_receipt.image_id
@@ -744,7 +764,11 @@ class _Receipt(DynamoClientProtocol):
                         ):
                             payload[current_key]["words"].append(word)
 
-                    elif item_type == "RECEIPT_WORD_LABEL" and current_receipt:
+                    elif (
+                        item_type == "RECEIPT_WORD_LABEL"
+                        and current_receipt
+                        and current_key is not None
+                    ):
                         label = item_to_receipt_word_label(item)
                         if (
                             label.image_id == current_receipt.image_id

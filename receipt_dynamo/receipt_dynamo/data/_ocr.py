@@ -29,7 +29,9 @@ def _process_ocr_dict(
         )
         lines.append(line_obj)
 
-        for word_idx, word_data in enumerate(line_data.get("words", []), start=1):
+        for word_idx, word_data in enumerate(
+            line_data.get("words", []), start=1
+        ):
             word_obj = Word(
                 image_id=image_id,
                 line_id=line_idx,
@@ -81,12 +83,12 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
         raise ValueError("Apple's Vision Framework can only be run on a Mac")
     # Make a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
+        temp_dir_path = Path(temp_dir)
         try:
             swift_args = [
                 "swift",
                 str(swift_script),
-                str(temp_dir),
+                str(temp_dir_path),
             ] + image_paths
             subprocess.run(
                 swift_args,
@@ -97,9 +99,9 @@ def apple_vision_ocr(image_paths: list[str]) -> Dict[str, Any]:
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Error running Swift script: {e}") from e
 
-        ocr_dict = {}
+        ocr_dict: Dict[str, Any] = {}
         # Iterate over the JSON files in the output directory
-        for json_file in temp_dir.glob("*.json"):
+        for json_file in temp_dir_path.glob("*.json"):
             # Get the image ID from the JSON file name
             image_id = str(uuid4())
             # Read the JSON file

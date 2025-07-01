@@ -108,7 +108,9 @@ class InstanceService:
         """
         self.dynamo_client.update_instance(instance)
 
-    def update_instance_status(self, instance_id: str, status: str) -> Instance:
+    def update_instance_status(
+        self, instance_id: str, status: str
+    ) -> Instance:
         """
         Update the status of an instance.
 
@@ -124,7 +126,8 @@ class InstanceService:
         """
         instance = self.get_instance(instance_id)
         instance.status = status
-        instance.last_seen = datetime.now()
+        # TODO: Instance entity doesn't have last_seen attribute
+        # instance.last_seen = datetime.now()
         self.update_instance(instance)
         return instance
 
@@ -142,7 +145,8 @@ class InstanceService:
             Exception: When the instance does not exist
         """
         instance = self.get_instance(instance_id)
-        instance.last_seen = datetime.now()
+        # TODO: Instance entity doesn't have last_seen attribute
+        # instance.last_seen = datetime.now()
         self.update_instance(instance)
         return instance
 
@@ -213,11 +217,17 @@ class InstanceService:
         Returns:
             A tuple containing a list of Instance objects and the last evaluated key
         """
-        return self.dynamo_client.list_instances_by_type(
-            instance_type, limit, last_evaluated_key
+        # TODO: list_instances_by_type is not implemented in data layer
+        # return self.dynamo_client.list_instances_by_type(
+        #     instance_type, limit, last_evaluated_key
+        # )
+        raise NotImplementedError(
+            "list_instances_by_type is not implemented in the data layer"
         )
 
-    def find_idle_instances(self, limit: Optional[int] = None) -> List[Instance]:
+    def find_idle_instances(
+        self, limit: Optional[int] = None
+    ) -> List[Instance]:
         """
         Find instances that are idle (running but not processing jobs).
 
@@ -234,8 +244,8 @@ class InstanceService:
         idle_instances = []
         for instance in running_instances:
             # Get active jobs for this instance
-            active_jobs, _ = self.dynamo_client.list_instance_jobs_by_instance(
-                instance.instance_id, status="running"
+            active_jobs, _ = self.dynamo_client.list_instance_jobs(
+                instance.instance_id
             )
 
             # If there are no active jobs, the instance is idle
@@ -333,11 +343,12 @@ class InstanceService:
         instance_job = self.get_instance_job(instance_id, job_id)
         instance_job.status = status
 
-        if message:
-            if not instance_job.metadata:
-                instance_job.metadata = {}
-            instance_job.metadata["last_message"] = message
-            instance_job.metadata["last_update"] = datetime.now().isoformat()
+        # TODO: InstanceJob entity doesn't have metadata attribute
+        # if message:
+        #     if not instance_job.metadata:
+        #         instance_job.metadata = {}
+        #     instance_job.metadata["last_message"] = message
+        #     instance_job.metadata["last_update"] = datetime.now().isoformat()
 
         self.update_instance_job(instance_job)
         return instance_job
@@ -373,8 +384,8 @@ class InstanceService:
         Returns:
             A tuple containing a list of InstanceJob objects and the last evaluated key
         """
-        return self.dynamo_client.list_instance_jobs_by_instance(
-            instance_id, status, limit, last_evaluated_key
+        return self.dynamo_client.list_instance_jobs(
+            instance_id, limit, last_evaluated_key
         )
 
     def list_instances_for_job(
@@ -396,6 +407,6 @@ class InstanceService:
         Returns:
             A tuple containing a list of InstanceJob objects and the last evaluated key
         """
-        return self.dynamo_client.list_instance_jobs_by_job(
-            job_id, status, limit, last_evaluated_key
+        return self.dynamo_client.list_instances_for_job(
+            job_id, limit, last_evaluated_key
         )

@@ -5,6 +5,19 @@ from receipt_dynamo import (
     item_to_receipt_line_item_analysis,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+        DeleteRequestTypeDef,
+        PutTypeDef,
+    )
+
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -36,7 +49,7 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         Deletes multiple ReceiptLineItemAnalyses in batch.
     get_receipt_line_item_analysis(receipt_id: int, image_id: str) -> ReceiptLineItemAnalysis
         Retrieves a single ReceiptLineItemAnalysis by IDs.
-    list_receipt_line_item_analyses(limit: int = None, lastEvaluatedKey: dict | None = None) -> tuple[list[ReceiptLineItemAnalysis], dict | None]
+    list_receipt_line_item_analyses(limit: Optional[int] = None, lastEvaluatedKey: dict | None = None) -> tuple[list[ReceiptLineItemAnalysis], dict | None]
         Returns ReceiptLineItemAnalyses and the last evaluated key.
     list_receipt_line_item_analyses_for_image(image_id: str) -> list[ReceiptLineItemAnalysis]
         Returns all ReceiptLineItemAnalyses for a given image.
@@ -123,7 +136,10 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": a.to_item()}} for a in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=a.to_item())
+                    )
+                    for a in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -230,13 +246,13 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         for i in range(0, len(analyses), 25):
             chunk = analyses[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": a.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=a.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for a in chunk
             ]
             try:
@@ -346,7 +362,10 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
                 request_items = [
-                    {"DeleteRequest": {"Key": a.key()}} for a in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=a.key())
+                    )
+                    for a in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -439,7 +458,7 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
                 )
 
     def list_receipt_line_item_analyses(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptLineItemAnalysis], dict | None]:
         """Returns all ReceiptLineItemAnalyses from the table.
 
@@ -464,7 +483,7 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
 
         analyses = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

@@ -1,8 +1,15 @@
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+        DeleteRequestTypeDef,
+    )
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
     item_to_job_dependency,
@@ -40,7 +47,10 @@ class _JobDependency(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} already exists"
                 )
@@ -115,7 +125,7 @@ class _JobDependency(DynamoClientProtocol):
         }
 
         # Prepare query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
             "ExpressionAttributeValues": expression_attribute_values,
@@ -164,14 +174,16 @@ class _JobDependency(DynamoClientProtocol):
 
         # Prepare index query parameters
         index_name = "GSI2"
-        key_condition_expression = "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+        key_condition_expression = (
+            "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+        )
         expression_attribute_values = {
             ":pk": {"S": "DEPENDENCY"},
             ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
         }
 
         # Prepare query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": index_name,
             "KeyConditionExpression": key_condition_expression,
@@ -217,12 +229,17 @@ class _JobDependency(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"JOB#{job_dependency.dependent_job_id}"},
-                    "SK": {"S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"},
+                    "SK": {
+                        "S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"
+                    },
                 },
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 raise ValueError(
                     f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} not found"
                 )
@@ -255,19 +272,23 @@ class _JobDependency(DynamoClientProtocol):
 
             request_items = {
                 self.table_name: [
-                    {
-                        "DeleteRequest": {
-                            "Key": {
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(
+                            Key={
                                 "PK": {"S": f"JOB#{dep.dependent_job_id}"},
-                                "SK": {"S": f"DEPENDS_ON#{dep.dependency_job_id}"},
+                                "SK": {
+                                    "S": f"DEPENDS_ON#{dep.dependency_job_id}"
+                                },
                             }
-                        }
-                    }
+                        )
+                    )
                     for dep in batch
                 ]
             }
 
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             # Handle unprocessed items with exponential backoff
             unprocessed_items = response.get("UnprocessedItems", {})
@@ -276,7 +297,9 @@ class _JobDependency(DynamoClientProtocol):
 
             while unprocessed_items and retry_count < max_retries:
                 retry_count += 1
-                response = self._client.batch_write_item(RequestItems=unprocessed_items)
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed_items
+                )
                 unprocessed_items = response.get("UnprocessedItems", {})
 
             if unprocessed_items:

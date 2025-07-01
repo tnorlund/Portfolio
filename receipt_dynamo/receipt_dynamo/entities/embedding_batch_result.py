@@ -1,5 +1,5 @@
 import re
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.util import (
@@ -86,7 +86,9 @@ class EmbeddingBatchResult:
         self.error_message = error_message
 
         # validate pinecone_id format
-        if not validate_pinecone_id_format(pinecone_id, receipt_id, line_id, word_id):
+        if not validate_pinecone_id_format(
+            pinecone_id, receipt_id, line_id, word_id
+        ):
             raise ValueError(
                 "pinecone_id must be in the format "
                 "IMAGE#<uuid>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id> "
@@ -94,7 +96,7 @@ class EmbeddingBatchResult:
             )
         self.pinecone_id = pinecone_id
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         sk = (
             f"RESULT#IMAGE#{self.image_id}"
             f"#RECEIPT#{self.receipt_id:05d}"
@@ -106,19 +108,21 @@ class EmbeddingBatchResult:
             "SK": {"S": sk},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         return {
             "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
             "GSI2SK": {"S": f"STATUS#{self.status}"},
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi2_key(),
@@ -129,7 +133,9 @@ class EmbeddingBatchResult:
             "text": {"S": self.text},
             "status": {"S": self.status},
             "error_message": (
-                {"S": self.error_message} if self.error_message else {"NULL": True}
+                {"S": self.error_message}
+                if self.error_message
+                else {"NULL": True}
             ),
         }
 
@@ -193,7 +199,9 @@ class EmbeddingBatchResult:
         )
 
 
-def item_to_embedding_batch_result(item: dict) -> EmbeddingBatchResult:
+def item_to_embedding_batch_result(
+    item: Dict[str, Any],
+) -> EmbeddingBatchResult:
     """
     Converts an item from DynamoDB to an EmbeddingBatchResult object.
     """
@@ -217,7 +225,7 @@ def item_to_embedding_batch_result(item: dict) -> EmbeddingBatchResult:
         batch_id = item["PK"]["S"].split("#", 1)[1]
 
         # Split SK into parts for flexible parsing
-        sk_parts = item["SK"]["S"].split("#")
+        sk_parts: List[str] = item["SK"]["S"].split("#")
 
         # Helper to find the value after a given key in SK
         def sk_value(key: str) -> str:
@@ -226,7 +234,9 @@ def item_to_embedding_batch_result(item: dict) -> EmbeddingBatchResult:
             if idxs:
                 idx = idxs[-1]
                 return sk_parts[idx + 1]
-            raise ValueError(f"SK missing expected key '{key}': {item['SK']['S']}")
+            raise ValueError(
+                f"SK missing expected key '{key}': {item['SK']['S']}"
+            )
 
         image_id = item["image_id"]["S"]
 
