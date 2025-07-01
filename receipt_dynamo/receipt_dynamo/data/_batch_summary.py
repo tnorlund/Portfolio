@@ -16,7 +16,10 @@ if TYPE_CHECKING:
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DeleteTypeDef,
     PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -45,7 +48,9 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -122,7 +127,9 @@ class _BatchSummary(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -210,20 +217,26 @@ class _BatchSummary(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more batch summaries do not exist") from e
+                    raise ValueError(
+                        "One or more batch summaries do not exist"
+                    ) from e
                 elif error_code == "TransactionCanceledException":
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
                             "One or more batch summaries do not exist"
                         ) from e
                     else:
-                        raise DynamoDBError(f"Transaction canceled: {e}") from e
+                        raise DynamoDBError(
+                            f"Transaction canceled: {e}"
+                        ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(
+                        f"Internal server error: {e}"
+                    ) from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -233,7 +246,9 @@ class _BatchSummary(DynamoClientProtocol):
                 elif error_code == "ResourceNotFoundException":
                     raise DynamoDBError(f"Resource not found: {e}") from e
                 else:
-                    raise DynamoDBError(f"Error updating batch summaries: {e}") from e
+                    raise DynamoDBError(
+                        f"Error updating batch summaries: {e}"
+                    ) from e
 
     def delete_batch_summary(self, batch_summary: BatchSummary):
         """
@@ -306,20 +321,26 @@ class _BatchSummary(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more batch summaries do not exist") from e
+                    raise ValueError(
+                        "One or more batch summaries do not exist"
+                    ) from e
                 elif error_code == "TransactionCanceledException":
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
                             "One or more batch summaries do not exist"
                         ) from e
                     else:
-                        raise DynamoDBError(f"Transaction canceled: {e}") from e
+                        raise DynamoDBError(
+                            f"Transaction canceled: {e}"
+                        ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(
+                        f"Internal server error: {e}"
+                    ) from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -329,7 +350,9 @@ class _BatchSummary(DynamoClientProtocol):
                 elif error_code == "ResourceNotFoundException":
                     raise DynamoDBError(f"Resource not found: {e}") from e
                 else:
-                    raise DynamoDBError(f"Error deleting batch summaries: {e}") from e
+                    raise DynamoDBError(
+                        f"Error deleting batch summaries: {e}"
+                    ) from e
 
     def get_batch_summary(self, batch_id: str) -> BatchSummary:
         """
@@ -423,7 +446,9 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -530,13 +555,17 @@ class _BatchSummary(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
 
             summaries = [
-                summary for summary in summaries if summary.batch_type == batch_type
+                summary
+                for summary in summaries
+                if summary.batch_type == batch_type
             ]
             return summaries, last_evaluated_key
         except ClientError as e:
@@ -550,4 +579,6 @@ class _BatchSummary(DynamoClientProtocol):
             elif error_code == "ProvisionedThroughputExceededException":
                 raise ValueError("provisioned throughput exceeded") from e
             else:
-                raise ValueError(f"Error retrieving batch summaries by status: {e}")
+                raise ValueError(
+                    f"Error retrieving batch summaries by status: {e}"
+                )
