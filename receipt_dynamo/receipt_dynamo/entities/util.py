@@ -1,10 +1,10 @@
 import re
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
-from typing import Any, Iterable, Optional, Type
+from typing import Any, Dict, Iterable, Optional, Type, Union
 
 
-def _repr_str(value: Optional[str]) -> str:
+def _repr_str(value: Any) -> str:
     """
     Return a string wrapped in single quotes, or the literal 'None' if value
     is None.
@@ -12,21 +12,21 @@ def _repr_str(value: Optional[str]) -> str:
     return "None" if value is None else f"'{value}'"
 
 
-def format_type_error(name: str, value: Any, expected: Iterable[type] | type) -> str:
+def format_type_error(
+    name: str, value: Any, expected: type | tuple[type, ...]
+) -> str:
     """Return a standardized type error message."""
-    if isinstance(expected, Iterable) and not isinstance(expected, type):
+    if isinstance(expected, tuple):
         expected_names = ", ".join(t.__name__ for t in expected)
     else:
-        expected_names = (
-            expected.__name__ if isinstance(expected, type) else str(expected)
-        )
+        expected_names = expected.__name__
     return f"{name} must be {expected_names}, got {type(value).__name__}"
 
 
 def assert_type(
     name: str,
     value: Any,
-    expected: Iterable[type] | type,
+    expected: type | tuple[type, ...],
     exc_type: type[Exception] = TypeError,
 ) -> None:
     """Raise an exception if ``value`` is not an instance of ``expected``."""
@@ -45,7 +45,7 @@ UUID_V4_REGEX = re.compile(
 )
 
 
-def compute_histogram(text: str) -> dict:
+def compute_histogram(text: str) -> Dict[str, float]:
     known_letters = [
         " ",
         "!",
@@ -141,19 +141,24 @@ def compute_histogram(text: str) -> dict:
         "|",
         "~",
     ]
-    histogram = {letter: 0 for letter in known_letters}
+    histogram: Dict[str, Union[int, float]] = {
+        letter: 0 for letter in known_letters
+    }
     for letter in text:
         if letter in known_letters:
             histogram[letter] += 1
     total_letters = sum(histogram.values())
     if total_letters > 0:
         histogram = {
-            letter: count / total_letters for letter, count in histogram.items()
+            letter: float(count) / total_letters
+            for letter, count in histogram.items()
         }
     return histogram
 
 
-def assert_valid_bounding_box(bounding_box):
+def assert_valid_bounding_box(
+    bounding_box: Dict[str, Union[int, float]],
+) -> Dict[str, Union[int, float]]:
     """
     Assert that the bounding box is valid.
     """
@@ -167,7 +172,9 @@ def assert_valid_bounding_box(bounding_box):
     return bounding_box
 
 
-def assert_valid_point(point):
+def assert_valid_point(
+    point: Dict[str, Union[int, float]],
+) -> Dict[str, Union[int, float]]:
     """
     Assert that the point is valid.
     """
@@ -204,7 +211,7 @@ def _format_float(
     return formatted
 
 
-def assert_valid_uuid(uuid) -> None:
+def assert_valid_uuid(uuid: str) -> None:
     """
     Assert that the UUID is valid.
     """
@@ -228,10 +235,10 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
         ValueError: If ``candidate`` is not valid for ``enum_cls``.
     """
     if isinstance(candidate, enum_cls):
-        return candidate.value
+        return str(candidate.value)
     if isinstance(candidate, str):
         try:
-            return enum_cls(candidate).value
+            return str(enum_cls(candidate).value)
         except ValueError as exc:
             options = ", ".join(e.value for e in enum_cls)
             raise ValueError(
@@ -242,7 +249,14 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     )
 
 
-def shear_point(px, py, pivot_x, pivot_y, shx, shy):
+def shear_point(
+    px: float,
+    py: float,
+    pivot_x: float,
+    pivot_y: float,
+    shx: float,
+    shy: float,
+) -> tuple[float, float]:
     """
     Shears point (px, py) around pivot (pivot_x, pivot_y)
     by shear factors `shx` (x-shear) and `shy` (y-shear).

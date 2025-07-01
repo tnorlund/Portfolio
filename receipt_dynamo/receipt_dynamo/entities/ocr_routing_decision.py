@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Dict
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.entities.util import (
@@ -16,7 +17,7 @@ class OCRRoutingDecision:
         s3_bucket: str,
         s3_key: str,
         created_at: datetime | str,
-        updated_at: datetime | str,
+        updated_at: datetime | str | None,
         receipt_count: int,
         status: OCRStatus | str = OCRStatus.PENDING,
     ):
@@ -38,33 +39,33 @@ class OCRRoutingDecision:
             raise ValueError("created_at must be a datetime or a string")
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
-        self.created_at = created_at
+        self.created_at: datetime = created_at
 
         if not isinstance(updated_at, (datetime, str)):
             raise ValueError("updated_at must be a datetime or a string")
         if isinstance(updated_at, str):
             updated_at = datetime.fromisoformat(updated_at)
-        self.updated_at = updated_at
+        self.updated_at: datetime = updated_at
 
         if not isinstance(receipt_count, int):
             raise ValueError("receipt_count must be an integer")
         self.receipt_count = receipt_count
 
-        self.status = normalize_enum(status, OCRStatus)
+        self.status: str = normalize_enum(status, OCRStatus)
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"OCR_ROUTING_DECISION_STATUS#{self.status}"},
             "GSI1SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi1_key(),
@@ -90,7 +91,7 @@ class OCRRoutingDecision:
         )
 
 
-def item_to_ocr_routing_decision(item: dict) -> OCRRoutingDecision:
+def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
     """Converts a DynamoDB item to a OCRRoutingDecision object.
 
     Args:
@@ -146,4 +147,6 @@ def item_to_ocr_routing_decision(item: dict) -> OCRRoutingDecision:
             status=status,
         )
     except Exception as e:
-        raise ValueError(f"Invalid item format\nitem: {item}\nerror: {e}") from e
+        raise ValueError(
+            f"Invalid item format\nitem: {item}\nerror: {e}"
+        ) from e

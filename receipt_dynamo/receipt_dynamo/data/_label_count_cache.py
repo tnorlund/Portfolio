@@ -1,7 +1,19 @@
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
@@ -43,7 +55,10 @@ class _LabelCountCache(DynamoClientProtocol):
             for i in range(0, len(items), 25):
                 chunk = items[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": item.to_item()}} for item in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item.to_item())
+                    )
+                    for item in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -106,10 +121,10 @@ class _LabelCountCache(DynamoClientProtocol):
         self,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
-    ) -> List[LabelCountCache]:
+    ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
         counts: list[LabelCountCache] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

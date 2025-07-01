@@ -47,12 +47,15 @@ class InstanceJob:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
+        self.assigned_at: str
         if isinstance(assigned_at, datetime):
             self.assigned_at = assigned_at.isoformat()
         elif isinstance(assigned_at, str):
             self.assigned_at = assigned_at
         else:
-            raise ValueError("assigned_at must be a datetime object or a string")
+            raise ValueError(
+                "assigned_at must be a datetime object or a string"
+            )
 
         valid_statuses = [
             "assigned",
@@ -71,7 +74,7 @@ class InstanceJob:
             raise ValueError("resource_utilization must be a dictionary")
         self.resource_utilization = resource_utilization or {}
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the instance-job relationship.
 
         Returns:
@@ -82,7 +85,7 @@ class InstanceJob:
             "SK": {"S": f"JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the instance-job relationship.
 
         Returns:
@@ -93,7 +96,7 @@ class InstanceJob:
             "GSI1SK": {"S": f"JOB#{self.job_id}#INSTANCE#{self.instance_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the InstanceJob object to a DynamoDB item.
 
         Returns:
@@ -123,12 +126,14 @@ class InstanceJob:
         Returns:
             Dict: The DynamoDB map representation.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -231,7 +236,8 @@ class InstanceJob:
                 (
                     tuple(
                         sorted(
-                            (k, str(v)) for k, v in self.resource_utilization.items()
+                            (k, str(v))
+                            for k, v in self.resource_utilization.items()
                         )
                     )
                     if self.resource_utilization
@@ -241,7 +247,7 @@ class InstanceJob:
         )
 
 
-def item_to_instance_job(item: dict) -> InstanceJob:
+def item_to_instance_job(item: Dict[str, Any]) -> InstanceJob:
     """Converts a DynamoDB item to an InstanceJob object.
 
     Args:
@@ -278,7 +284,10 @@ def item_to_instance_job(item: dict) -> InstanceJob:
 
         # Parse resource_utilization from DynamoDB map if present
         resource_utilization = None
-        if "resource_utilization" in item and "M" in item["resource_utilization"]:
+        if (
+            "resource_utilization" in item
+            and "M" in item["resource_utilization"]
+        ):
             resource_utilization = _parse_dynamodb_map(
                 item["resource_utilization"]["M"]
             )
@@ -303,7 +312,7 @@ def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
     Returns:
         Dict: The parsed Python dictionary.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in dynamodb_map.items():
         if "M" in v:
             result[k] = _parse_dynamodb_map(v["M"])

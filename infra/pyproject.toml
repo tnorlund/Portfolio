@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "portfolio-infra"
 version = "0.1.0"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
     "pulumi>=3.0.0,<4.0.0",
     "pulumi-aws>=6.0.0,<7.0.0",
@@ -14,10 +14,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black==24.10.0",
-    "isort",
+    "black==25.1.0",
+    "isort==6.0.1",
     "flake8",
-    "mypy",
+    "mypy>=1.16.1",
     "pytest",
     "pytest-cov",
 ]
@@ -27,7 +27,7 @@ packages = ["infra"]
 
 [tool.black]
 line-length = 79
-target-version = ["py38"]
+target-version = ["py312"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -36,7 +36,7 @@ multi_line_output = 3
 line_length = 79
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -50,11 +50,11 @@ max-line-length = 79
 disable = [
     "too-few-public-methods",
     "too-many-arguments",
-    "too-many-locals", 
+    "too-many-locals",
     "too-many-instance-attributes",
     "too-many-branches",
     "missing-module-docstring",
-    "missing-class-docstring", 
+    "missing-class-docstring",
     "missing-function-docstring",
 ]
 

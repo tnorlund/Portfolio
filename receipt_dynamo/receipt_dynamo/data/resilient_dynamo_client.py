@@ -108,7 +108,7 @@ class ResilientDynamoClient(DynamoClient):
 
         delay = min(self.retry_base_delay * (2**attempt), 60.0)
         # Add jitter
-        return delay * (1 + random.random() * 0.25)
+        return float(delay * (1 + random.random() * 0.25))
 
     def put_ai_usage_metric(self, metric: AIUsageMetric) -> None:
         """
@@ -203,7 +203,9 @@ class ResilientDynamoClient(DynamoClient):
 
             try:
                 # Use parent's batch write method
-                failed_metrics = super().batch_put_ai_usage_metrics(remaining_metrics)
+                failed_metrics = super().batch_put_ai_usage_metrics(
+                    remaining_metrics
+                )
 
                 if not failed_metrics:
                     self._record_success()
@@ -211,7 +213,9 @@ class ResilientDynamoClient(DynamoClient):
 
                 # Update remaining metrics for retry
                 remaining_metrics = failed_metrics
-                raise Exception(f"{len(failed_metrics)} metrics failed to write")
+                raise Exception(
+                    f"{len(failed_metrics)} metrics failed to write"
+                )
 
             except Exception as e:
                 self._record_failure()
