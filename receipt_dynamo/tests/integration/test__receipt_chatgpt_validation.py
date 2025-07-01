@@ -4,8 +4,16 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptChatGPTValidation
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -99,7 +107,9 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
         match=f"ReceiptChatGPTValidation for receipt {sample_receipt_chatgpt_validation.receipt_id} and timestamp {sample_receipt_chatgpt_validation.timestamp} already exists",
     ):
         # Try to add the same validation again
-        client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
+        client.add_receipt_chat_gpt_validation(
+            sample_receipt_chatgpt_validation
+        )
 
 
 @pytest.mark.integration
@@ -201,10 +211,14 @@ def test_addReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError if error_code == "ConditionalCheckFailedException" else Exception
+        ValueError
+        if error_code == "ConditionalCheckFailedException"
+        else Exception
     )
     with pytest.raises(exception_type, match=expected_exception):
-        client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
+        client.add_receipt_chat_gpt_validation(
+            sample_receipt_chatgpt_validation
+        )
 
 
 @pytest.mark.integration
@@ -233,7 +247,7 @@ def test_addReceiptChatGPTValidations_success(
     validations = [sample_receipt_chatgpt_validation, second_validation]
 
     # Act
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Assert - First validation
     response1 = client._client.get_item(
@@ -264,7 +278,10 @@ def test_addReceiptChatGPTValidations_success(
     )
 
     assert "Item" in response2
-    assert response2["Item"]["revised_status"]["S"] == second_validation.revised_status
+    assert (
+        response2["Item"]["revised_status"]["S"]
+        == second_validation.revised_status
+    )
 
 
 @pytest.mark.integration
@@ -293,7 +310,7 @@ def test_addReceiptChatGPTValidations_with_large_batch(
         validations.append(validation)
 
     # Act
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Assert - Check a few random validations
     for idx in [0, 15, 29]:  # Check first, middle, and last
@@ -342,7 +359,9 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
             unprocessed_items = {
-                dynamodb_table: [{"PutRequest": {"Item": validations[1].to_item()}}]
+                dynamodb_table: [
+                    {"PutRequest": {"Item": validations[1].to_item()}}
+                ]
             }
             return {"UnprocessedItems": unprocessed_items}
         # Second call returns no unprocessed items
@@ -356,7 +375,7 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
     )
 
     # Act
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Assert - Should have called batch_write_item twice
     assert client._client.batch_write_item.call_count == 2
@@ -393,7 +412,7 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.add_receipt_chat_gpt_validations(invalid_input)
+        client.add_receipt_chatgpt_validations(invalid_input)
 
     # Verify batch_write_item was not called
     client._client.batch_write_item.assert_not_called()
@@ -481,7 +500,7 @@ def test_addReceiptChatGPTValidations_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception, match=expected_error_message):
-        client.add_receipt_chat_gpt_validations(validations)
+        client.add_receipt_chatgpt_validations(validations)
 
 
 @pytest.mark.integration
@@ -518,7 +537,7 @@ def test_updateReceiptChatGPTValidation_success(
     )
 
     # Act
-    client.update_receipt_chat_gpt_validation(updated_validation)
+    client.update_receipt_chatgpt_validation(updated_validation)
 
     # Assert
     response = client._client.get_item(
@@ -565,7 +584,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.update_receipt_chat_gpt_validation(invalid_input)
+        client.update_receipt_chatgpt_validation(invalid_input)
 
     # Verify put_item was not called
     client._client.put_item.assert_not_called()
@@ -641,10 +660,14 @@ def test_updateReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError if error_code == "ConditionalCheckFailedException" else Exception
+        ValueError
+        if error_code == "ConditionalCheckFailedException"
+        else Exception
     )
     with pytest.raises(exception_type, match=expected_error):
-        client.update_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
+        client.update_receipt_chatgpt_validation(
+            sample_receipt_chatgpt_validation
+        )
 
 
 @pytest.mark.integration
@@ -672,7 +695,7 @@ def test_updateReceiptChatGPTValidations_success(
 
     # Add both validations to DynamoDB first
     validations = [sample_receipt_chatgpt_validation, second_validation]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Create updated versions of the validations
     updated_validation1 = ReceiptChatGPTValidation(
@@ -704,7 +727,7 @@ def test_updateReceiptChatGPTValidations_success(
     updated_validations = [updated_validation1, updated_validation2]
 
     # Act
-    client.update_receipt_chat_gpt_validations(updated_validations)
+    client.update_receipt_chatgpt_validations(updated_validations)
 
     # Assert - First validation
     response1 = client._client.get_item(
@@ -763,7 +786,7 @@ def test_updateReceiptChatGPTValidations_with_large_batch(
         validations.append(validation)
 
     # Add all validations to DynamoDB first
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Create updated versions of the validations
     updated_validations = []
@@ -783,7 +806,7 @@ def test_updateReceiptChatGPTValidations_with_large_batch(
         updated_validations.append(updated_validation)
 
     # Act
-    client.update_receipt_chat_gpt_validations(updated_validations)
+    client.update_receipt_chatgpt_validations(updated_validations)
 
     # Assert - Check a few random validations
     for idx in [0, 15, 29]:  # Check first, middle, and last
@@ -833,7 +856,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        client.update_receipt_chat_gpt_validations(invalid_input)
+        client.update_receipt_chatgpt_validations(invalid_input)
 
     # Verify transact_write_items was not called
     client._client.transact_write_items.assert_not_called()
@@ -841,48 +864,55 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptChatGPTValidations in the database",
+            DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptChatGPTValidations do not exist",
+            ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
             None,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
+            DynamoDBAccessError,
             None,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
             "Could not update ReceiptChatGPTValidations in the database",
+            DynamoDBError,
             None,
         ),
     ],
@@ -894,6 +924,7 @@ def test_updateReceiptChatGPTValidations_client_errors(
     error_code,
     error_message,
     expected_error,
+    expected_exception,
     cancellation_reasons,
 ):
     """Test handling of client errors when updating multiple ChatGPT validations."""
@@ -936,8 +967,8 @@ def test_updateReceiptChatGPTValidations_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
-        client.update_receipt_chat_gpt_validations(validations)
+    with pytest.raises(expected_exception, match=expected_error):
+        client.update_receipt_chatgpt_validations(validations)
 
 
 @pytest.mark.integration
@@ -965,7 +996,9 @@ def test_deleteReceiptChatGPTValidation_success(
     assert "Item" in response_before
 
     # Act
-    client.delete_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
+    client.delete_receipt_chat_gpt_validation(
+        sample_receipt_chatgpt_validation
+    )
 
     # Assert
     response_after = client._client.get_item(
@@ -1079,10 +1112,14 @@ def test_deleteReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError if error_code == "ConditionalCheckFailedException" else Exception
+        ValueError
+        if error_code == "ConditionalCheckFailedException"
+        else Exception
     )
     with pytest.raises(exception_type, match=expected_error):
-        client.delete_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
+        client.delete_receipt_chat_gpt_validation(
+            sample_receipt_chatgpt_validation
+        )
 
 
 @pytest.mark.integration
@@ -1110,7 +1147,7 @@ def test_deleteReceiptChatGPTValidations_success(
 
     # Add both validations to DynamoDB first
     validations = [sample_receipt_chatgpt_validation, second_validation]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Verify they exist
     response1_before = client._client.get_item(
@@ -1314,7 +1351,9 @@ def test_deleteReceiptChatGPTValidations_with_unprocessed_items_retries(
         if batch_write_side_effect.call_count == 0:
             batch_write_side_effect.call_count += 1
             unprocessed_items = {
-                dynamodb_table: [{"DeleteRequest": {"Key": validations[1].key}}]
+                dynamodb_table: [
+                    {"DeleteRequest": {"Key": validations[1].key}}
+                ]
             }
             return {"UnprocessedItems": unprocessed_items}
         # Second call returns no unprocessed items
@@ -1360,7 +1399,7 @@ def test_deleteReceiptChatGPTValidations_with_large_batch(
         validations.append(validation)
 
     # Add all validations to DynamoDB first
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Verify a few validations exist
     for idx in [0, 15, 29]:  # Check first, middle, and last
@@ -1417,8 +1456,14 @@ def test_getReceiptChatGPTValidation_success(
     assert result.receipt_id == sample_receipt_chatgpt_validation.receipt_id
     assert result.image_id == sample_receipt_chatgpt_validation.image_id
     assert result.timestamp == sample_receipt_chatgpt_validation.timestamp
-    assert result.original_status == sample_receipt_chatgpt_validation.original_status
-    assert result.revised_status == sample_receipt_chatgpt_validation.revised_status
+    assert (
+        result.original_status
+        == sample_receipt_chatgpt_validation.original_status
+    )
+    assert (
+        result.revised_status
+        == sample_receipt_chatgpt_validation.revised_status
+    )
     assert result.reasoning == sample_receipt_chatgpt_validation.reasoning
 
 
@@ -1612,7 +1657,7 @@ def test_listReceiptChatGPTValidations_success(
     )
 
     validations = [validation1, validation2, validation3]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Mock the DynamoDB query method to make testing pagination easier
     mock_query = mocker.patch.object(client._client, "query")
@@ -1626,7 +1671,9 @@ def test_listReceiptChatGPTValidations_success(
     mock_query.return_value = mock_response
 
     # Act
-    result_validations, last_evaluated_key = client.list_receipt_chat_gpt_validations()
+    result_validations, last_evaluated_key = (
+        client.list_receipt_chat_gpt_validations()
+    )
 
     # Assert
     assert result_validations is not None
@@ -1635,15 +1682,18 @@ def test_listReceiptChatGPTValidations_success(
 
     # Verify the validations were retrieved correctly
     assert any(
-        v.receipt_id == validation1.receipt_id and v.timestamp == validation1.timestamp
+        v.receipt_id == validation1.receipt_id
+        and v.timestamp == validation1.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation2.receipt_id and v.timestamp == validation2.timestamp
+        v.receipt_id == validation2.receipt_id
+        and v.timestamp == validation2.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation3.receipt_id and v.timestamp == validation3.timestamp
+        v.receipt_id == validation3.receipt_id
+        and v.timestamp == validation3.timestamp
         for v in result_validations
     )
 
@@ -1652,9 +1702,12 @@ def test_listReceiptChatGPTValidations_success(
     args, kwargs = mock_query.call_args
     assert kwargs["TableName"] == dynamodb_table
     assert kwargs["IndexName"] == "GSI1"
-    assert kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "ANALYSIS_TYPE"
     assert (
-        kwargs["ExpressionAttributeValues"][":sk_prefix"]["S"] == "VALIDATION_CHATGPT#"
+        kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "ANALYSIS_TYPE"
+    )
+    assert (
+        kwargs["ExpressionAttributeValues"][":sk_prefix"]["S"]
+        == "VALIDATION_CHATGPT#"
     )
 
 
@@ -1696,7 +1749,7 @@ def test_listReceiptChatGPTValidations_with_pagination(
     )
 
     validations = [validation1, validation2, validation3]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Mock the DynamoDB query method for pagination testing
     mock_query = mocker.patch.object(client._client, "query")
@@ -1738,7 +1791,9 @@ def test_listReceiptChatGPTValidations_with_pagination(
     ]
 
     # Act - request without a limit to get all pages
-    result_validations, last_evaluated_key = client.list_receipt_chat_gpt_validations()
+    result_validations, last_evaluated_key = (
+        client.list_receipt_chat_gpt_validations()
+    )
 
     # Assert
     assert result_validations is not None
@@ -1753,8 +1808,8 @@ def test_listReceiptChatGPTValidations_with_pagination(
     mock_query.side_effect = [first_call_response]
 
     # Act - request with a limit to get only first page
-    result_validations, last_evaluated_key = client.list_receipt_chat_gpt_validations(
-        limit=1
+    result_validations, last_evaluated_key = (
+        client.list_receipt_chat_gpt_validations(limit=1)
     )
 
     # Assert
@@ -1786,7 +1841,9 @@ def test_listReceiptChatGPTValidations_empty_results(
     }
 
     # Act
-    result_validations, last_evaluated_key = client.list_receipt_chat_gpt_validations()
+    result_validations, last_evaluated_key = (
+        client.list_receipt_chat_gpt_validations()
+    )
 
     # Assert
     assert result_validations is not None
@@ -1904,7 +1961,7 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
     )
 
     validations = [validation1, validation2, validation3]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Mock the DynamoDB query method
     mock_query = mocker.patch.object(client._client, "query")
@@ -1929,11 +1986,13 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
 
     # Verify the correct validations were retrieved
     assert any(
-        v.receipt_id == validation1.receipt_id and v.timestamp == validation1.timestamp
+        v.receipt_id == validation1.receipt_id
+        and v.timestamp == validation1.timestamp
         for v in result_validations
     )
     assert any(
-        v.receipt_id == validation2.receipt_id and v.timestamp == validation2.timestamp
+        v.receipt_id == validation2.receipt_id
+        and v.timestamp == validation2.timestamp
         for v in result_validations
     )
 
@@ -2028,7 +2087,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
     )
 
     validations = [validation1, validation2, validation3]
-    client.add_receipt_chat_gpt_validations(validations)
+    client.add_receipt_chatgpt_validations(validations)
 
     # Mock the DynamoDB query method
     mock_query = mocker.patch.object(client._client, "query")
@@ -2061,7 +2120,8 @@ def test_listReceiptChatGPTValidationsByStatus_success(
     assert kwargs["TableName"] == dynamodb_table
     assert kwargs["IndexName"] == "GSI3"
     assert (
-        kwargs["ExpressionAttributeValues"][":pk_val"]["S"] == "VALIDATION_STATUS#VALID"
+        kwargs["ExpressionAttributeValues"][":pk_val"]["S"]
+        == "VALIDATION_STATUS#VALID"
     )
 
 
