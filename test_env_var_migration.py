@@ -15,11 +15,11 @@ def test_new_variable_name():
     env_vars = {
         "DYNAMODB_TABLE_NAME": "new-table-name",
         "OPENAI_API_KEY": "test-key",
-        "PINECONE_API_KEY": "test-key", 
+        "PINECONE_API_KEY": "test-key",
         "PINECONE_INDEX_NAME": "test-index",
         "PINECONE_HOST": "test.pinecone.io",
     }
-    
+
     with patch.dict(os.environ, env_vars, clear=True):
         config = ClientConfig.from_env()
         assert config.dynamo_table == "new-table-name"
@@ -32,18 +32,18 @@ def test_old_variable_with_warning():
         "DYNAMO_TABLE_NAME": "old-table-name",  # Old variable name
         "OPENAI_API_KEY": "test-key",
         "PINECONE_API_KEY": "test-key",
-        "PINECONE_INDEX_NAME": "test-index", 
+        "PINECONE_INDEX_NAME": "test-index",
         "PINECONE_HOST": "test.pinecone.io",
     }
-    
+
     with patch.dict(os.environ, env_vars, clear=True):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             config = ClientConfig.from_env()
-            
+
             # Check that it still works
             assert config.dynamo_table == "old-table-name"
-            
+
             # Check that warning was issued
             assert len(w) == 1
             assert issubclass(w[0].category, DeprecationWarning)
@@ -61,15 +61,15 @@ def test_new_variable_takes_precedence():
         "PINECONE_INDEX_NAME": "test-index",
         "PINECONE_HOST": "test.pinecone.io",
     }
-    
+
     with patch.dict(os.environ, env_vars, clear=True):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             config = ClientConfig.from_env()
-            
+
             # New variable should take precedence
             assert config.dynamo_table == "new-table-name"
-            
+
             # No warning should be issued when new variable is present
             assert len(w) == 0
             print("✅ DYNAMODB_TABLE_NAME takes precedence (no warning)")
@@ -83,22 +83,24 @@ def test_missing_both_variables():
         "PINECONE_INDEX_NAME": "test-index",
         "PINECONE_HOST": "test.pinecone.io",
     }
-    
+
     with patch.dict(os.environ, env_vars, clear=True):
         try:
             config = ClientConfig.from_env()
             assert False, "Should have raised KeyError"
         except KeyError as e:
-            assert "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set" in str(e)
+            assert "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set" in str(
+                e
+            )
             print("✅ Missing both variables raises clear error")
 
 
 if __name__ == "__main__":
     print("Testing environment variable migration...")
-    
+
     test_new_variable_name()
     test_old_variable_with_warning()
     test_new_variable_takes_precedence()
     test_missing_both_variables()
-    
+
     print("\n🎉 All tests passed! Environment variable migration is working correctly.")

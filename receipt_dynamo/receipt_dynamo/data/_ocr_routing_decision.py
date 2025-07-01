@@ -51,7 +51,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
         self, ocr_routing_decisions: list[OCRRoutingDecision]
     ):
         if ocr_routing_decisions is None:
-            raise ValueError("ocr_routing_decisions cannot be None") from e
+            raise ValueError("ocr_routing_decisions cannot be None")
         if not isinstance(ocr_routing_decisions, list):
             raise ValueError("ocr_routing_decisions must be a list")
         if not all(
@@ -91,7 +91,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
 
     def update_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
-            raise ValueError("ocr_routing_decision cannot be None") from e
+            raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
                 "ocr_routing_decision must be an instance of OCRRoutingDecision"
@@ -115,9 +115,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
         self, image_id: str, job_id: str
     ) -> OCRRoutingDecision:
         if image_id is None:
-            raise ValueError("image_id cannot be None") from e
+            raise ValueError("image_id cannot be None")
         if job_id is None:
-            raise ValueError("job_id cannot be None") from e
+            raise ValueError("job_id cannot be None")
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string")
         if not isinstance(job_id, str):
@@ -155,7 +155,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
 
     def delete_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
-            raise ValueError("ocr_routing_decision cannot be None") from e
+            raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
                 "ocr_routing_decision must be an instance of OCRRoutingDecision"
@@ -182,7 +182,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
         self, ocr_routing_decisions: list[OCRRoutingDecision]
     ):
         if ocr_routing_decisions is None:
-            raise ValueError("ocr_routing_decisions cannot be None") from e
+            raise ValueError("ocr_routing_decisions cannot be None")
         if not isinstance(ocr_routing_decisions, list):
             raise ValueError("ocr_routing_decisions must be a list")
         if not all(

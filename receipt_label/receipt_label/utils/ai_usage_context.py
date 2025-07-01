@@ -63,9 +63,7 @@ def ai_usage_context(
     """
     # Get or create tracker
     if tracker is None:
-        tracker = AIUsageTracker.create_for_environment(
-            environment=environment
-        )
+        tracker = AIUsageTracker.create_for_environment(environment=environment)
 
     # Build context
     context = {

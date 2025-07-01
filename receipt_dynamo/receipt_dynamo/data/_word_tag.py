@@ -6,7 +6,11 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import WordTag, item_to_word_tag
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
     DynamoDBThroughputError,
+    DynamoDBValidationError,
     OperationError,
 )
 
@@ -402,7 +406,23 @@ class _WordTag(DynamoClientProtocol):
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "TransactionCanceledException":
                     raise ValueError("One or more word tags do not exist") from e
+                elif error_code == "ConditionalCheckFailedException":
+                    raise ValueError("One or more word tags do not exist") from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise ValueError(f"Error updating word tags: {e}") from e
+                else:
+                    raise DynamoDBError(
+                        f"Could not update word tags in the database: {e}"
                     ) from e

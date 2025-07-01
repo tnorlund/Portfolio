@@ -148,15 +148,9 @@ class TestAIUsageHandlerIntegration:
     ):
         """Test Lambda handler with default query parameters."""
         # Mock DynamoDB responses for all services
-        openai_metrics = [
-            m for m in sample_metrics if m["service"] == "openai"
-        ]
-        anthropic_metrics = [
-            m for m in sample_metrics if m["service"] == "anthropic"
-        ]
-        google_metrics = [
-            m for m in sample_metrics if m["service"] == "google_places"
-        ]
+        openai_metrics = [m for m in sample_metrics if m["service"] == "openai"]
+        anthropic_metrics = [m for m in sample_metrics if m["service"] == "anthropic"]
+        google_metrics = [m for m in sample_metrics if m["service"] == "google_places"]
 
         mock_dynamodb_table.query.side_effect = [
             {"Items": openai_metrics},
@@ -194,9 +188,7 @@ class TestAIUsageHandlerIntegration:
     ):
         """Test Lambda handler with service filter."""
         # Return only OpenAI metrics
-        openai_metrics = [
-            m for m in sample_metrics if m["service"] == "openai"
-        ]
+        openai_metrics = [m for m in sample_metrics if m["service"] == "openai"]
         mock_dynamodb_table.query.return_value = {"Items": openai_metrics}
 
         with patch("boto3.resource") as mock_boto3:
@@ -222,9 +214,7 @@ class TestAIUsageHandlerIntegration:
 
             # Verify only OpenAI metrics in response
             assert body["query"]["service"] == "openai"
-            assert (
-                body["summary"]["total_api_calls"] == 8
-            )  # 5 GPT-3.5 + 3 GPT-4
+            assert body["summary"]["total_api_calls"] == 8  # 5 GPT-3.5 + 3 GPT-4
 
     def test_lambda_handler_with_operation_filter(
         self, mock_dynamodb_table, sample_metrics, mock_env
@@ -233,18 +223,8 @@ class TestAIUsageHandlerIntegration:
         # Return all metrics but filter will be applied
         mock_dynamodb_table.query.side_effect = [
             {"Items": [m for m in sample_metrics if m["service"] == "openai"]},
-            {
-                "Items": [
-                    m for m in sample_metrics if m["service"] == "anthropic"
-                ]
-            },
-            {
-                "Items": [
-                    m
-                    for m in sample_metrics
-                    if m["service"] == "google_places"
-                ]
-            },
+            {"Items": [m for m in sample_metrics if m["service"] == "anthropic"]},
+            {"Items": [m for m in sample_metrics if m["service"] == "google_places"]},
         ]
 
         with patch("boto3.resource") as mock_boto3:
@@ -264,9 +244,7 @@ class TestAIUsageHandlerIntegration:
             body = json.loads(response["body"])
 
             # Should exclude Google Places (place_lookup operation)
-            assert (
-                body["summary"]["total_api_calls"] == 10
-            )  # 8 OpenAI + 2 Anthropic
+            assert body["summary"]["total_api_calls"] == 10  # 8 OpenAI + 2 Anthropic
 
     def test_lambda_handler_with_multiple_aggregations(
         self, mock_dynamodb_table, sample_metrics, mock_env
@@ -274,18 +252,8 @@ class TestAIUsageHandlerIntegration:
         """Test Lambda handler with multiple aggregation levels."""
         mock_dynamodb_table.query.side_effect = [
             {"Items": [m for m in sample_metrics if m["service"] == "openai"]},
-            {
-                "Items": [
-                    m for m in sample_metrics if m["service"] == "anthropic"
-                ]
-            },
-            {
-                "Items": [
-                    m
-                    for m in sample_metrics
-                    if m["service"] == "google_places"
-                ]
-            },
+            {"Items": [m for m in sample_metrics if m["service"] == "anthropic"]},
+            {"Items": [m for m in sample_metrics if m["service"] == "google_places"]},
         ]
 
         with patch("boto3.resource") as mock_boto3:
@@ -360,8 +328,8 @@ class TestAIUsageHandlerIntegration:
         """Test Lambda handler error handling."""
         with patch("boto3.resource") as mock_boto3:
             # Make DynamoDB query fail
-            mock_boto3.return_value.Table.return_value.query.side_effect = (
-                Exception("DynamoDB error")
+            mock_boto3.return_value.Table.return_value.query.side_effect = Exception(
+                "DynamoDB error"
             )
 
             event = {"queryStringParameters": {"service": "openai"}}
@@ -382,18 +350,8 @@ class TestAIUsageHandlerIntegration:
         # Mock responses for each service
         mock_dynamodb_table.query.side_effect = [
             {"Items": [m for m in sample_metrics if m["service"] == "openai"]},
-            {
-                "Items": [
-                    m for m in sample_metrics if m["service"] == "anthropic"
-                ]
-            },
-            {
-                "Items": [
-                    m
-                    for m in sample_metrics
-                    if m["service"] == "google_places"
-                ]
-            },
+            {"Items": [m for m in sample_metrics if m["service"] == "anthropic"]},
+            {"Items": [m for m in sample_metrics if m["service"] == "google_places"]},
         ]
 
         metrics = query_ai_usage_metrics(
@@ -569,15 +527,12 @@ class TestAIUsageHandlerIntegration:
             # Each request should have its own response
             bodies = [json.loads(r["body"]) for r in responses]
             assert all(
-                b["query"]["service"]
-                in ["openai", "anthropic", "google_places"]
+                b["query"]["service"] in ["openai", "anthropic", "google_places"]
                 for b in bodies
             )
 
     @pytest.mark.integration
-    def test_large_dataset_aggregation_performance(
-        self, mock_dynamodb_table, mock_env
-    ):
+    def test_large_dataset_aggregation_performance(self, mock_dynamodb_table, mock_env):
         """Test handler performance with large datasets."""
         # Create 1000 metrics
         large_metrics = []
@@ -588,12 +543,8 @@ class TestAIUsageHandlerIntegration:
             large_metrics.append(
                 {
                     "service": ["openai", "anthropic", "google_places"][i % 3],
-                    "model": ["gpt-3.5-turbo", "gpt-4", "claude-3-opus"][
-                        i % 3
-                    ],
-                    "operation": ["completion", "embedding", "place_lookup"][
-                        i % 3
-                    ],
+                    "model": ["gpt-3.5-turbo", "gpt-4", "claude-3-opus"][i % 3],
+                    "operation": ["completion", "embedding", "place_lookup"][i % 3],
                     "timestamp": timestamp.isoformat(),
                     "date": timestamp.strftime("%Y-%m-%d"),
                     "hour": timestamp.strftime("%Y-%m-%d-%H"),
@@ -659,6 +610,4 @@ class TestAIUsageHandlerIntegration:
 
             # Verify decimal was converted to float
             assert isinstance(body["summary"]["total_cost_usd"], float)
-            assert (
-                body["summary"]["total_cost_usd"] == 10.1235
-            )  # Rounded to 4 decimals
+            assert body["summary"]["total_cost_usd"] == 10.1235  # Rounded to 4 decimals

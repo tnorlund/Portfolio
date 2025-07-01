@@ -5,6 +5,13 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, ReceiptLabelAnalysis
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -653,33 +660,43 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
+    "error_code,error_message,expected_error,expected_exception",
     [
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
             "One or more receipt label analyses do not exist",
+            ValueError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            DynamoDBAccessError,
+        ),
         (
             "UnknownError",
             "Unknown error",
             "Error updating receipt label analyses",
+            DynamoDBError,
         ),
     ],
 )
@@ -689,6 +706,7 @@ def test_updateReceiptLabelAnalyses_client_errors(
     mocker,
     error_code,
     error_message,
+    expected_error,
     expected_exception,
 ):
     """
@@ -710,7 +728,7 @@ def test_updateReceiptLabelAnalyses_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(expected_exception, match=expected_error):
         client.update_receipt_label_analyses(analyses)
     mock_transact.assert_called_once()
 
@@ -1427,7 +1445,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         if "limit" in invalid_input:
             client.list_receipt_label_analyses(limit=invalid_input["limit"])  # type: ignore
         elif "lastEvaluatedKey" in invalid_input:
-            client.list_receipt_label_analyses(lastEvaluatedKey=invalid_input["lastEvaluatedKey"])  # type: ignore
+            client.list_receipt_label_analyses(last_evaluated_key=invalid_input["lastEvaluatedKey"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -1633,7 +1651,7 @@ def test_getReceiptLabelAnalysesByImage_invalid_parameters(
         kwargs["limit"] = invalid_input["limit"]
 
     if "lastEvaluatedKey" in invalid_input:
-        kwargs["lastEvaluatedKey"] = invalid_input["lastEvaluatedKey"]
+        kwargs["last_evaluated_key"] = invalid_input["lastEvaluatedKey"]
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
@@ -1748,7 +1766,7 @@ def test_getReceiptLabelAnalysesByReceipt_invalid_parameters(
         kwargs["limit"] = invalid_input["limit"]
 
     if "lastEvaluatedKey" in invalid_input:
-        kwargs["lastEvaluatedKey"] = invalid_input["lastEvaluatedKey"]
+        kwargs["last_evaluated_key"] = invalid_input["lastEvaluatedKey"]
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):

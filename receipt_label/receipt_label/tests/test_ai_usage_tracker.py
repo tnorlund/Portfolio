@@ -12,19 +12,18 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from freezegun import freeze_time
 from openai import OpenAI
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+from receipt_label.utils.cost_calculator import AICostCalculator
+
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
     create_test_tracking_context,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-from receipt_label.utils.cost_calculator import AICostCalculator
 
 
 @pytest.mark.unit
@@ -80,9 +79,7 @@ class TestAIUsageTrackerInitialization:
             ]
 
         assert tracker.user_id == "default"
-        assert (
-            tracker.track_to_dynamo is False
-        )  # False because no dynamo client
+        assert tracker.track_to_dynamo is False  # False because no dynamo client
         assert tracker.track_to_file is False
         assert tracker.log_file == "/tmp/ai_usage.jsonl"
 
@@ -206,10 +203,7 @@ class TestAIUsageTrackerStorage:
         tracker._store_metric(metric)
 
         captured = capsys.readouterr()
-        assert (
-            "Failed to store metric in DynamoDB: DynamoDB error"
-            in captured.out
-        )
+        assert "Failed to store metric in DynamoDB: DynamoDB error" in captured.out
 
     def test_store_metric_to_file_success(self):
         """Test successful storage to file."""
@@ -1287,9 +1281,7 @@ class TestEdgeCases:
         def zero_tokens(**kwargs):
             response = Mock()
             response.model = "gpt-3.5-turbo"
-            response.usage = Mock(
-                prompt_tokens=0, completion_tokens=0, total_tokens=0
-            )
+            response.usage = Mock(prompt_tokens=0, completion_tokens=0, total_tokens=0)
             return response
 
         zero_tokens(model="gpt-3.5-turbo")
@@ -1349,9 +1341,7 @@ class TestIntegrationWithCostCalculator:
         assert float(item["costUSD"]["N"]) == 0.005
 
     @patch("receipt_label.utils.ai_usage_tracker.AICostCalculator")
-    def test_cost_calculator_integration_anthropic(
-        self, mock_calculator_class
-    ):
+    def test_cost_calculator_integration_anthropic(self, mock_calculator_class):
         """Test that cost calculator is called correctly for Anthropic."""
         mock_calculator_class.calculate_anthropic_cost.return_value = 0.015
 
@@ -1386,9 +1376,7 @@ class TestIntegrationWithCostCalculator:
         assert float(item["costUSD"]["N"]) == 0.015
 
     @patch("receipt_label.utils.ai_usage_tracker.AICostCalculator")
-    def test_cost_calculator_integration_google_places(
-        self, mock_calculator_class
-    ):
+    def test_cost_calculator_integration_google_places(self, mock_calculator_class):
         """Test that cost calculator is called correctly for Google Places."""
         mock_calculator_class.calculate_google_places_cost.return_value = 0.017
 

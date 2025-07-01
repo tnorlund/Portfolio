@@ -97,7 +97,7 @@ class _JobStatus(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(f"Could not get latest job status: {e}") from e
+                raise DynamoDBError(f"Could not get latest job status: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"

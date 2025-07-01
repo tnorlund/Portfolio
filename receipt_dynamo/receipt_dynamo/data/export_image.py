@@ -60,17 +60,11 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "receipts": [dict(receipt) for receipt in receipts],
         "receipt_lines": [dict(line) for line in receipt_lines],
         "receipt_words": [dict(word) for word in receipt_words],
-        "receipt_word_tags": [
-            dict(word_tag) for word_tag in receipt_word_tags
-        ],
+        "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "receipt_metadatas": [
-            dict(metadata) for metadata in receipt_metadatas
-        ],
+        "receipt_metadatas": [dict(metadata) for metadata in receipt_metadatas],
         "ocr_jobs": [dict(job) for job in ocr_jobs],
-        "ocr_routing_decisions": [
-            dict(decision) for decision in ocr_routing_decisions
-        ],
+        "ocr_routing_decisions": [dict(decision) for decision in ocr_routing_decisions],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:

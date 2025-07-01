@@ -4,6 +4,13 @@ import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptField
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -584,7 +591,7 @@ def test_updateReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="Error updating receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        match="One or more receipt fields do not exist",
     ):
         client.update_receipt_fields(fields)
 
@@ -624,33 +631,43 @@ def test_updateReceiptFields_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
+    "error_code,error_message,expected_error,expected_exception",
     [
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
             "One or more receipt fields do not exist",
+            ValueError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            DynamoDBAccessError,
+        ),
         (
             "UnknownError",
             "Unknown error",
             "Error updating receipt fields",
+            DynamoDBError,
         ),
     ],
 )
@@ -660,6 +677,7 @@ def test_updateReceiptFields_client_errors(
     mocker,
     error_code,
     error_message,
+    expected_error,
     expected_exception,
 ):
     """
@@ -687,7 +705,7 @@ def test_updateReceiptFields_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(expected_exception, match=expected_error):
         client.update_receipt_fields(fields)
     mock_transact_write.assert_called_once()
 
@@ -1724,33 +1742,43 @@ def test_getReceiptFieldsByImage_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
+    "error_code,error_message,expected_error,expected_exception",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not list receipt fields by image ID",
+            DynamoDBError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            DynamoDBAccessError,
+        ),
         (
             "UnknownError",
             "Unknown error",
             "Could not list receipt fields by image ID",
+            DynamoDBError,
         ),
     ],
 )
@@ -1760,6 +1788,7 @@ def test_getReceiptFieldsByImage_client_errors(
     mocker,
     error_code,
     error_message,
+    expected_error,
     expected_exception,
 ):
     """
@@ -1786,7 +1815,7 @@ def test_getReceiptFieldsByImage_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(expected_exception, match=expected_error):
         client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     mock_query.assert_called_once()
 
@@ -1820,7 +1849,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Could not list receipt fields by image ID"
+        DynamoDBError, match="Could not list receipt fields by image ID"
     ):
         client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     mock_query.assert_called_once()
@@ -1844,7 +1873,7 @@ def test_getReceiptFieldsByImage_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Could not list receipt fields by image ID"
+        DynamoDBError, match="Could not list receipt fields by image ID"
     ):
         client.get_receipt_fields_by_image(sample_receipt_field.image_id)
     assert mock_query.call_count == 2
@@ -2078,33 +2107,43 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
+    "error_code,error_message,expected_error,expected_exception",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not list receipt fields by receipt ID",
+            DynamoDBError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            DynamoDBAccessError,
+        ),
         (
             "UnknownError",
             "Unknown error",
             "Could not list receipt fields by receipt ID",
+            DynamoDBError,
         ),
     ],
 )
@@ -2114,6 +2153,7 @@ def test_getReceiptFieldsByReceipt_client_errors(
     mocker,
     error_code,
     error_message,
+    expected_error,
     expected_exception,
 ):
     """
@@ -2140,7 +2180,7 @@ def test_getReceiptFieldsByReceipt_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(expected_exception, match=expected_error):
         client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
             sample_receipt_field.receipt_id,
@@ -2177,7 +2217,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Could not list receipt fields by receipt ID"
+        DynamoDBError, match="Could not list receipt fields by receipt ID"
     ):
         client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
@@ -2204,7 +2244,7 @@ def test_getReceiptFieldsByReceipt_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Could not list receipt fields by receipt ID"
+        DynamoDBError, match="Could not list receipt fields by receipt ID"
     ):
         client.get_receipt_fields_by_receipt(
             sample_receipt_field.image_id,
