@@ -4,6 +4,13 @@ import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptLetter
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -648,48 +655,55 @@ def test_updateReceiptLetters_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,expected_exception,cancellation_reasons",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptLetters in the database",
+            DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptLetters do not exist",
+            ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
             None,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            DynamoDBThroughputError,
             None,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
+            DynamoDBAccessError,
             None,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
             "Could not update ReceiptLetters in the database",
+            DynamoDBError,
             None,
         ),
     ],
@@ -701,6 +715,7 @@ def test_updateReceiptLetters_client_errors(
     error_code,
     error_message,
     expected_error,
+    expected_exception,
     cancellation_reasons,
 ):
     """Test updateReceiptLetters handling of various DynamoDB client errors.
@@ -744,7 +759,7 @@ def test_updateReceiptLetters_client_errors(
         side_effect=ClientError(error_dict, "TransactWriteItems"),
     )
 
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=expected_error):
         client.update_receipt_letters([sample_receipt_letter])
 
     mock_transact.assert_called_once()
@@ -814,7 +829,7 @@ def test_deleteReceiptLetter_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        dynamo_client.deleteReceiptLetter(invalid_input)
+        dynamo_client.delete_receipt_letter(invalid_input)
 
 
 @pytest.mark.integration

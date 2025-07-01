@@ -113,9 +113,7 @@ async def process_with_context_manager():
         result = {"status": "processed"}
 
         # Add metadata during operation
-        tracker.add_context_metadata(
-            {"items_processed": 5, "processing_time_ms": 150}
-        )
+        tracker.add_context_metadata({"items_processed": 5, "processing_time_ms": 150})
 
     # Batch context manager with automatic batch pricing
     with batch_ai_usage_context("batch-789", item_count=100) as tracker:
@@ -182,9 +180,7 @@ def main():
 
     # Example 4: Async function
     print("4. Async function:")
-    async_result = asyncio.run(
-        analyze_receipt_async("https://example.com/receipt.jpg")
-    )
+    async_result = asyncio.run(analyze_receipt_async("https://example.com/receipt.jpg"))
     print(f"   Async result: {async_result}\n")
 
     # Example 5: Context managers
@@ -228,9 +224,7 @@ def main():
                 ctx["success_count"] += 1
             except Exception as e:
                 print(f"   Failed {receipt['id']}: {e}")
-                ctx["errors"].append(
-                    {"receipt_id": receipt["id"], "error": str(e)}
-                )
+                ctx["errors"].append({"receipt_id": receipt["id"], "error": str(e)})
                 ctx["failure_count"] += 1
 
     print(

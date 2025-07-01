@@ -10,7 +10,6 @@ import time
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from receipt_label.utils.ai_usage_context import (
     ai_usage_context,
     batch_ai_usage_context,
@@ -61,14 +60,10 @@ class TestAIUsageContext:
 
     def test_nested_contexts(self, mock_tracker):
         """Test nested context managers maintain parent context."""
-        with ai_usage_context(
-            "parent_op", tracker=mock_tracker, parent_id="123"
-        ):
+        with ai_usage_context("parent_op", tracker=mock_tracker, parent_id="123"):
             mock_tracker.set_context.call_args[0][0]
 
-            with ai_usage_context(
-                "child_op", tracker=mock_tracker, child_id="456"
-            ):
+            with ai_usage_context("child_op", tracker=mock_tracker, child_id="456"):
                 child_context = mock_tracker.set_context.call_args[0][0]
 
                 # Child should have parent operation reference
@@ -82,9 +77,7 @@ class TestAIUsageContext:
 
     def test_batch_context_manager(self, mock_tracker):
         """Test batch-specific context manager."""
-        with batch_ai_usage_context(
-            "batch-123", item_count=100, tracker=mock_tracker
-        ):
+        with batch_ai_usage_context("batch-123", item_count=100, tracker=mock_tracker):
             # Verify batch mode was enabled
             mock_tracker.set_batch_mode.assert_called_once_with(True)
 
@@ -100,9 +93,7 @@ class TestAIUsageContext:
         contexts_captured = {}
 
         def capture_context(thread_name):
-            with ai_usage_context(
-                f"op_{thread_name}", thread_name=thread_name
-            ):
+            with ai_usage_context(f"op_{thread_name}", thread_name=thread_name):
                 # Capture the current context
                 contexts_captured[thread_name] = get_current_context()
                 time.sleep(0.01)  # Allow other threads to run
@@ -110,9 +101,7 @@ class TestAIUsageContext:
         # Run in multiple threads
         threads = []
         for i in range(5):
-            thread = threading.Thread(
-                target=capture_context, args=(f"thread_{i}",)
-            )
+            thread = threading.Thread(target=capture_context, args=(f"thread_{i}",))
             threads.append(thread)
             thread.start()
 
@@ -167,10 +156,7 @@ class TestAIUsageContext:
         """Test context manager with auto environment detection."""
         with patch.dict("os.environ", {"ENVIRONMENT": "staging"}):
             with ai_usage_context("test_op") as tracker:
-                assert (
-                    tracker.environment_config.environment
-                    == Environment.STAGING
-                )
+                assert tracker.environment_config.environment == Environment.STAGING
                 # Table name depends on environment config
                 assert "staging" in tracker.table_name
 
@@ -200,8 +186,7 @@ class TestAIUsageContext:
 
             # Verify environment is in auto-tags
             assert (
-                tracker.environment_config.auto_tag["environment"]
-                == environment.value
+                tracker.environment_config.auto_tag["environment"] == environment.value
             )
 
 
@@ -289,9 +274,7 @@ class TestAIUsageDecorator:
         """Test decorator with custom operation type."""
         from receipt_label.utils.ai_usage_context import ai_usage_tracked
 
-        @ai_usage_tracked(
-            operation_type="custom_operation", tracker=mock_tracker
-        )
+        @ai_usage_tracked(operation_type="custom_operation", tracker=mock_tracker)
         def process_data(data: str) -> str:
             return data.upper()
 
@@ -423,9 +406,7 @@ class TestAIUsageDecorator:
         assert mock_tracker.set_context.call_count == 2
 
         # Check both contexts were set
-        contexts = [
-            call[0][0] for call in mock_tracker.set_context.call_args_list
-        ]
+        contexts = [call[0][0] for call in mock_tracker.set_context.call_args_list]
         assert contexts[0]["operation_type"] == "outer"
         assert contexts[1]["operation_type"] == "inner"
         assert contexts[1].get("parent_operation") == "outer"
@@ -486,9 +467,7 @@ class TestErrorRecoveryAndPartialFailures:
         # Verify flush was still called
         mock_tracker.flush_metrics.assert_called_once()
 
-    def test_context_manager_flush_failure_handling(
-        self, mock_tracker, caplog
-    ):
+    def test_context_manager_flush_failure_handling(self, mock_tracker, caplog):
         """Test that flush failures don't mask original errors."""
         from receipt_label.utils.ai_usage_context import ai_usage_context
 
@@ -616,9 +595,7 @@ class TestErrorRecoveryAndPartialFailures:
         with partial_failure_context("batch_op", tracker=mock_tracker) as ctx:
             # Add 15 errors
             for i in range(15):
-                ctx["errors"].append(
-                    {"item": f"item_{i}", "error": f"Error {i}"}
-                )
+                ctx["errors"].append({"item": f"item_{i}", "error": f"Error {i}"})
                 ctx["failure_count"] += 1
 
         # Check that only first 10 errors are stored in summary

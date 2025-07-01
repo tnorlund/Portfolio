@@ -57,9 +57,7 @@ def fetch_usage_data(days: int = 30, service: Optional[str] = None) -> Dict:
         return None
 
 
-def fetch_usage_data_direct(
-    days: int = 30, service: Optional[str] = None
-) -> Dict:
+def fetch_usage_data_direct(days: int = 30, service: Optional[str] = None) -> Dict:
     """Fetch usage data directly from DynamoDB (for local development)."""
     try:
         import sys
@@ -79,9 +77,7 @@ def fetch_usage_data_direct(
 
         # Query metrics
         all_metrics = []
-        services = (
-            [service] if service else ["openai", "anthropic", "google_places"]
-        )
+        services = [service] if service else ["openai", "anthropic", "google_places"]
 
         for svc in services:
             metrics = AIUsageMetric.query_by_service_date(
@@ -166,9 +162,7 @@ def display_summary(data: Dict):
 [bold]Avg Cost/Call:[/bold] ${summary.get('average_cost_per_call', 0):.4f}
 """
 
-    console.print(
-        Panel(summary_text, title="📊 AI Usage Summary", box=box.ROUNDED)
-    )
+    console.print(Panel(summary_text, title="📊 AI Usage Summary", box=box.ROUNDED))
 
 
 def display_service_breakdown(data: Dict):
@@ -267,9 +261,7 @@ def display_daily_trend(data: Dict, days: int):
 
     # Find max cost for scaling
     max_cost = (
-        max(stats.get("cost_usd", 0) for _, stats in sorted_days)
-        if sorted_days
-        else 1
+        max(stats.get("cost_usd", 0) for _, stats in sorted_days) if sorted_days else 1
     )
 
     for date, stats in sorted_days:
@@ -280,9 +272,7 @@ def display_daily_trend(data: Dict, days: int):
         bar_width = int((cost / max_cost) * 30) if max_cost > 0 else 0
         bar = "█" * bar_width
 
-        table.add_row(
-            date, f"${cost:.2f}", f"{calls:,}", f"[blue]{bar}[/blue]"
-        )
+        table.add_row(date, f"${cost:.2f}", f"{calls:,}", f"[blue]{bar}[/blue]")
 
     console.print(table)
 
@@ -310,9 +300,7 @@ def main():
     args = parser.parse_args()
 
     # Print header
-    console.print(
-        f"\n[bold cyan]AI Usage Report - Last {args.days} Days[/bold cyan]\n"
-    )
+    console.print(f"\n[bold cyan]AI Usage Report - Last {args.days} Days[/bold cyan]\n")
 
     # Fetch data
     if args.local:

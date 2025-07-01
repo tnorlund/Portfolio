@@ -311,6 +311,317 @@ When adding boto3 clients for new AWS services:
 
 This approach provides type safety during development while maintaining fast runtime performance.
 
+# GitHub Actions Cost Optimization Strategy
+
+## Overview
+
+This document outlines strategies to reduce GitHub Actions spending from ~$48/month to under $5/month through self-hosted runners and local testing optimization.
+
+## Current Spending Analysis
+
+**Before Optimization (June 2024):**
+- Total spend: $24.16 additional (on top of 3,000 included minutes)
+- Estimated usage: ~6,000 minutes/month
+- Cost per month: ~$48 (including overage)
+- Primary cost drivers: Python test matrix (6 parallel jobs × 15-20 mins each)
+
+## Cost Reduction Strategies
+
+### 1. Self-Hosted Runner (Apple Silicon Mac)
+
+**Setup Complete:**
+- ✅ ARM64 runner configured with labels: `[self-hosted, python-tests]`
+- ✅ Located at: `/Users/tnorlund/GitHub/actions-runner/`
+- ✅ Hybrid approach: Python tests on self-hosted, security tasks on GitHub-hosted
+
+**Workflows Updated:**
+- ✅ `main.yml`: Python test matrix runs on self-hosted runner
+- ✅ `pr-checks.yml`: Quick Python tests on self-hosted, TypeScript on GitHub-hosted
+- ✅ Security-sensitive tasks (deploy, AWS operations) remain on GitHub-hosted
+
+**Expected Savings:**
+- Python tests: ~5,000 minutes/month → $0 (self-hosted)
+- Remaining GitHub usage: ~1,000 minutes/month → ~$8/month
+- **Total savings: ~$40/month (~$480/year)**
+
+### 2. Local Testing Optimization
+
+**Philosophy:** Test locally first, push only when confident
+
+#### A. Local Test Scripts
+
+**Quick Development Loop:**
+```bash
+# Format code locally (prevent CI formatting failures)
+make format                    # or: black . && isort .
+
+# Run specific package tests locally
+cd receipt_dynamo && pytest tests/unit -v           # Unit tests only
+cd receipt_label && pytest tests -m "unit" -v       # Marker-based tests
+
+# Run integration tests for specific changes
+pytest tests/integration/test__specific_module.py
+```
+
+**Pre-Push Validation:**
+```bash
+# Mirror CI quick-tests locally
+./scripts/local_ci_check.sh receipt_dynamo          # Mirrors PR checks
+./scripts/local_ci_check.sh receipt_label           # Before pushing
+
+# Run comprehensive tests (mirrors main.yml)
+./scripts/local_full_test.sh receipt_dynamo unit    # Full unit tests
+./scripts/local_full_test.sh receipt_dynamo integration group-1  # Specific group
+
+# Check formatting without fixing
+black --check . && isort --check-only .
+```
+
+**Interactive Development Workflow:**
+```bash
+# Comprehensive guided workflow with cost estimates
+./scripts/dev_workflow.sh                           # Interactive menu
+
+# Quick formatting
+./scripts/format_code.sh                           # Equivalent to make format
+```
+
+#### B. Development Workflow Best Practices
+
+**1. Draft PRs for Development:**
+```bash
+# Create draft PR to prevent automatic CI triggers
+gh pr create --draft --title "WIP: feature development"
+
+# Push incremental changes without triggering expensive CI
+git push  # Only quick format checks run for drafts
+```
+
+**2. Bundle Commits:**
+```bash
+# Instead of: 5 commits = 5 CI runs = 5 × 120 minutes = 600 minutes
+# Do: Bundle into 1 commit = 1 CI run = 120 minutes
+
+git commit --amend    # Add to previous commit
+git rebase -i HEAD~3  # Squash multiple commits
+```
+
+**3. Skip CI for Documentation:**
+```bash
+# Skip CI entirely for doc-only changes
+git commit -m "docs: update README [skip ci]"
+```
+
+**4. Target Specific Tests:**
+```bash
+# Instead of running full test suite, target specific changes
+pytest tests/integration/test__specific_feature.py -v
+
+# Use markers to run subset
+pytest -m "not slow"          # Skip expensive tests locally
+pytest -m "integration"       # Only integration tests
+```
+
+#### C. Local Environment Optimization
+
+**Fast Local Testing Setup:**
+```bash
+# Create dedicated testing virtual environment
+python -m venv .venv-testing
+source .venv-testing/bin/activate
+
+# Install minimal test dependencies for speed
+pip install pytest pytest-xdist pytest-cov
+
+# Install packages in development mode
+pip install -e receipt_dynamo
+pip install -e receipt_label
+```
+
+**Parallel Local Testing:**
+```bash
+# Use all CPU cores for faster local tests
+pytest -n auto                          # Auto-detect cores
+pytest -n 8                            # Explicit core count
+
+# Distribute tests by file for better balance
+pytest --dist worksteal tests/
+```
+
+#### D. IDE Integration
+
+**VSCode pytest integration:**
+```json
+// .vscode/settings.json
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "tests",
+    "-v",
+    "--tb=short"
+  ],
+  "python.testing.autoTestDiscoverOnSaveEnabled": false
+}
+```
+
+### 3. Selective CI Triggering
+
+**When to Use Each Approach:**
+
+| Change Type | Local Testing | Draft PR | Full CI | Cost Impact |
+|-------------|---------------|----------|---------|-------------|
+| Bug fixes | ✅ Required | Optional | When confident | Low |
+| New features | ✅ Required | ✅ Recommended | Final validation | Medium |
+| Refactoring | ✅ Required | ✅ Recommended | Before merge | Medium |
+| Documentation | ✅ Light | ❌ Skip CI | ❌ Skip | None |
+| Dependencies | ✅ Required | ❌ Direct PR | ✅ Required | High |
+
+**Smart Commit Messages:**
+```bash
+# Skip CI for safe changes
+git commit -m "docs: update API documentation [skip ci]"
+git commit -m "style: fix code formatting [skip ci]"
+
+# Trigger minimal CI
+git commit -m "fix: minor bug in validation logic"  # Only quick tests
+
+# Full CI for risky changes
+git commit -m "feat: new authentication system"     # All tests needed
+```
+
+## 4. Monitoring and Alerts
+
+**Monthly Usage Tracking:**
+- Monitor GitHub billing page: https://github.com/settings/billing
+- Set spending alerts at $10, $20, $30 thresholds
+- Review Actions usage patterns monthly
+
+**High Usage Patterns to Watch:**
+- Multiple rapid commits to the same PR
+- Large test matrix failures requiring reruns
+- Dependency update PRs that trigger full test suites
+- Concurrent work on multiple feature branches
+
+## 5. Expected Total Savings
+
+**Optimized Workflow:**
+- Self-hosted Python tests: $0/month (was ~$40)
+- Reduced GitHub-hosted usage: ~$5/month (was ~$8) 
+- Local testing prevents failed CI runs: Additional ~$2-3/month savings
+
+**Total monthly cost:** ~$2-5/month (down from $48)
+**Annual savings:** ~$500-550/year
+
+## Implementation Checklist
+
+- [x] Set up Apple Silicon self-hosted runner
+- [x] Update workflows for hybrid approach  
+- [x] Document local testing strategies
+- [x] Create local testing scripts
+  - [x] `./scripts/local_ci_check.sh` - Mirror PR quick-tests
+  - [x] `./scripts/local_full_test.sh` - Mirror main.yml test matrix
+  - [x] `./scripts/format_code.sh` - Code formatting
+  - [x] `./scripts/dev_workflow.sh` - Interactive guided workflow
+- [ ] Test hybrid setup with sample PR
+- [ ] Monitor first month of usage
+- [ ] Fine-tune based on actual patterns
+
+## Quick Start Guide
+
+**For daily development:**
+```bash
+# Interactive workflow with cost estimates
+./scripts/dev_workflow.sh
+
+# Quick validation before push
+./scripts/local_ci_check.sh receipt_dynamo
+./scripts/format_code.sh && git add -A && git commit
+```
+
+**Start self-hosted runner:**
+```bash
+cd /Users/tnorlund/GitHub/actions-runner
+./run.sh  # Or use option 15 in dev_workflow.sh
+```
+
+# DynamoDB GSI Optimization Strategy
+
+## Current GSI Infrastructure Analysis
+
+The receipt processing system uses a single DynamoDB table with 4 Global Secondary Indexes:
+
+| GSI | Current Usage | Efficiency | Purpose |
+|-----|---------------|------------|---------|
+| **GSI1** | ✅ Active | High | Service/date queries (`AI_USAGE#{service}` / `DATE#{date}`) |
+| **GSI2** | ✅ Active | High | Cost aggregation (`AI_USAGE_COST` / `COST#{date}#{service}`) |
+| **GSI3** | ✅ Active | Medium | Job/batch queries (`JOB#{job_id}` / `AI_USAGE#{timestamp}`) |
+| **GSITYPE** | ❌ Underutilized | Low | Only contains TYPE field discriminator |
+
+## GSI Composite Key Strategy (Revised)
+
+**Problem**: Cost monitoring system uses expensive scan operations for user and environment scope queries.
+
+**Solution**: Enhance existing GSI3 with composite keys to support all scope types without new infrastructure.
+
+### Enhanced GSI3 Design
+
+```
+GSI3 Index (Enhanced):
+- PK: "JOB#{job_id}" | "USER#{user_id}" | "BATCH#{batch_id}" | "ENV#{environment}"
+- SK: "AI_USAGE#{timestamp}"
+```
+
+### Query Patterns Enabled
+
+```python
+# User scope queries - eliminate scans using GSI3
+GSI3PK = "USER#john_doe"
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
+
+# Environment scope queries - eliminate scans using GSI3
+GSI3PK = "ENV#production"  
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
+
+# Job scope queries - existing functionality preserved
+GSI3PK = "JOB#batch-123"
+GSI3SK = "AI_USAGE#2024-01-01T00:00:00Z to AI_USAGE#2024-01-31T23:59:59Z"
+```
+
+### Benefits
+
+- **Eliminate scan operations**: User/environment queries become O(log n) instead of O(n)
+- **Zero additional GSI costs**: Uses existing GSI3 infrastructure with enhanced composite keys
+- **Preserve TYPE GSI**: Maintains efficient entity-wide queries using GSITYPE as intended
+- **Priority hierarchy**: Smart scope assignment ensures optimal query performance
+- **Backward compatible**: Existing job/batch queries continue to work unchanged
+
+### Implementation Status
+
+**Phase 1 Completed**: 
+- ✅ Optimized job queries to use GSI3 instead of scans
+- ✅ Added fallback scan operations for reliability
+
+**Phase 2 Planned**:
+- 🔄 Enhance GSI3 composite keys for user/environment scopes  
+- 🔄 Migrate CostMonitor to use enhanced GSI3 queries
+- 🔄 Backfill historical records with enhanced GSI3 keys
+
+**Performance Impact**:
+- Job queries: Scan → GSI3 query (60-80% faster) ✅ **Completed**
+- User/environment queries: Scan → Enhanced GSI3 query (planned 60-80% faster)
+- Cost monitoring scalability: Linear → Logarithmic performance
+
+### Reference Documentation
+
+See `GSITYPE_OPTIMIZATION_STRATEGY.md` for detailed implementation guide, code examples, and migration strategy.
+
+## Key Design Principles
+
+1. **Maximize existing infrastructure** - Use provisioned GSIs efficiently before adding new ones
+2. **Maintain backward compatibility** - Existing query patterns continue to work
+3. **Graceful degradation** - Scan fallbacks ensure reliability during migration
+4. **Cost-effective optimization** - Significant performance gains with minimal additional AWS costs
+
 # Performance Testing Guidelines
 
 ## CRITICAL: Environment-Dependent Performance Tests

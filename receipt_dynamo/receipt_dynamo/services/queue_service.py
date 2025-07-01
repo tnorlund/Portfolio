@@ -309,9 +309,7 @@ class QueueService:
 
         return next_job
 
-    def mark_job_completed(
-        self, queue_id: str, job_id: str, success: bool
-    ) -> None:
+    def mark_job_completed(self, queue_id: str, job_id: str, success: bool) -> None:
         """
         Mark a job in a queue as completed.
 

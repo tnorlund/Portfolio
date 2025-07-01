@@ -22,6 +22,7 @@ import pulumi
 import pulumi_aws as aws
 import pulumi_command as command
 from pulumi import ComponentResource, Output
+
 from utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
@@ -55,9 +56,7 @@ class SimpleLambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.opts = opts
 
         # Validate package directory
@@ -73,9 +72,7 @@ class SimpleLambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -88,9 +85,7 @@ class SimpleLambdaLayer(ComponentResource):
                 f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -170,9 +165,7 @@ class SimpleLambdaLayer(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -256,9 +249,9 @@ class SimpleLambdaLayer(ComponentResource):
                 location=pulumi.Output.concat(
                     build_bucket.bucket, f"/{self.name}/source.zip"
                 ),
-                buildspec=pulumi.Output.from_input(
-                    self._get_buildspec()
-                ).apply(lambda spec: json.dumps(spec)),
+                buildspec=pulumi.Output.from_input(self._get_buildspec()).apply(
+                    lambda spec: json.dumps(spec)
+                ),
             ),
             artifacts=aws.codebuild.ProjectArtifactsArgs(
                 type="S3",
@@ -311,9 +304,7 @@ class SimpleLambdaLayer(ComponentResource):
                     args[0], args[1], args[2], package_path, package_hash
                 )
             ),
-            opts=pulumi.ResourceOptions(
-                parent=self, depends_on=[codebuild_project]
-            ),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[codebuild_project]),
         )
 
         # Create the Lambda layer version resource

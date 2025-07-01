@@ -32,9 +32,7 @@ def get_changed_files(base_ref: str = "origin/main") -> Set[str]:
             check=True,
         )
         return (
-            set(result.stdout.strip().split("\n"))
-            if result.stdout.strip()
-            else set()
+            set(result.stdout.strip().split("\n")) if result.stdout.strip() else set()
         )
     except:
         # If git diff fails, assume all files changed (safe fallback)
@@ -131,9 +129,7 @@ def should_run_test(
                     # Check if file hashes match (no changes since last successful run)
                     current_hash = get_file_hash(test_file)
                     if current_hash == test_info.get("file_hash", ""):
-                        return (
-                            False  # Skip test - no changes and recently passed
-                        )
+                        return False  # Skip test - no changes and recently passed
         except Exception as e:
             print(f"Warning: Could not read test cache: {e}")
 
@@ -178,9 +174,7 @@ def main():
         description="Smart test runner with change detection"
     )
     parser.add_argument("package", help="Package directory to test")
-    parser.add_argument(
-        "test_paths", nargs="*", help="Specific test paths (optional)"
-    )
+    parser.add_argument("test_paths", nargs="*", help="Specific test paths (optional)")
     parser.add_argument(
         "--dry-run", action="store_true", help="Show which tests would run"
     )
@@ -203,18 +197,14 @@ def main():
         sys.exit(1)
 
     # Get changed files
-    changed_files = (
-        get_changed_files(args.base_ref) if not args.force else {"*"}
-    )
+    changed_files = get_changed_files(args.base_ref) if not args.force else {"*"}
 
     # Determine test files to check
     if args.test_paths:
         test_files = []
         for path in args.test_paths:
             if " " in path:  # Handle space-separated paths from GitHub Actions
-                test_files.extend(
-                    [Path(package_dir / p.strip()) for p in path.split()]
-                )
+                test_files.extend([Path(package_dir / p.strip()) for p in path.split()])
             else:
                 test_files.append(Path(package_dir / path))
     else:
@@ -260,9 +250,7 @@ def main():
         return
 
     # Run the tests
-    test_paths_str = " ".join(
-        str(t.relative_to(package_dir)) for t in tests_to_run
-    )
+    test_paths_str = " ".join(str(t.relative_to(package_dir)) for t in tests_to_run)
     print(f"\n🚀 Running optimized tests...")
 
     # Use the existing optimized test runner

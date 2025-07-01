@@ -3,7 +3,6 @@ from decimal import Decimal
 from typing import Dict, List
 
 import pytest
-
 from receipt_dynamo import (
     ReceiptValidationCategory,
     ReceiptValidationResult,
@@ -233,38 +232,26 @@ class TestValidationAnalysisSerialization:
         # Check field summary
         assert "business_identity" in summary.field_summary
         assert "address_verification" in summary.field_summary
+        assert summary.field_summary["business_identity"]["status"] == "invalid"
+        assert bool(summary.field_summary["business_identity"]["has_errors"]) is True
         assert (
-            summary.field_summary["business_identity"]["status"] == "invalid"
-        )
-        assert (
-            bool(summary.field_summary["business_identity"]["has_errors"])
-            is True
-        )
-        assert (
-            bool(summary.field_summary["address_verification"]["has_warnings"])
-            is True
+            bool(summary.field_summary["address_verification"]["has_warnings"]) is True
         )
 
         # Check metadata
         assert "processing_metrics" in summary.metadata
-        assert (
-            summary.metadata["processing_metrics"]["processing_time_ms"] == 150
-        )
+        assert summary.metadata["processing_metrics"]["processing_time_ms"] == 150
         assert "source_information" in summary.metadata
         assert summary.metadata["source_information"]["model_name"] == "gpt-4"
 
     def test_to_dynamo_validation_categories(self, sample_validation_analysis):
         """Test conversion to ReceiptValidationCategory objects."""
-        categories = (
-            sample_validation_analysis.to_dynamo_validation_categories()
-        )
+        categories = sample_validation_analysis.to_dynamo_validation_categories()
 
         # Check that we got a list of the right type of objects
         assert isinstance(categories, list)
         assert len(categories) == 6  # One for each field
-        assert all(
-            isinstance(cat, ReceiptValidationCategory) for cat in categories
-        )
+        assert all(isinstance(cat, ReceiptValidationCategory) for cat in categories)
 
         # Find the business_identity category
         business_identity_cat = next(
@@ -273,10 +260,7 @@ class TestValidationAnalysisSerialization:
 
         # Check category fields
         assert business_identity_cat.receipt_id == 123
-        assert (
-            business_identity_cat.image_id
-            == "550e8400-e29b-41d4-a716-446655440000"
-        )
+        assert business_identity_cat.image_id == "550e8400-e29b-41d4-a716-446655440000"
         assert business_identity_cat.field_category == "Business Identity"
         assert business_identity_cat.status == "invalid"
         assert "failed with 1 error" in business_identity_cat.reasoning
@@ -288,9 +272,7 @@ class TestValidationAnalysisSerialization:
 
         # Find the address_verification category
         address_cat = next(
-            cat
-            for cat in categories
-            if cat.field_name == "address_verification"
+            cat for cat in categories if cat.field_name == "address_verification"
         )
 
         # Check that it has the warning correctly reflected
@@ -313,15 +295,10 @@ class TestValidationAnalysisSerialization:
 
         # Check result fields
         assert business_result.receipt_id == 123
-        assert (
-            business_result.image_id == "550e8400-e29b-41d4-a716-446655440000"
-        )
+        assert business_result.image_id == "550e8400-e29b-41d4-a716-446655440000"
         assert business_result.type == "error"
         assert business_result.message == "Invalid business name"
-        assert (
-            business_result.reasoning
-            == "Expected 'Store A' but found 'Store B'"
-        )
+        assert business_result.reasoning == "Expected 'Store A' but found 'Store B'"
         assert business_result.field == "business_name"
         assert business_result.expected_value == "Store A"
         assert business_result.actual_value == "Store B"
@@ -364,9 +341,7 @@ class TestValidationAnalysisSerialization:
 
         # Check validation timestamp
         assert isinstance(analysis.validation_timestamp, datetime)
-        assert (
-            analysis.validation_timestamp.isoformat() == "2023-03-15T12:00:00"
-        )
+        assert analysis.validation_timestamp.isoformat() == "2023-03-15T12:00:00"
 
         # Check business_identity field validation
         assert analysis.business_identity.field_category == "Business Identity"
@@ -384,14 +359,8 @@ class TestValidationAnalysisSerialization:
         assert result.metadata["confidence"] == 0.9
 
         # Check address_verification field validation
-        assert (
-            analysis.address_verification.field_category
-            == "Address Verification"
-        )
-        assert (
-            analysis.address_verification.status
-            == ValidationStatus.NEEDS_REVIEW
-        )
+        assert analysis.address_verification.field_category == "Address Verification"
+        assert analysis.address_verification.status == ValidationStatus.NEEDS_REVIEW
         assert len(analysis.address_verification.results) == 1
 
         # Check address_verification result
@@ -405,10 +374,7 @@ class TestValidationAnalysisSerialization:
 
         # Check metadata
         assert "processing_metrics" in analysis.metadata
-        assert (
-            analysis.metadata["processing_metrics"]["processing_time_ms"]
-            == 150
-        )
+        assert analysis.metadata["processing_metrics"]["processing_time_ms"] == 150
         assert "source_information" in analysis.metadata
         assert analysis.metadata["source_information"]["model_name"] == "gpt-4"
 
@@ -422,9 +388,7 @@ class TestValidationAnalysisSerialization:
         """Test roundtrip conversion from ValidationAnalysis to DynamoDB items and back."""
         # Convert to DynamoDB objects
         summary = sample_validation_analysis.to_dynamo_validation_summary()
-        categories = (
-            sample_validation_analysis.to_dynamo_validation_categories()
-        )
+        categories = sample_validation_analysis.to_dynamo_validation_categories()
         results = sample_validation_analysis.to_dynamo_validation_results()
 
         # Convert back to ValidationAnalysis
@@ -433,14 +397,9 @@ class TestValidationAnalysisSerialization:
         )
 
         # Check that essential properties match
-        assert (
-            reconstructed.receipt_id == sample_validation_analysis.receipt_id
-        )
+        assert reconstructed.receipt_id == sample_validation_analysis.receipt_id
         assert reconstructed.image_id == sample_validation_analysis.image_id
-        assert (
-            reconstructed.overall_status
-            == sample_validation_analysis.overall_status
-        )
+        assert reconstructed.overall_status == sample_validation_analysis.overall_status
         assert (
             reconstructed.overall_reasoning
             == sample_validation_analysis.overall_reasoning
@@ -450,22 +409,15 @@ class TestValidationAnalysisSerialization:
         assert len(reconstructed.business_identity.results) == len(
             sample_validation_analysis.business_identity.results
         )
-        original_result = sample_validation_analysis.business_identity.results[
-            0
-        ]
+        original_result = sample_validation_analysis.business_identity.results[0]
         reconstructed_result = reconstructed.business_identity.results[0]
 
         assert reconstructed_result.type == original_result.type
         assert reconstructed_result.message == original_result.message
         assert reconstructed_result.reasoning == original_result.reasoning
         assert reconstructed_result.field == original_result.field
-        assert (
-            reconstructed_result.expected_value
-            == original_result.expected_value
-        )
-        assert (
-            reconstructed_result.actual_value == original_result.actual_value
-        )
+        assert reconstructed_result.expected_value == original_result.expected_value
+        assert reconstructed_result.actual_value == original_result.actual_value
 
         # Check that metadata was preserved
         assert "version" in reconstructed.metadata
@@ -486,24 +438,18 @@ class TestValidationAnalysisSerialization:
         analysis = ValidationAnalysis()
 
         # Missing both image_id and receipt_id
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_summary()
 
         # Missing image_id
         analysis.receipt_id = 123
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_summary()
 
         # Missing receipt_id
         analysis = ValidationAnalysis()
         analysis.image_id = "550e8400-e29b-41d4-a716-446655440000"
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_summary()
 
     def test_to_dynamo_validation_categories_missing_fields(self):
@@ -511,24 +457,18 @@ class TestValidationAnalysisSerialization:
         analysis = ValidationAnalysis()
 
         # Missing both image_id and receipt_id
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_categories()
 
         # Missing image_id
         analysis.receipt_id = 123
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_categories()
 
         # Missing receipt_id
         analysis = ValidationAnalysis()
         analysis.image_id = "550e8400-e29b-41d4-a716-446655440000"
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_categories()
 
     def test_to_dynamo_validation_results_missing_fields(self):
@@ -536,22 +476,16 @@ class TestValidationAnalysisSerialization:
         analysis = ValidationAnalysis()
 
         # Missing both image_id and receipt_id
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_results()
 
         # Missing image_id
         analysis.receipt_id = 123
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_results()
 
         # Missing receipt_id
         analysis = ValidationAnalysis()
         analysis.image_id = "550e8400-e29b-41d4-a716-446655440000"
-        with pytest.raises(
-            ValueError, match="receipt_id and image_id must be set"
-        ):
+        with pytest.raises(ValueError, match="receipt_id and image_id must be set"):
             analysis.to_dynamo_validation_results()
