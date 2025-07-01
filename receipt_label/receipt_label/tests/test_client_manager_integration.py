@@ -18,13 +18,14 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../tests"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
-from utils.ai_usage_helpers import (
+from tests.utils.ai_usage_helpers import (
     assert_usage_metric_equal,
     create_mock_anthropic_response,
     create_mock_openai_response,
@@ -159,7 +160,9 @@ class TestClientManagerIntegration:
             assert tracker.user_id == "test-user"
             assert tracker.track_to_dynamo is True
 
-    def test_client_manager_initialization_without_tracking(self, mock_dynamo_client):
+    def test_client_manager_initialization_without_tracking(
+        self, mock_dynamo_client
+    ):
         """Test ClientManager initialization with usage tracking disabled."""
         config = ClientConfig(
             dynamo_table="test-table",
@@ -196,8 +199,12 @@ class TestClientManagerIntegration:
                 openai_client = manager.openai
 
                 # Verify client is wrapped (it's a custom wrapped class)
-                assert openai_client is not mock_openai_client  # Should be wrapped
-                assert hasattr(openai_client, "chat")  # Should have expected methods
+                assert (
+                    openai_client is not mock_openai_client
+                )  # Should be wrapped
+                assert hasattr(
+                    openai_client, "chat"
+                )  # Should have expected methods
 
     @pytest.mark.integration
     def test_complete_openai_completion_tracking_flow(
@@ -256,8 +263,12 @@ class TestClientManagerIntegration:
                     and mock_dynamo_client.put_ai_usage_metric.called
                 ):
                     # New resilient client interface - get metric from call args
-                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
-                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    call_args = (
+                        mock_dynamo_client.put_ai_usage_metric.call_args
+                    )
+                    metric = call_args.args[
+                        0
+                    ]  # First argument is the AIUsageMetric
                     item = metric.to_dynamodb_item()
                 else:
                     # Legacy interface
@@ -332,8 +343,12 @@ class TestClientManagerIntegration:
                     and mock_dynamo_client.put_ai_usage_metric.called
                 ):
                     # New resilient client interface - get metric from call args
-                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
-                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    call_args = (
+                        mock_dynamo_client.put_ai_usage_metric.call_args
+                    )
+                    metric = call_args.args[
+                        0
+                    ]  # First argument is the AIUsageMetric
                     item = metric.to_dynamodb_item()
                 else:
                     # Legacy interface
@@ -387,7 +402,9 @@ class TestClientManagerIntegration:
                     openai = manager.openai
                     response = openai.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": f"Hello from {job_id}"}],
+                        messages=[
+                            {"role": "user", "content": f"Hello from {job_id}"}
+                        ],
                     )
                     return response
 
@@ -469,8 +486,12 @@ class TestClientManagerIntegration:
                     and mock_dynamo_client.put_ai_usage_metric.called
                 ):
                     # New resilient client interface - get metric from call args
-                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
-                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    call_args = (
+                        mock_dynamo_client.put_ai_usage_metric.call_args
+                    )
+                    metric = call_args.args[
+                        0
+                    ]  # First argument is the AIUsageMetric
                     item = metric.to_dynamodb_item()
                 else:
                     # Legacy interface
@@ -530,8 +551,12 @@ class TestClientManagerIntegration:
                     and mock_dynamo_client.put_ai_usage_metric.called
                 ):
                     # New resilient client interface - get metric from call args
-                    call_args = mock_dynamo_client.put_ai_usage_metric.call_args
-                    metric = call_args.args[0]  # First argument is the AIUsageMetric
+                    call_args = (
+                        mock_dynamo_client.put_ai_usage_metric.call_args
+                    )
+                    metric = call_args.args[
+                        0
+                    ]  # First argument is the AIUsageMetric
                     item = metric.to_dynamodb_item()
                 else:
                     # Legacy interface
@@ -670,7 +695,9 @@ class TestClientManagerIntegration:
                     assert log_entry["total_tokens"] == 150
 
     @pytest.mark.integration
-    def test_metric_query_by_service_and_date(self, mock_env, mock_dynamo_client):
+    def test_metric_query_by_service_and_date(
+        self, mock_env, mock_dynamo_client
+    ):
         """Test querying metrics by service and date range."""
         config = ClientConfig.from_env()
 
