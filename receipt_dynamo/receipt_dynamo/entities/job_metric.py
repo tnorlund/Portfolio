@@ -59,12 +59,15 @@ class JobMetric:
             raise ValueError("metric_name must be a non-empty string")
         self.metric_name = metric_name
 
+        self.timestamp: str
         if isinstance(timestamp, datetime):
             self.timestamp = timestamp.isoformat()
         elif isinstance(timestamp, str):
             self.timestamp = timestamp
         else:
-            raise ValueError(format_type_error("timestamp", timestamp, (datetime, str)))
+            raise ValueError(
+                format_type_error("timestamp", timestamp, (datetime, str))
+            )
 
         if not isinstance(value, (float, int, dict)):
             try:
@@ -76,7 +79,7 @@ class JobMetric:
                     raise ValueError(
                         "value must be a number (int/float) or a dictionary"
                     )
-        self.value = value
+        self.value: Union[int, float, Dict[str, Any]] = value
 
         # Unit validation
         self.unit = unit
@@ -87,7 +90,7 @@ class JobMetric:
         # Epoch validation
         self.epoch = epoch
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job metric.
 
         Returns:
@@ -98,7 +101,7 @@ class JobMetric:
             "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """
         Generate a Global Secondary Index (GSI) key for the job metric.
 
@@ -110,7 +113,7 @@ class JobMetric:
             "GSI1SK": {"S": f"{self.timestamp}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """
         Generate a second Global Secondary Index (GSI2) key for the job metric.
         This enables efficient comparison of the same metric across different jobs.
@@ -123,7 +126,7 @@ class JobMetric:
             "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobMetric object to a DynamoDB item.
 
         Returns:
@@ -172,12 +175,14 @@ class JobMetric:
         Returns:
             Dict: The DynamoDB map representation.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -275,7 +280,9 @@ class JobMetric:
         """
         # Convert value to string if it's a dict since dicts aren't hashable
         value_for_hash = (
-            json.dumps(self.value) if isinstance(self.value, dict) else self.value
+            json.dumps(self.value)
+            if isinstance(self.value, dict)
+            else self.value
         )
 
         return hash(
@@ -291,7 +298,7 @@ class JobMetric:
         )
 
 
-def item_to_job_metric(item: dict) -> JobMetric:
+def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
     """Converts a DynamoDB item to a JobMetric object.
 
     Args:
@@ -330,6 +337,7 @@ def item_to_job_metric(item: dict) -> JobMetric:
         timestamp = item["timestamp"]["S"]
 
         # Parse value based on its type
+        value: Union[int, float, Dict[str, Any]]
         if "N" in item["value"]:
             try:
                 value = int(item["value"]["N"])
@@ -413,7 +421,7 @@ def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
     Raises:
         ValueError: If the DynamoDB map format is invalid.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in dynamodb_map.items():
         result[k] = _parse_dynamodb_value(v)
     return result

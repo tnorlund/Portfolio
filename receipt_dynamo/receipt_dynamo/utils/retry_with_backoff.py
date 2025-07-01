@@ -5,7 +5,7 @@ Retry mechanism with exponential backoff for handling transient failures.
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -37,7 +37,7 @@ def exponential_backoff_with_jitter(
         Delay in seconds
     """
     # Calculate exponential delay: base * 2^attempt
-    delay = min(base_delay * (2**attempt), max_delay)
+    delay: float = min(base_delay * (2**attempt), max_delay)
 
     if jitter:
         # Add random jitter between 0 and 25% of delay
@@ -50,7 +50,9 @@ def retry_with_backoff(
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception,
+    exceptions: Union[
+        Type[Exception], Tuple[Type[Exception], ...]
+    ] = Exception,
     jitter: bool = True,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """

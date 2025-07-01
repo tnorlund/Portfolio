@@ -1,10 +1,11 @@
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import boto3
 import pytest
+
 from receipt_dynamo import DynamoClient, Line
 
-correct_line_params = {
+correct_line_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "text": "test_string",
@@ -107,7 +108,7 @@ def test_line_delete_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.delete_line(1, 2)
+        client.delete_line("invalid-uuid", 2)
 
 
 @pytest.mark.integration
@@ -127,9 +128,9 @@ def test_line_delete_all(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     with pytest.raises(ValueError):
-        client.get_line(1, 1)
+        client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
     with pytest.raises(ValueError):
-        client.get_line(1, 2)
+        client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)
 
 
 @pytest.mark.integration
@@ -155,7 +156,7 @@ def test_line_get_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.get_line(1, 2)
+        client.get_line("invalid-uuid", 2)
 
 
 @pytest.mark.integration
@@ -203,7 +204,9 @@ def test_line_list_from_image(dynamodb_table: Literal["MyMockedTable"]):
     client.add_line(line_2)
 
     # Act
-    lines = client.list_lines_from_image("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
+    lines = client.list_lines_from_image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
 
     # Assert
     assert line_1 in lines

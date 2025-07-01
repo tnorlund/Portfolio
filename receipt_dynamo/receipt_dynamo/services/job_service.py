@@ -175,7 +175,9 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.list_jobs_by_status(status, limit, last_evaluated_key)
+        return self.dynamo_client.list_jobs_by_status(
+            status, limit, last_evaluated_key
+        )
 
     def list_jobs_by_user(
         self,
@@ -194,10 +196,14 @@ class JobService:
         Returns:
             A tuple containing a list of Job objects and the last evaluated key
         """
-        return self.dynamo_client.list_jobs_by_user(user_id, limit, last_evaluated_key)
+        return self.dynamo_client.list_jobs_by_user(
+            user_id, limit, last_evaluated_key
+        )
 
     # Job status operations
-    def add_job_status(self, job_id: str, status: str, message: str) -> JobStatus:
+    def add_job_status(
+        self, job_id: str, status: str, message: str
+    ) -> JobStatus:
         """
         Add a new status record for a job.
 
@@ -228,7 +234,8 @@ class JobService:
         Returns:
             A list of JobStatus objects
         """
-        return self.dynamo_client.list_job_statuses_by_job(job_id)
+        statuses, _ = self.dynamo_client.list_job_statuses(job_id)
+        return statuses
 
     # Job log operations
     def add_job_log(self, job_id: str, log_level: str, message: str) -> JobLog:
@@ -262,7 +269,8 @@ class JobService:
         Returns:
             A list of JobLog objects
         """
-        return self.dynamo_client.list_job_logs_by_job(job_id)
+        logs, _ = self.dynamo_client.list_job_logs(job_id)
+        return logs
 
     # Job metric operations
     def add_job_metric(
@@ -304,7 +312,8 @@ class JobService:
         Returns:
             A list of JobMetric objects
         """
-        return self.dynamo_client.list_job_metrics_by_job(job_id)
+        metrics, _ = self.dynamo_client.list_job_metrics(job_id)
+        return metrics
 
     # Job resource operations
     def add_job_resource(
@@ -349,10 +358,13 @@ class JobService:
         Returns:
             A list of JobResource objects
         """
-        return self.dynamo_client.list_job_resources_by_job(job_id)
+        resources, _ = self.dynamo_client.list_job_resources(job_id)
+        return resources
 
     # Job dependency operations
-    def add_job_dependency(self, job_id: str, depends_on_job_id: str) -> JobDependency:
+    def add_job_dependency(
+        self, job_id: str, depends_on_job_id: str
+    ) -> JobDependency:
         """
         Add a dependency between jobs.
 
@@ -383,7 +395,8 @@ class JobService:
         Returns:
             A list of JobDependency objects representing what this job depends on
         """
-        return self.dynamo_client.list_job_dependencies_by_job(job_id)
+        dependencies, _ = self.dynamo_client.list_dependencies(job_id)
+        return dependencies
 
     def get_dependent_jobs(self, job_id: str) -> List[JobDependency]:
         """
@@ -395,9 +408,12 @@ class JobService:
         Returns:
             A list of JobDependency objects representing jobs that depend on this job
         """
-        return self.dynamo_client.list_dependents(job_id)
+        dependents, _ = self.dynamo_client.list_dependents(job_id)
+        return dependents
 
-    def check_dependencies_satisfied(self, job_id: str) -> Tuple[bool, List[Dict]]:
+    def check_dependencies_satisfied(
+        self, job_id: str
+    ) -> Tuple[bool, List[Dict]]:
         """
         Check if all dependencies for a job are satisfied.
 
@@ -421,7 +437,7 @@ class JobService:
 
         for dependency in dependencies:
             is_satisfied = False
-            dependency_details = {
+            dependency_details: Dict[str, Any] = {
                 "dependency_job_id": dependency.dependency_job_id,
                 "type": dependency.type,
                 "condition": dependency.condition,
@@ -448,7 +464,9 @@ class JobService:
                     is_satisfied = dependency_job.status == "failed"
                 elif dependency.type == "ARTIFACT":
                     # Special condition for artifact dependency
-                    if dependency.condition and hasattr(dependency_job, "job_config"):
+                    if dependency.condition and hasattr(
+                        dependency_job, "job_config"
+                    ):
                         # Check if the artifact exists based on condition
                         # This would need to be implemented based on your artifact storage system
                         is_satisfied = self._check_artifact_exists(
@@ -469,7 +487,9 @@ class JobService:
 
         return all_satisfied, unsatisfied
 
-    def _check_artifact_exists(self, job: Job, artifact_condition: str) -> bool:
+    def _check_artifact_exists(
+        self, job: Job, artifact_condition: str
+    ) -> bool:
         """
         Check if an artifact exists for a job based on a condition.
 
@@ -526,4 +546,5 @@ class JobService:
         Returns:
             A list of JobCheckpoint objects
         """
-        return self.dynamo_client.list_job_checkpoints_by_job(job_id)
+        checkpoints, _ = self.dynamo_client.list_job_checkpoints(job_id)
+        return checkpoints
