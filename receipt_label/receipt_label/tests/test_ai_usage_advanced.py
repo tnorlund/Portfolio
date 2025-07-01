@@ -19,7 +19,6 @@ from freezegun import freeze_time
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
-
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
@@ -44,13 +43,17 @@ class TestConcurrentTracking:
 
         def set_and_check_context(job_id):
             tracker.set_tracking_context(job_id=job_id)
-            time.sleep(0.01)  # Small delay to increase chance of race conditions
+            time.sleep(
+                0.01
+            )  # Small delay to increase chance of race conditions
             results.append(tracker.current_job_id)
 
         # Run multiple threads
         threads = []
         for i in range(10):
-            thread = threading.Thread(target=set_and_check_context, args=(f"job-{i}",))
+            thread = threading.Thread(
+                target=set_and_check_context, args=(f"job-{i}",)
+            )
             threads.append(thread)
             thread.start()
 
@@ -89,7 +92,9 @@ class TestConcurrentTracking:
 
             # Use ThreadPoolExecutor for concurrent calls
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(concurrent_call, i) for i in range(10)]
+                futures = [
+                    executor.submit(concurrent_call, i) for i in range(10)
+                ]
                 for future in futures:
                     future.result()
 
@@ -468,6 +473,11 @@ class TestPerformanceOptimization:
 
     def test_minimal_overhead_no_tracking(self):
         """Test minimal overhead when tracking is disabled."""
+        from receipt_label.tests.utils.performance_utils import (
+            assert_performance_within_bounds,
+            measure_operation_overhead,
+        )
+
         tracker = AIUsageTracker(
             track_to_dynamo=False,
             track_to_file=False,
@@ -475,16 +485,35 @@ class TestPerformanceOptimization:
 
         @tracker.track_openai_completion
         def fast_function():
-            return "result"
+            return create_mock_openai_response()
 
-        # Time multiple calls
-        start = time.time()
-        for _ in range(1000):
-            fast_function()
-        duration = time.time() - start
+        # Baseline: function that does similar work without tracking
+        def baseline_function():
+            return create_mock_openai_response()
 
-        # Should be reasonably fast (< 50ms for 1000 calls)
-        assert duration < 0.05
+        # Measure overhead relative to baseline
+        metrics = measure_operation_overhead(
+            baseline_op=baseline_function,
+            test_op=fast_function,
+            iterations=1000,
+        )
+
+        # When tracking is disabled, decorator overhead should be minimal
+        # The overhead is primarily from the decorator wrapper itself
+        assert_performance_within_bounds(
+            metrics,
+            max_overhead_ratio=2.0,  # Should add less than 2x overhead
+            custom_message="Decorator overhead with tracking disabled",
+        )
+
+        # Also verify absolute performance
+        print(f"Decorator overhead: {metrics['overhead_ms']:.3f}ms per call")
+        print(f"Overhead ratio: {metrics['overhead_ratio']:.2f}x")
+
+        # Absolute check: overhead should be minimal per operation
+        assert (
+            metrics["overhead_ms"] < 0.1
+        ), f"Overhead {metrics['overhead_ms']:.3f}ms per call is too high"
 
     def test_efficient_json_serialization(self):
         """Test efficient handling of JSON serialization."""

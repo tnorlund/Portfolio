@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
-
 from tests.utils.ai_usage_helpers import (
     MockServiceFactory,
     create_mock_openai_response,
@@ -89,7 +88,9 @@ def mock_high_performance_dynamo():
     def fast_query(**kwargs):
         with client._storage_lock:
             # Simple in-memory query simulation
-            return {"Items": client._stored_items[:100]}  # Limit for performance
+            return {
+                "Items": client._stored_items[:100]
+            }  # Limit for performance
 
     client.query = MagicMock(side_effect=fast_query)
 
@@ -167,10 +168,33 @@ class TestAIUsagePerformanceIntegration:
                     mock_high_performance_dynamo._write_latencies, n=100
                 )[98]
 
-                # Performance assertions
-                assert throughput > 100  # At least 100 req/s
-                assert avg_latency < 10  # Average write latency < 10ms
-                assert p99_latency < 50  # 99th percentile < 50ms
+                # Performance assertions using environment-aware thresholds
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+
+                # Adjust expectations based on environment
+                min_throughput = thresholds.get_threshold("throughput_ops")
+                max_avg_latency = thresholds.get_threshold("latency_ms")
+                max_p99_latency = max_avg_latency * 5  # P99 can be 5x average
+
+                # Log environment info for debugging
+                print(f"Environment: {perf_class}")
+                print(f"Expected min throughput: {min_throughput:.0f} req/s")
+
+                assert (
+                    throughput > min_throughput
+                ), f"Throughput {throughput:.2f} req/s below threshold {min_throughput:.0f} req/s"
+                assert (
+                    avg_latency < max_avg_latency
+                ), f"Avg latency {avg_latency:.2f}ms exceeds threshold {max_avg_latency:.2f}ms"
+                assert (
+                    p99_latency < max_p99_latency
+                ), f"P99 latency {p99_latency:.2f}ms exceeds threshold {max_p99_latency:.2f}ms"
 
                 # Verify all metrics stored
                 assert len(mock_high_performance_dynamo._stored_items) == 1000
@@ -280,19 +304,51 @@ class TestAIUsagePerformanceIntegration:
                 # Analyze results
                 total_requests = num_workers * requests_per_worker
                 overall_throughput = total_requests / total_elapsed
-                avg_worker_latency = statistics.mean(r["avg_latency"] for r in results)
+                avg_worker_latency = statistics.mean(
+                    r["avg_latency"] for r in results
+                )
                 max_worker_latency = max(r["max_latency"] for r in results)
 
-                # Performance assertions
-                # Note: CI environments are less performant than local development
+                # Performance assertions with environment awareness
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+
+                # Concurrent operations should achieve better throughput
+                min_concurrent_throughput = (
+                    thresholds.get_threshold("throughput_ops") * 1.5
+                )
+                max_avg_latency = (
+                    thresholds.get_threshold("latency_ms") * 2
+                )  # More lenient for concurrent
+                max_peak_latency = (
+                    max_avg_latency * 4
+                )  # Peak can be 4x average
+
+                print(f"Concurrent performance (env: {perf_class}):")
+                print(f"  Overall throughput: {overall_throughput:.1f} req/s")
+                print(f"  Avg worker latency: {avg_worker_latency:.1f}ms")
+                print(f"  Max worker latency: {max_worker_latency:.1f}ms")
+
                 assert (
-                    overall_throughput > 100  # CI-tuned: was 200
-                )  # Higher throughput with concurrency
-                assert avg_worker_latency < 50  # CI-tuned: was 20
-                assert max_worker_latency < 200  # CI-tuned: was 100
+                    overall_throughput > min_concurrent_throughput
+                ), f"Concurrent throughput {overall_throughput:.1f} below threshold {min_concurrent_throughput:.1f}"
+                assert (
+                    avg_worker_latency < max_avg_latency
+                ), f"Avg latency {avg_worker_latency:.1f}ms exceeds threshold {max_avg_latency:.1f}ms"
+                assert (
+                    max_worker_latency < max_peak_latency
+                ), f"Peak latency {max_worker_latency:.1f}ms exceeds threshold {max_peak_latency:.1f}ms"
 
                 # Verify data integrity
-                assert len(mock_high_performance_dynamo._stored_items) == total_requests
+                assert (
+                    len(mock_high_performance_dynamo._stored_items)
+                    == total_requests
+                )
 
                 # Check job isolation
                 for worker_id in range(num_workers):
@@ -375,12 +431,40 @@ class TestAIUsagePerformanceIntegration:
                 memory_after = process.memory_info().rss / 1024 / 1024  # MB
                 memory_increase = memory_after - memory_before
 
-                # Memory efficiency assertions (CI-tuned threshold)
-                # CI environments have different memory characteristics
-                assert memory_increase < 120  # Less than 120MB increase (CI-tuned)
+                # Memory efficiency assertions with environment awareness
+                from receipt_label.tests.utils.performance_utils import (
+                    AdaptiveThresholds,
+                    EnvironmentProfile,
+                )
+
+                thresholds = AdaptiveThresholds()
+                perf_class = EnvironmentProfile.get_performance_class()
+                max_memory_increase = thresholds.get_threshold("memory_mb")
+
+                # Calculate total operations
+                total_operations = batch_size * num_batches
+
+                # Also check relative memory usage
+                memory_per_operation = (
+                    memory_increase / total_operations * 1000
+                )  # MB per 1k ops
+
+                print(f"Memory usage (env: {perf_class}):")
+                print(f"  Total increase: {memory_increase:.1f}MB")
+                print(f"  Per 1k operations: {memory_per_operation:.2f}MB")
+                print(f"  Threshold: {max_memory_increase:.0f}MB")
+
+                assert (
+                    memory_increase < max_memory_increase
+                ), f"Memory increase {memory_increase:.1f}MB exceeds threshold {max_memory_increase:.0f}MB (env: {perf_class})"
+
+                # Relative assertion: memory per operation should be reasonable
+                # Allow up to 20MB per 1k operations (accounts for Python object overhead)
+                assert (
+                    memory_per_operation < 20
+                ), f"Memory per 1k operations {memory_per_operation:.1f}MB seems excessive"
 
                 # Verify operations completed
-                total_operations = batch_size * num_batches
                 assert (
                     len(mock_high_performance_dynamo._stored_items)
                     >= total_operations * 0.95
@@ -422,7 +506,9 @@ class TestAIUsagePerformanceIntegration:
                 ),
             )
 
-        mock_openai.chat.completions.create.side_effect = variable_latency_response
+        mock_openai.chat.completions.create.side_effect = (
+            variable_latency_response
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
@@ -459,7 +545,9 @@ class TestAIUsagePerformanceIntegration:
                                 }
                             ],
                         )
-                        latencies.append((time.perf_counter() - req_start) * 1000)
+                        latencies.append(
+                            (time.perf_counter() - req_start) * 1000
+                        )
 
                         if i < count - 1:
                             time.sleep(delay)
@@ -481,7 +569,9 @@ class TestAIUsagePerformanceIntegration:
                 assert (
                     burst_metrics["throughput"] > 50
                 )  # Handle at least 50 req/s during burst
-                assert burst_metrics["p99_latency"] < 100  # Maintain reasonable latency
+                assert (
+                    burst_metrics["p99_latency"] < 100
+                )  # Maintain reasonable latency
 
                 # System should recover after burst
                 steady_after = phase_metrics["steady"]
@@ -522,7 +612,9 @@ class TestAIUsagePerformanceIntegration:
                         "totalTokens": {"N": str(100 + i)},
                         "costUSD": {"N": str(0.0001 * (100 + i))},
                     }
-                    mock_high_performance_dynamo._stored_items.append(metric_item)
+                    mock_high_performance_dynamo._stored_items.append(
+                        metric_item
+                    )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
@@ -572,10 +664,39 @@ class TestAIUsagePerformanceIntegration:
                     "result_count": len(metrics),
                 }
 
-            # Performance assertions
-            assert query_performance["single_day"]["total_time_ms"] < 50
-            assert query_performance["week"]["total_time_ms"] < 100
-            assert query_performance["month"]["total_time_ms"] < 500
+            # Performance assertions using relative thresholds
+            from receipt_label.tests.utils.performance_utils import (
+                EnvironmentProfile,
+            )
+
+            # Establish baseline with simplest query
+            baseline_time = query_performance["single_day"]["total_time_ms"]
+            perf_class = EnvironmentProfile.get_performance_class()
+
+            # Scale expectations based on environment
+            scaling_factor = EnvironmentProfile.get_scaling_factor()
+            base_single_day_ms = 50 / scaling_factor  # Adjust base expectation
+
+            # Relative assertions - week should be < 3x single day, month < 10x
+            assert (
+                query_performance["single_day"]["total_time_ms"]
+                < base_single_day_ms
+            ), f"Single day query {query_performance['single_day']['total_time_ms']:.1f}ms exceeds threshold {base_single_day_ms:.1f}ms (env: {perf_class})"
+
+            assert (
+                query_performance["week"]["total_time_ms"] < baseline_time * 3
+            ), f"Week query should be < 3x single day query time"
+
+            assert (
+                query_performance["month"]["total_time_ms"]
+                < baseline_time * 10
+            ), f"Month query should be < 10x single day query time"
+
+            print(f"Query performance (env: {perf_class}):")
+            for pattern, perf in query_performance.items():
+                print(
+                    f"  {pattern}: {perf['total_time_ms']:.1f}ms ({perf['result_count']} results)"
+                )
 
     def test_graceful_degradation_under_stress(self, performance_env):
         """Test system degrades gracefully under extreme stress."""
@@ -661,7 +782,9 @@ class TestAIUsagePerformanceIntegration:
                             "window": window_num,
                             "success_rate": success_rate,
                             "throughput": window_size / window_duration,
-                            "avg_latency": window_duration / window_size * 1000,
+                            "avg_latency": window_duration
+                            / window_size
+                            * 1000,
                         }
                     )
 
@@ -673,7 +796,9 @@ class TestAIUsagePerformanceIntegration:
                 early_success = statistics.mean(
                     w["success_rate"] for w in early_windows
                 )
-                late_success = statistics.mean(w["success_rate"] for w in late_windows)
+                late_success = statistics.mean(
+                    w["success_rate"] for w in late_windows
+                )
 
                 assert early_success > 0.95  # Nearly perfect when not stressed
                 assert late_success > 0.70  # Still functional under stress
@@ -682,7 +807,9 @@ class TestAIUsagePerformanceIntegration:
                 early_throughput = statistics.mean(
                     w["throughput"] for w in early_windows
                 )
-                late_throughput = statistics.mean(w["throughput"] for w in late_windows)
+                late_throughput = statistics.mean(
+                    w["throughput"] for w in late_windows
+                )
 
                 # IMPORTANT: These thresholds are environment-dependent
                 # CI environments are less performant than local development machines
@@ -692,7 +819,8 @@ class TestAIUsagePerformanceIntegration:
                     0.03 if config.use_resilient_tracker else 0.01
                 )
                 assert (
-                    late_throughput > early_throughput * expected_throughput_ratio
+                    late_throughput
+                    > early_throughput * expected_throughput_ratio
                 )  # Resilient tracker should maintain better throughput under stress
 
     def test_resilient_tracker_maintains_throughput(self, performance_env):
@@ -700,7 +828,9 @@ class TestAIUsagePerformanceIntegration:
         # Force use of resilient tracker
         os.environ["USE_RESILIENT_TRACKER"] = "true"
         os.environ["CIRCUIT_BREAKER_THRESHOLD"] = "5"
-        os.environ["CIRCUIT_BREAKER_TIMEOUT"] = "2.0"  # Short timeout for testing
+        os.environ["CIRCUIT_BREAKER_TIMEOUT"] = (
+            "2.0"  # Short timeout for testing
+        )
         os.environ["MAX_RETRY_ATTEMPTS"] = "3"
         os.environ["RETRY_BASE_DELAY"] = "0.1"  # Short delay for testing
         os.environ["BATCH_SIZE"] = "10"
@@ -747,7 +877,9 @@ class TestAIUsagePerformanceIntegration:
             return {"UnprocessedItems": {}}
 
         mock_dynamo.put_item = MagicMock(side_effect=tracked_put_item)
-        mock_dynamo.batch_write_item = MagicMock(side_effect=tracked_batch_write)
+        mock_dynamo.batch_write_item = MagicMock(
+            side_effect=tracked_batch_write
+        )
 
         mock_openai = MockServiceFactory.create_openai_client(
             completion_response=create_mock_openai_response()
@@ -778,7 +910,9 @@ class TestAIUsagePerformanceIntegration:
                         try:
                             openai_client.chat.completions.create(
                                 model="gpt-3.5-turbo",
-                                messages=[{"role": "user", "content": f"Test {i}"}],
+                                messages=[
+                                    {"role": "user", "content": f"Test {i}"}
+                                ],
                             )
                             # Exclude the OpenAI mock latency from throughput measurement
                             # We only care about tracker overhead
@@ -798,14 +932,17 @@ class TestAIUsagePerformanceIntegration:
                                 {
                                     "success": False,
                                     "time": request_end,
-                                    "tracker_time": request_end - request_start,
+                                    "tracker_time": request_end
+                                    - request_start,
                                 }
                             )
 
                     total_time = time.perf_counter() - start_time
 
                     # Calculate metrics
-                    successful_requests = sum(1 for r in results if r["success"])
+                    successful_requests = sum(
+                        1 for r in results if r["success"]
+                    )
                     success_rate = successful_requests / len(results)
                     throughput = len(results) / total_time
 
@@ -834,12 +971,16 @@ class TestAIUsagePerformanceIntegration:
                     # Calculate throughput degradation
                     # First 100 requests (baseline)
                     early_results = results[:100]
-                    early_time = early_results[-1]["time"] - early_results[0]["time"]
+                    early_time = (
+                        early_results[-1]["time"] - early_results[0]["time"]
+                    )
                     early_throughput = 100 / early_time
 
                     # Last 100 requests (under stress)
                     late_results = results[-100:]
-                    late_time = late_results[-1]["time"] - late_results[0]["time"]
+                    late_time = (
+                        late_results[-1]["time"] - late_results[0]["time"]
+                    )
                     late_throughput = 100 / late_time
 
                     throughput_ratio = late_throughput / early_throughput
@@ -852,7 +993,8 @@ class TestAIUsagePerformanceIntegration:
 
                     # Verify batch processing reduced DynamoDB calls
                     total_dynamo_calls = (
-                        dynamo_calls["put_item"] + dynamo_calls["batch_write_item"]
+                        dynamo_calls["put_item"]
+                        + dynamo_calls["batch_write_item"]
                     )
                     calls_per_request = total_dynamo_calls / len(results)
 
