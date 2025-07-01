@@ -4,8 +4,8 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -47,13 +47,15 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_label_counts(core_label):
-    receipt_word_labels, last_evaluated_key = dynamo_client.getReceiptWordLabelsByLabel(
-        label=core_label,
-        limit=1000,
+    receipt_word_labels, last_evaluated_key = (
+        dynamo_client.get_receipt_word_labels_by_label(
+            label=core_label,
+            limit=1000,
+        )
     )
     while last_evaluated_key is not None:
         next_receipt_word_labels, last_evaluated_key = (
-            dynamo_client.getReceiptWordLabelsByLabel(
+            dynamo_client.get_receipt_word_labels_by_label(
                 label=core_label,
                 limit=1000,
                 lastEvaluatedKey=last_evaluated_key,
@@ -136,7 +138,9 @@ def handler(event, _):
             logger.info("All label counts retrieved from cache")
 
         # Order the by the key in alphabetical order
-        core_label_counts = dict(sorted(core_label_counts.items(), key=lambda x: x[0]))
+        core_label_counts = dict(
+            sorted(core_label_counts.items(), key=lambda x: x[0])
+        )
         return {
             "statusCode": 200,
             "body": json.dumps(core_label_counts),
