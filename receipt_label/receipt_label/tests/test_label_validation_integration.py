@@ -59,9 +59,7 @@ class IntegrationFakePineconeIndex:
         # Return consistently high scores to pass validation thresholds
         base_score = 0.90  # High enough for all validation thresholds
         matches = [
-            SimpleNamespace(
-                id=f"match_{i}", score=base_score - (i * 0.02), metadata={}
-            )
+            SimpleNamespace(id=f"match_{i}", score=base_score - (i * 0.02), metadata={})
             for i in range(min(3, top_k))
         ]
         return SimpleNamespace(matches=matches)
@@ -169,9 +167,7 @@ class TestValidationFunctionIntegration:
                     word_id=5,
                     label="ADDRESS",
                 ),
-                metadata=SimpleNamespace(
-                    canonical_address="123 main street suite 100"
-                ),
+                metadata=SimpleNamespace(canonical_address="123 main street suite 100"),
             ),
             "phone": SimpleNamespace(
                 word=SimpleNamespace(text="(555) 123-4567"),
@@ -523,9 +519,7 @@ class TestValidationFunctionIntegration:
         )
 
         with pytest.raises(ConnectionError):
-            validate_merchant_name_pinecone(
-                merchant_word, merchant_label, "Starbucks"
-            )
+            validate_merchant_name_pinecone(merchant_word, merchant_label, "Starbucks")
 
     def test_batch_validation_performance(self, mocker):
         """Test performance characteristics of batch validation."""
@@ -643,12 +637,8 @@ class TestValidationFunctionIntegration:
         ]
 
         for test_case in test_cases:
-            date_result = validate_date(
-                test_case["date"], test_case["date_label"]
-            )
-            time_result = validate_time(
-                test_case["time"], test_case["time_label"]
-            )
+            date_result = validate_date(test_case["date"], test_case["date_label"])
+            time_result = validate_time(test_case["time"], test_case["time_label"])
 
             # Both should be valid for valid datetime pairs
             assert date_result.is_consistent

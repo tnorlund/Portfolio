@@ -6,6 +6,12 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, WordTag
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -228,9 +234,7 @@ def test_get_word_tags(
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 11, 101, "FOO"),
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed5", 30, 300, "FOO"),
     }
-    foo_returned = {
-        (w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags
-    }
+    foo_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in foo_tags}
     assert foo_returned == foo_expected
 
     # Also check that "BAR" is distinct
@@ -238,9 +242,7 @@ def test_get_word_tags(
     bar_expected = {
         ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 20, 200, "BAR"),
     }
-    bar_returned = {
-        (w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags
-    }
+    bar_returned = {(w.image_id, w.line_id, w.word_id, w.tag) for w in bar_tags}
     assert bar_returned == bar_expected
 
 
@@ -283,9 +285,7 @@ def test_word_tag_get_pagination(dynamodb_table: Literal["MyMockedTable"]):
     assert len(results) == 30
     # Compare sets
     returned_ids = {(r.image_id, r.line_id, r.word_id) for r in results}
-    expected_ids = {
-        ("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)
-    }
+    expected_ids = {("3f52804b-2fad-4e00-92c8-b593da3a8ed4", 1, i) for i in range(30)}
     assert returned_ids == expected_ids
 
 
@@ -366,9 +366,7 @@ def test_updateWordTags_raises_value_error_word_tags_not_list(dynamodb_table):
     is not a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="WordTags must be provided as a list."
-    ):
+    with pytest.raises(ValueError, match="WordTags must be provided as a list."):
         client.update_word_tags("not-a-list")  # type: ignore
 
 
@@ -438,7 +436,9 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+    with pytest.raises(
+        DynamoDBThroughputError, match="Provisioned throughput exceeded"
+    ):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -465,7 +465,7 @@ def test_updateWordTags_raises_clienterror_internal_server_error(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Internal server error"):
+    with pytest.raises(DynamoDBServerError, match="Internal server error"):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -493,7 +493,7 @@ def test_updateWordTags_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        DynamoDBValidationError, match="One or more parameters given were invalid"
     ):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
@@ -521,15 +521,13 @@ def test_updateWordTags_raises_clienterror_access_denied(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Access denied"):
+    with pytest.raises(DynamoDBAccessError, match="Access denied"):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
 
 @pytest.mark.integration
-def test_updateWordTags_raises_client_error(
-    dynamodb_table, sample_word_tag, mocker
-):
+def test_updateWordTags_raises_client_error(dynamodb_table, sample_word_tag, mocker):
     """
     Simulate any error (ResourceNotFound, etc.) in transact_write_items.
     """

@@ -24,6 +24,7 @@ import pulumi_aws as aws
 import pulumi_aws.codepipeline as codepipeline
 import pulumi_command as command
 from pulumi import ComponentResource, Output
+
 from utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
@@ -63,9 +64,7 @@ class FastLambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.needs_pillow = needs_pillow
         self.opts = opts
 
@@ -96,13 +95,9 @@ class FastLambdaLayer(ComponentResource):
                 f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
             )
         else:
-            pulumi.log.info(
-                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
-            )
+            pulumi.log.info(f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)")
             if self.force_rebuild:
-                pulumi.log.info(
-                    "   🔨 Force rebuild enabled - will trigger build"
-                )
+                pulumi.log.info("   🔨 Force rebuild enabled - will trigger build")
             else:
                 pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
@@ -115,9 +110,7 @@ class FastLambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -130,9 +123,7 @@ class FastLambdaLayer(ComponentResource):
                 f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -377,14 +368,10 @@ echo "🎉 Parallel function updates completed!"'''
         upload_cmd = command.local.Command(
             f"{self.name}-upload-source",
             create=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: self._generate_upload_script(b, package_path, package_hash)
             ),
             update=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: self._generate_upload_script(b, package_path, package_hash)
             ),
             triggers=[package_hash],
             opts=pulumi.ResourceOptions(
@@ -402,16 +389,12 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -507,9 +490,7 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -665,15 +646,11 @@ echo "🎉 Parallel function updates completed!"'''
             commands.append("rm -rf merged && mkdir -p merged")
             # Step 2: Merge each version's unpacked artifact into python/lib/python<ver>/site-packages
             commands.append('echo "Setting up merged python/lib directory..."')
-            commands.append(
-                "rm -rf merged/python && mkdir -p merged/python/lib"
-            )
+            commands.append("rm -rf merged/python && mkdir -p merged/python/lib")
             for idx, v in enumerate(self.python_versions):
                 commands.append(f'echo "Merging artifacts for Python {v}..."')
                 # Use the version string directly (e.g., "3.11", "3.12")
-                commands.append(
-                    f"mkdir -p merged/python/lib/python{v}/site-packages"
-                )
+                commands.append(f"mkdir -p merged/python/lib/python{v}/site-packages")
                 if idx == 0:
                     # Primary artifact in root workspace
                     commands.append(
@@ -694,9 +671,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "aws s3 cp layer.zip s3://$BUCKET_NAME/${PACKAGE_NAME}/combined/layer.zip"
             )
             # Step 4: Publish the merged layer from S3
-            commands.append(
-                'echo "Publishing merged layer from S3 to Lambda..."'
-            )
+            commands.append('echo "Publishing merged layer from S3 to Lambda..."')
             commands.append(
                 "NEW_LAYER_ARN=$(aws lambda publish-layer-version "
                 '--layer-name "$LAYER_NAME" '
@@ -821,8 +796,7 @@ echo "🎉 Parallel function updates completed!"'''
                             provider="CodeBuild",
                             version="1",
                             input_artifacts=[
-                                f"py{v.replace('.', '')}"
-                                for v in self.python_versions
+                                f"py{v.replace('.', '')}" for v in self.python_versions
                             ],
                             run_order=1,
                             configuration={
@@ -885,9 +859,7 @@ done
             sync_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
-                opts=pulumi.ResourceOptions(
-                    parent=self, depends_on=[pipeline]
-                ),
+                opts=pulumi.ResourceOptions(parent=self, depends_on=[pipeline]),
             )
             # Ensure Pulumi waits for pipeline before proceeding
             pulumi.log.info(f"Sync command added for pipeline {self.name}")

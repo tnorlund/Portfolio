@@ -106,15 +106,22 @@ class AIUsageMetric:
 
     @property
     def gsi3pk(self) -> Optional[str]:
+        """Enhanced GSI3 PK with priority hierarchy for scope-based queries."""
+        # Priority: job_id > user_id > batch_id > environment
         if self.job_id:
             return f"JOB#{self.job_id}"
+        elif self.user_id:
+            return f"USER#{self.user_id}"
         elif self.batch_id:
             return f"BATCH#{self.batch_id}"
+        elif self.environment:
+            return f"ENV#{self.environment}"
         return None
 
     @property
     def gsi3sk(self) -> Optional[str]:
-        if self.job_id or self.batch_id:
+        """GSI3 SK for temporal ordering."""
+        if self.job_id or self.user_id or self.batch_id or self.environment:
             return f"AI_USAGE#{self.timestamp.isoformat()}"
         return None
 
@@ -124,14 +131,10 @@ class AIUsageMetric:
 
     def __repr__(self) -> str:
         tokens_str = (
-            f"{self.total_tokens} tokens"
-            if self.total_tokens
-            else "unknown tokens"
+            f"{self.total_tokens} tokens" if self.total_tokens else "unknown tokens"
         )
         cost_str = (
-            f"${self.cost_usd:.4f}"
-            if self.cost_usd is not None
-            else "unknown cost"
+            f"${self.cost_usd:.4f}" if self.cost_usd is not None else "unknown cost"
         )
         return f"<AIUsageMetric {self.service}/{self.model} {self.operation} {tokens_str} {cost_str}>"
 
@@ -200,9 +203,7 @@ class AIUsageMetric:
         elif isinstance(value, str):
             return {"S": value}
         elif isinstance(value, dict):
-            return {
-                "M": {k: self._to_dynamodb_value(v) for k, v in value.items()}
-            }
+            return {"M": {k: self._to_dynamodb_value(v) for k, v in value.items()}}
         elif isinstance(value, list):
             return {"L": [self._to_dynamodb_value(v) for v in value]}
         else:
@@ -224,9 +225,7 @@ class AIUsageMetric:
         elif "S" in value:
             return value["S"]
         elif "M" in value:
-            return {
-                k: cls._from_dynamodb_value(v) for k, v in value["M"].items()
-            }
+            return {k: cls._from_dynamodb_value(v) for k, v in value["M"].items()}
         elif "L" in value:
             return [cls._from_dynamodb_value(v) for v in value["L"]]
         else:
@@ -242,39 +241,25 @@ class AIUsageMetric:
             timestamp=datetime.fromisoformat(item["timestamp"]["S"]),
             request_id=item["requestId"]["S"],
             input_tokens=(
-                int(item["inputTokens"]["N"])
-                if "inputTokens" in item
-                else None
+                int(item["inputTokens"]["N"]) if "inputTokens" in item else None
             ),
             output_tokens=(
-                int(item["outputTokens"]["N"])
-                if "outputTokens" in item
-                else None
+                int(item["outputTokens"]["N"]) if "outputTokens" in item else None
             ),
             total_tokens=(
-                int(item["totalTokens"]["N"])
-                if "totalTokens" in item
-                else None
+                int(item["totalTokens"]["N"]) if "totalTokens" in item else None
             ),
             api_calls=int(item["apiCalls"]["N"]),
-            cost_usd=(
-                float(item["costUSD"]["N"]) if "costUSD" in item else None
-            ),
-            latency_ms=(
-                int(item["latencyMs"]["N"]) if "latencyMs" in item else None
-            ),
+            cost_usd=(float(item["costUSD"]["N"]) if "costUSD" in item else None),
+            latency_ms=(int(item["latencyMs"]["N"]) if "latencyMs" in item else None),
             user_id=item.get("userId", {}).get("S"),
             job_id=item.get("jobId", {}).get("S"),
             batch_id=item.get("batchId", {}).get("S"),
-            github_pr=(
-                int(item["githubPR"]["N"]) if "githubPR" in item else None
-            ),
+            github_pr=(int(item["githubPR"]["N"]) if "githubPR" in item else None),
             environment=item.get("environment", {}).get("S"),
             error=item.get("error", {}).get("S"),
             metadata=(
-                cls._from_dynamodb_value(item["metadata"])
-                if "metadata" in item
-                else {}
+                cls._from_dynamodb_value(item["metadata"]) if "metadata" in item else {}
             ),
         )
 
@@ -291,9 +276,7 @@ class AIUsageMetric:
         expression_values = {
             ":pk": {"S": f"AI_USAGE#{service}"},
             ":start": {"S": f"DATE#{start_date}"},
-            ":end": {
-                "S": f"DATE#{end_date}" if end_date else f"DATE#{start_date}"
-            },
+            ":end": {"S": f"DATE#{end_date}" if end_date else f"DATE#{start_date}"},
         }
 
         response = dynamo_client.query(
@@ -303,14 +286,10 @@ class AIUsageMetric:
             ExpressionAttributeValues=expression_values,
         )
 
-        return [
-            cls.from_dynamodb_item(item) for item in response.get("Items", [])
-        ]
+        return [cls.from_dynamodb_item(item) for item in response.get("Items", [])]
 
     @classmethod
-    def get_total_cost_by_date(
-        cls, dynamo_client, date: str
-    ) -> Dict[str, float]:
+    def get_total_cost_by_date(cls, dynamo_client, date: str) -> Dict[str, float]:
         """Get total cost for all services on a specific date."""
         key_condition = "GSI2PK = :pk AND begins_with(GSI2SK, :date)"
         expression_values = {

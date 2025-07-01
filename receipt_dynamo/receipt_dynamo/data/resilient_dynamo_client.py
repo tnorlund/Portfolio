@@ -203,9 +203,7 @@ class ResilientDynamoClient(DynamoClient):
 
             try:
                 # Use parent's batch write method
-                failed_metrics = super().batch_put_ai_usage_metrics(
-                    remaining_metrics
-                )
+                failed_metrics = super().batch_put_ai_usage_metrics(remaining_metrics)
 
                 if not failed_metrics:
                     self._record_success()
@@ -213,9 +211,7 @@ class ResilientDynamoClient(DynamoClient):
 
                 # Update remaining metrics for retry
                 remaining_metrics = failed_metrics
-                raise Exception(
-                    f"{len(failed_metrics)} metrics failed to write"
-                )
+                raise Exception(f"{len(failed_metrics)} metrics failed to write")
 
             except Exception as e:
                 self._record_failure()

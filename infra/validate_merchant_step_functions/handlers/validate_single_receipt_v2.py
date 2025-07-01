@@ -41,9 +41,7 @@ def validate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     receipt_id = int(event["receipt_id"])
 
     # Debug logging
-    logger.info(
-        "Receipt ID type: %s, value: %s", type(receipt_id).__name__, receipt_id
-    )
+    logger.info("Receipt ID type: %s, value: %s", type(receipt_id).__name__, receipt_id)
 
     # Get receipt details from DynamoDB
     (
@@ -69,9 +67,7 @@ def validate_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         timeout_seconds=int(os.environ.get("AGENT_TIMEOUT_SECONDS", 300)),
     )
 
-    logger.info(
-        "Got metadata for %s %s: %s", image_id, receipt_id, dict(metadata)
-    )
+    logger.info("Got metadata for %s %s: %s", image_id, receipt_id, dict(metadata))
 
     # Write to DynamoDB
     logger.info("Writing metadata to DynamoDB for %s %s", image_id, receipt_id)

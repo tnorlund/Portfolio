@@ -3,7 +3,6 @@ from decimal import Decimal
 from typing import Dict
 
 import pytest
-
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
 )
@@ -38,9 +37,7 @@ def sample_modifier_data() -> Dict:
 
 
 @pytest.fixture
-def sample_line_item_data(
-    sample_price_data: Dict, sample_quantity_data: Dict
-) -> Dict:
+def sample_line_item_data(sample_price_data: Dict, sample_quantity_data: Dict) -> Dict:
     return {
         "description": "Test Item",
         "quantity": Quantity(**sample_quantity_data),
@@ -128,9 +125,7 @@ def mock_receipt_line_item_analysis(mocker):
         ],
         "source_information": {},
     }
-    mock_analysis.word_labels = {
-        (1, 1): {"label": "item_name", "confidence": 0.95}
-    }
+    mock_analysis.word_labels = {(1, 1): {"label": "item_name", "confidence": 0.95}}
 
     return mock_analysis
 
@@ -216,9 +211,7 @@ class TestLineItem:
 
     def test_line_item_post_init(self):
         """Test LineItem's __post_init__ method."""
-        line_item = LineItem(
-            description="Test Item", line_ids=None, metadata=None
-        )
+        line_item = LineItem(description="Test Item", line_ids=None, metadata=None)
         assert line_item.line_ids == []
         assert line_item.metadata == {}
 
@@ -253,9 +246,7 @@ class TestLineItemAnalysis:
 
     def test_analysis_post_init(self):
         """Test LineItemAnalysis's __post_init__ method."""
-        analysis = LineItemAnalysis(
-            items=[], discrepancies=None, metadata=None
-        )
+        analysis = LineItemAnalysis(items=[], discrepancies=None, metadata=None)
         assert analysis.discrepancies == []
         assert "processing_metrics" in analysis.metadata
         assert "source_info" in analysis.metadata
@@ -291,27 +282,14 @@ class TestLineItemAnalysis:
             assert isinstance(dynamo_entity, ReceiptLineItemAnalysis)
 
             # Verify basic fields
-            assert (
-                dynamo_entity.image_id == complete_line_item_analysis.image_id
-            )
-            assert (
-                dynamo_entity.receipt_id
-                == complete_line_item_analysis.receipt_id
-            )
+            assert dynamo_entity.image_id == complete_line_item_analysis.image_id
+            assert dynamo_entity.receipt_id == complete_line_item_analysis.receipt_id
             assert dynamo_entity.version == complete_line_item_analysis.version
-            assert (
-                dynamo_entity.reasoning
-                == complete_line_item_analysis.reasoning
-            )
-            assert (
-                dynamo_entity.total_found
-                == complete_line_item_analysis.total_found
-            )
+            assert dynamo_entity.reasoning == complete_line_item_analysis.reasoning
+            assert dynamo_entity.total_found == complete_line_item_analysis.total_found
 
             # Verify items conversion
-            assert len(dynamo_entity.items) == len(
-                complete_line_item_analysis.items
-            )
+            assert len(dynamo_entity.items) == len(complete_line_item_analysis.items)
             assert dynamo_entity.items[0]["description"] == "Test Item"
 
             # Verify financial fields
@@ -350,31 +328,17 @@ class TestLineItemAnalysis:
 
         def test_from_dynamo(self, mock_receipt_line_item_analysis):
             """Test converting a ReceiptLineItemAnalysis to a LineItemAnalysis."""
-            analysis = LineItemAnalysis.from_dynamo(
-                mock_receipt_line_item_analysis
-            )
+            analysis = LineItemAnalysis.from_dynamo(mock_receipt_line_item_analysis)
 
             # Verify core fields
-            assert (
-                analysis.image_id == mock_receipt_line_item_analysis.image_id
-            )
-            assert (
-                analysis.receipt_id
-                == mock_receipt_line_item_analysis.receipt_id
-            )
+            assert analysis.image_id == mock_receipt_line_item_analysis.image_id
+            assert analysis.receipt_id == mock_receipt_line_item_analysis.receipt_id
             assert analysis.version == mock_receipt_line_item_analysis.version
-            assert (
-                analysis.reasoning == mock_receipt_line_item_analysis.reasoning
-            )
-            assert (
-                analysis.total_found
-                == mock_receipt_line_item_analysis.total_found
-            )
+            assert analysis.reasoning == mock_receipt_line_item_analysis.reasoning
+            assert analysis.total_found == mock_receipt_line_item_analysis.total_found
 
             # Verify financial fields
-            assert (
-                analysis.subtotal == mock_receipt_line_item_analysis.subtotal
-            )
+            assert analysis.subtotal == mock_receipt_line_item_analysis.subtotal
             assert analysis.tax == mock_receipt_line_item_analysis.tax
             assert analysis.total == mock_receipt_line_item_analysis.total
 
@@ -395,13 +359,9 @@ class TestLineItemAnalysis:
             # Verify word labels
             assert (1, 1) in analysis.word_labels
 
-        def test_from_dynamo_item_conversion(
-            self, mock_receipt_line_item_analysis
-        ):
+        def test_from_dynamo_item_conversion(self, mock_receipt_line_item_analysis):
             """Test that items are properly converted from DynamoDB format."""
-            analysis = LineItemAnalysis.from_dynamo(
-                mock_receipt_line_item_analysis
-            )
+            analysis = LineItemAnalysis.from_dynamo(mock_receipt_line_item_analysis)
 
             # Focus specifically on item conversion
             assert len(analysis.items) == 1
@@ -423,13 +383,9 @@ class TestLineItemAnalysis:
             assert item.quantity.amount == Decimal("2")
             assert item.quantity.unit == "each"
 
-        def test_from_dynamo_metadata_handling(
-            self, mock_receipt_line_item_analysis
-        ):
+        def test_from_dynamo_metadata_handling(self, mock_receipt_line_item_analysis):
             """Test that metadata is properly handled during conversion."""
-            analysis = LineItemAnalysis.from_dynamo(
-                mock_receipt_line_item_analysis
-            )
+            analysis = LineItemAnalysis.from_dynamo(mock_receipt_line_item_analysis)
 
             # Check that metadata structure is correct
             assert "processing_metrics" in analysis.metadata
@@ -437,19 +393,14 @@ class TestLineItemAnalysis:
             assert "source_information" in analysis.metadata
 
             # Check specific metadata values
-            assert (
-                analysis.metadata["processing_metrics"]["processing_time"]
-                == 0.5
-            )
+            assert analysis.metadata["processing_metrics"]["processing_time"] == 0.5
             assert len(analysis.metadata["processing_history"]) == 1
             assert (
                 analysis.metadata["processing_history"][0]["event_type"]
                 == "analysis_completed"
             )
 
-        def test_roundtrip_conversion(
-            self, mocker, complete_line_item_analysis
-        ):
+        def test_roundtrip_conversion(self, mocker, complete_line_item_analysis):
             """Test a complete roundtrip conversion from LineItemAnalysis -> DynamoDB -> LineItemAnalysis."""
             # Convert to DynamoDB
             dynamo_entity = complete_line_item_analysis.to_dynamo()
@@ -475,21 +426,14 @@ class TestLineItemAnalysis:
 
             # Verify core fields were preserved
             assert round_trip.image_id == complete_line_item_analysis.image_id
-            assert (
-                round_trip.receipt_id == complete_line_item_analysis.receipt_id
-            )
-            assert (
-                round_trip.total_found
-                == complete_line_item_analysis.total_found
-            )
+            assert round_trip.receipt_id == complete_line_item_analysis.receipt_id
+            assert round_trip.total_found == complete_line_item_analysis.total_found
             assert round_trip.subtotal == complete_line_item_analysis.subtotal
             assert round_trip.tax == complete_line_item_analysis.tax
             assert round_trip.total == complete_line_item_analysis.total
 
             # Verify items were preserved
-            assert len(round_trip.items) == len(
-                complete_line_item_analysis.items
-            )
+            assert len(round_trip.items) == len(complete_line_item_analysis.items)
             assert (
                 round_trip.items[0].description
                 == complete_line_item_analysis.items[0].description
@@ -527,18 +471,12 @@ class TestLineItemAnalysis:
             assert round_trip_item.reasoning == original_item.reasoning
 
             # Check price
-            assert (
-                round_trip_item.price.unit_price
-                == original_item.price.unit_price
-            )
+            assert round_trip_item.price.unit_price == original_item.price.unit_price
             assert (
                 round_trip_item.price.extended_price
                 == original_item.price.extended_price
             )
 
             # Check quantity
-            assert (
-                round_trip_item.quantity.amount
-                == original_item.quantity.amount
-            )
+            assert round_trip_item.quantity.amount == original_item.quantity.amount
             assert round_trip_item.quantity.unit == original_item.quantity.unit

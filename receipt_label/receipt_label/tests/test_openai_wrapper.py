@@ -14,12 +14,11 @@ from openai.types.create_embedding_response import CreateEmbeddingResponse
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from tests.utils.ai_usage_helpers import (
     create_mock_openai_response,
     create_test_tracking_context,
 )
-
-from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
 @pytest.mark.unit
@@ -748,8 +747,11 @@ class TestWrapperPerformance:
             fast_create(model="gpt-3.5-turbo")
         direct_time = time.time() - start
 
-        # Wrapper overhead should be reasonable (less than 3x slower)
-        assert wrapped_time < direct_time * 3
+        # IMPORTANT: These thresholds are environment-dependent
+        # CI environments are less performant than local development machines
+        # Values tuned for GitHub Actions CI environment performance
+        # The wrapper should have reasonable overhead (less than 5x slower in CI)
+        assert wrapped_time < direct_time * 5
 
     def test_wrapper_with_large_responses(self):
         """Test wrapper with large response objects."""

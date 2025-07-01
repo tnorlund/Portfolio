@@ -13,7 +13,6 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator
@@ -85,8 +84,7 @@ class AIUsageTracker:
         """
         # Environment configuration
         self.environment_config = (
-            environment_config
-            or AIUsageEnvironmentConfig.get_config(environment)
+            environment_config or AIUsageEnvironmentConfig.get_config(environment)
         )
 
         # Set up table name - if table_name is provided, use it as-is
@@ -94,9 +92,7 @@ class AIUsageTracker:
         if table_name:
             self.table_name = table_name
         else:
-            base_table_name = os.environ.get(
-                "DYNAMODB_TABLE_NAME", "AIUsageMetrics"
-            )
+            base_table_name = os.environ.get("DYNAMODB_TABLE_NAME", "AIUsageMetrics")
             self.table_name = AIUsageEnvironmentConfig.get_table_name(
                 base_table_name, self.environment_config.environment
             )
@@ -182,9 +178,7 @@ class AIUsageTracker:
                     self.dynamo_client.put_ai_usage_metric(metric)
                 else:
                     # Basic Mock or minimalist stub → vanilla put_item path
-                    self.dynamo_client.put_item(
-                        TableName=self.table_name, Item=item
-                    )
+                    self.dynamo_client.put_item(TableName=self.table_name, Item=item)
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -226,9 +220,7 @@ class AIUsageTracker:
 
         return metadata
 
-    def track_openai_completion(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -269,9 +261,7 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(
-                            usage, "completion_tokens", None
-                        )
+                        output_tokens = getattr(usage, "completion_tokens", None)
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -279,8 +269,7 @@ class AIUsageTracker:
                             model=model,
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
-                            is_batch=kwargs.get("is_batch", False)
-                            or self.batch_mode,
+                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
@@ -327,9 +316,7 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(
-        self, func: Callable[..., Any]
-    ) -> Callable[..., Any]:
+    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -368,8 +355,7 @@ class AIUsageTracker:
                         cost_usd = AICostCalculator.calculate_openai_cost(
                             model=model,
                             total_tokens=total_tokens,
-                            is_batch=kwargs.get("is_batch", False)
-                            or self.batch_mode,
+                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
@@ -391,9 +377,7 @@ class AIUsageTracker:
                     {
                         "function": func.__name__,
                         "input_count": (
-                            len(kwargs.get("input", []))
-                            if "input" in kwargs
-                            else None
+                            len(kwargs.get("input", [])) if "input" in kwargs else None
                         ),
                     }
                 )
@@ -680,9 +664,7 @@ class AIUsageTracker:
                                                 "operation_type": current_context.get(
                                                     "operation_type"
                                                 ),
-                                                "job_id": current_context.get(
-                                                    "job_id"
-                                                ),
+                                                "job_id": current_context.get("job_id"),
                                                 "batch_id": current_context.get(
                                                     "batch_id"
                                                 ),
@@ -725,12 +707,8 @@ class AIUsageTracker:
                                         "operation_type": current_context.get(
                                             "operation_type"
                                         ),
-                                        "job_id": current_context.get(
-                                            "job_id"
-                                        ),
-                                        "batch_id": current_context.get(
-                                            "batch_id"
-                                        ),
+                                        "job_id": current_context.get("job_id"),
+                                        "batch_id": current_context.get("batch_id"),
                                     }
                                 )
 

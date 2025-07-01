@@ -992,7 +992,9 @@ def test_updateReceipts_raises_clienterror_internal_server_error(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Internal server error"):
+    from receipt_dynamo.data.shared_exceptions import DynamoDBServerError
+
+    with pytest.raises(DynamoDBServerError, match="Internal server error"):
         client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
@@ -1058,7 +1060,7 @@ def test_updateReceipts_raises_client_error(
     dynamodb_table, sample_receipt, mocker
 ):
     """
-    Simulate a client error in batch_write_item, e.g. ResourceNotFound.
+    Simulate a client error in transact_write_items, e.g. ResourceNotFound.
     """
     client = DynamoClient(dynamodb_table)
     mock_batch = mocker.patch.object(
@@ -1071,11 +1073,13 @@ def test_updateReceipts_raises_client_error(
                     "Message": "No table found",
                 }
             },
-            "BatchWriteItem",
+            "TransactWriteItems",
         ),
     )
 
-    with pytest.raises(ValueError, match="Error updating receipts"):
+    from receipt_dynamo.data.shared_exceptions import DynamoDBError
+
+    with pytest.raises(DynamoDBError, match="Error updating receipts"):
         client.update_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1488,10 +1492,13 @@ def test_deleteReceipts_raises_clienterror_access_denied(
                     "Message": "Access denied",
                 }
             },
-            "transact_write_items",
+            "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Access denied"):
+
+    from receipt_dynamo.data.shared_exceptions import DynamoDBAccessError
+
+    with pytest.raises(DynamoDBAccessError, match="Access denied"):
         client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
@@ -1516,11 +1523,13 @@ def test_deleteReceipts_raises_client_error(
                     "Message": "No table found",
                 }
             },
-            "transact_write_items",
+            "TransactWriteItems",
         ),
     )
 
-    with pytest.raises(ValueError, match="Error deleting receipts"):
+    from receipt_dynamo.data.shared_exceptions import DynamoDBError
+
+    with pytest.raises(DynamoDBError, match="Resource not found"):
         client.delete_receipts([sample_receipt])
 
     mock_batch.assert_called_once()

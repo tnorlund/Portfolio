@@ -77,7 +77,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queues is None:
-            raise ValueError("queues cannot be None") from e
+            raise ValueError("queues cannot be None")
 
         if not isinstance(queues, list):
             raise ValueError("queues must be a list")
@@ -155,7 +155,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue is None:
-            raise ValueError("queue cannot be None") from e
+            raise ValueError("queue cannot be None")
 
         if not isinstance(queue, Queue):
             raise ValueError("queue must be an instance of Queue")
@@ -190,7 +190,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue is None:
-            raise ValueError("queue cannot be None") from e
+            raise ValueError("queue cannot be None")
 
         if not isinstance(queue, Queue):
             raise ValueError("queue must be an instance of Queue")
@@ -225,7 +225,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty") from e
+            raise ValueError("queue_name cannot be empty")
 
         try:
             # Get the item from the DynamoDB table
@@ -236,7 +236,7 @@ class _Queue(DynamoClientProtocol):
 
             # Check if the item exists
             if "Item" not in response:
-                raise ValueError(f"Queue {queue_name} not found") from e
+                raise ValueError(f"Queue {queue_name} not found")
 
             # Convert the DynamoDB item to a Queue object
             return item_to_queue(response["Item"])
@@ -325,7 +325,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue_job is None:
-            raise ValueError("queue_job cannot be None") from e
+            raise ValueError("queue_job cannot be None")
 
         if not isinstance(queue_job, QueueJob):
             raise ValueError("queue_job must be an instance of QueueJob")
@@ -368,7 +368,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if queue_job is None:
-            raise ValueError("queue_job cannot be None") from e
+            raise ValueError("queue_job cannot be None")
 
         if not isinstance(queue_job, QueueJob):
             raise ValueError("queue_job must be an instance of QueueJob")
@@ -417,7 +417,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty") from e
+            raise ValueError("queue_name cannot be empty")
 
         # Check if the queue exists
         try:
@@ -487,7 +487,7 @@ class _Queue(DynamoClientProtocol):
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not job_id:
-            raise ValueError("job_id cannot be empty") from e
+            raise ValueError("job_id cannot be empty")
 
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)

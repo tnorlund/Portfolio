@@ -23,16 +23,16 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../tests"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
-from utils.ai_usage_helpers import (
+from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_google_places_response,
     create_mock_openai_response,

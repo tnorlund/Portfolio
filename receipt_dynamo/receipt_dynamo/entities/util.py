@@ -12,9 +12,7 @@ def _repr_str(value: Optional[str]) -> str:
     return "None" if value is None else f"'{value}'"
 
 
-def format_type_error(
-    name: str, value: Any, expected: Iterable[type] | type
-) -> str:
+def format_type_error(name: str, value: Any, expected: Iterable[type] | type) -> str:
     """Return a standardized type error message."""
     if isinstance(expected, Iterable) and not isinstance(expected, type):
         expected_names = ", ".join(t.__name__ for t in expected)
@@ -150,8 +148,7 @@ def compute_histogram(text: str) -> dict:
     total_letters = sum(histogram.values())
     if total_letters > 0:
         histogram = {
-            letter: count / total_letters
-            for letter, count in histogram.items()
+            letter: count / total_letters for letter, count in histogram.items()
         }
     return histogram
 

@@ -66,14 +66,14 @@ def list_pending_embedding_batches(
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+    summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
         status="PENDING",
         batch_type=BatchType.EMBEDDING,
         limit=25,
         lastEvaluatedKey=None,
     )
     while lek:
-        next_summaries, lek = client_manager.dynamo.getBatchSummariesByStatus(
+        next_summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
             status="PENDING",
             batch_type=BatchType.EMBEDDING,
             limit=25,
@@ -167,12 +167,12 @@ def get_receipt_descriptions(
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
         receipt, lines, words, letters, tags, labels = (
-            client_manager.dynamo.getReceiptDetails(
+            client_manager.dynamo.get_receipt_details(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
         )
-        receipt_metadata = client_manager.dynamo.getReceiptMetadata(
+        receipt_metadata = client_manager.dynamo.get_receipt_metadata(
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -261,11 +261,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
         target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
+            (w for w in words if w.line_id == line_id and w.word_id == word_id),
             None,
         )
         if target_word is None:
@@ -286,14 +282,10 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         #    "unvalidated" if none VALID,
         #    "auto_suggested" if ANY PENDING and none VALID,
         #    "validated" if at least one VALID
-        if any(
-            lbl.validation_status == ValidationStatus.VALID.value
-            for lbl in labels
-        ):
+        if any(lbl.validation_status == ValidationStatus.VALID.value for lbl in labels):
             label_status = "validated"
         elif any(
-            lbl.validation_status == ValidationStatus.PENDING.value
-            for lbl in labels
+            lbl.validation_status == ValidationStatus.PENDING.value for lbl in labels
         ):
             label_status = "auto_suggested"
         else:
@@ -308,9 +300,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         if auto_suggestions:
             # assume the last‑added pending label is the one your LLM just
             # suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
-                -1
-            ]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
             label_confidence = getattr(
                 last, "confidence", None
             )  # if you store it on the label
@@ -417,9 +407,7 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         try:
             if client_manager is None:
                 client_manager = get_client_manager()
-            response = client_manager.pinecone.upsert(
-                vectors=chunk, namespace="words"
-            )
+            response = client_manager.pinecone.upsert(vectors=chunk, namespace="words")
             upserted_count += response.get("upserted_count", 0)
         except Exception as e:
             print(f"Failed to upsert chunk to Pinecone: {e}")
@@ -458,11 +446,7 @@ def write_embedding_results_to_dynamo(
         # Find the ReceiptWord object to get text
         words = descriptions[image_id][receipt_id]["words"]
         target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
+            (w for w in words if w.line_id == line_id and w.word_id == word_id),
             None,
         )
         if target_word is None:
@@ -487,7 +471,7 @@ def write_embedding_results_to_dynamo(
         chunk = embedding_results[i : i + 25]
         if client_manager is None:
             client_manager = get_client_manager()
-        client_manager.dynamo.addEmbeddingBatchResults(chunk)
+        client_manager.dynamo.add_embedding_batch_results(chunk)
         written += len(chunk)
     return written
 
@@ -500,6 +484,6 @@ def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
     """
     if client_manager is None:
         client_manager = get_client_manager()
-    batch_summary = client_manager.dynamo.getBatchSummary(batch_id)
+    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
     batch_summary.status = "COMPLETED"
-    client_manager.dynamo.updateBatchSummary(batch_summary)
+    client_manager.dynamo.update_batch_summary(batch_summary)

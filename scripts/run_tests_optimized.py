@@ -172,9 +172,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Optimized test runner")
-    parser.add_argument(
-        "package", help="Package to test (e.g., receipt_dynamo)"
-    )
+    parser.add_argument("package", help="Package to test (e.g., receipt_dynamo)")
     parser.add_argument(
         "test_paths",
         nargs="*",

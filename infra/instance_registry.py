@@ -102,9 +102,7 @@ class InstanceRegistry:
             opts=opts,
         )
 
-    def create_registration_script(
-        self, leader_election_enabled: bool = True
-    ) -> str:
+    def create_registration_script(self, leader_election_enabled: bool = True) -> str:
         """Generate a shell script for instance self-registration.
 
         Args:
