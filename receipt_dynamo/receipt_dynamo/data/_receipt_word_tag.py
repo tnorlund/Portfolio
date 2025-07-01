@@ -1,5 +1,6 @@
 # _receipt_word_tag.py
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from botocore.exceptions import ClientError
 
@@ -9,13 +10,11 @@ from receipt_dynamo.data.shared_exceptions import OperationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
         DeleteRequestTypeDef,
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
-
-from typing import TYPE_CHECKING, Any, Dict, Optional
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25

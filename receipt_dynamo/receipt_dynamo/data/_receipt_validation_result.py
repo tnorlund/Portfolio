@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
@@ -15,8 +17,6 @@ if TYPE_CHECKING:
         WriteRequestTypeDef,
         PutTypeDef,
     )
-
-from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
