@@ -1,5 +1,5 @@
 from math import atan2, cos, degrees, pi, radians, sin, sqrt
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -41,11 +41,11 @@ class Line:
         image_id: str,
         line_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
@@ -75,42 +75,42 @@ class Line:
             raise ValueError("line_id must be an integer")
         if line_id <= 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
-        self.text = text
+        self.text: str = text
 
         assert_valid_bounding_box(bounding_box)
-        self.bounding_box = bounding_box
+        self.bounding_box: Dict[str, Any] = bounding_box
 
         assert_valid_point(top_right)
-        self.top_right = top_right
+        self.top_right: Dict[str, Any] = top_right
 
         assert_valid_point(top_left)
-        self.top_left = top_left
+        self.top_left: Dict[str, Any] = top_left
 
         assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
+        self.bottom_right: Dict[str, Any] = bottom_right
 
         assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
+        self.bottom_left: Dict[str, Any] = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(angle_degrees)
+        self.angle_degrees: float = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(angle_radians)
+        self.angle_radians: float = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
         if not isinstance(confidence, float) or not (0 < confidence <= 1):
             raise ValueError("confidence must be a float between 0 and 1")
-        self.confidence = confidence
+        self.confidence: float = confidence
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the line.
 
         Returns:
@@ -121,7 +121,7 @@ class Line:
             "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the line.
 
         Returns:
@@ -132,7 +132,7 @@ class Line:
             "GSI1SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Line object to a DynamoDB item.
 
         Returns:
@@ -147,8 +147,12 @@ class Line:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -518,7 +522,9 @@ class Line:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -612,11 +618,11 @@ class Line:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Line object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -630,7 +636,7 @@ class Line:
         yield "angle_radians", self.angle_radians
         yield "confidence", self.confidence
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Returns a dictionary representation of the Line object."""
         return {
             "image_id": self.image_id,
@@ -707,7 +713,7 @@ class Line:
             bool: True if the point is inside the bounding box, False
                 otherwise.
         """
-        return (
+        return bool(
             self.bounding_box["x"]
             <= x
             <= self.bounding_box["x"] + self.bounding_box["width"]
@@ -717,7 +723,7 @@ class Line:
         )
 
 
-def item_to_line(item: dict) -> Line:
+def item_to_line(item: Dict[str, Any]) -> Line:
     """Converts a DynamoDB item to a Line object.
 
     Args:
@@ -755,10 +761,12 @@ def item_to_line(item: dict) -> Line:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

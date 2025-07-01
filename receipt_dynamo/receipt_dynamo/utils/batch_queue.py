@@ -4,7 +4,7 @@ Batch queue implementation for efficient DynamoDB writes and rate limiting.
 
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 
 class BatchQueue:
@@ -140,11 +140,13 @@ class BatchQueue:
         # Final flush
         self.flush()
 
-    def __enter__(self):
+    def __enter__(self) -> "BatchQueue":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: Any, exc_val: Any, exc_tb: Any
+    ) -> Literal[False]:
         """Context manager exit - ensure all items are flushed."""
         self.stop()
         return False

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities.util import (
@@ -54,27 +54,27 @@ class OCRJob:
 
         if receipt_id is not None and not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer or None")
-        self.receipt_id = receipt_id
+        self.receipt_id: int | None = receipt_id
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
             "GSI1SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         return {
             "GSI2PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
             "GSI2SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi1_key(),
@@ -154,7 +154,7 @@ class OCRJob:
         )
 
 
-def item_to_ocr_job(item: dict) -> OCRJob:
+def item_to_ocr_job(item: Dict[str, Any]) -> OCRJob:
     """Converts a DynamoDB item to a OCRJob object.
 
     Args:

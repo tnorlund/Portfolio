@@ -1,10 +1,24 @@
 # _word_tag.py
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import WordTag, item_to_word_tag
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        QueryInputTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -79,7 +93,10 @@ class _WordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": wt.to_item()}} for wt in chunk]
+                request_items = [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=wt.to_item()))
+                    for wt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -109,12 +126,12 @@ class _WordTag(DynamoClientProtocol):
         except ClientError as e:
             raise OperationError(f"Error updating WordTag: {e}") from e
 
-    def delete_word_tag(self, image_id: int, line_id: int, word_id: int, tag: str):
+    def delete_word_tag(self, image_id: str, line_id: int, word_id: int, tag: str):
         """
         Deletes a single WordTag from the database, ensuring it exists.
 
         Args:
-            image_id (int): The image ID.
+            image_id (str): The image ID.
             tag (str): The tag string.
             word_id (int): The word ID.
 
@@ -125,11 +142,11 @@ class _WordTag(DynamoClientProtocol):
         # Remember to underscore-pad the tag if your WordTag class does so in SK
         # Here, we'll replicate minimal logic to find the padded tag
         word_tag = WordTag(
-            image_id,
+            str(image_id),
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         )  # This is a placeholder value
 
         try:
@@ -157,7 +174,12 @@ class _WordTag(DynamoClientProtocol):
         try:
             for i in range(0, len(word_tags), CHUNK_SIZE):
                 chunk = word_tags[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": wt.key()}} for wt in chunk]
+                request_items = [
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=wt.key())
+                    )
+                    for wt in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -174,14 +196,14 @@ class _WordTag(DynamoClientProtocol):
         Internally uses list_word_tags_from_image(...) then delete_word_tags(...).
 
         Args:
-            image_id (int): The image ID.
+            image_id (str): The image ID.
         """
         tags = self.list_word_tags_from_image(image_id)
         self.delete_word_tags(tags)
 
     def get_word_tag(
         self,
-        image_id: int,
+        image_id: str,
         line_id: int,
         word_id: int,
         tag: str,
@@ -202,11 +224,11 @@ class _WordTag(DynamoClientProtocol):
             ValueError: If the item does not exist.
         """
         word_tag = WordTag(
-            image_id,
+            str(image_id),
             line_id,
             word_id,
             tag,
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         )  # This is a placeholder value
 
         try:
@@ -278,7 +300,7 @@ class _WordTag(DynamoClientProtocol):
         """
         word_tags: List[WordTag] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

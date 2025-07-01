@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_image.py
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
@@ -27,6 +27,25 @@ from receipt_dynamo import (
 )
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -34,6 +53,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
     OperationError,
+    ReceiptDynamoError,
 )
 from receipt_dynamo.entities import (
     ImageDetails,
@@ -82,41 +102,7 @@ class _Image(DynamoClientProtocol):
 
     def getMaxImageId(self) -> int:
         """Retrieves the maximum image ID found in the database."""
-        pass
-
-    def update_image(self, image: Image):
-        """Updates an existing Image item in the database."""
-        pass
-
-    def get_image_details(self, image_id: str) -> tuple[
-        Image,
-        list[Line],
-        list[Word],
-        list[WordTag],
-        list[Letter],
-        list[
-            Dict[
-                str,
-                Union[Receipt, list[ReceiptLine], list[Word], list[Letter]],
-            ]
-        ],
-    ]:
-        """Retrieves comprehensive details for an Image, including lines, words, letters, and receipt data (including metadata) associated with the Image."""
-        pass
-
-    def get_image_cluster_details(
-        self, image_id: str
-    ) -> tuple[Image, list[Line], list[Receipt]]:
-        """Retrieves comprehensive details for an Image, including lines and receipts associated with the Image."""
-        pass
-
-    def delete_image(self, image_id: str):
-        """Deletes a single Image item from the database by its ID."""
-        pass
-
-    def delete_images(self, images: list[Image]):
-        """Deletes multiple Image items in chunks of up to 25 items."""
-        pass
+        raise NotImplementedError("This method should be implemented by subclasses")
 
     def listImageDetails(
         self,
@@ -127,15 +113,7 @@ class _Image(DynamoClientProtocol):
         Optional[Dict],
     ]:
         """Lists images (via GSI) with optional pagination and returns their basic details."""
-        pass
-
-    def list_images(
-        self,
-        limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
-    ) -> Tuple[List[Image], Optional[Dict]]:
-        """Lists images (via GSI) with optional pagination, returning Image objects directly."""
-        pass
+        raise NotImplementedError("This method should be implemented by subclasses")
 
     def add_image(self, image: Image):
         """
@@ -220,7 +198,10 @@ class _Image(DynamoClientProtocol):
             for i in range(0, len(images), CHUNK_SIZE):
                 chunk = images[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": image.to_item()}} for image in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=image.to_item())
+                    )
+                    for image in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -362,13 +343,13 @@ class _Image(DynamoClientProtocol):
             transact_items = []
             for image in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": image.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=image.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -563,6 +544,8 @@ class _Image(DynamoClientProtocol):
                 lines.append(item_to_line(item))
             elif item["TYPE"]["S"] == "RECEIPT":
                 receipts.append(item_to_receipt(item))
+        if image is None:
+            raise ValueError(f"Image with ID {image_id} not found in database")
         return image, lines, receipts
 
     def delete_image(self, image_id: str):
@@ -615,7 +598,10 @@ class _Image(DynamoClientProtocol):
             for i in range(0, len(images), CHUNK_SIZE):
                 chunk = images[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"DeleteRequest": {"Key": image.key()}} for image in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=image.key())
+                    )
+                    for image in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -632,7 +618,7 @@ class _Image(DynamoClientProtocol):
         image_id: str,
         limit: Optional[int] = None,
         lastEvaluatedKey: Optional[Dict] = None,
-    ) -> Tuple[List[Image], List[WordTag], Optional[Dict]]:
+    ) -> Tuple[Optional[Image], List[Word], List[WordTag], Optional[Dict[str, Any]]]:
         """
         Lists images and their associated words and tags from the database.
 
@@ -666,7 +652,7 @@ class _Image(DynamoClientProtocol):
         words = []
         word_tags = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :val",
@@ -730,7 +716,7 @@ class _Image(DynamoClientProtocol):
         """
         images = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -784,7 +770,7 @@ class _Image(DynamoClientProtocol):
             image_type = image_type.value
         images = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#t = :val",

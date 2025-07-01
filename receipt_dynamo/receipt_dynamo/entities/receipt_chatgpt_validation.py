@@ -28,7 +28,7 @@ class ReceiptChatGPTValidation:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -104,7 +104,9 @@ class ReceiptChatGPTValidation:
         elif isinstance(value, (int, float)):
             return {"N": str(value)}
         elif isinstance(value, dict):
-            return {"M": {k: self._python_to_dynamo(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
+            }
         elif isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
         else:
@@ -153,7 +155,9 @@ class ReceiptChatGPTValidation:
             response=item["response"]["S"],
             timestamp=timestamp,
             metadata=(
-                cls._dynamo_to_python(item["metadata"]) if "metadata" in item else {}
+                cls._dynamo_to_python(item["metadata"])
+                if "metadata" in item
+                else {}
             ),
         )
 

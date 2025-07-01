@@ -463,19 +463,19 @@ layers_to_build = [
         "package_dir": "receipt_dynamo",
         "name": "receipt-dynamo",
         "description": "DynamoDB layer for receipt-dynamo",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
     },
     {
         "package_dir": "receipt_label",
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
     },
     {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
     },
 ]
 

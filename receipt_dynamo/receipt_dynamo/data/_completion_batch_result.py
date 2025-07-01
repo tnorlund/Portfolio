@@ -1,9 +1,22 @@
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
     OperationError,
@@ -14,7 +27,7 @@ from receipt_dynamo.entities.completion_batch_result import (
 )
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
@@ -45,7 +58,10 @@ class _CompletionBatchResult(DynamoClientProtocol):
             raise ValueError("Must provide a list of CompletionBatchResult instances.")
         for i in range(0, len(results), 25):
             chunk = results[i : i + 25]
-            request_items = [{"PutRequest": {"Item": r.to_item()}} for r in chunk]
+            request_items = [
+                WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=r.to_item()))
+                for r in chunk
+            ]
             response = self._client.batch_write_item(
                 RequestItems={self.table_name: request_items}
             )
@@ -109,16 +125,18 @@ class _CompletionBatchResult(DynamoClientProtocol):
             ) from e
 
     def list_completion_batch_results(
-        self, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("limit must be a positive integer.")
         if lastEvaluatedKey is not None:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
+        results: List[CompletionBatchResult] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -149,15 +167,18 @@ class _CompletionBatchResult(DynamoClientProtocol):
             ) from e
 
     def get_completion_batch_results_by_status(
-        self, status: str, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        status: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if status not in [s.value for s in ValidationStatus]:
             raise ValueError("Invalid status.")
         if lastEvaluatedKey:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
-        query_params = {
+        results: List[CompletionBatchResult] = []
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI2",
             "KeyConditionExpression": "GSI2SK = :val",
@@ -185,16 +206,16 @@ class _CompletionBatchResult(DynamoClientProtocol):
     def get_completion_batch_results_by_label_target(
         self,
         label_target: str,
-        limit: int = None,
-        lastEvaluatedKey: dict = None,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(label_target, str):
             raise ValueError("label_target must be a string.")
         if lastEvaluatedKey:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
-        query_params = {
+        results: List[CompletionBatchResult] = []
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :pk",
@@ -218,15 +239,18 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 return results, None
 
     def get_completion_batch_results_by_receipt(
-        self, receipt_id: int, limit: int = None, lastEvaluatedKey: dict = None
+        self,
+        receipt_id: int,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("receipt_id must be a positive integer")
         if lastEvaluatedKey:
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        results = []
-        query_params = {
+        results: List[CompletionBatchResult] = []
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI3",
             "KeyConditionExpression": "GSI3PK = :pk",

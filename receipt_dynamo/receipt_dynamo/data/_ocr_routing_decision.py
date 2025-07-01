@@ -1,7 +1,26 @@
+from typing import TYPE_CHECKING
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -65,7 +84,10 @@ class _OCRRoutingDecision(DynamoClientProtocol):
         for i in range(0, len(ocr_routing_decisions), 25):
             chunk = ocr_routing_decisions[i : i + 25]
             request_items = [
-                {"PutRequest": {"Item": decision.to_item()}} for decision in chunk
+                WriteRequestTypeDef(
+                    PutRequest=PutRequestTypeDef(Item=decision.to_item())
+                )
+                for decision in chunk
             ]
             try:
                 response = self._client.batch_write_item(
@@ -197,13 +219,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             transact_items = []
             for item in chunk:
                 transact_items.append(
-                    {
-                        "Delete": {
-                            "TableName": self.table_name,
-                            "Key": item.key(),
-                            "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Delete=DeleteTypeDef(
+                            TableName=self.table_name,
+                            Key=item.key(),
+                            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)

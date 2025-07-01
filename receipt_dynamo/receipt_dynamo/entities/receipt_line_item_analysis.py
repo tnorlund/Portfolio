@@ -36,7 +36,7 @@ class ReceiptLineItemAnalysis:
     def __init__(
         self,
         image_id: str,
-        receipt_id: str,
+        receipt_id: int,
         timestamp_added: Union[datetime, str],
         items: List[Dict],
         reasoning: str,
@@ -82,16 +82,19 @@ class ReceiptLineItemAnalysis:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
+            self.timestamp_added: str = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         # Store timestamp_updated if provided
+        self.timestamp_updated: Optional[str]
         if timestamp_updated is not None:
             if isinstance(timestamp_updated, datetime):
                 self.timestamp_updated = timestamp_updated.isoformat()
@@ -107,15 +110,15 @@ class ReceiptLineItemAnalysis:
         # Validate and process items
         if not isinstance(items, list):
             raise ValueError("items must be a list")
-        self.items = items
+        self.items: List[Dict[str, Any]] = items
 
         if not isinstance(reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning = reasoning
+        self.reasoning: str = reasoning
 
         if not isinstance(version, str):
             raise ValueError("version must be a string")
-        self.version = version
+        self.version: str = version
 
         # Process financial amounts (can be Decimal or string)
         self.subtotal = self._process_decimal(subtotal, "subtotal")
@@ -126,6 +129,7 @@ class ReceiptLineItemAnalysis:
         self.tips = self._process_decimal(tips, "tips")
 
         # Process total_found
+        self.total_found: int
         if total_found is not None:
             if not isinstance(total_found, int) or total_found < 0:
                 raise ValueError("total_found must be a non-negative integer")
@@ -137,7 +141,7 @@ class ReceiptLineItemAnalysis:
         if discrepancies is not None:
             if not isinstance(discrepancies, list):
                 raise ValueError("discrepancies must be a list")
-            self.discrepancies = discrepancies
+            self.discrepancies: List[str] = discrepancies
         else:
             self.discrepancies = []
 
@@ -157,7 +161,7 @@ class ReceiptLineItemAnalysis:
         if word_labels is not None:
             if not isinstance(word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
-            self.word_labels = word_labels
+            self.word_labels: Dict[Tuple[int, int], Any] = word_labels
         else:
             self.word_labels = {}
 
@@ -171,10 +175,12 @@ class ReceiptLineItemAnalysis:
             try:
                 return Decimal(value)
             except:
-                raise ValueError(f"{field_name} string must be convertible to Decimal")
+                raise ValueError(
+                    f"{field_name} string must be convertible to Decimal"
+                )
         raise ValueError(f"{field_name} must be a Decimal, string, or None")
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt line item analysis.
 
         Returns:
@@ -185,7 +191,7 @@ class ReceiptLineItemAnalysis:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the receipt line item analysis.
 
         Returns:
@@ -196,7 +202,7 @@ class ReceiptLineItemAnalysis:
             "GSI1SK": {"S": f"LINE_ITEMS#{self.timestamp_added}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the receipt line item analysis.
 
         Returns:
@@ -204,16 +210,18 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptLineItemAnalysis object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the ReceiptLineItemAnalysis object as a DynamoDB item.
         """
-        item = {
+        item: Dict[str, Any] = {
             **self.key(),
             **self.gsi1_key(),
             **self.gsi2_key(),
@@ -229,59 +237,73 @@ class ReceiptLineItemAnalysis:
             item["timestamp_updated"] = {"S": self.timestamp_updated}
 
         # Convert items list to DynamoDB format
-        item["items"] = {"L": [self._convert_item_to_dynamo(i) for i in self.items]}
+        items_list: List[Dict[str, Any]] = [
+            self._convert_item_to_dynamo(i) for i in self.items
+        ]
+        item["items"] = {"L": items_list}
 
         # Convert discrepancies list to DynamoDB format
-        item["discrepancies"] = {
-            "L": [{"S": discrepancy} for discrepancy in self.discrepancies]
-        }
+        discrepancies_list: List[Dict[str, str]] = [
+            {"S": discrepancy} for discrepancy in self.discrepancies
+        ]
+        item["discrepancies"] = {"L": discrepancies_list}
 
         # Add word_labels if present
         if self.word_labels:
-            word_labels_dynamo = {}
+            word_labels_dynamo: Dict[str, Any] = {}
             for (line_id, word_id), label_info in self.word_labels.items():
                 key = f"{line_id}:{word_id}"
                 word_labels_dynamo[key] = {
                     "M": self._convert_dict_to_dynamo(label_info)
                 }
-            item["word_labels"] = {"M": word_labels_dynamo}
+            word_labels_value: Dict[str, Any] = {"M": word_labels_dynamo}
+            item["word_labels"] = word_labels_value
         else:
             item["word_labels"] = {"NULL": True}
 
         # Add financial fields if present
         if self.subtotal is not None:
-            item["subtotal"] = {"S": str(self.subtotal)}
+            subtotal_value: Dict[str, str] = {"S": str(self.subtotal)}
+            item["subtotal"] = subtotal_value
         else:
             item["subtotal"] = {"NULL": True}
 
         if self.tax is not None:
-            item["tax"] = {"S": str(self.tax)}
+            tax_value: Dict[str, str] = {"S": str(self.tax)}
+            item["tax"] = tax_value
         else:
             item["tax"] = {"NULL": True}
 
         if self.total is not None:
-            item["total"] = {"S": str(self.total)}
+            total_value: Dict[str, str] = {"S": str(self.total)}
+            item["total"] = total_value
         else:
             item["total"] = {"NULL": True}
 
         if self.fees is not None:
-            item["fees"] = {"S": str(self.fees)}
+            fees_value: Dict[str, str] = {"S": str(self.fees)}
+            item["fees"] = fees_value
         else:
             item["fees"] = {"NULL": True}
 
         if self.discounts is not None:
-            item["discounts"] = {"S": str(self.discounts)}
+            discounts_value: Dict[str, str] = {"S": str(self.discounts)}
+            item["discounts"] = discounts_value
         else:
             item["discounts"] = {"NULL": True}
 
         if self.tips is not None:
-            item["tips"] = {"S": str(self.tips)}
+            tips_value: Dict[str, str] = {"S": str(self.tips)}
+            item["tips"] = tips_value
         else:
             item["tips"] = {"NULL": True}
 
         # Add metadata if present
         if self.metadata:
-            item["metadata"] = {"M": self._convert_dict_to_dynamo(self.metadata)}
+            metadata_value: Dict[str, Any] = {
+                "M": self._convert_dict_to_dynamo(self.metadata)
+            }
+            item["metadata"] = metadata_value
         else:
             item["metadata"] = {"NULL": True}
 
@@ -296,7 +318,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             Dict: The line item in DynamoDB format.
         """
-        result = {"M": {}}
+        result: Dict[str, Any] = {"M": {}}
 
         # Add required fields
         if "description" in item:
@@ -314,7 +336,7 @@ class ReceiptLineItemAnalysis:
         # Convert quantity if present
         if "quantity" in item and item["quantity"]:
             quantity = item["quantity"]
-            quantity_map = {"M": {}}
+            quantity_map: Dict[str, Any] = {"M": {}}
 
             if "amount" in quantity:
                 quantity_map["M"]["amount"] = {"S": str(quantity["amount"])}
@@ -327,13 +349,18 @@ class ReceiptLineItemAnalysis:
         # Convert price if present
         if "price" in item and item["price"]:
             price = item["price"]
-            price_map = {"M": {}}
+            price_map: Dict[str, Any] = {"M": {}}
 
             if "unit_price" in price and price["unit_price"] is not None:
                 price_map["M"]["unit_price"] = {"S": str(price["unit_price"])}
 
-            if "extended_price" in price and price["extended_price"] is not None:
-                price_map["M"]["extended_price"] = {"S": str(price["extended_price"])}
+            if (
+                "extended_price" in price
+                and price["extended_price"] is not None
+            ):
+                price_map["M"]["extended_price"] = {
+                    "S": str(price["extended_price"])
+                }
 
             result["M"]["price"] = price_map
 
@@ -354,7 +381,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             Dict: The dictionary in DynamoDB format.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._convert_dict_to_dynamo(v)}
@@ -393,7 +420,9 @@ class ReceiptLineItemAnalysis:
 
         self.metadata["processing_metrics"][metric_name] = value
 
-    def add_history_event(self, event_type: str, details: Dict = None) -> None:
+    def add_history_event(
+        self, event_type: str, details: Optional[Dict] = None
+    ) -> None:
         """Adds a history event to the metadata.
 
         Args:
@@ -419,7 +448,9 @@ class ReceiptLineItemAnalysis:
         Returns:
             str: A detailed explanation of how items were identified and calculations performed.
         """
-        reasoning_parts = [f"Analyzed {self.total_found} line items from the receipt."]
+        reasoning_parts = [
+            f"Analyzed {self.total_found} line items from the receipt."
+        ]
 
         # Add financial summary
         financial_parts = []
@@ -437,7 +468,9 @@ class ReceiptLineItemAnalysis:
             financial_parts.append(f"Total: ${self.total}")
 
         if financial_parts:
-            reasoning_parts.append("Financial summary: " + ", ".join(financial_parts))
+            reasoning_parts.append(
+                "Financial summary: " + ", ".join(financial_parts)
+            )
 
         # Add discrepancies if any
         if self.discrepancies:
@@ -447,7 +480,9 @@ class ReceiptLineItemAnalysis:
 
         # Add item reasoning summary
         item_reasons = [
-            item.get("reasoning", "") for item in self.items if item.get("reasoning")
+            item.get("reasoning", "")
+            for item in self.items
+            if item.get("reasoning")
         ]
         if item_reasons:
             # Just include a summary count to avoid extremely long reasoning strings
@@ -582,7 +617,9 @@ class ReceiptLineItemAnalysis:
         )
 
 
-def item_to_receipt_line_item_analysis(item: dict) -> ReceiptLineItemAnalysis:
+def item_to_receipt_line_item_analysis(
+    item: Dict[str, Any],
+) -> ReceiptLineItemAnalysis:
     """Converts a DynamoDB item to a ReceiptLineItemAnalysis object.
 
     Args:
@@ -624,7 +661,10 @@ def item_to_receipt_line_item_analysis(item: dict) -> ReceiptLineItemAnalysis:
         total_found = int(item["total_found"]["N"])
 
         # Convert items from DynamoDB format
-        items = [_convert_dynamo_to_item(item_dict) for item_dict in item["items"]["L"]]
+        items = [
+            _convert_dynamo_to_item(item_dict)
+            for item_dict in item["items"]["L"]
+        ]
 
         # Extract optional financial fields
         subtotal = item.get("subtotal", {}).get("S")
@@ -648,13 +688,16 @@ def item_to_receipt_line_item_analysis(item: dict) -> ReceiptLineItemAnalysis:
         )
 
         # Extract word_labels
-        word_labels = None
+        word_labels: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None
         if "word_labels" in item and item["word_labels"].get("M"):
             word_labels = {}
             word_labels_dynamo = item["word_labels"]["M"]
             for key, value in word_labels_dynamo.items():
                 line_id, word_id = map(int, key.split(":"))
-                word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(value["M"])
+                if word_labels is not None:  # Type guard for mypy
+                    word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(
+                        value["M"]
+                    )
 
         return ReceiptLineItemAnalysis(
             image_id=image_id,
@@ -676,7 +719,9 @@ def item_to_receipt_line_item_analysis(item: dict) -> ReceiptLineItemAnalysis:
             word_labels=word_labels,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to ReceiptLineItemAnalysis: {e}")
+        raise ValueError(
+            f"Error converting item to ReceiptLineItemAnalysis: {e}"
+        )
 
 
 def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
@@ -688,7 +733,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
     Returns:
         Dict: The item as a Python dictionary.
     """
-    item = {}
+    item: Dict[str, Any] = {}
     item_map = dynamo_item.get("M", {})
 
     # Extract basic fields
@@ -700,7 +745,9 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
 
     # Extract line_ids
     if "line_ids" in item_map:
-        item["line_ids"] = [int(line_id["N"]) for line_id in item_map["line_ids"]["L"]]
+        item["line_ids"] = [
+            int(line_id["N"]) for line_id in item_map["line_ids"]["L"]
+        ]
 
     # Extract quantity
     if "quantity" in item_map:
@@ -722,7 +769,9 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
             item["price"]["unit_price"] = Decimal(price_map["unit_price"]["S"])
 
         if "extended_price" in price_map:
-            item["price"]["extended_price"] = Decimal(price_map["extended_price"]["S"])
+            item["price"]["extended_price"] = Decimal(
+                price_map["extended_price"]["S"]
+            )
 
     # Extract metadata
     if "metadata" in item_map and "M" in item_map["metadata"]:
@@ -740,7 +789,7 @@ def _convert_dynamo_to_dict(dynamo_dict: Dict) -> Dict:
     Returns:
         Dict: The dictionary as a Python dictionary.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in dynamo_dict.items():
         if "M" in v:
             result[k] = _convert_dynamo_to_dict(v["M"])

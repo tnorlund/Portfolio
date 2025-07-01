@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -25,7 +25,7 @@ class QueueJob:
         self,
         queue_name: str,
         job_id: str,
-        enqueued_at: datetime or str,
+        enqueued_at: datetime | str,
         priority: str = "medium",
         position: int = 0,
     ):
@@ -48,23 +48,29 @@ class QueueJob:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
+        self.enqueued_at: str
         if isinstance(enqueued_at, datetime):
             self.enqueued_at = enqueued_at.isoformat()
         elif isinstance(enqueued_at, str):
             self.enqueued_at = enqueued_at
         else:
-            raise ValueError("enqueued_at must be a datetime object or a string")
+            raise ValueError(
+                "enqueued_at must be a datetime object or a string"
+            )
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
         if not isinstance(position, int) or position < 0:
             raise ValueError("position must be a non-negative integer")
-        self.position = position
+        self.position: int = position
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the queue-job association.
 
         Returns:
@@ -75,7 +81,7 @@ class QueueJob:
             "SK": {"S": f"JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the queue-job association.
 
         Returns:
@@ -86,7 +92,7 @@ class QueueJob:
             "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the QueueJob object to a DynamoDB item.
 
         Returns:
@@ -166,7 +172,7 @@ class QueueJob:
         )
 
 
-def item_to_queue_job(item: dict) -> QueueJob:
+def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
     """Converts a DynamoDB item to a QueueJob object.
 
     Args:

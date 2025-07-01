@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.util import (
@@ -21,7 +21,7 @@ class LabelMetadata:
         schema_version: int,
         last_updated: datetime,
         label_target: Optional[str] = None,
-        receipt_refs: list[tuple[str, int]] = None,
+        receipt_refs: Optional[list[tuple[str, int]]] = None,
     ):
         assert_type("label", label, str, ValueError)
         self.label = label
@@ -58,25 +58,25 @@ class LabelMetadata:
                 )
         self.receipt_refs = receipt_refs
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"LABEL#{self.label}"},
             "SK": {"S": "METADATA"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"LABEL#{self.label}"},
             "GSI1SK": {"S": "METADATA"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         return {
             "GSI2PK": {"S": f"LABEL_TARGET#{self.label_target}"},
             "GSI2SK": {"S": f"LABEL#{self.label}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi1_key(),
@@ -86,7 +86,9 @@ class LabelMetadata:
             "schema_version": {"N": str(self.schema_version)},
             "last_updated": {"S": self.last_updated.isoformat()},
             "label_target": (
-                {"S": self.label_target} if self.label_target else {"NULL": True}
+                {"S": self.label_target}
+                if self.label_target
+                else {"NULL": True}
             ),
             "receipt_refs": (
                 {
@@ -122,7 +124,7 @@ class LabelMetadata:
         return self.__repr__()
 
 
-def item_to_label_metadata(item: dict) -> LabelMetadata:
+def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
     required_keys = {
         "status",
         "aliases",
@@ -144,13 +146,16 @@ def item_to_label_metadata(item: dict) -> LabelMetadata:
         description = item["description"]["S"]
         schema_version = int(item["schema_version"]["N"])
         last_updated = datetime.fromisoformat(item["last_updated"]["S"])
-        label_target = item["label_target"]["S"] if item["label_target"]["S"] else None
+        label_target = (
+            item["label_target"]["S"] if item["label_target"]["S"] else None
+        )
         receipt_refs = (
             [
                 (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
                 for r in item["receipt_refs"]["L"]
             ]
-            if "receipt_refs" in item and item["receipt_refs"] != {"NULL": True}
+            if "receipt_refs" in item
+            and item["receipt_refs"] != {"NULL": True}
             else None
         )
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -7,6 +7,23 @@ from receipt_dynamo import (
     item_to_receipt_structure_analysis,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -43,7 +60,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
     ) -> ReceiptStructureAnalysis:
         Retrieves a single ReceiptStructureAnalysis by IDs.
     list_receipt_structure_analyses(
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptStructureAnalysis], dict | None]:
         Returns ReceiptStructureAnalyses and the last evaluated key.
@@ -124,7 +141,10 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [{"PutRequest": {"Item": a.to_item()}} for a in chunk]
+                request_items = [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=a.to_item()))
+                    for a in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -233,7 +253,10 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         try:
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
-                request_items = [{"PutRequest": {"Item": a.to_item()}} for a in chunk]
+                request_items = [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=a.to_item()))
+                    for a in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -268,7 +291,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 # If there's duplicate items, try to identify them
                 if "contains duplicates" in error_message:
                     # Create a dictionary to find duplicates
-                    keys_seen = {}
+                    keys_seen: Dict[str, Any] = {}
                     duplicate_keys = []
 
                     for i, a in enumerate(analyses):
@@ -375,16 +398,16 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             for i in range(0, len(analyses), 25):
                 chunk = analyses[i : i + 25]
                 request_items = [
-                    {
-                        "DeleteRequest": {
-                            "Key": {
-                                "PK": {"S": "IMAGE#{a.image_id}"},
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(
+                            Key={
+                                "PK": {"S": f"IMAGE#{a.image_id}"},
                                 "SK": {
-                                    "S": "RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
+                                    "S": f"RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                                 },
                             }
-                        }
-                    }
+                        )
+                    )
                     for a in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -481,7 +504,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 return item_to_receipt_structure_analysis(item)
             else:
                 # If no version is provided, query for all analyses and return the first one
-                query_params = {
+                query_params: QueryInputTypeDef = {
                     "TableName": self.table_name,
                     "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
                     "ExpressionAttributeNames": {
@@ -497,8 +520,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "Limit": 1,  # We only need one result
                 }
 
-                response = self._client.query(**query_params)
-                items = response.get("Items", [])
+                query_response = self._client.query(**query_params)
+                items = query_response.get("Items", [])
 
                 if not items:
                     raise ValueError(
@@ -552,7 +575,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
         structure_analyses = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -638,7 +661,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             raise ValueError(f"Invalid image_id format: {e}") from e
 
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
                 "ExpressionAttributeNames": {

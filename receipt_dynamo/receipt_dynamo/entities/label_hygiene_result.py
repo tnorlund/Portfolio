@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -14,7 +14,7 @@ class LabelHygieneResult:
         gpt_agreed: bool,
         source_batch_id: Optional[str],
         example_ids: list[str],
-        timestamp: str,
+        timestamp: datetime,
         image_id: str,  # Added image_id parameter
         receipt_id: int,  # Added receipt_id parameter
     ):
@@ -37,7 +37,9 @@ class LabelHygieneResult:
             raise ValueError("gpt_agreed must be a boolean")
         self.gpt_agreed = gpt_agreed
 
-        if source_batch_id is not None and not isinstance(source_batch_id, str):
+        if source_batch_id is not None and not isinstance(
+            source_batch_id, str
+        ):
             raise ValueError("source_batch_id must be a string or None")
         self.source_batch_id = source_batch_id
 
@@ -50,32 +52,34 @@ class LabelHygieneResult:
         self.image_id = image_id  # Store image_id
 
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")  # Validate receipt_id
-        self.receipt_id = receipt_id  # Store receipt_id
+            raise ValueError(
+                "receipt_id must be an integer"
+            )  # Validate receipt_id
+        self.receipt_id: int = receipt_id  # Store receipt_id
 
         if not isinstance(timestamp, datetime):
             raise ValueError("timestamp must be a datetime object")
-        self.timestamp = timestamp
+        self.timestamp: datetime = timestamp
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"LABEL_HYGIENE#{self.hygiene_id}"},
             "SK": {"S": f"FROM#{self.alias}#TO#{self.canonical_label}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"ALIAS#{self.alias}"},
             "GSI1SK": {"S": f"TO#{self.canonical_label}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         return {
             "GSI2PK": {"S": f"CANONICAL_LABEL#{self.canonical_label}"},
             "GSI2SK": {"S": f"ALIAS#{self.alias}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi1_key(),
@@ -87,8 +91,12 @@ class LabelHygieneResult:
             "gpt_agreed": {"BOOL": self.gpt_agreed},
             "source_batch_id": {"S": self.source_batch_id or ""},
             "example_ids": {"SS": self.example_ids},
-            "image_id": {"S": self.image_id},  # Include image_id in serialization
-            "receipt_id": {"N": self.receipt_id},  # Include receipt_id in serialization
+            "image_id": {
+                "S": self.image_id
+            },  # Include image_id in serialization
+            "receipt_id": {
+                "N": self.receipt_id
+            },  # Include receipt_id in serialization
             "timestamp": {"S": self.timestamp.isoformat()},
         }
 
@@ -134,7 +142,8 @@ class LabelHygieneResult:
             and self.gpt_agreed == other.gpt_agreed
             and self.source_batch_id == other.source_batch_id
             and self.example_ids == other.example_ids
-            and self.image_id == other.image_id  # Include image_id in equality check
+            and self.image_id
+            == other.image_id  # Include image_id in equality check
             and self.receipt_id
             == other.receipt_id  # Include receipt_id in equality check
             and self.timestamp == other.timestamp
@@ -157,7 +166,7 @@ class LabelHygieneResult:
         )
 
 
-def item_to_label_hygiene_result(item: dict) -> LabelHygieneResult:
+def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
     """
     Converts an item from DynamoDB to a LabelHygieneResult object.
     """
@@ -205,4 +214,6 @@ def item_to_label_hygiene_result(item: dict) -> LabelHygieneResult:
             receipt_id,  # Pass receipt_id to constructor
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to LabelHygieneResult: {e}") from e
+        raise ValueError(
+            f"Error converting item to LabelHygieneResult: {e}"
+        ) from e

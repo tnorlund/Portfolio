@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.util import (
@@ -64,19 +64,19 @@ class ReceiptWordLabel:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer")
         if line_id <= 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer")
         if word_id <= 0:
             raise ValueError("word_id must be positive")
-        self.word_id = word_id
+        self.word_id: int = word_id
 
         if not isinstance(label, str):
             raise ValueError("label must be a string")
@@ -90,17 +90,21 @@ class ReceiptWordLabel:
             raise ValueError("reasoning cannot be empty")
         self.reasoning = reasoning
 
+        self.timestamp_added: str
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         # Always assign a valid enum value for validation_status
         status = validation_status or ValidationStatus.NONE.value
         self.validation_status = normalize_enum(status, ValidationStatus)
 
+        self.label_proposed_by: Optional[str]
         if label_proposed_by is not None:
             if not isinstance(label_proposed_by, str):
                 raise ValueError("label_proposed_by must be a string")
@@ -110,6 +114,7 @@ class ReceiptWordLabel:
         else:
             self.label_proposed_by = None
 
+        self.label_consolidated_from: Optional[str]
         if label_consolidated_from is not None:
             if not isinstance(label_consolidated_from, str):
                 raise ValueError("label_consolidated_from must be a string")
@@ -119,7 +124,7 @@ class ReceiptWordLabel:
         else:
             self.label_consolidated_from = None
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt word label.
 
         Returns:
@@ -132,7 +137,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generate the GSI1 key for this ReceiptWordLabel.
 
         The GSI1PK will be exactly 40 characters long, with the format:
@@ -151,7 +156,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """
         Generates the secondary index key for the receipt word label.
 
@@ -165,7 +170,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         """
         Generates the GSI3 key for the receipt word label.
 
@@ -179,7 +184,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptWordLabel object to a DynamoDB item.
 
         Returns:
@@ -192,7 +197,9 @@ class ReceiptWordLabel:
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": (
-                {"S": self.reasoning} if self.reasoning is not None else {"NULL": True}
+                {"S": self.reasoning}
+                if self.reasoning is not None
+                else {"NULL": True}
             ),
             "timestamp_added": {"S": self.timestamp_added},
             "validation_status": {"S": self.validation_status},
@@ -208,7 +215,7 @@ class ReceiptWordLabel:
             ),
         }
 
-    def to_receipt_word_key(self) -> dict:
+    def to_receipt_word_key(self) -> Dict[str, Any]:
         """Generates the key for the ReceiptWord table associated with this label.
 
         Returns:
@@ -312,7 +319,7 @@ class ReceiptWordLabel:
         )
 
 
-def item_to_receipt_word_label(item: dict) -> ReceiptWordLabel:
+def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
     """Converts a DynamoDB item to a ReceiptWordLabel object.
 
     Args:
@@ -343,7 +350,9 @@ def item_to_receipt_word_label(item: dict) -> ReceiptWordLabel:
         line_id = int(sk_parts[3])
         word_id = int(sk_parts[5])
         label = sk_parts[7]
-        reasoning = item["reasoning"]["S"] if "S" in item["reasoning"] else None
+        reasoning = (
+            item["reasoning"]["S"] if "S" in item["reasoning"] else None
+        )
         timestamp_added = item["timestamp_added"]["S"]
         validation_status = None
         if "validation_status" in item:

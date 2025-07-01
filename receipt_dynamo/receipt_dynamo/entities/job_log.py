@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -47,6 +47,7 @@ class JobLog:
         assert_valid_uuid(job_id)
         self.job_id = job_id
 
+        self.timestamp: str
         if isinstance(timestamp, datetime):
             self.timestamp = timestamp.isoformat()
         elif isinstance(timestamp, str):
@@ -55,7 +56,10 @@ class JobLog:
             raise ValueError("timestamp must be a datetime object or a string")
 
         valid_log_levels = ["INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL"]
-        if not isinstance(log_level, str) or log_level.upper() not in valid_log_levels:
+        if (
+            not isinstance(log_level, str)
+            or log_level.upper() not in valid_log_levels
+        ):
             raise ValueError(f"log_level must be one of {valid_log_levels}")
         self.log_level = log_level.upper()
 
@@ -71,7 +75,7 @@ class JobLog:
             raise ValueError("exception must be a string")
         self.exception = exception
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job log.
 
         Returns:
@@ -82,7 +86,7 @@ class JobLog:
             "SK": {"S": f"LOG#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job log.
 
         Returns:
@@ -93,7 +97,7 @@ class JobLog:
             "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobLog object to a DynamoDB item.
 
         Returns:
@@ -186,7 +190,7 @@ class JobLog:
         )
 
 
-def item_to_job_log(item: dict) -> JobLog:
+def item_to_job_log(item: Dict[str, Any]) -> JobLog:
     """Converts a DynamoDB item to a JobLog object.
 
     Args:

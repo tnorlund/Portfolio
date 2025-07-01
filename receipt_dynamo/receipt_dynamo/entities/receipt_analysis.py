@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
@@ -48,9 +48,9 @@ class ReceiptAnalysis:
     structure_analysis: Optional[ReceiptStructureAnalysis] = None
     line_item_analysis: Optional[ReceiptLineItemAnalysis] = None
     validation_summary: Optional[ReceiptValidationSummary] = None
-    validation_categories: List[ReceiptValidationCategory] = None
-    validation_results: List[ReceiptValidationResult] = None
-    chatgpt_validations: List[ReceiptChatGPTValidation] = None
+    validation_categories: Optional[List[ReceiptValidationCategory]] = None
+    validation_results: Optional[List[ReceiptValidationResult]] = None
+    chatgpt_validations: Optional[List[ReceiptChatGPTValidation]] = None
 
     def __post_init__(self):
         """Initialize empty lists for collection fields if they are None."""
@@ -86,7 +86,9 @@ class ReceiptAnalysis:
             )
 
         analyses_str = (
-            ", ".join(available_analyses) if available_analyses else "no analyses"
+            ", ".join(available_analyses)
+            if available_analyses
+            else "no analyses"
         )
 
         return (

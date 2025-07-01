@@ -1,5 +1,5 @@
 from math import atan2, pi
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 from receipt_dynamo.entities.util import (
@@ -42,11 +42,11 @@ class ReceiptLine:
         image_id: str,
         line_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
@@ -78,7 +78,7 @@ class ReceiptLine:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -87,29 +87,29 @@ class ReceiptLine:
             raise ValueError("id must be an integer")
         if line_id <= 0:
             raise ValueError("id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
-        self.text = text
+        self.text: str = text
 
         assert_valid_bounding_box(bounding_box)
-        self.bounding_box = bounding_box
+        self.bounding_box: Dict[str, Any] = bounding_box
         assert_valid_point(top_right)
-        self.top_right = top_right
+        self.top_right: Dict[str, Any] = top_right
         assert_valid_point(top_left)
-        self.top_left = top_left
+        self.top_left: Dict[str, Any] = top_left
         assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
+        self.bottom_right: Dict[str, Any] = bottom_right
         assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
+        self.bottom_left: Dict[str, Any] = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(angle_degrees)
+        self.angle_degrees: float = float(angle_degrees)
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(angle_radians)
+        self.angle_radians: float = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -117,7 +117,7 @@ class ReceiptLine:
             raise ValueError("confidence must be a float")
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence = confidence
+        self.confidence: float = confidence
 
         # Normalize and validate embedding_status (allow enum or string)
         if isinstance(embedding_status, EmbeddingStatus):
@@ -133,9 +133,9 @@ class ReceiptLine:
             raise ValueError(
                 f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
             )
-        self.embedding_status = status_value
+        self.embedding_status: str = status_value
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt line.
 
@@ -144,10 +144,12 @@ class ReceiptLine:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
+            },
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """
         Generates the secondary index key for the receipt line.
         """
@@ -162,7 +164,7 @@ class ReceiptLine:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """
         Converts the ReceiptLine object to a DynamoDB item.
 
@@ -178,8 +180,12 @@ class ReceiptLine:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -268,7 +274,7 @@ class ReceiptLine:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptLine object's attributes.
 
@@ -343,7 +349,7 @@ class ReceiptLine:
         Returns:
             bool: True if the point is inside the bounding box, False otherwise.
         """
-        return (
+        return bool(
             self.bounding_box["x"]
             <= x
             <= self.bounding_box["x"] + self.bounding_box["width"]
@@ -462,7 +468,7 @@ class ReceiptLine:
         self.angle_degrees = angle_radians * 180.0 / pi
 
 
-def item_to_receipt_line(item: dict) -> ReceiptLine:
+def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
     """
     Converts a DynamoDB item to a ReceiptLine object.
 
@@ -503,10 +509,12 @@ def item_to_receipt_line(item: dict) -> ReceiptLine:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str
 
@@ -26,7 +26,7 @@ class Queue:
         self,
         queue_name: str,
         description: str,
-        created_at: datetime or str,
+        created_at: datetime | str,
         max_concurrent_jobs: int = 1,
         priority: str = "medium",
         job_count: int = 0,
@@ -52,27 +52,33 @@ class Queue:
             raise ValueError("description must be a string")
         self.description = description
 
+        self.created_at: str
         if isinstance(created_at, datetime):
             self.created_at = created_at.isoformat()
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if not isinstance(max_concurrent_jobs, int) or max_concurrent_jobs < 1:
             raise ValueError("max_concurrent_jobs must be a positive integer")
         self.max_concurrent_jobs = max_concurrent_jobs
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
         self.priority = priority.lower()
 
         if not isinstance(job_count, int) or job_count < 0:
             raise ValueError("job_count must be a non-negative integer")
-        self.job_count = job_count
+        self.job_count: int = job_count
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the queue.
 
         Returns:
@@ -80,7 +86,7 @@ class Queue:
         """
         return {"PK": {"S": f"QUEUE#{self.queue_name}"}, "SK": {"S": "QUEUE"}}
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the queue.
 
         Returns:
@@ -91,7 +97,7 @@ class Queue:
             "GSI1SK": {"S": f"QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Queue object to a DynamoDB item.
 
         Returns:
@@ -177,7 +183,7 @@ class Queue:
         )
 
 
-def item_to_queue(item: dict) -> Queue:
+def item_to_queue(item: Dict[str, Any]) -> Queue:
     """Converts a DynamoDB item to a Queue object.
 
     Args:

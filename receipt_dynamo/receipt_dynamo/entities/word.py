@@ -1,6 +1,6 @@
 # infra/lambda_layer/python/dynamo/entities/word.py
 from math import atan2, cos, degrees, pi, radians, sin
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -47,15 +47,15 @@ class Word:
         line_id: int,
         word_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
-        extracted_data: dict = None,
+        extracted_data: Optional[Dict[str, Any]] = None,
     ):
         """Initializes a new Word object for DynamoDB.
 
@@ -118,13 +118,13 @@ class Word:
         assert_type("confidence", confidence, float, ValueError)
         if confidence <= 0.0 or confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence = confidence
+        self.confidence: float = confidence
 
         if extracted_data is not None:
             assert_type("extracted_data", extracted_data, dict, ValueError)
         self.extracted_data = extracted_data
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the Word.
 
         Returns:
@@ -135,7 +135,7 @@ class Word:
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the Word.
 
         Returns:
@@ -143,16 +143,18 @@ class Word:
         """
         return {
             "GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
+            "GSI2SK": {
+                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Word object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the Word object as a DynamoDB item.
         """
-        item = {
+        item: Dict[str, Any] = {
             **self.key(),
             **self.gsi2_key(),
             "TYPE": {"S": "WORD"},
@@ -161,8 +163,12 @@ class Word:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -192,22 +198,26 @@ class Word:
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
-            "extracted_data": (
-                {
-                    "M": {
-                        "type": {"S": self.extracted_data["type"]},
-                        "value": {"S": self.extracted_data["value"]},
-                    }
-                }
-                if self.extracted_data
-                else {"NULL": True}
-            ),
         }
+
+        # Add extracted_data conditionally to avoid type conflicts
+        if self.extracted_data:
+            item["extracted_data"] = {
+                "M": {
+                    "type": {"S": self.extracted_data["type"]},
+                    "value": {"S": self.extracted_data["value"]},
+                }
+            }
+        else:
+            item["extracted_data"] = {"NULL": True}
 
         return item
 
     def calculate_centroid(
-        self, width: int = None, height: int = None, flip_y: bool = False
+        self,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        flip_y: bool = False,
     ) -> Tuple[float, float]:
         """Calculates the centroid of the Word.
 
@@ -247,7 +257,10 @@ class Word:
         return x, y
 
     def calculate_bounding_box(
-        self, width: int = None, height: int = None, flip_y: bool = False
+        self,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        flip_y: bool = False,
     ) -> Tuple[float, float, float, float]:
         """Calculates the bounding box of the Word.
 
@@ -279,7 +292,10 @@ class Word:
         return x, y, w, h
 
     def calculate_corners(
-        self, width: int = None, height: int = None, flip_y: bool = False
+        self,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        flip_y: bool = False,
     ) -> Tuple[
         Tuple[float, float],
         Tuple[float, float],
@@ -303,8 +319,8 @@ class Word:
             raise ValueError("Both width and height must be provided together")
 
         if width is not None and height is not None:
-            x_scale = width
-            y_scale = height
+            x_scale: float = float(width)
+            y_scale: float = float(height)
         else:
             x_scale = y_scale = 1.0
 
@@ -641,7 +657,9 @@ class Word:
             # original top-left px
             denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
             if abs(denom) < 1e-12:
-                raise ValueError("Inverse warp denominator ~ 0 at corner: " + name)
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
             X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
             Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
@@ -725,7 +743,7 @@ class Word:
         Returns:
             bool: True if the point is inside the bounding box, False otherwise.
         """
-        return (
+        return bool(
             self.bounding_box["x"]
             <= x
             <= self.bounding_box["x"] + self.bounding_box["width"]
@@ -755,11 +773,11 @@ class Word:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, str], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """Returns an iterator over the Word object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]: A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "line_id", self.line_id
@@ -775,7 +793,7 @@ class Word:
         yield "confidence", self.confidence
         yield "extracted_data", self.extracted_data
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Returns a dictionary representation of the Word object."""
         return {
             "image_id": self.image_id,
@@ -840,12 +858,16 @@ class Word:
                 self.angle_degrees,
                 self.angle_radians,
                 self.confidence,
-                (tuple(self.extracted_data.items()) if self.extracted_data else None),
+                (
+                    tuple(self.extracted_data.items())
+                    if self.extracted_data
+                    else None
+                ),
             )
         )
 
 
-def item_to_word(item: dict) -> Word:
+def item_to_word(item: Dict[str, Any]) -> Word:
     """Converts a DynamoDB item to a Word object.
 
     Args:
@@ -886,10 +908,12 @@ def item_to_word(item: dict) -> Word:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

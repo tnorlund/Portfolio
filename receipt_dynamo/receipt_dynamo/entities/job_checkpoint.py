@@ -74,33 +74,33 @@ class JobCheckpoint:
 
         if not isinstance(size_bytes, int) or size_bytes < 0:
             raise ValueError("size_bytes must be a non-negative integer")
-        self.size_bytes = size_bytes
+        self.size_bytes: int = size_bytes
 
         if not isinstance(step, int) or step < 0:
             raise ValueError("step must be a non-negative integer")
-        self.step = step
+        self.step: int = step
 
         if not isinstance(epoch, int) or epoch < 0:
             raise ValueError("epoch must be a non-negative integer")
-        self.epoch = epoch
+        self.epoch: int = epoch
 
         if not isinstance(model_state, bool):
             raise ValueError("model_state must be a boolean")
-        self.model_state = model_state
+        self.model_state: int = model_state
 
         if not isinstance(optimizer_state, bool):
             raise ValueError("optimizer_state must be a boolean")
-        self.optimizer_state = optimizer_state
+        self.optimizer_state: bool = optimizer_state
 
         if metrics is not None and not isinstance(metrics, dict):
             raise ValueError("metrics must be a dictionary")
-        self.metrics = metrics or {}
+        self.metrics: Dict[str, Any] = metrics or {}
 
         if not isinstance(is_best, bool):
             raise ValueError("is_best must be a boolean")
-        self.is_best = is_best
+        self.is_best: bool = is_best
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job checkpoint.
 
         Returns:
@@ -111,7 +111,7 @@ class JobCheckpoint:
             "SK": {"S": f"CHECKPOINT#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job checkpoint.
 
         Returns:
@@ -122,7 +122,7 @@ class JobCheckpoint:
             "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobCheckpoint object to a DynamoDB item.
 
         Returns:
@@ -158,12 +158,14 @@ class JobCheckpoint:
         Returns:
             Dict: The DynamoDB map representation.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, bool):
                 result[k] = {"BOOL": v}
             elif isinstance(v, (int, float)):
@@ -297,7 +299,7 @@ def _parse_dynamodb_map(m: Dict) -> Dict:
     Returns:
         Dict: The parsed Python dictionary.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in m.items():
         if "S" in v:
             result[k] = v["S"]
@@ -346,7 +348,7 @@ def _parse_dynamodb_value(v: Dict) -> Any:
     return None
 
 
-def item_to_job_checkpoint(item: dict) -> JobCheckpoint:
+def item_to_job_checkpoint(item: Dict[str, Any]) -> JobCheckpoint:
     """Converts a DynamoDB item to a JobCheckpoint object.
 
     Args:
@@ -359,7 +361,7 @@ def item_to_job_checkpoint(item: dict) -> JobCheckpoint:
         ValueError: If the DynamoDB item cannot be converted to a JobCheckpoint.
     """
     try:
-        metrics = {}
+        metrics: Dict[str, Any] = {}
         if "metrics" in item and "M" in item["metrics"]:
             metrics = _parse_dynamodb_map(item["metrics"]["M"])
 

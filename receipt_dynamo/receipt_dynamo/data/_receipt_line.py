@@ -1,8 +1,34 @@
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptLine, item_to_receipt_line
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        BatchGetItemInputTypeDef,
+        DeleteRequestTypeDef,
+        GetItemInputTypeDef,
+        KeysAndAttributesTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from typing import TYPE_CHECKING, Dict, Optional
+
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -63,7 +89,10 @@ class _ReceiptLine(DynamoClientProtocol):
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": ln.to_item()}} for ln in chunk]
+                request_items = [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=ln.to_item()))
+                    for ln in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -99,13 +128,13 @@ class _ReceiptLine(DynamoClientProtocol):
         for i in range(0, len(lines), CHUNK_SIZE):
             chunk = lines[i : i + CHUNK_SIZE]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": ln.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=ln.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for ln in chunk
             ]
             try:
@@ -149,7 +178,12 @@ class _ReceiptLine(DynamoClientProtocol):
         try:
             for i in range(0, len(lines), CHUNK_SIZE):
                 chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": ln.key()}} for ln in chunk]
+                request_items = [
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=ln.key())
+                    )
+                    for ln in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -237,7 +271,7 @@ class _ReceiptLine(DynamoClientProtocol):
         results = []
         for i in range(0, len(keys), CHUNK_SIZE):
             chunk = keys[i : i + CHUNK_SIZE]
-            request = {
+            request: BatchGetItemInputTypeDef = {
                 "RequestItems": {
                     self.table_name: {
                         "Keys": chunk,
@@ -250,7 +284,7 @@ class _ReceiptLine(DynamoClientProtocol):
                 results.extend(batch_items)
 
                 unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(self.table_name, {}).get("Keys"):
+                while unprocessed.get(self.table_name, {}).get("Keys"):  # type: ignore[call-overload]
                     response = self._client.batch_get_item(RequestItems=unprocessed)
                     batch_items = response["Responses"].get(self.table_name, [])
                     results.extend(batch_items)
@@ -263,8 +297,10 @@ class _ReceiptLine(DynamoClientProtocol):
         return [item_to_receipt_line(result) for result in results]
 
     def list_receipt_lines(
-        self, limit: int = None, last_evaluated_key: dict | None = None
-    ) -> list[ReceiptLine]:
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
         """Returns all ReceiptLines from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
@@ -272,7 +308,7 @@ class _ReceiptLine(DynamoClientProtocol):
             raise ValueError("last_evaluated_key must be a dictionary or None.")
         receipt_lines = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

@@ -1,9 +1,25 @@
+from typing import TYPE_CHECKING, Dict, Optional
+
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import (
     ReceiptValidationSummary,
     item_to_receipt_validation_summary,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -30,13 +46,13 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
     get_receipt_validation_summary(receipt_id: int, image_id: str) -> ReceiptValidationSummary
         Gets a ReceiptValidationSummary by receipt_id and image_id.
     list_receipt_validation_summaries(
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]
         Lists all ReceiptValidationSummaries with pagination support.
     list_receipt_validation_summaries_by_status(
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]
         Lists ReceiptValidationSummaries by status with pagination support.
@@ -165,13 +181,13 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
         for i in range(0, len(summaries), 25):
             chunk = summaries[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": summary.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=summary.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for summary in chunk
             ]
             try:
@@ -287,7 +303,7 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
                 )
 
     def list_receipt_validation_summaries(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Lists all ReceiptValidationSummaries with pagination support.
 
@@ -311,7 +327,7 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
         validation_summaries = []
         try:
             # Use GSITYPE to query all validation summaries
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -376,7 +392,7 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
     def list_receipt_validation_summaries_by_status(
         self,
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Lists ReceiptValidationSummaries by status with pagination support.
@@ -408,7 +424,7 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
         validation_summaries = []
         try:
             # Use GSI3 to query validation summaries by status
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",
