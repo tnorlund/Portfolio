@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import boto3
 import pytest
@@ -12,7 +12,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
 )
 
-correct_word_params = {
+correct_word_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 2,
     "word_id": 3,
@@ -114,7 +114,7 @@ def test_word_delete_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.delete_word(1, 2, 3)
+        client.delete_word("invalid-uuid", 2, 3)
 
 
 @pytest.mark.integration
@@ -129,13 +129,13 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
     client.add_word(word2)
 
     # Act
-    client.delete_words_from_line(1, 1)
+    client.delete_words_from_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
     with pytest.raises(ValueError):
-        client.get_word(1, 1, 1)
+        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
     with pytest.raises(ValueError):
-        client.get_word(1, 1, 2)
+        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 2)
 
 
 @pytest.mark.integration
@@ -146,7 +146,9 @@ def test_word_get(dynamodb_table: Literal["MyMockedTable"]):
     client.add_word(word)
 
     # Act
-    retrieved_word = client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
+    retrieved_word = client.get_word(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3
+    )
 
     # Assert
     assert retrieved_word == word
@@ -160,7 +162,7 @@ def test_word_get_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     with pytest.raises(ValueError):
-        client.get_word(1, 2, 3)
+        client.get_word("invalid-uuid", 2, 3)
 
 
 @pytest.mark.integration
@@ -245,7 +247,9 @@ def test_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
     words = sorted(words, key=lambda x: x.word_id)
 
     # Act
-    response = client.list_words_from_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)
+    response = client.list_words_from_line(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2
+    )
 
     # Assert
     assert words == response
@@ -311,7 +315,8 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
     word = Word(**correct_word_params)
     with pytest.raises(
         ValueError,
-        match="All items in the words list must be instances of the Word " "class.",
+        match="All items in the words list must be instances of the Word "
+        "class.",
     ):
         client.update_words([word, "not-a-word"])  # type: ignore
 
@@ -375,7 +380,9 @@ def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_internal_server_error(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_internal_server_error(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises an Exception when the InternalServerError
     error is raised.
@@ -401,7 +408,9 @@ def test_updateWords_raises_clienterror_internal_server_error(dynamodb_table, mo
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_validation_exception(dynamodb_table, mocker):
+def test_updateWords_raises_clienterror_validation_exception(
+    dynamodb_table, mocker
+):
     """
     Tests that updateWords raises an Exception when the ValidationException
     error is raised.
@@ -422,7 +431,8 @@ def test_updateWords_raises_clienterror_validation_exception(dynamodb_table, moc
         ),
     )
     with pytest.raises(
-        DynamoDBValidationError, match="One or more parameters given were invalid"
+        DynamoDBValidationError,
+        match="One or more parameters given were invalid",
     ):
         client.update_words([word])
     mock_transact.assert_called_once()

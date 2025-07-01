@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.entities.util import (
@@ -41,7 +41,7 @@ class ReceiptSection:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -52,7 +52,9 @@ class ReceiptSection:
         elif isinstance(section_type, str):
             section_type_value = section_type
         else:
-            raise ValueError("section_type must be a string or SectionType enum")
+            raise ValueError(
+                "section_type must be a string or SectionType enum"
+            )
         valid_section_types = [t.value for t in SectionType]
         if section_type_value not in valid_section_types:
             raise ValueError(
@@ -66,7 +68,7 @@ class ReceiptSection:
             raise ValueError("line_ids must not be empty")
         if not all(isinstance(line_id, int) for line_id in line_ids):
             raise ValueError("line_ids must contain only integers")
-        self.line_ids = line_ids
+        self.line_ids: list[int] = line_ids
 
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
@@ -76,20 +78,24 @@ class ReceiptSection:
             raise ValueError("created_at must be a datetime or ISO string")
         self.created_at = created_at
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generate the primary key for the receipt section."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#SECTION#{self.section_type}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#SECTION#{self.section_type}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Convert the ReceiptSection to a DynamoDB item."""
         return {
             **self.key(),
             "TYPE": {"S": "RECEIPT_SECTION"},
             "section_type": {"S": self.section_type},
-            "line_ids": {"L": [{"N": str(line_id)} for line_id in self.line_ids]},
+            "line_ids": {
+                "L": [{"N": str(line_id)} for line_id in self.line_ids]
+            },
             "created_at": {"S": self.created_at.isoformat()},
         }
 
@@ -139,7 +145,7 @@ class ReceiptSection:
         )
 
 
-def item_to_receipt_section(item: dict) -> ReceiptSection:
+def item_to_receipt_section(item: Dict[str, Any]) -> ReceiptSection:
     """
     Convert a DynamoDB item to a ReceiptSection object.
 

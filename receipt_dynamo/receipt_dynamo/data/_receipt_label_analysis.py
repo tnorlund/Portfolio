@@ -1,6 +1,30 @@
+from typing import TYPE_CHECKING, List
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -8,6 +32,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
     OperationError,
+    ReceiptDynamoError,
 )
 from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
@@ -41,7 +66,7 @@ from receipt_dynamo.entities.receipt_validation_summary import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
@@ -131,7 +156,9 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             for i in range(0, len(receipt_label_analyses), 25):
                 chunk = receipt_label_analyses[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": analysis.to_item()}}
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+                    )
                     for analysis in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -249,13 +276,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             transact_items = []
             for analysis in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": analysis.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=analysis.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -378,13 +405,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 transact_items = []
                 for analysis in chunk:
                     transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
-                                "Key": analysis.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=analysis.key(),
+                                ConditionExpression="attribute_exists(PK)",
+                            )
+                        )
                     )
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -474,7 +501,9 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 ) from e
 
     def list_receipt_label_analyses(
-        self, limit: int = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analysis records from the database with support for precise pagination.
 
@@ -501,9 +530,9 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        analyses = []
+        analyses: List[ReceiptLabelAnalysis] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -566,7 +595,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
     def get_receipt_label_analyses_by_image(
         self,
         image_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific image from the database with support for pagination.
@@ -604,9 +633,9 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        analyses = []
+        analyses: List[ReceiptLabelAnalysis] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val",
                 "ExpressionAttributeNames": {"#pk": "PK"},
@@ -672,7 +701,7 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         self,
         image_id: str,
         receipt_id: int,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLabelAnalysis], dict | None]:
         """Retrieve receipt label analyses for a specific receipt from the database with support for pagination.
@@ -719,9 +748,9 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        analyses = []
+        analyses: List[ReceiptLabelAnalysis] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "#pk = :pk_val AND #sk = :sk_val",
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
@@ -857,14 +886,20 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                         )
                     elif item_type == "RECEIPT_VALIDATION_CATEGORY":
                         category = item_to_receipt_validation_category(item)
+                        if receipt_analysis.validation_categories is None:
+                            receipt_analysis.validation_categories = []
                         receipt_analysis.validation_categories.append(category)
                     elif item_type == "RECEIPT_VALIDATION_RESULT":
                         result = item_to_receipt_validation_result(item)
+                        if receipt_analysis.validation_results is None:
+                            receipt_analysis.validation_results = []
                         receipt_analysis.validation_results.append(result)
                     elif item_type == "RECEIPT_CHATGPT_VALIDATION":
                         chatgpt_validation = (
                             item_to_receipt_chat_gpt_validation(item)
                         )
+                        if receipt_analysis.chatgpt_validations is None:
+                            receipt_analysis.chatgpt_validations = []
                         receipt_analysis.chatgpt_validations.append(
                             chatgpt_validation
                         )

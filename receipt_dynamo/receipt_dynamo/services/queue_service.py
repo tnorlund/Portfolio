@@ -143,9 +143,7 @@ class QueueService:
         Returns:
             A tuple containing a list of Queue objects and the last evaluated key
         """
-        return self.dynamo_client.list_queues_by_user(
-            user_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.list_queues(limit, last_evaluated_key)
 
     # Queue job operations
     def add_job_to_queue(
@@ -174,11 +172,11 @@ class QueueService:
             queue_name=queue_id,  # Using queue_id as queue_name since QueueJob expects queue_name
             job_id=job_id,
             enqueued_at=datetime.now(),
-            priority=priority,
+            priority=str(priority),
             # TODO: Set position based on queue position logic if needed
         )
 
-        self.dynamo_client.add_queue_job(queue_job)
+        self.dynamo_client.add_job_to_queue(queue_job)
         return queue_job
 
     def get_queue_job(self, queue_id: str, job_id: str) -> QueueJob:
@@ -195,7 +193,10 @@ class QueueService:
         Raises:
             Exception: When the queue job is not found
         """
-        return self.dynamo_client.get_queue_job(queue_id, job_id)
+        # TODO: Implement get_queue_job in data layer
+        raise NotImplementedError(
+            "get_queue_job is not implemented in the data layer"
+        )
 
     def update_queue_job(self, queue_job: QueueJob) -> None:
         """
@@ -207,7 +208,10 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        self.dynamo_client.update_queue_job(queue_job)
+        # TODO: Implement update_queue_job in data layer
+        raise NotImplementedError(
+            "update_queue_job is not implemented in the data layer"
+        )
 
     def delete_queue_job(self, queue_job: QueueJob) -> None:
         """
@@ -219,7 +223,7 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        self.dynamo_client.delete_queue_job(queue_job)
+        self.dynamo_client.remove_job_from_queue(queue_job)
 
     def list_jobs_in_queue(
         self,
@@ -238,7 +242,7 @@ class QueueService:
         Returns:
             A tuple containing a list of QueueJob objects and the last evaluated key
         """
-        return self.dynamo_client.list_queue_jobs_by_queue(
+        return self.dynamo_client.list_jobs_in_queue(
             queue_id, limit, last_evaluated_key
         )
 
@@ -259,7 +263,7 @@ class QueueService:
         Returns:
             A tuple containing a list of QueueJob objects and the last evaluated key
         """
-        return self.dynamo_client.list_queue_jobs_by_job(
+        return self.dynamo_client.find_queues_for_job(
             job_id, limit, last_evaluated_key
         )
 
@@ -274,14 +278,17 @@ class QueueService:
             The next QueueJob object, or None if the queue is empty
         """
         # Get pending jobs and sort by priority (desc) and added_at (asc)
-        jobs, _ = self.dynamo_client.list_queue_jobs_by_queue(
-            queue_id, status="pending"
-        )
+        jobs, _ = self.dynamo_client.list_jobs_in_queue(queue_id)
         if not jobs:
             return None
 
         # Sort by priority (descending) and then by added_at (ascending)
-        sorted_jobs = sorted(jobs, key=lambda j: (-j.priority, j.added_at))
+        # Priority is a string, so we need to map it to a numeric value
+        priority_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+        sorted_jobs = sorted(
+            jobs,
+            key=lambda j: (-priority_map.get(j.priority, 0), j.enqueued_at),
+        )
 
         # Return the highest priority job
         return sorted_jobs[0] if sorted_jobs else None
@@ -301,15 +308,17 @@ class QueueService:
         if not next_job:
             return None
 
-        # Update job status to claimed
-        next_job.status = "claimed"
-        next_job.claimed_at = datetime.now()
-        next_job.claimed_by = instance_id
-        self.update_queue_job(next_job)
+        # TODO: QueueJob entity doesn't have status tracking attributes
+        # next_job.status = "claimed"
+        # next_job.claimed_at = datetime.now()
+        # next_job.claimed_by = instance_id
+        # self.update_queue_job(next_job)
 
         return next_job
 
-    def mark_job_completed(self, queue_id: str, job_id: str, success: bool) -> None:
+    def mark_job_completed(
+        self, queue_id: str, job_id: str, success: bool
+    ) -> None:
         """
         Mark a job in a queue as completed.
 
@@ -321,10 +330,14 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        queue_job = self.get_queue_job(queue_id, job_id)
-        queue_job.status = "succeeded" if success else "failed"
-        queue_job.completed_at = datetime.now()
-        self.update_queue_job(queue_job)
+        # TODO: QueueJob entity doesn't have status tracking attributes
+        # queue_job = self.get_queue_job(queue_id, job_id)
+        # queue_job.status = "succeeded" if success else "failed"
+        # queue_job.completed_at = datetime.now()
+        # self.update_queue_job(queue_job)
+        raise NotImplementedError(
+            "Status tracking not implemented in QueueJob entity"
+        )
 
     def release_job(self, queue_id: str, job_id: str) -> None:
         """
@@ -337,8 +350,12 @@ class QueueService:
         Raises:
             Exception: When the queue job does not exist
         """
-        queue_job = self.get_queue_job(queue_id, job_id)
-        queue_job.status = "pending"
-        queue_job.claimed_at = None
-        queue_job.claimed_by = None
-        self.update_queue_job(queue_job)
+        # TODO: QueueJob entity doesn't have status tracking attributes
+        # queue_job = self.get_queue_job(queue_id, job_id)
+        # queue_job.status = "pending"
+        # queue_job.claimed_at = None
+        # queue_job.claimed_by = None
+        # self.update_queue_job(queue_job)
+        raise NotImplementedError(
+            "Status tracking not implemented in QueueJob entity"
+        )

@@ -27,11 +27,11 @@ class ReceiptLabelAnalysis:
         self,
         image_id: str,
         receipt_id: int,
-        labels: List[Dict],
+        labels: List[Dict[str, Any]],
         timestamp_added: datetime,
         version: str = "1.0",
         overall_reasoning: str = "",
-        metadata: Optional[Dict] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """Initializes a new ReceiptLabelAnalysis object for DynamoDB.
 
@@ -65,15 +65,18 @@ class ReceiptLabelAnalysis:
         self.image_id = image_id
         self.receipt_id = receipt_id
         self.labels = labels
+        self.timestamp_added: str
 
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
-        self.version = version
+        self.version: str = version
         self.overall_reasoning = overall_reasoning
 
         # Initialize default metadata if not provided
@@ -101,7 +104,7 @@ class ReceiptLabelAnalysis:
         else:
             self.metadata = metadata
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Dict[str, str]]:
         """Returns the primary key for DynamoDB.
 
         Returns:
@@ -112,7 +115,7 @@ class ReceiptLabelAnalysis:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LABELS"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
         """Returns the GSI1 key for DynamoDB.
 
         Returns:
@@ -123,7 +126,7 @@ class ReceiptLabelAnalysis:
             "GSI1SK": {"S": f"LABELS#{self.timestamp_added}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
         """Returns the GSI2 key for DynamoDB.
 
         Returns:
@@ -131,10 +134,12 @@ class ReceiptLabelAnalysis:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptLabelAnalysis object to a DynamoDB item.
 
         Returns:
@@ -170,7 +175,9 @@ class ReceiptLabelAnalysis:
             "metadata": {"S": json.dumps(self.metadata)},
         }
 
-    def _convert_bounding_box(self, bounding_box: Dict) -> Dict:
+    def _convert_bounding_box(
+        self, bounding_box: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
@@ -182,7 +189,7 @@ class ReceiptLabelAnalysis:
         if not bounding_box:
             return {}
 
-        result = {}
+        result: Dict[str, Any] = {}
 
         for key in ["top_left", "top_right", "bottom_left", "bottom_right"]:
             if key in bounding_box:
@@ -225,7 +232,7 @@ class ReceiptLabelAnalysis:
         yield "overall_reasoning", self.overall_reasoning
         yield "metadata", self.metadata
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Checks if two ReceiptLabelAnalysis objects are equal.
 
         Args:
@@ -266,7 +273,9 @@ class ReceiptLabelAnalysis:
         )
 
 
-def item_to_receipt_label_analysis(item: dict) -> ReceiptLabelAnalysis:
+def item_to_receipt_label_analysis(
+    item: Dict[str, Any],
+) -> ReceiptLabelAnalysis:
     """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
 
     Args:
@@ -300,21 +309,36 @@ def item_to_receipt_label_analysis(item: dict) -> ReceiptLabelAnalysis:
     if "labels" in item and "L" in item["labels"]:
         for label_item in item["labels"]["L"]:
             if "M" in label_item:
-                label_dict = {}
+                label_dict: Dict[str, Any] = {}
 
                 if (
                     "label_type" in label_item["M"]
                     and "S" in label_item["M"]["label_type"]
                 ):
-                    label_dict["label_type"] = label_item["M"]["label_type"]["S"]
+                    label_dict["label_type"] = label_item["M"]["label_type"][
+                        "S"
+                    ]
 
-                if "line_id" in label_item["M"] and "N" in label_item["M"]["line_id"]:
-                    label_dict["line_id"] = int(label_item["M"]["line_id"]["N"])
+                if (
+                    "line_id" in label_item["M"]
+                    and "N" in label_item["M"]["line_id"]
+                ):
+                    label_dict["line_id"] = int(
+                        label_item["M"]["line_id"]["N"]
+                    )
 
-                if "word_id" in label_item["M"] and "N" in label_item["M"]["word_id"]:
-                    label_dict["word_id"] = int(label_item["M"]["word_id"]["N"])
+                if (
+                    "word_id" in label_item["M"]
+                    and "N" in label_item["M"]["word_id"]
+                ):
+                    label_dict["word_id"] = int(
+                        label_item["M"]["word_id"]["N"]
+                    )
 
-                if "text" in label_item["M"] and "S" in label_item["M"]["text"]:
+                if (
+                    "text" in label_item["M"]
+                    and "S" in label_item["M"]["text"]
+                ):
                     label_dict["text"] = label_item["M"]["text"]["S"]
 
                 if (
@@ -328,7 +352,7 @@ def item_to_receipt_label_analysis(item: dict) -> ReceiptLabelAnalysis:
                     "bounding_box" in label_item["M"]
                     and "M" in label_item["M"]["bounding_box"]
                 ):
-                    bbox = {}
+                    bbox: Dict[str, Any] = {}
                     bbox_item = label_item["M"]["bounding_box"]["M"]
 
                     for corner in [
@@ -338,17 +362,21 @@ def item_to_receipt_label_analysis(item: dict) -> ReceiptLabelAnalysis:
                         "bottom_right",
                     ]:
                         if corner in bbox_item and "M" in bbox_item[corner]:
-                            point = {}
+                            point: Dict[str, Any] = {}
                             if (
                                 "x" in bbox_item[corner]["M"]
                                 and "N" in bbox_item[corner]["M"]["x"]
                             ):
-                                point["x"] = float(bbox_item[corner]["M"]["x"]["N"])
+                                point["x"] = float(
+                                    bbox_item[corner]["M"]["x"]["N"]
+                                )
                             if (
                                 "y" in bbox_item[corner]["M"]
                                 and "N" in bbox_item[corner]["M"]["y"]
                             ):
-                                point["y"] = float(bbox_item[corner]["M"]["y"]["N"])
+                                point["y"] = float(
+                                    bbox_item[corner]["M"]["y"]["N"]
+                                )
 
                             if point:
                                 bbox[corner] = point
@@ -367,7 +395,9 @@ def item_to_receipt_label_analysis(item: dict) -> ReceiptLabelAnalysis:
 
     # Extract version
     version = (
-        item["version"]["S"] if "version" in item and "S" in item["version"] else "1.0"
+        item["version"]["S"]
+        if "version" in item and "S" in item["version"]
+        else "1.0"
     )
 
     # Extract overall_reasoning

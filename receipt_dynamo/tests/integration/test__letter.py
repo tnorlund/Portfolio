@@ -1,10 +1,11 @@
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import boto3
 import pytest
+
 from receipt_dynamo import DynamoClient, Letter
 
-correct_letter_params = {
+correct_letter_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 1,
     "word_id": 1,
@@ -125,7 +126,7 @@ def test_letter_delete_error(dynamodb_table: Literal["MyMockedTable"]):
     # Act
     client.add_letter(letter)
     with pytest.raises(ValueError):
-        client.delete_letter(1, 1, 1, 2)
+        client.delete_letter("invalid-uuid", 1, 1, 2)
 
 
 @pytest.mark.integration
@@ -140,13 +141,15 @@ def test_letter_delete_from_word(dynamodb_table: Literal["MyMockedTable"]):
     )
 
     # Act
-    client.delete_letters_from_word(1, 1, 1)
+    client.delete_letters_from_word(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
+    )
 
     # Assert
     with pytest.raises(ValueError):
-        client.get_letter(1, 1, 1, 1)
+        client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
     with pytest.raises(ValueError):
-        client.get_letter(1, 1, 1, 2)
+        client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2)
 
 
 @pytest.mark.integration
@@ -157,7 +160,9 @@ def test_letter_get(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_letter(letter)
-    response = client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
+    response = client.get_letter(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
+    )
 
     # Assert
     assert response == letter
@@ -172,7 +177,7 @@ def test_letter_get_error(dynamodb_table: Literal["MyMockedTable"]):
     # Act
     client.add_letter(letter)
     with pytest.raises(ValueError):
-        client.get_letter(1, 1, 1, 2)
+        client.get_letter("1", 1, 1, 2)
 
 
 @pytest.mark.integration

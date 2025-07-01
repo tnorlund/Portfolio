@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple, Union
+from typing import Any, Dict, Generator, Optional, Tuple, Union
 
 from receipt_dynamo.entities.util import (
     _repr_str,
@@ -102,11 +102,13 @@ class ReceiptWordTag:
         self.tag = tag.strip()
 
         if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
+            self.timestamp_added: str = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
+            self.timestamp_added: str = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if validated not in (True, False, None):
             raise ValueError("validated must be a boolean or None")
@@ -114,7 +116,7 @@ class ReceiptWordTag:
 
         if isinstance(timestamp_validated, datetime):
             # Convert datetime to an ISO-formatted string.
-            self.timestamp_validated = timestamp_validated.isoformat()
+            self.timestamp_validated: str = timestamp_validated.isoformat()
         elif not isinstance(timestamp_validated, (str, type(None))):
             raise ValueError(
                 format_type_error(
@@ -144,7 +146,9 @@ class ReceiptWordTag:
         self.human_validated = human_validated
 
         if isinstance(timestamp_human_validated, datetime):
-            self.timestamp_human_validated = timestamp_human_validated.isoformat()
+            self.timestamp_human_validated: str = (
+                timestamp_human_validated.isoformat()
+            )
         elif not isinstance(timestamp_human_validated, (str, type(None))):
             raise ValueError(
                 format_type_error(
@@ -180,7 +184,8 @@ class ReceiptWordTag:
             and self.flag == other.flag
             and self.revised_tag == other.revised_tag
             and self.human_validated == other.human_validated
-            and self.timestamp_human_validated == other.timestamp_human_validated
+            and self.timestamp_human_validated
+            == other.timestamp_human_validated
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
@@ -203,7 +208,7 @@ class ReceiptWordTag:
         yield "human_validated", self.human_validated
         yield "timestamp_human_validated", self.timestamp_human_validated
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Return a dictionary representation of the ReceiptWordTag."""
         return {k: v for k, v in self}
 
@@ -231,7 +236,7 @@ class ReceiptWordTag:
             ")"
         )
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the ReceiptWordTag.
 
         The primary key is constructed using the image_id, receipt_id, line_id, word_id, and tag.
@@ -253,7 +258,7 @@ class ReceiptWordTag:
             },
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the secondary index key for the ReceiptWordTag.
 
         This key is used to query tags in DynamoDB based on the tag attribute.
@@ -275,7 +280,7 @@ class ReceiptWordTag:
             },
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the secondary index key for the ReceiptWordTag.
 
         This key is used to query tags in DynamoDB based on the tag attribute.
@@ -296,7 +301,7 @@ class ReceiptWordTag:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptWordTag object to a DynamoDB item.
 
         Returns:
@@ -324,7 +329,9 @@ class ReceiptWordTag:
                 if self.gpt_confidence is not None
                 else {"NULL": True}
             ),
-            "flag": ({"S": self.flag} if self.flag is not None else {"NULL": True}),
+            "flag": (
+                {"S": self.flag} if self.flag is not None else {"NULL": True}
+            ),
             "revised_tag": (
                 {"S": self.revised_tag}
                 if self.revised_tag is not None
@@ -342,7 +349,7 @@ class ReceiptWordTag:
             ),
         }
 
-    def to_receipt_word_key(self) -> dict:
+    def to_receipt_word_key(self) -> Dict[str, Any]:
         """Generates the key for the ReceiptWord table associated with this tag.
 
         Returns:
@@ -383,7 +390,7 @@ class ReceiptWordTag:
         )
 
 
-def item_to_receipt_word_tag(item: dict) -> ReceiptWordTag:
+def item_to_receipt_word_tag(item: Dict[str, Any]) -> ReceiptWordTag:
     """Converts a DynamoDB item to a ReceiptWordTag object.
 
     Args:
@@ -409,7 +416,9 @@ def item_to_receipt_word_tag(item: dict) -> ReceiptWordTag:
         tag = sk_parts[7].lstrip("_").strip()
         timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
         validated = (
-            bool(item["validated"]["BOOL"]) if "BOOL" in item["validated"] else None
+            bool(item["validated"]["BOOL"])
+            if "BOOL" in item["validated"]
+            else None
         )
         if "timestamp_validated" in item:
             timestamp_validated = (
@@ -433,7 +442,9 @@ def item_to_receipt_word_tag(item: dict) -> ReceiptWordTag:
             flag = None
         if "revised_tag" in item:
             revised_tag = (
-                item["revised_tag"]["S"] if "S" in item["revised_tag"] else None
+                item["revised_tag"]["S"]
+                if "S" in item["revised_tag"]
+                else None
             )
         else:
             revised_tag = None

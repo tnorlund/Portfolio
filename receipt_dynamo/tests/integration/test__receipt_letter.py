@@ -1982,7 +1982,7 @@ def test_listReceiptLettersFromWord_invalid_parameters(
     params[param_name] = invalid_value
 
     with pytest.raises(ValueError, match=expected_error):
-        client.list_receipt_letters_from_word(**params)
+        client.list_receipt_letters_from_word(**params)  # type: ignore[arg-type]
 
 
 @pytest.mark.integration

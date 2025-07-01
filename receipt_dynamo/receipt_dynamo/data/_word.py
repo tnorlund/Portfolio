@@ -1,9 +1,26 @@
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import Word, item_to_word
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        BatchGetItemInputTypeDef,
+        GetItemInputTypeDef,
+        KeysAndAttributesTypeDef,
+        QueryInputTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -60,7 +77,10 @@ class _Word(DynamoClientProtocol):
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"PutRequest": {"Item": word.to_item()}} for word in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=word.to_item())
+                    )
+                    for word in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -133,13 +153,13 @@ class _Word(DynamoClientProtocol):
             transact_items = []
             for word in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": word.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=word.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -192,7 +212,10 @@ class _Word(DynamoClientProtocol):
             for i in range(0, len(words), CHUNK_SIZE):
                 chunk = words[i : i + CHUNK_SIZE]
                 request_items = [
-                    {"DeleteRequest": {"Key": word.key()}} for word in chunk
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=word.key())
+                    )
+                    for word in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -206,7 +229,7 @@ class _Word(DynamoClientProtocol):
         except ClientError:
             raise ValueError("Could not delete words from the database")
 
-    def delete_words_from_line(self, image_id: int, line_id: int):
+    def delete_words_from_line(self, image_id: str, line_id: int):
         """Deletes all words from a line
 
         Args:
@@ -216,7 +239,7 @@ class _Word(DynamoClientProtocol):
         words = self.list_words_from_line(image_id, line_id)
         self.delete_words(words)
 
-    def get_word(self, image_id: int, line_id: int, word_id: int) -> Word:
+    def get_word(self, image_id: str, line_id: int, word_id: int) -> Word:
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
@@ -248,7 +271,9 @@ class _Word(DynamoClientProtocol):
             chunk = keys[i : i + CHUNK_SIZE]
 
             # Prepare parameters for BatchGetItem
-            request = {"RequestItems": {self.table_name: {"Keys": chunk}}}
+            request: BatchGetItemInputTypeDef = {
+                "RequestItems": {self.table_name: {"Keys": chunk}}
+            }
             # (Optional) "ProjectionExpression": "..." if you only want certain attributes
 
             # Perform BatchGet
@@ -260,7 +285,7 @@ class _Word(DynamoClientProtocol):
 
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):
+            while unprocessed.get(self.table_name, {}).get("Keys"):  # type: ignore[call-overload]
                 response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
@@ -272,10 +297,10 @@ class _Word(DynamoClientProtocol):
         self,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
-    ) -> list[Word]:
+    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]:
         words = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -300,7 +325,7 @@ class _Word(DynamoClientProtocol):
         except ClientError as e:
             raise ValueError("Could not list words from the database") from e
 
-    def list_words_from_line(self, image_id: int, line_id: int) -> list[Word]:
+    def list_words_from_line(self, image_id: str, line_id: int) -> list[Word]:
         words = []
         try:
             response = self._client.query(

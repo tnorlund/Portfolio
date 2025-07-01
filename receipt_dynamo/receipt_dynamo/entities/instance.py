@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -63,23 +63,26 @@ class Instance:
 
         if not isinstance(gpu_count, int) or gpu_count < 0:
             raise ValueError("gpu_count must be a non-negative integer")
-        self.gpu_count = gpu_count
+        self.gpu_count: int = gpu_count
 
         valid_statuses = ["pending", "running", "stopped", "terminated"]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        self.status = status.lower()
+        self.status: str = status.lower()
 
+        self.launched_at: str
         if isinstance(launched_at, datetime):
             self.launched_at = launched_at.isoformat()
         elif isinstance(launched_at, str):
             self.launched_at = launched_at
         else:
-            raise ValueError("launched_at must be a datetime object or a string")
+            raise ValueError(
+                "launched_at must be a datetime object or a string"
+            )
 
         if not isinstance(ip_address, str):
             raise ValueError("ip_address must be a string")
-        self.ip_address = ip_address
+        self.ip_address: str = ip_address
 
         if not isinstance(availability_zone, str) or not availability_zone:
             raise ValueError("availability_zone must be a non-empty string")
@@ -94,10 +97,12 @@ class Instance:
             not isinstance(health_status, str)
             or health_status.lower() not in valid_health_statuses
         ):
-            raise ValueError(f"health_status must be one of {valid_health_statuses}")
+            raise ValueError(
+                f"health_status must be one of {valid_health_statuses}"
+            )
         self.health_status = health_status.lower()
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the instance.
 
         Returns:
@@ -108,7 +113,7 @@ class Instance:
             "SK": {"S": "INSTANCE"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the instance.
 
         Returns:
@@ -119,7 +124,7 @@ class Instance:
             "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Instance object to a DynamoDB item.
 
         Returns:
@@ -223,7 +228,7 @@ class Instance:
         )
 
 
-def item_to_instance(item: dict) -> Instance:
+def item_to_instance(item: Dict[str, Any]) -> Instance:
     """Converts a DynamoDB item to an Instance object.
 
     Args:

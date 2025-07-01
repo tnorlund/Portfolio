@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, List, Tuple
+from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -67,7 +67,7 @@ class ReceiptField:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         if not isinstance(words, list):
             raise ValueError("words must be a list")
@@ -85,7 +85,7 @@ class ReceiptField:
             if not isinstance(word["label"], str) or not word["label"]:
                 raise ValueError("label must be a non-empty string")
             word["label"] = word["label"].upper()  # Store labels in uppercase
-        self.words = words
+        self.words: List[Dict[str, Any]] = words
 
         if not isinstance(reasoning, str):
             raise ValueError("reasoning must be a string")
@@ -93,14 +93,17 @@ class ReceiptField:
             raise ValueError("reasoning cannot be empty")
         self.reasoning = reasoning
 
+        self.timestamp_added: str
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt field.
 
         Returns:
@@ -108,10 +111,12 @@ class ReceiptField:
         """
         return {
             "PK": {"S": f"FIELD#{self.field_type}"},
-            "SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generate the GSI1 key for this ReceiptField.
 
         Returns:
@@ -119,10 +124,12 @@ class ReceiptField:
         """
         return {
             "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"},
+            "GSI1SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptField object to a DynamoDB item.
 
         Returns:
@@ -219,7 +226,7 @@ class ReceiptField:
         )
 
 
-def item_to_receipt_field(item: dict) -> ReceiptField:
+def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
     """Converts a DynamoDB item to a ReceiptField object.
 
     Args:
@@ -256,7 +263,7 @@ def item_to_receipt_field(item: dict) -> ReceiptField:
         # Convert words from DynamoDB format to list of dicts
         words = []
         for word_item in item["words"]["L"]:
-            word_dict = {}
+            word_dict: Dict[str, Any] = {}
             for key, value in word_item["M"].items():
                 if isinstance(value, dict):
                     if "S" in value:

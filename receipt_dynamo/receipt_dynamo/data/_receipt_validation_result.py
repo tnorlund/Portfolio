@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
@@ -5,6 +7,25 @@ from receipt_dynamo import (
     item_to_receipt_validation_result,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -42,7 +63,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
     ) -> ReceiptValidationResult:
         Retrieves a single ReceiptValidationResult by IDs.
     list_receipt_validation_results(
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         Returns ReceiptValidationResults and the last evaluated key.
@@ -125,7 +146,10 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             for i in range(0, len(results), 25):
                 chunk = results[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": res.to_item()}} for res in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=res.to_item())
+                    )
+                    for res in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -217,13 +241,13 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         for i in range(0, len(results), 25):
             chunk = results[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": res.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=res.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for res in chunk
             ]
             try:
@@ -326,7 +350,10 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         try:
             for i in range(0, len(results), 25):
                 chunk = results[i : i + 25]
-                request_items = [{"DeleteRequest": {"Key": res.key}} for res in chunk]
+                request_items = [
+                    WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=res.key))
+                    for res in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -423,7 +450,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise OperationError(f"Error getting receipt validation result: {e}")
 
     def list_receipt_validation_results(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         """Returns all ReceiptValidationResults from the table.
 
@@ -447,7 +474,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         validation_results = []
         try:
             # Use GSI1 to query all validation results
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -587,7 +614,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
     def list_receipt_validation_results_by_type(
         self,
         result_type: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         """Returns all ReceiptValidationResults of a specific type.
@@ -619,7 +646,7 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         validation_results = []
         try:
             # Use GSI3 to query validation results by type
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#pk = :pk_val",

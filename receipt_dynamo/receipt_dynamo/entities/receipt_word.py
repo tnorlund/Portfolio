@@ -1,5 +1,5 @@
 from math import atan2, pi
-from typing import Generator, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.util import (
@@ -44,15 +44,15 @@ class ReceiptWord:
         line_id: int,
         word_id: int,
         text: str,
-        bounding_box: dict,
-        top_right: dict,
-        top_left: dict,
-        bottom_right: dict,
-        bottom_left: dict,
+        bounding_box: Dict[str, Any],
+        top_right: Dict[str, Any],
+        top_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
         angle_degrees: float,
         angle_radians: float,
         confidence: float,
-        extracted_data: dict = None,
+        extracted_data: Optional[Dict[str, Any]] = None,
         embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
     ):
         """
@@ -83,7 +83,7 @@ class ReceiptWord:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -92,36 +92,36 @@ class ReceiptWord:
             raise ValueError("line_id must be an integer")
         if line_id < 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
+        self.line_id: int = line_id
 
         if not isinstance(word_id, int):
             raise ValueError("id must be an integer")
         if word_id < 0:
             raise ValueError("id must be positive")
-        self.word_id = word_id
+        self.word_id: int = word_id
 
         if not isinstance(text, str):
             raise ValueError("text must be a string")
-        self.text = text
+        self.text: str = text
 
         assert_valid_bounding_box(bounding_box)
-        self.bounding_box = bounding_box
+        self.bounding_box: Dict[str, Any] = bounding_box
         assert_valid_point(top_right)
-        self.top_right = top_right
+        self.top_right: Dict[str, Any] = top_right
         assert_valid_point(top_left)
-        self.top_left = top_left
+        self.top_left: Dict[str, Any] = top_left
         assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
+        self.bottom_right: Dict[str, Any] = bottom_right
         assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
+        self.bottom_left: Dict[str, Any] = bottom_left
 
         if not isinstance(angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = angle_degrees
+        self.angle_degrees: float = float(angle_degrees)
 
         if not isinstance(angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = angle_radians
+        self.angle_radians: float = float(angle_radians)
 
         if isinstance(confidence, int):
             confidence = float(confidence)
@@ -151,7 +151,7 @@ class ReceiptWord:
             )
         self.embedding_status = status_value
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt word.
 
@@ -169,7 +169,7 @@ class ReceiptWord:
             },
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
         """
@@ -185,7 +185,7 @@ class ReceiptWord:
             },
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
 
@@ -204,7 +204,7 @@ class ReceiptWord:
             },
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
 
@@ -222,7 +222,7 @@ class ReceiptWord:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """
         Converts the ReceiptWord object to a DynamoDB item.
 
@@ -240,8 +240,12 @@ class ReceiptWord:
                 "M": {
                     "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
                     "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {"N": _format_float(self.bounding_box["width"], 20, 22)},
-                    "height": {"N": _format_float(self.bounding_box["height"], 20, 22)},
+                    "width": {
+                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                    },
+                    "height": {
+                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                    },
                 }
             },
             "top_right": {
@@ -450,7 +454,7 @@ class ReceiptWord:
             and self.embedding_status == other.embedding_status
         )
 
-    def __iter__(self) -> Generator[Tuple[str, any], None, None]:
+    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptWord object's attributes.
 
@@ -549,7 +553,7 @@ class ReceiptWord:
         Returns:
             bool: True if the point is inside the bounding box, False otherwise.
         """
-        return (
+        return bool(
             self.bounding_box["x"]
             <= x
             <= self.bounding_box["x"] + self.bounding_box["width"]
@@ -558,7 +562,7 @@ class ReceiptWord:
             <= self.bounding_box["y"] + self.bounding_box["height"]
         )
 
-    def diff(self, other: "ReceiptWord") -> dict:
+    def diff(self, other: "ReceiptWord") -> Dict[str, Any]:
         """
         Compare this ReceiptWord with another and return their differences.
 
@@ -568,12 +572,12 @@ class ReceiptWord:
         Returns:
             dict: A dictionary containing the differences between the two ReceiptWord objects.
         """
-        differences = {}
+        differences: Dict[str, Any] = {}
         for attr, value in sorted(self.__dict__.items()):
             other_value = getattr(other, attr)
             if other_value != value:
                 if isinstance(value, dict) and isinstance(other_value, dict):
-                    diff = {}
+                    diff: Dict[str, Any] = {}
                     all_keys = set(value.keys()) | set(other_value.keys())
                     for k in all_keys:
                         if value.get(k) != other_value.get(k):
@@ -588,7 +592,7 @@ class ReceiptWord:
         return differences
 
 
-def item_to_receipt_word(item: dict) -> ReceiptWord:
+def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
     """
     Converts a DynamoDB item to a ReceiptWord object.
 
@@ -636,10 +640,12 @@ def item_to_receipt_word(item: dict) -> ReceiptWord:
                 for key, value in item["bounding_box"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             bottom_right={
                 key: float(value["N"])

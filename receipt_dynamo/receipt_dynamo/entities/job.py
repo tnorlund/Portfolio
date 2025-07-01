@@ -67,12 +67,15 @@ class Job:
             raise ValueError("description must be a string")
         self.description = description
 
+        self.created_at: str
         if isinstance(created_at, datetime):
             self.created_at = created_at.isoformat()
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if not isinstance(created_by, str) or not created_by:
             raise ValueError("created_by must be a non-empty string")
@@ -88,27 +91,35 @@ class Job:
         ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        self.status = status.lower()
+        self.status: str = status.lower()
 
         valid_priorities = ["low", "medium", "high", "critical"]
-        if not isinstance(priority, str) or priority.lower() not in valid_priorities:
+        if (
+            not isinstance(priority, str)
+            or priority.lower() not in valid_priorities
+        ):
             raise ValueError(f"priority must be one of {valid_priorities}")
-        self.priority = priority.lower()
+        self.priority: str = priority.lower()
 
         if not isinstance(job_config, dict):
             raise ValueError("job_config must be a dictionary")
-        self.job_config = job_config
+        self.job_config: Dict[str, Any] = job_config
 
         if estimated_duration is not None:
-            if not isinstance(estimated_duration, int) or estimated_duration <= 0:
-                raise ValueError("estimated_duration must be a positive integer")
-        self.estimated_duration = estimated_duration
+            if (
+                not isinstance(estimated_duration, int)
+                or estimated_duration <= 0
+            ):
+                raise ValueError(
+                    "estimated_duration must be a positive integer"
+                )
+        self.estimated_duration: Optional[int] = estimated_duration
 
         if tags is not None and not isinstance(tags, dict):
             raise ValueError("tags must be a dictionary")
-        self.tags = tags or {}
+        self.tags: Dict[str, str] = tags or {}
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job.
 
         Returns:
@@ -116,7 +127,7 @@ class Job:
         """
         return {"PK": {"S": f"JOB#{self.job_id}"}, "SK": {"S": "JOB"}}
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job.
 
         Returns:
@@ -127,7 +138,7 @@ class Job:
             "GSI1SK": {"S": f"CREATED#{self.created_at}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Job object to a DynamoDB item.
 
         Returns:
@@ -163,12 +174,14 @@ class Job:
         Returns:
             Dict: The DynamoDB map representation.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -294,7 +307,7 @@ class Job:
         )
 
 
-def item_to_job(item: dict) -> Job:
+def item_to_job(item: Dict[str, Any]) -> Job:
     """Converts a DynamoDB item to a Job object.
 
     Args:
@@ -348,7 +361,7 @@ def item_to_job(item: dict) -> Job:
         )
 
         # Parse tags if present
-        tags = None
+        tags: Optional[Dict[str, Any]] = None
         if "tags" in item and "M" in item["tags"]:
             tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
 
@@ -377,7 +390,7 @@ def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
     Returns:
         Dict: The parsed Python dictionary.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in dynamodb_map.items():
         if "M" in v:
             result[k] = _parse_dynamodb_map(v["M"])

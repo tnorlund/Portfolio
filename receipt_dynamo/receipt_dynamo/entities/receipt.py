@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -46,10 +46,10 @@ class Receipt:
         timestamp_added: datetime,
         raw_s3_bucket: str,
         raw_s3_key: str,
-        top_left: dict,
-        top_right: dict,
-        bottom_left: dict,
-        bottom_right: dict,
+        top_left: Dict[str, Any],
+        top_right: Dict[str, Any],
+        bottom_left: Dict[str, Any],
+        bottom_right: Dict[str, Any],
         sha256: Optional[str] = None,
         cdn_s3_bucket: Optional[str] = None,
         cdn_s3_key: Optional[str] = None,
@@ -86,7 +86,7 @@ class Receipt:
             raise ValueError("id must be an integer")
         if receipt_id <= 0:
             raise ValueError("id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         if (
             width <= 0
@@ -95,52 +95,55 @@ class Receipt:
             or not isinstance(height, int)
         ):
             raise ValueError("width and height must be positive integers")
-        self.width = width
-        self.height = height
+        self.width: int = width
+        self.height: int = height
 
+        self.timestamp_added: str
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
-        self.raw_s3_bucket = raw_s3_bucket
+        self.raw_s3_bucket: str = raw_s3_bucket
         if raw_s3_key and not isinstance(raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
         self.raw_s3_key = raw_s3_key
 
         assert_valid_point(top_right)
-        self.top_right = top_right
+        self.top_right: Dict[str, Any] = top_right
         assert_valid_point(top_left)
-        self.top_left = top_left
+        self.top_left: Dict[str, Any] = top_left
         assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
+        self.bottom_left: Dict[str, Any] = bottom_left
         assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
+        self.bottom_right: Dict[str, Any] = bottom_right
 
         if sha256 and not isinstance(sha256, str):
             raise ValueError("sha256 must be a string")
-        self.sha256 = sha256
+        self.sha256: Optional[str] = sha256
 
         if cdn_s3_bucket and not isinstance(cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
-        self.cdn_s3_bucket = cdn_s3_bucket
+        self.cdn_s3_bucket: Optional[str] = cdn_s3_bucket
         if cdn_s3_key and not isinstance(cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
-        self.cdn_s3_key = cdn_s3_key
+        self.cdn_s3_key: Optional[str] = cdn_s3_key
 
         if cdn_webp_s3_key and not isinstance(cdn_webp_s3_key, str):
             raise ValueError("cdn_webp_s3_key must be a string")
-        self.cdn_webp_s3_key = cdn_webp_s3_key
+        self.cdn_webp_s3_key: Optional[str] = cdn_webp_s3_key
 
         if cdn_avif_s3_key and not isinstance(cdn_avif_s3_key, str):
             raise ValueError("cdn_avif_s3_key must be a string")
-        self.cdn_avif_s3_key = cdn_avif_s3_key
+        self.cdn_avif_s3_key: Optional[str] = cdn_avif_s3_key
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt.
 
         Returns:
@@ -151,7 +154,7 @@ class Receipt:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the receipt.
 
         Returns:
@@ -162,7 +165,7 @@ class Receipt:
             "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the receipt.
 
         Returns:
@@ -170,10 +173,12 @@ class Receipt:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         """Generates the GSI3 key for the receipt.
 
         Returns:
@@ -184,7 +189,7 @@ class Receipt:
             "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Receipt object to a DynamoDB item.
 
         Returns:
@@ -227,16 +232,22 @@ class Receipt:
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+                {"S": self.cdn_s3_bucket}
+                if self.cdn_s3_bucket
+                else {"NULL": True}
             ),
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
             "cdn_webp_s3_key": (
-                {"S": self.cdn_webp_s3_key} if self.cdn_webp_s3_key else {"NULL": True}
+                {"S": self.cdn_webp_s3_key}
+                if self.cdn_webp_s3_key
+                else {"NULL": True}
             ),
             "cdn_avif_s3_key": (
-                {"S": self.cdn_avif_s3_key} if self.cdn_avif_s3_key else {"NULL": True}
+                {"S": self.cdn_avif_s3_key}
+                if self.cdn_avif_s3_key
+                else {"NULL": True}
             ),
         }
 
@@ -351,7 +362,7 @@ class Receipt:
         )
 
 
-def item_to_receipt(item: dict) -> Receipt:
+def item_to_receipt(item: Dict[str, Any]) -> Receipt:
     """Converts a DynamoDB item to a Receipt object.
 
     Args:
@@ -392,10 +403,12 @@ def item_to_receipt(item: dict) -> Receipt:
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             top_left={
-                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_left"]["M"].items()
             },
             top_right={
-                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
+                key: float(value["N"])
+                for key, value in item["top_right"]["M"].items()
             },
             bottom_left={
                 key: float(value["N"])
