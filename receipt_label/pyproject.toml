@@ -7,7 +7,7 @@ name = "receipt_label"
 version = "0.1.0"
 description = "A Python package for labeling and validating receipt data using the Google Places API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 authors = [
     {name = "Receipt Label Contributors"}
@@ -72,7 +72,7 @@ multi_line_output = 3
 line_length = 79
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

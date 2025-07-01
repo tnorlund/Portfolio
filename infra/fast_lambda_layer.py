@@ -1100,7 +1100,7 @@ layers_to_build = [
         "package_dir": "receipt_label",
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
-        "python_versions": ["3.11", "3.12"],
+        "python_versions": ["3.12"],
         "needs_pillow": False,
     },
     {

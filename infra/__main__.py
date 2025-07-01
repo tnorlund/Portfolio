@@ -351,7 +351,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     f"receipt-trainer-{stack}",
 #     packages=["receipt_trainer"],
 #     supplementary_packages=["receipt_dynamo"],
-#     python_version="3.9",
+#     python_version="3.12",
 #     vpc_id=network.vpc_id,  # Use network component output
 #     subnet_ids=network.private_subnet_ids,  # Use network component output
 #     security_group_ids=[network.security_group_id],  # Use new security group
