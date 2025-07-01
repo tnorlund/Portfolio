@@ -1,8 +1,28 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        KeysAndAttributesTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -80,7 +100,10 @@ class _ReceiptMetadata(DynamoClientProtocol):
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": item.to_item()}} for item in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item.to_item())
+                    )
+                    for item in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -165,24 +188,19 @@ class _ReceiptMetadata(DynamoClientProtocol):
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 transact_items = [
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": item.to_item(),
-                            "ConditionExpression": "attribute_exists(PK) and attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=item.to_item(),
+                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                        )
+                    )
                     for item in chunk
                 ]
                 response = self._client.transact_write_items(
                     TransactItems=transact_items
                 )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.transact_write_items(
-                        TransactItems=unprocessed[self.table_name]
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
+                # Note: transact_write_items doesn't have UnprocessedItems - it either succeeds or fails entirely
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -271,24 +289,19 @@ class _ReceiptMetadata(DynamoClientProtocol):
             for i in range(0, len(receipt_metadatas), 25):
                 chunk = receipt_metadatas[i : i + 25]
                 transact_items = [
-                    {
-                        "Delete": {
-                            "TableName": self.table_name,
-                            "Key": item.key(),
-                            "ConditionExpression": "attribute_exists(PK) and attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Delete=DeleteTypeDef(
+                            TableName=self.table_name,
+                            Key=item.key(),
+                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                        )
+                    )
                     for item in chunk
                 ]
                 response = self._client.transact_write_items(
                     TransactItems=transact_items
                 )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.transact_write_items(
-                        Items=unprocessed[self.table_name]
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
+                # Note: transact_write_items doesn't have UnprocessedItems - it either succeeds or fails entirely
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
@@ -447,7 +460,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
         return [item_to_receipt_metadata(result) for result in results]
 
     def list_receipt_metadatas(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
@@ -467,9 +480,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -505,7 +518,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -526,9 +539,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#pk = :pk",
@@ -564,7 +577,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -591,9 +604,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
             raise ValueError("lastEvaluatedKey must be a dictionary")
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
@@ -629,7 +642,7 @@ class _ReceiptMetadata(DynamoClientProtocol):
         self,
         confidence: float,
         above: bool = True,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
@@ -660,9 +673,9 @@ class _ReceiptMetadata(DynamoClientProtocol):
         else:
             key_expr = "GSI2PK = :pk AND GSI2SK <= :sk"
 
-        metadatas = []
+        metadatas: List[ReceiptMetadata] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": key_expr,

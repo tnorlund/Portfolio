@@ -1,11 +1,29 @@
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     """Validates the format of a LastEvaluatedKey for pagination.
 
     Args:
@@ -95,7 +113,10 @@ class _Queue(DynamoClientProtocol):
             # Prepare the batch request
             request_items = {
                 self.table_name: [
-                    {"PutRequest": {"Item": queue.to_item()}} for queue in queues
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=queue.to_item())
+                    )
+                    for queue in queues
                 ]
             }
 
@@ -257,8 +278,10 @@ class _Queue(DynamoClientProtocol):
                 raise
 
     def list_queues(
-        self, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[Queue], dict]:
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> tuple[list[Queue], Optional[Dict[str, Any]]]:
         """Lists all queues in the DynamoDB table.
 
         Args:
@@ -276,7 +299,7 @@ class _Queue(DynamoClientProtocol):
             validate_last_evaluated_key(lastEvaluatedKey)
 
         # Prepare the query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :queue_type",
@@ -400,8 +423,11 @@ class _Queue(DynamoClientProtocol):
                 raise
 
     def list_jobs_in_queue(
-        self, queue_name: str, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[QueueJob], dict]:
+        self,
+        queue_name: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
         """Lists all jobs in a queue in the DynamoDB table.
 
         Args:
@@ -429,7 +455,7 @@ class _Queue(DynamoClientProtocol):
             validate_last_evaluated_key(lastEvaluatedKey)
 
         # Prepare the query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :job_prefix)",
             "ExpressionAttributeValues": {
@@ -470,8 +496,11 @@ class _Queue(DynamoClientProtocol):
                 )
 
     def find_queues_for_job(
-        self, job_id: str, limit: int = None, lastEvaluatedKey: dict = None
-    ) -> tuple[list[QueueJob], dict]:
+        self,
+        job_id: str,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
         """Finds all queues that contain a specific job.
 
         Args:
@@ -493,7 +522,7 @@ class _Queue(DynamoClientProtocol):
             validate_last_evaluated_key(lastEvaluatedKey)
 
         # Prepare the query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
             "KeyConditionExpression": "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)",

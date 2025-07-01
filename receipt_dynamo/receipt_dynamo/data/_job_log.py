@@ -1,8 +1,21 @@
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 
@@ -68,7 +81,10 @@ class _JobLog(DynamoClientProtocol):
 
             request_items = {
                 self.table_name: [
-                    {"PutRequest": {"Item": log.to_item()}} for log in batch
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=log.to_item())
+                    )
+                    for log in batch
                 ]
             }
 
@@ -161,7 +177,7 @@ class _JobLog(DynamoClientProtocol):
         }
 
         # Prepare query parameters
-        query_params = {
+        query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
             "ExpressionAttributeValues": expression_attribute_values,

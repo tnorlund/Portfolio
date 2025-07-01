@@ -80,23 +80,31 @@ class JobResource:
             not isinstance(resource_type, str)
             or resource_type.lower() not in valid_resource_types
         ):
-            raise ValueError(f"resource_type must be one of {valid_resource_types}")
+            raise ValueError(
+                f"resource_type must be one of {valid_resource_types}"
+            )
         self.resource_type = resource_type.lower()
 
+        self.allocated_at: str
         if isinstance(allocated_at, datetime):
             self.allocated_at = allocated_at.isoformat()
         elif isinstance(allocated_at, str):
             self.allocated_at = allocated_at
         else:
-            raise ValueError("allocated_at must be a datetime object or a string")
+            raise ValueError(
+                "allocated_at must be a datetime object or a string"
+            )
 
+        self.released_at: Optional[str]
         if released_at is not None:
             if isinstance(released_at, datetime):
                 self.released_at = released_at.isoformat()
             elif isinstance(released_at, str):
                 self.released_at = released_at
             else:
-                raise ValueError("released_at must be a datetime object or a string")
+                raise ValueError(
+                    "released_at must be a datetime object or a string"
+                )
         else:
             self.released_at = None
 
@@ -108,13 +116,15 @@ class JobResource:
         if gpu_count is not None:
             if not isinstance(gpu_count, int) or gpu_count < 0:
                 raise ValueError("gpu_count must be a non-negative integer")
-        self.gpu_count = gpu_count
+        self.gpu_count: Optional[int] = gpu_count
 
-        if resource_config is not None and not isinstance(resource_config, dict):
+        if resource_config is not None and not isinstance(
+            resource_config, dict
+        ):
             raise ValueError("resource_config must be a dictionary")
-        self.resource_config = resource_config or {}
+        self.resource_config: Dict[str, Any] = resource_config or {}
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job resource.
 
         Returns:
@@ -125,7 +135,7 @@ class JobResource:
             "SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job resource.
 
         Returns:
@@ -136,7 +146,7 @@ class JobResource:
             "GSI1SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobResource object to a DynamoDB item.
 
         Returns:
@@ -177,12 +187,14 @@ class JobResource:
         Returns:
             Dict: The DynamoDB map representation.
         """
-        result = {}
+        result: Dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._dict_to_dynamodb_map(v)}
             elif isinstance(v, list):
-                result[k] = {"L": [self._to_dynamodb_value(item) for item in v]}
+                result[k] = {
+                    "L": [self._to_dynamodb_value(item) for item in v]
+                }
             elif isinstance(v, str):
                 result[k] = {"S": v}
             elif isinstance(v, (int, float)):
@@ -302,7 +314,7 @@ class JobResource:
         )
 
 
-def item_to_job_resource(item: dict) -> JobResource:
+def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
     """Converts a DynamoDB item to a JobResource object.
 
     Args:
@@ -343,7 +355,9 @@ def item_to_job_resource(item: dict) -> JobResource:
         status = item["status"]["S"]
 
         released_at = item.get("released_at", {}).get("S", None)
-        gpu_count = int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        gpu_count = (
+            int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        )
 
         resource_config = None
         if "resource_config" in item:
@@ -408,7 +422,7 @@ def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
     Raises:
         ValueError: If the DynamoDB map format is invalid.
     """
-    result = {}
+    result: Dict[str, Any] = {}
     for k, v in dynamodb_map.items():
         result[k] = _parse_dynamodb_value(v)
     return result

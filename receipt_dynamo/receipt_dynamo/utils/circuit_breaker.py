@@ -4,7 +4,7 @@ Circuit breaker pattern implementation for resilient DynamoDB operations.
 
 import time
 from enum import Enum
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
 
 class CircuitBreakerState(Enum):
@@ -108,7 +108,7 @@ class CircuitBreaker:
         if self.state == CircuitBreakerState.OPEN:
             raise CircuitBreakerOpenError(
                 f"Circuit breaker is OPEN. Last failure: "
-                f"{time.time() - self.last_failure_time:.1f}s ago"
+                f"{time.time() - (self.last_failure_time or 0):.1f}s ago"
             )
 
         # Attempt the call
@@ -120,7 +120,7 @@ class CircuitBreaker:
             self._record_failure()
             raise
 
-    def get_state(self) -> dict:
+    def get_state(self) -> Dict[str, Union[str, int, float, None]]:
         """Get current state information."""
         return {
             "state": self.state.value,
@@ -128,6 +128,8 @@ class CircuitBreaker:
             "consecutive_successes": self.consecutive_successes,
             "last_failure_time": self.last_failure_time,
             "time_since_failure": (
-                time.time() - self.last_failure_time if self.last_failure_time else None
+                time.time() - self.last_failure_time
+                if self.last_failure_time is not None
+                else None
             ),
         }

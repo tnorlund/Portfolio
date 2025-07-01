@@ -1,7 +1,27 @@
+from typing import TYPE_CHECKING, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -73,7 +93,10 @@ class _ReceiptSection(DynamoClientProtocol):
         try:
             for i in range(0, len(sections), CHUNK_SIZE):
                 chunk = sections[i : i + CHUNK_SIZE]
-                request_items = [{"PutRequest": {"Item": s.to_item()}} for s in chunk]
+                request_items = [
+                    WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=s.to_item()))
+                    for s in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -113,13 +136,13 @@ class _ReceiptSection(DynamoClientProtocol):
         for i in range(0, len(sections), CHUNK_SIZE):
             chunk = sections[i : i + CHUNK_SIZE]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": s.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=s.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for s in chunk
             ]
             try:
@@ -165,7 +188,10 @@ class _ReceiptSection(DynamoClientProtocol):
         try:
             for i in range(0, len(sections), CHUNK_SIZE):
                 chunk = sections[i : i + CHUNK_SIZE]
-                request_items = [{"DeleteRequest": {"Key": s.key()}} for s in chunk]
+                request_items = [
+                    WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=s.key()))
+                    for s in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -231,7 +257,7 @@ class _ReceiptSection(DynamoClientProtocol):
                 ) from e
 
     def list_receipt_sections(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[ReceiptSection], dict | None]:
         """Returns all ReceiptSections from the table with optional pagination."""
         if limit is not None and not isinstance(limit, int):
@@ -241,7 +267,7 @@ class _ReceiptSection(DynamoClientProtocol):
 
         receipt_sections = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",

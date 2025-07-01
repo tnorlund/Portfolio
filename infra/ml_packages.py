@@ -68,7 +68,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
         vpc_id: Optional[pulumi.Input[str]] = None,
         subnet_ids: Optional[List[pulumi.Input[str]]] = None,
         security_group_ids: Optional[List[pulumi.Input[str]]] = None,
-        python_version: str = "3.9",
+        python_version: str = "3.12",
         force_rebuild: bool = False,
         vpc_endpoints: Optional[List[Any]] = None,
         opts: Optional[pulumi.ResourceOptions] = None,

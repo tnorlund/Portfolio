@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.util import (
@@ -38,7 +38,9 @@ class BatchSummary:
                 )
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
-                format_type_error("submitted_at", submitted_at, (datetime, str))
+                format_type_error(
+                    "submitted_at", submitted_at, (datetime, str)
+                )
             )
         self.submitted_at = submitted_at
 
@@ -53,19 +55,21 @@ class BatchSummary:
             )
         self.receipt_refs = receipt_refs
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
             "SK": {"S": "STATUS"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"},
+            "GSI1SK": {
+                "S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"
+            },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         return {
             **self.key(),
             **self.gsi1_key(),
@@ -118,7 +122,7 @@ class BatchSummary:
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Return a dictionary representation of the BatchSummary."""
         return {k: v for k, v in self}
 
@@ -157,7 +161,7 @@ class BatchSummary:
         )
 
 
-def item_to_batch_summary(item: dict) -> BatchSummary:
+def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
     """Converts a DynamoDB item to a BatchSummary object.
 
     Args:

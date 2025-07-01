@@ -1,9 +1,27 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -60,7 +78,10 @@ class _OCRJob(DynamoClientProtocol):
             raise ValueError("All OCR jobs must be instances of the OCRJob class.")
         for i in range(0, len(ocr_jobs), 25):
             chunk = ocr_jobs[i : i + 25]
-            request_items = [{"PutRequest": {"Item": job.to_item()}} for job in chunk]
+            request_items = [
+                WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=job.to_item()))
+                for job in chunk
+            ]
             try:
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -208,13 +229,13 @@ class _OCRJob(DynamoClientProtocol):
             transact_items = []
             for item in chunk:
                 transact_items.append(
-                    {
-                        "Delete": {
-                            "TableName": self.table_name,
-                            "Key": item.key(),
-                            "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Delete=DeleteTypeDef(
+                            TableName=self.table_name,
+                            Key=item.key(),
+                            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -234,7 +255,7 @@ class _OCRJob(DynamoClientProtocol):
     def list_ocr_jobs(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[dict] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Lists all OCR jobs from the database
 
@@ -253,9 +274,9 @@ class _OCRJob(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
 
-        jobs = []
+        jobs: List[OCRJob] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -324,9 +345,9 @@ class _OCRJob(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
 
-        jobs = []
+        jobs: List[OCRJob] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "#t = :val",

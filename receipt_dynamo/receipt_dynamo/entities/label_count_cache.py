@@ -27,7 +27,9 @@ class LabelCountCache:
         if not isinstance(pending_count, int) or pending_count < 0:
             raise ValueError("pending_count must be a non-negative integer")
         if not isinstance(needs_review_count, int) or needs_review_count < 0:
-            raise ValueError("needs_review_count must be a non-negative integer")
+            raise ValueError(
+                "needs_review_count must be a non-negative integer"
+            )
         if not isinstance(none_count, int) or none_count < 0:
             raise ValueError("none_count must be a non-negative integer")
         try:
@@ -40,7 +42,7 @@ class LabelCountCache:
             now = int(time.time())
             if time_to_live < now:
                 raise ValueError("time_to_live must be in the future")
-        self.label = label
+        self.label: str = label
         self.valid_count = valid_count
         self.invalid_count = invalid_count
         self.pending_count = pending_count
@@ -109,7 +111,7 @@ class LabelCountCache:
 
 
 def item_to_label_count_cache(
-    item: Dict[str, Dict[str, Any]],
+    item: Dict[str, Any],
 ) -> LabelCountCache:
     required = {
         "PK",
