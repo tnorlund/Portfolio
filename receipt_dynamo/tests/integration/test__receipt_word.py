@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Dict, Literal
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
@@ -246,11 +246,13 @@ def test_addReceiptWords_with_unprocessed_items_retries(
     # First response has unprocessed items
     first_response = {
         "UnprocessedItems": {
-            dynamodb_table: [{"PutRequest": {"Item": sample_receipt_word.to_item()}}]
+            dynamodb_table: [
+                {"PutRequest": {"Item": sample_receipt_word.to_item()}}
+            ]
         }
     }
     # Second response has no unprocessed items
-    second_response = {"UnprocessedItems": {}}
+    second_response: Dict[str, Any] = {"UnprocessedItems": {}}
 
     mock_batch = mocker.patch.object(
         client._client,
@@ -535,7 +537,9 @@ def test_list_receipt_words_by_embedding_status(
     )
     client.add_receipt_word(word_pending)
     # Act
-    found_words = client.list_receipt_words_by_embedding_status(EmbeddingStatus.NONE)
+    found_words = client.list_receipt_words_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
 
     # Assert
     assert len(found_words) == 1

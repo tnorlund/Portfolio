@@ -1,23 +1,30 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
     OperationError,
+    ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -36,9 +43,13 @@ class _JobMetric(DynamoClientProtocol):
             ValueError: When a job metric with the same timestamp and name already exists
         """
         if job_metric is None:
-            raise ValueError("JobMetric parameter is required and cannot be None.")
+            raise ValueError(
+                "JobMetric parameter is required and cannot be None."
+            )
         if not isinstance(job_metric, JobMetric):
-            raise ValueError("job_metric must be an instance of the JobMetric class.")
+            raise ValueError(
+                "job_metric must be an instance of the JobMetric class."
+            )
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -52,7 +63,9 @@ class _JobMetric(DynamoClientProtocol):
                     f"JobMetric with name {job_metric.metric_name} and timestamp {job_metric.timestamp} for job {job_metric.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(f"Could not add job metric to DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    f"Could not add job metric to DynamoDB: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -60,7 +73,9 @@ class _JobMetric(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise DynamoDBError(f"Could not add job metric to DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    f"Could not add job metric to DynamoDB: {e}"
+                ) from e
 
     def get_job_metric(
         self, job_id: str, metric_name: str, timestamp: str
@@ -82,9 +97,13 @@ class _JobMetric(DynamoClientProtocol):
             raise ValueError("Job ID is required and cannot be None.")
         assert_valid_uuid(job_id)
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError("Timestamp is required and must be a non-empty string.")
+            raise ValueError(
+                "Timestamp is required and must be a non-empty string."
+            )
 
         try:
             response = self._client.get_item(
@@ -104,7 +123,9 @@ class _JobMetric(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(f"Could not get job metric: {e}") from e
+                raise ReceiptDynamoError(
+                    f"Could not get job metric: {e}"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -118,7 +139,7 @@ class _JobMetric(DynamoClientProtocol):
         self,
         job_id: str,
         metric_name: Optional[str] = None,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -152,26 +173,26 @@ class _JobMetric(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        metrics = []
+        metrics: List[JobMetric] = []
         try:
-            query_params = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": "PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"JOB#{job_id}"},
-                },
-                "ScanIndexForward": True,  # Ascending order by default
+            # Build the expression attribute values based on whether metric_name is provided
+            expression_attr_values = {
+                ":pk": {"S": f"JOB#{job_id}"},
             }
 
-            # Add filter for metric name if provided
             if metric_name:
-                query_params["KeyConditionExpression"] += " AND begins_with(SK, :sk)"
-                query_params["ExpressionAttributeValues"][":sk"] = {
-                    "S": f"METRIC#{metric_name}#"
-                }
+                key_condition = "PK = :pk AND begins_with(SK, :sk)"
+                expression_attr_values[":sk"] = {"S": f"METRIC#{metric_name}#"}
             else:
-                query_params["KeyConditionExpression"] += " AND begins_with(SK, :sk)"
-                query_params["ExpressionAttributeValues"][":sk"] = {"S": "METRIC#"}
+                key_condition = "PK = :pk AND begins_with(SK, :sk)"
+                expression_attr_values[":sk"] = {"S": "METRIC#"}
+
+            query_params: QueryInputTypeDef = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": key_condition,
+                "ExpressionAttributeValues": expression_attr_values,
+                "ScanIndexForward": True,  # Ascending order by default
+            }
 
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -192,7 +213,9 @@ class _JobMetric(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -222,7 +245,7 @@ class _JobMetric(DynamoClientProtocol):
     def get_metrics_by_name(
         self,
         metric_name: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -243,7 +266,9 @@ class _JobMetric(DynamoClientProtocol):
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -254,9 +279,9 @@ class _JobMetric(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        metrics = []
+        metrics: List[JobMetric] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
@@ -285,7 +310,9 @@ class _JobMetric(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -315,7 +342,7 @@ class _JobMetric(DynamoClientProtocol):
     def get_metrics_by_name_across_jobs(
         self,
         metric_name: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -339,7 +366,9 @@ class _JobMetric(DynamoClientProtocol):
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError("Metric name is required and must be a non-empty string.")
+            raise ValueError(
+                "Metric name is required and must be a non-empty string."
+            )
 
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -350,9 +379,9 @@ class _JobMetric(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        metrics = []
+        metrics: List[JobMetric] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :pk",
@@ -381,7 +410,9 @@ class _JobMetric(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break

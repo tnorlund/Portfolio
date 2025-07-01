@@ -48,7 +48,7 @@ class TestEnvironmentDetection:
         with patch.dict(
             os.environ,
             {
-                "AWS_EXECUTION_ENV": "AWS_Lambda_python3.9",
+                "AWS_EXECUTION_ENV": "AWS_Lambda_python3.12",
                 "PULUMI_STACK_NAME": "tnorlund/portfolio/prod",
             },
             clear=False,
@@ -61,7 +61,7 @@ class TestEnvironmentDetection:
         with patch.dict(
             os.environ,
             {
-                "AWS_EXECUTION_ENV": "AWS_Lambda_python3.9",
+                "AWS_EXECUTION_ENV": "AWS_Lambda_python3.12",
                 "PULUMI_STACK_NAME": "tnorlund/portfolio/staging",
             },
             clear=False,

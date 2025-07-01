@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Dict, Optional
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
@@ -5,6 +7,25 @@ from receipt_dynamo import (
     item_to_receipt_validation_category,
 )
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -41,20 +62,20 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
     ) -> ReceiptValidationCategory:
         Retrieves a single ReceiptValidationCategory by IDs.
     list_receipt_validation_categories(
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories and the last evaluated key.
     list_receipt_validation_categories_by_status(
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories with a specific status.
     list_receipt_validation_categories_for_receipt(
         receipt_id: int,
         image_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories for a specific receipt.
@@ -133,7 +154,10 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             for i in range(0, len(categories), 25):
                 chunk = categories[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": cat.to_item()}} for cat in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=cat.to_item())
+                    )
+                    for cat in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -227,13 +251,13 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         for i in range(0, len(categories), 25):
             chunk = categories[i : i + 25]
             transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": cat.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Put=PutTypeDef(
+                        TableName=self.table_name,
+                        Item=cat.to_item(),
+                        ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for cat in chunk
             ]
             try:
@@ -335,7 +359,10 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         try:
             for i in range(0, len(categories), 25):
                 chunk = categories[i : i + 25]
-                request_items = [{"DeleteRequest": {"Key": cat.key}} for cat in chunk]
+                request_items = [
+                    WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=cat.key))
+                    for cat in chunk
+                ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
                 )
@@ -421,7 +448,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                 raise OperationError(f"Error getting receipt validation category: {e}")
 
     def list_receipt_validation_categories(
-        self, limit: int = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns all ReceiptValidationCategories from the table using GSI1.
 
@@ -445,7 +474,7 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         validation_categories = []
         try:
             # Use GSITYPE to query all validation categories
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -506,7 +535,7 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
     def list_receipt_validation_categories_by_status(
         self,
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns ReceiptValidationCategories with a specific status using GSI3.
@@ -538,7 +567,7 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         validation_categories = []
         try:
             # Use GSI3 to query validation categories by status
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "begins_with(#pk, :pk_val)",
@@ -600,7 +629,7 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         self,
         receipt_id: int,
         image_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         """Returns ReceiptValidationCategories for a specific receipt.
@@ -634,7 +663,7 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         validation_categories = []
         try:
             # Query validation categories for a specific receipt
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "KeyConditionExpression": "PK = :pkVal AND begins_with(SK, :skPrefix)",
                 "ExpressionAttributeValues": {

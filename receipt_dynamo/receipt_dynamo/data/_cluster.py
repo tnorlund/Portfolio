@@ -1,6 +1,6 @@
 # infra/lambda_layer/python/dynamo/data/_cluster.py
 import math
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from receipt_dynamo.entities import Line
 
@@ -30,7 +30,7 @@ def dbscan_lines(
 
     # Initialize bookkeeping lists:
     visited = [False] * n  # Tracks if a point has been visited.
-    cluster_labels = [
+    cluster_labels: List[Optional[int]] = [
         None
     ] * n  # None = not assigned; -1 = noise; other integers = cluster ID.
     current_cluster = 0
@@ -79,6 +79,9 @@ def dbscan_lines(
     # Group Line objects by cluster label.
     clusters: Dict[int, List[Line]] = {}
     for idx, label in enumerate(cluster_labels):
+        # Handle None labels (unassigned points) by treating them as noise (-1)
+        if label is None:
+            label = -1
         clusters.setdefault(label, []).append(lines[idx])
 
     return clusters

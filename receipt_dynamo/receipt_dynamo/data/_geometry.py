@@ -1,5 +1,5 @@
 from math import atan2, cos, degrees, hypot, radians, sin
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def invert_affine(a, b, c, d, e, f):
@@ -118,7 +118,7 @@ def pad_corners_opposite(corners, pad):
     return new_corners
 
 
-def solve_8x8_system(A, b):
+def solve_8x8_system(A: List[List[float]], b: List[float]) -> List[float]:
     """
     Solve an 8x8 system A * x = b for x, where:
       - A is a list of lists (8 rows, each row has 8 floats).
@@ -143,7 +143,9 @@ def solve_8x8_system(A, b):
         # 3) Normalize pivot row (so A[i][i] = 1)
         pivot_val = A[i][i]
         if abs(pivot_val) < 1e-12:
-            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
+            raise ValueError(
+                "Matrix is singular or poorly conditioned for pivoting."
+            )
         inv_pivot = 1.0 / pivot_val
         A[i] = [val * inv_pivot for val in A[i]]
         b[i] = b[i] * inv_pivot
@@ -321,11 +323,15 @@ def compute_receipt_box_from_skewed_extents(
         x_int = x1 + t * (x2 - x1)
         return (x_int, desired_y)
 
-    left_top_point = interpolate_vertex(left_top_vertex, left_bottom_vertex, top_y)
+    left_top_point = interpolate_vertex(
+        left_top_vertex, left_bottom_vertex, top_y
+    )
     left_bottom_point = interpolate_vertex(
         left_top_vertex, left_bottom_vertex, bottom_y
     )
-    right_top_point = interpolate_vertex(right_top_vertex, right_bottom_vertex, top_y)
+    right_top_point = interpolate_vertex(
+        right_top_vertex, right_bottom_vertex, top_y
+    )
     right_bottom_point = interpolate_vertex(
         right_top_vertex, right_bottom_vertex, bottom_y
     )
@@ -431,9 +437,11 @@ def find_hull_extents_relative_to_centroid(
         "bottom": v,
     }
 
-    results = {}
+    results: Dict[str, Any] = {}
     for key, direction_vector in directions.items():
-        pt = _intersection_point_for_direction(hull_pts, cx, cy, direction_vector)
+        pt = _intersection_point_for_direction(
+            hull_pts, cx, cy, direction_vector
+        )
         if pt is not None:
             x_int = int(round(pt[0]))
             y_int = int(round(pt[1]))
@@ -607,7 +615,7 @@ def convex_hull(
     if len(points) <= 1:
         return points
 
-    lower = []
+    lower: List[Tuple[float, float]] = []
     for p in points:
         while (
             len(lower) >= 2
@@ -620,7 +628,7 @@ def convex_hull(
             lower.pop()
         lower.append(p)
 
-    upper = []
+    upper: List[Tuple[float, float]] = []
     for p in reversed(points):
         while (
             len(upper) >= 2
@@ -674,7 +682,11 @@ def min_area_rect(
 
     n = len(hull)
     min_area = float("inf")
-    best_rect = ((0, 0), (0, 0), 0)
+    best_rect: Tuple[Tuple[float, float], Tuple[float, float], float] = (
+        (0.0, 0.0),
+        (0.0, 0.0),
+        0.0,
+    )
 
     def edge_angle(p1, p2):
         return atan2(p2[1] - p1[1], p2[0] - p1[0])

@@ -1,6 +1,6 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
@@ -72,19 +72,22 @@ class Image:
             or not isinstance(height, int)
         ):
             raise ValueError("width and height must be positive integers")
-        self.width = width
-        self.height = height
+        self.width: int = width
+        self.height: int = height
 
+        self.timestamp_added: str
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
             self.timestamp_added = timestamp_added
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
-        self.raw_s3_bucket = raw_s3_bucket
+        self.raw_s3_bucket: str = raw_s3_bucket
         if raw_s3_key and not isinstance(raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
         self.raw_s3_key = raw_s3_key
@@ -121,7 +124,7 @@ class Image:
         else:
             self.image_type = image_type
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the image.
 
         Returns:
@@ -129,7 +132,7 @@ class Image:
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the image.
 
         Returns:
@@ -140,7 +143,7 @@ class Image:
             "GSI1SK": {"S": f"IMAGE"},
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the image.
 
         Returns:
@@ -151,7 +154,7 @@ class Image:
             "GSI2SK": {"S": "IMAGE"},
         }
 
-    def gsi3_key(self) -> dict:
+    def gsi3_key(self) -> Dict[str, Any]:
         """Generates the GSI3 key for the image.
 
         Returns:
@@ -162,7 +165,7 @@ class Image:
             "GSI3SK": {"S": f"IMAGE#{self.image_id}"},
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the Image object to a DynamoDB item.
 
         Returns:
@@ -181,16 +184,22 @@ class Image:
             "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
+                {"S": self.cdn_s3_bucket}
+                if self.cdn_s3_bucket
+                else {"NULL": True}
             ),
             "cdn_s3_key": (
                 {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
             ),
             "cdn_webp_s3_key": (
-                {"S": self.cdn_webp_s3_key} if self.cdn_webp_s3_key else {"NULL": True}
+                {"S": self.cdn_webp_s3_key}
+                if self.cdn_webp_s3_key
+                else {"NULL": True}
             ),
             "cdn_avif_s3_key": (
-                {"S": self.cdn_avif_s3_key} if self.cdn_avif_s3_key else {"NULL": True}
+                {"S": self.cdn_avif_s3_key}
+                if self.cdn_avif_s3_key
+                else {"NULL": True}
             ),
             "image_type": {"S": self.image_type},
         }
@@ -237,7 +246,7 @@ class Image:
         yield "cdn_avif_s3_key", self.cdn_avif_s3_key
         yield "image_type", self.image_type
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Return a dictionary representation of the Image."""
         return {k: v for k, v in self}
 
@@ -294,7 +303,7 @@ class Image:
         )
 
 
-def item_to_image(item: dict) -> Image:
+def item_to_image(item: Dict[str, Any]) -> Image:
     """Converts a DynamoDB item to an Image object.
 
     Args:
@@ -334,7 +343,9 @@ def item_to_image(item: dict) -> Image:
             image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
+            timestamp_added=datetime.fromisoformat(
+                item["timestamp_added"]["S"]
+            ),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=sha256 if sha256 else None,

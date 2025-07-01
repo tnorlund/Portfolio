@@ -1,7 +1,7 @@
 import json
 import time
 from datetime import datetime
-from typing import Any, Dict, Generator, Literal, Tuple
+from typing import Any, Dict, Generator, Literal, Optional, Tuple
 
 from receipt_dynamo.entities.util import normalize_address
 
@@ -39,9 +39,9 @@ class PlacesCache:
         places_response: Dict[str, Any],
         last_updated: str,
         query_count: int = 0,
-        normalized_value: str = None,
-        value_hash: str = None,
-        time_to_live: int = None,
+        normalized_value: Optional[str] = None,
+        value_hash: Optional[str] = None,
+        time_to_live: Optional[int] = None,
     ):
         """
         Initialize a new PlacesCache entry.
@@ -61,7 +61,9 @@ class PlacesCache:
         """
         # Validate search_type
         if search_type not in ["ADDRESS", "PHONE", "URL"]:
-            raise ValueError(f"search_type must be one of: ADDRESS, PHONE, URL")
+            raise ValueError(
+                f"search_type must be one of: ADDRESS, PHONE, URL"
+            )
         self.search_type = search_type
 
         # Validate search_value
@@ -83,21 +85,23 @@ class PlacesCache:
         try:
             datetime.fromisoformat(last_updated)
         except (ValueError, TypeError):
-            raise ValueError("last_updated must be a valid ISO format timestamp")
+            raise ValueError(
+                "last_updated must be a valid ISO format timestamp"
+            )
         self.last_updated = last_updated
 
         # Validate query_count
         if not isinstance(query_count, int) or query_count < 0:
             raise ValueError("query_count must be non-negative")
-        self.query_count = query_count
+        self.query_count: int = query_count
 
         # Store normalized value and hash if provided
-        self.normalized_value = normalized_value
+        self.normalized_value: Optional[str] = normalized_value
         self.value_hash = value_hash
+        self.time_to_live: Optional[int]
         if time_to_live is not None:
             if not isinstance(time_to_live, int) or time_to_live < 0:
                 raise ValueError("time_to_live must be non-negative")
-            now = int(time.time())
             now = int(time.time())
             if time_to_live < now:
                 raise ValueError("time_to_live must be in the future")
@@ -120,7 +124,9 @@ class PlacesCache:
             # Create a hash of the original OCR text
             import hashlib
 
-            value_hash = hashlib.md5(value.encode()).hexdigest()[:8]
+            value_hash = hashlib.md5(
+                value.encode(), usedforsecurity=False
+            ).hexdigest()[:8]
             # Store hash
             self.value_hash = value_hash
 
@@ -268,7 +274,7 @@ class PlacesCache:
         return base + ")"
 
 
-def item_to_places_cache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
+def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
     """
     Convert a DynamoDB item to a PlacesCache object.
 
@@ -303,7 +309,9 @@ def item_to_places_cache(item: Dict[str, Dict[str, Any]]) -> "PlacesCache":
             search_value = item["search_value"]["S"]
         else:
             # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[1]  # Get the value after VALUE#
+            padded_value = item["SK"]["S"].split("#")[
+                1
+            ]  # Get the value after VALUE#
             if search_type == "ADDRESS":
                 # Extract the original value after the hash
                 parts = padded_value.split("_")

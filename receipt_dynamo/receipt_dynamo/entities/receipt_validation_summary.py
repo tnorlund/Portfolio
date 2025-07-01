@@ -49,7 +49,7 @@ class ReceiptValidationSummary:
             raise ValueError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id = receipt_id
+        self.receipt_id: int = receipt_id
 
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -76,6 +76,7 @@ class ReceiptValidationSummary:
         self.version = version
 
         # Initialize metadata with default structure if not provided
+        self.metadata: Dict[str, Any]
         if metadata is None:
             self.metadata = {
                 "processing_metrics": {},
@@ -95,6 +96,7 @@ class ReceiptValidationSummary:
             if "processing_history" not in self.metadata:
                 self.metadata["processing_history"] = []
 
+        self.timestamp_added: str
         if isinstance(timestamp_added, datetime):
             self.timestamp_added = timestamp_added.isoformat()
         elif isinstance(timestamp_added, str):
@@ -102,6 +104,7 @@ class ReceiptValidationSummary:
         else:
             raise ValueError("timestamp_added must be a datetime or string")
 
+        self.timestamp_updated: Optional[str]
         if timestamp_updated is None:
             self.timestamp_updated = None
         elif isinstance(timestamp_updated, datetime):
@@ -109,23 +112,25 @@ class ReceiptValidationSummary:
         elif isinstance(timestamp_updated, str):
             self.timestamp_updated = timestamp_updated
         else:
-            raise ValueError("timestamp_updated must be a datetime, string, or None")
+            raise ValueError(
+                "timestamp_updated must be a datetime, string, or None"
+            )
 
-    def key(self) -> Dict[str, str]:
+    def key(self) -> Dict[str, Dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION"},
         }
 
-    def gsi1_key(self) -> Dict[str, str]:
+    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}"},
         }
 
-    def gsi3_key(self) -> Dict[str, str]:
+    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"VALIDATION_STATUS#{self.overall_status}"},
@@ -209,7 +214,7 @@ class ReceiptValidationSummary:
         # Helper function to convert DynamoDB format back to Python dicts
         def dynamo_to_python(dynamo_item):
             if "M" in dynamo_item:
-                result = {}
+                result: Dict[str, Any] = {}
                 for k, v in dynamo_item["M"].items():
                     if "S" in v:
                         result[k] = v["S"]
@@ -264,7 +269,9 @@ class ReceiptValidationSummary:
         timestamp_added = None
         if "timestamp_added" in item and "S" in item["timestamp_added"]:
             try:
-                timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
+                timestamp_added = datetime.fromisoformat(
+                    item["timestamp_added"]["S"]
+                )
             except (ValueError, TypeError):
                 pass
 
@@ -323,7 +330,9 @@ class ReceiptValidationSummary:
 
         self.metadata["processing_metrics"][metric_name] = value
 
-    def add_history_event(self, event_type: str, details: Dict = None) -> None:
+    def add_history_event(
+        self, event_type: str, details: Optional[Dict] = None
+    ) -> None:
         """Adds a history event to the metadata.
 
         Args:
@@ -375,7 +384,7 @@ def item_to_receipt_validation_summary(
         # Helper function to convert DynamoDB format back to Python dicts
         def dynamo_to_python(dynamo_item):
             if "M" in dynamo_item:
-                result = {}
+                result: Dict[str, Any] = {}
                 for k, v in dynamo_item["M"].items():
                     if "S" in v:
                         result[k] = v["S"]
@@ -440,4 +449,6 @@ def item_to_receipt_validation_summary(
             timestamp_updated=timestamp_updated,
         )
     except (KeyError, IndexError, ValueError) as e:
-        raise ValueError("Error converting item to ReceiptValidationSummary") from e
+        raise ValueError(
+            "Error converting item to ReceiptValidationSummary"
+        ) from e

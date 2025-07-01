@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -55,18 +55,21 @@ class JobDependency:
             raise ValueError(f"type must be one of {valid_types}")
         self.type = type.upper()
 
+        self.created_at: str
         if isinstance(created_at, datetime):
             self.created_at = created_at.isoformat()
         elif isinstance(created_at, str):
             self.created_at = created_at
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if condition is not None and not isinstance(condition, str):
             raise ValueError("condition must be a string")
-        self.condition = condition
+        self.condition: Optional[str] = condition
 
-    def key(self) -> dict:
+    def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job dependency.
 
         Returns:
@@ -77,7 +80,7 @@ class JobDependency:
             "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"},
         }
 
-    def gsi1_key(self) -> dict:
+    def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the job dependency.
 
         Returns:
@@ -90,7 +93,7 @@ class JobDependency:
             },
         }
 
-    def gsi2_key(self) -> dict:
+    def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the job dependency.
 
         Returns:
@@ -103,7 +106,7 @@ class JobDependency:
             },
         }
 
-    def to_item(self) -> dict:
+    def to_item(self) -> Dict[str, Any]:
         """Converts the JobDependency object to a DynamoDB item.
 
         Returns:
@@ -192,7 +195,7 @@ class JobDependency:
         )
 
 
-def item_to_job_dependency(item: dict) -> JobDependency:
+def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
     """Converts a DynamoDB item to a JobDependency object.
 
     Args:

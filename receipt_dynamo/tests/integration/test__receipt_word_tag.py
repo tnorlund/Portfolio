@@ -1,5 +1,6 @@
 # test__receipt_word_tag.py
 
+from datetime import datetime
 from typing import Literal
 
 import pytest
@@ -19,7 +20,7 @@ def sample_receipt_word_tag():
         line_id=5,
         word_id=42,
         tag="SampleTag",
-        timestamp_added="2021-01-01T00:00:00",
+        timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
     )
 
 
@@ -123,7 +124,7 @@ def test_receipt_word_tag_list(dynamodb_table: Literal["MyMockedTable"]):
             line_id=1,
             word_id=i,
             tag=f"Tag{i}",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         )
         for i in range(1, 4)
     ]
@@ -153,7 +154,7 @@ def test_receipt_word_tag_list_from_image(
             line_id=2,
             word_id=i,
             tag=f"ImageTag{i}",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         )
         for i in range(1, 3)
     ]
@@ -164,7 +165,7 @@ def test_receipt_word_tag_list_from_image(
         line_id=2,
         word_id=999,
         tag="OtherImage",
-        timestamp_added="2021-01-01T00:00:00",
+        timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
     )
 
     for rwt in same_image_tags + [different_image_tag]:
@@ -194,7 +195,7 @@ def sample_receipt_word_tags():
             line_id=10,
             word_id=10,
             tag="ALPHA",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         ),
         ReceiptWordTag(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
@@ -202,7 +203,7 @@ def sample_receipt_word_tags():
             line_id=20,
             word_id=20,
             tag="BETA",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         ),
         ReceiptWordTag(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed5",
@@ -210,7 +211,7 @@ def sample_receipt_word_tags():
             line_id=30,
             word_id=30,
             tag="ALPHA",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         ),
         ReceiptWordTag(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed6",
@@ -218,7 +219,7 @@ def sample_receipt_word_tags():
             line_id=40,
             word_id=40,
             tag="BETA",
-            timestamp_added="2021-01-01T00:00:00",
+            timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
         ),
     ]
 
@@ -289,7 +290,7 @@ def test_receipt_word_tag_get_pagination(
                 line_id=i,
                 word_id=i,
                 tag="PAGE",
-                timestamp_added="2021-01-01T00:00:00",
+                timestamp_added=datetime.fromisoformat("2021-01-01T00:00:00"),
             )
         )
 

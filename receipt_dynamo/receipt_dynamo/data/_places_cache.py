@@ -1,8 +1,28 @@
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        DeleteTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -194,22 +214,23 @@ class _PlacesCache(DynamoClientProtocol):
         for i in range(0, len(places_cache_items), CHUNK_SIZE):
             chunk = places_cache_items[i : i + CHUNK_SIZE]
             transact_items = [
-                {
-                    "Delete": {
-                        "TableName": self.table_name,
-                        "Key": item.key(),
-                        # "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
+                TransactWriteItemTypeDef(
+                    Delete=DeleteTypeDef(
+                        TableName=self.table_name,
+                        Key=item.key(),
+                        # ConditionExpression="attribute_exists(PK)",
+                    )
+                )
                 for item in chunk
             ]
             # Deduplicate transact_items by PK and SK values
             seen_keys = set()
             deduped_items = []
             for tx in transact_items:
-                key = tx["Delete"]["Key"]
-                pk = key["PK"]["S"]
-                sk = key["SK"]["S"]
+                # Type ignore needed because mypy has trouble with deeply nested TypedDicts
+                key = tx["Delete"]["Key"]  # type: ignore[index]
+                pk = key["PK"]["S"]  # type: ignore[index,call-overload]
+                sk = key["SK"]["S"]  # type: ignore[index,call-overload]
                 if (pk, sk) not in seen_keys:
                     seen_keys.add((pk, sk))
                     deduped_items.append(tx)
@@ -250,7 +271,7 @@ class _PlacesCache(DynamoClientProtocol):
             Optional[PlacesCache]: The PlacesCache object if found, None otherwise.
         """
         temp_cache = PlacesCache(
-            search_type=search_type,
+            search_type=search_type,  # type: ignore[arg-type]
             search_value=search_value,
             place_id="temp",  # Placeholder
             places_response={},  # Placeholder
@@ -321,7 +342,7 @@ class _PlacesCache(DynamoClientProtocol):
 
         places_caches = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -403,7 +424,11 @@ class _PlacesCache(DynamoClientProtocol):
                 items_to_delete = items_to_delete[CHUNK_SIZE:]
 
                 request_items = [
-                    {"DeleteRequest": {"Key": {"PK": item["PK"], "SK": item["SK"]}}}
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(
+                            Key={"PK": item["PK"], "SK": item["SK"]}
+                        )
+                    )
                     for item in batch
                 ]
 

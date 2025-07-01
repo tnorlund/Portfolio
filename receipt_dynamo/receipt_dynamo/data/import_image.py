@@ -1,6 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/import_image.py
 import json
 import os
+from typing import Any, Dict, List
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
@@ -48,58 +49,65 @@ def import_image(table_name: str, json_path: str) -> None:
         data = json.load(f)
 
     # Convert dictionaries back to entity objects
-    entities = {
+    entities: Dict[str, List[Any]] = {
         "images": [Image(**item) for item in data["images"]],
         "lines": [Line(**item) for item in data["lines"]],
         "words": [Word(**item) for item in data["words"]],
         "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_lines": [ReceiptLine(**item) for item in data["receipt_lines"]],
-        "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
+        "receipt_lines": [
+            ReceiptLine(**item) for item in data["receipt_lines"]
+        ],
+        "receipt_words": [
+            ReceiptWord(**item) for item in data["receipt_words"]
+        ],
         "receipt_word_tags": [
             ReceiptWordTag(**item) for item in data["receipt_word_tags"]
         ],
-        "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
+        "receipt_letters": [
+            ReceiptLetter(**item) for item in data["receipt_letters"]
+        ],
         "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
         "ocr_routing_decisions": [
-            OCRRoutingDecision(**item) for item in data.get("ocr_routing_decisions", [])
+            OCRRoutingDecision(**item)
+            for item in data.get("ocr_routing_decisions", [])
         ],
     }
 
     # Import data in batches using existing DynamoClient methods
     if entities["images"]:
-        dynamo_client.add_images(entities["images"])
+        dynamo_client.add_images(entities["images"])  # type: ignore[arg-type]
 
     if entities["lines"]:
-        dynamo_client.add_lines(entities["lines"])
+        dynamo_client.add_lines(entities["lines"])  # type: ignore[arg-type]
 
     if entities["words"]:
-        dynamo_client.add_words(entities["words"])
+        dynamo_client.add_words(entities["words"])  # type: ignore[arg-type]
 
     if entities["word_tags"]:
-        dynamo_client.add_word_tags(entities["word_tags"])
+        dynamo_client.add_word_tags(entities["word_tags"])  # type: ignore[arg-type]
 
     if entities["letters"]:
-        dynamo_client.add_letters(entities["letters"])
+        dynamo_client.add_letters(entities["letters"])  # type: ignore[arg-type]
 
     if entities["receipts"]:
-        dynamo_client.add_receipts(entities["receipts"])
+        dynamo_client.add_receipts(entities["receipts"])  # type: ignore[arg-type]
 
     if entities["receipt_lines"]:
-        dynamo_client.add_receipt_lines(entities["receipt_lines"])
+        dynamo_client.add_receipt_lines(entities["receipt_lines"])  # type: ignore[arg-type]
 
     if entities["receipt_words"]:
-        dynamo_client.add_receipt_words(entities["receipt_words"])
+        dynamo_client.add_receipt_words(entities["receipt_words"])  # type: ignore[arg-type]
 
     if entities["receipt_word_tags"]:
-        dynamo_client.add_receipt_word_tags(entities["receipt_word_tags"])
+        dynamo_client.add_receipt_word_tags(entities["receipt_word_tags"])  # type: ignore[arg-type]
 
     if entities["receipt_letters"]:
-        dynamo_client.add_receipt_letters(entities["receipt_letters"])
+        dynamo_client.add_receipt_letters(entities["receipt_letters"])  # type: ignore[arg-type]
 
     if entities["ocr_jobs"]:
-        dynamo_client.add_ocr_jobs(entities["ocr_jobs"])
+        dynamo_client.add_ocr_jobs(entities["ocr_jobs"])  # type: ignore[arg-type]
 
     if entities["ocr_routing_decisions"]:
-        dynamo_client.add_ocr_routing_decisions(entities["ocr_routing_decisions"])
+        dynamo_client.add_ocr_routing_decisions(entities["ocr_routing_decisions"])  # type: ignore[arg-type]

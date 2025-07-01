@@ -1,8 +1,27 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
@@ -19,7 +38,7 @@ from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: dict) -> None:
+def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
@@ -86,7 +105,10 @@ class _Job(DynamoClientProtocol):
             for i in range(0, len(jobs), 25):
                 chunk = jobs[i : i + 25]
                 request_items = [
-                    {"PutRequest": {"Item": job.to_item()}} for job in chunk
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=job.to_item())
+                    )
+                    for job in chunk
                 ]
                 response = self._client.batch_write_item(
                     RequestItems={self.table_name: request_items}
@@ -185,13 +207,13 @@ class _Job(DynamoClientProtocol):
             transact_items = []
             for job in chunk:
                 transact_items.append(
-                    {
-                        "Put": {
-                            "TableName": self.table_name,
-                            "Item": job.to_item(),
-                            "ConditionExpression": "attribute_exists(PK)",
-                        }
-                    }
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=job.to_item(),
+                            ConditionExpression="attribute_exists(PK)",
+                        )
+                    )
                 )
             try:
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -268,13 +290,13 @@ class _Job(DynamoClientProtocol):
                 transact_items = []
                 for job in chunk:
                     transact_items.append(
-                        {
-                            "Delete": {
-                                "TableName": self.table_name,
-                                "Key": job.key(),
-                                "ConditionExpression": "attribute_exists(PK)",
-                            }
-                        }
+                        TransactWriteItemTypeDef(
+                            Delete=DeleteTypeDef(
+                                TableName=self.table_name,
+                                Key=job.key(),
+                                ConditionExpression="attribute_exists(PK)",
+                            )
+                        )
                     )
                 # Execute the transaction for this chunk.
                 self._client.transact_write_items(TransactItems=transact_items)
@@ -397,7 +419,7 @@ class _Job(DynamoClientProtocol):
                 raise OperationError(f"Error getting job with status: {e}") from e
 
     def list_jobs(
-        self, limit: int = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records from the database with support for pagination.
@@ -424,9 +446,9 @@ class _Job(DynamoClientProtocol):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(lastEvaluatedKey)
 
-        jobs = []
+        jobs: List[Job] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSITYPE",
                 "KeyConditionExpression": "#t = :val",
@@ -486,7 +508,7 @@ class _Job(DynamoClientProtocol):
     def list_jobs_by_status(
         self,
         status: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -530,9 +552,9 @@ class _Job(DynamoClientProtocol):
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
                 )
 
-        jobs = []
+        jobs: List[Job] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :status",
@@ -596,7 +618,7 @@ class _Job(DynamoClientProtocol):
     def list_jobs_by_user(
         self,
         user_id: str,
-        limit: int = None,
+        limit: Optional[int] = None,
         lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -632,9 +654,9 @@ class _Job(DynamoClientProtocol):
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
                 )
 
-        jobs = []
+        jobs: List[Job] = []
         try:
-            query_params = {
+            query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :user",
