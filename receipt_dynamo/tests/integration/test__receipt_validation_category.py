@@ -3,8 +3,15 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import ReceiptValidationCategory
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -853,49 +860,56 @@ def test_updateReceiptValidationCategories_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,cancellation_reasons,exception_type",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptValidationCategories in the database",
             None,
+            DynamoDBError,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptValidationCategories do not exist",
             [{"Code": "ConditionalCheckFailed"}],
+            ValueError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
             None,
+            DynamoDBServerError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
             None,
+            Exception,  # Still Exception in the test
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
             None,
+            DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
             None,
+            DynamoDBAccessError,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
             "Could not update ReceiptValidationCategories in the database",
             None,
+            DynamoDBError,
         ),
     ],
 )
@@ -907,6 +921,7 @@ def test_updateReceiptValidationCategories_client_errors(
     error_message,
     expected_error,
     cancellation_reasons,
+    exception_type,
 ):
     """
     Tests that updateReceiptValidationCategories handles client errors correctly.
@@ -934,7 +949,7 @@ def test_updateReceiptValidationCategories_client_errors(
     mock_transact_write.side_effect = ClientError(error_response, "TransactWriteItems")
 
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(exception_type, match=expected_error):
         client.update_receipt_validation_categories(
             [sample_receipt_validation_category]
         )
@@ -1481,12 +1496,12 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         )
 
     with pytest.raises(
-        ValueError, match="lastEvaluatedKey must be a dictionary or None"
+        ValueError, match="last_evaluated_key must be a dictionary or None"
     ):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
             image_id=image_id,
-            lastEvaluatedKey="not-a-dict",
+            last_evaluated_key="not-a-dict",
         )
 
 

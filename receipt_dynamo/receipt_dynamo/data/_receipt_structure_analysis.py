@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import (
     ReceiptStructureAnalysis,
     item_to_receipt_structure_analysis,
@@ -645,8 +646,10 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     "#sk": "SK",
                 },
                 "ExpressionAttributeValues": {
-                    ":pk": {"S": "IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"},
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
+                    },
                 },
             }
 

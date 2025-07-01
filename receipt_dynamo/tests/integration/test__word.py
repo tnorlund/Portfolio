@@ -3,7 +3,14 @@ from typing import Literal
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, Word
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 correct_word_params = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -360,7 +367,9 @@ def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+    with pytest.raises(
+        DynamoDBThroughputError, match="Provisioned throughput exceeded"
+    ):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -386,7 +395,7 @@ def test_updateWords_raises_clienterror_internal_server_error(dynamodb_table, mo
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Internal server error"):
+    with pytest.raises(DynamoDBServerError, match="Internal server error"):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -412,7 +421,9 @@ def test_updateWords_raises_clienterror_validation_exception(dynamodb_table, moc
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        DynamoDBValidationError, match="One or more parameters given were invalid"
+    ):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -438,7 +449,7 @@ def test_updateWords_raises_clienterror_access_denied(dynamodb_table, mocker):
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Access denied"):
+    with pytest.raises(DynamoDBAccessError, match="Access denied"):
         client.update_words([word])
     mock_transact.assert_called_once()
 

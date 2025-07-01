@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import EmbeddingStatus, SectionType
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
@@ -54,7 +55,7 @@ class _ReceiptSection(DynamoClientProtocol):
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} already exists"
+                    f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} already exists"
                 )
             else:
                 raise
@@ -94,7 +95,7 @@ class _ReceiptSection(DynamoClientProtocol):
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} does not exist"
+                    f"ReceiptSection with receipt_id {section.receipt_id}, image_id {section.image_id}, and section_type {section.section_type} does not exist"
                 )
             else:
                 raise
@@ -146,8 +147,8 @@ class _ReceiptSection(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": "IMAGE#{image_id}"},
-                    "SK": {"S": "RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
@@ -185,8 +186,8 @@ class _ReceiptSection(DynamoClientProtocol):
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": "IMAGE#{image_id}"},
-                    "SK": {"S": "RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
+                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
                 },
             )
             return item_to_receipt_section(response["Item"])
@@ -205,8 +206,8 @@ class _ReceiptSection(DynamoClientProtocol):
             raise ValueError("receipt_id is required")
         try:
             # Query by the image ID for the PK and
-            expected_pk = "IMAGE#{image_id}"
-            start_of_sk = "RECEIPT#{receipt_id:05d}#SECTION#"
+            expected_pk = f"IMAGE#{image_id}"
+            start_of_sk = f"RECEIPT#{receipt_id:05d}#SECTION#"
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pk and begins_with(SK, :sk)",
@@ -220,13 +221,13 @@ class _ReceiptSection(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise ValueError(
-                    "Could not get ReceiptSections from DynamoDB: {e}"
+                    f"Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("Provisioned throughput exceeded: {e}") from e
+                raise ValueError(f"Provisioned throughput exceeded: {e}") from e
             else:
                 raise ValueError(
-                    "Could not get ReceiptSections from DynamoDB: {e}"
+                    f"Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
 
     def list_receipt_sections(
@@ -276,15 +277,15 @@ class _ReceiptSection(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    "Could not list receipt sections from DynamoDB: {e}"
+                    f"Could not list receipt sections from DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError("Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
             elif error_code == "ValidationException":
                 raise ValueError(
-                    "One or more parameters given were invalid: {e}"
+                    f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}")
             else:
-                raise OperationError("Error listing receipt sections: {e}")
+                raise OperationError(f"Error listing receipt sections: {e}")

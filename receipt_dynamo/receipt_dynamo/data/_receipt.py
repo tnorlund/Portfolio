@@ -2,6 +2,7 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -227,6 +228,21 @@ class _Receipt(DynamoClientProtocol):
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "TransactionCanceledException":
+                    if "ConditionalCheckFailed" in str(e):
+                        raise ValueError("One or more receipts do not exist") from e
+                    else:
+                        raise DynamoDBError(f"Transaction canceled: {e}") from e
+                else:
+                    raise DynamoDBError(f"Error updating receipts: {e}") from e
 
     def delete_receipt(self, receipt: Receipt):
         """Deletes a receipt from the database
@@ -313,6 +329,11 @@ class _Receipt(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError("One or more receipts do not exist") from e
+            elif error_code == "TransactionCanceledException":
+                if "ConditionalCheckFailed" in str(e):
+                    raise ValueError("One or more receipts do not exist") from e
+                else:
+                    raise DynamoDBError(f"Transaction canceled: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -325,8 +346,10 @@ class _Receipt(DynamoClientProtocol):
                 ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
+            elif error_code == "ResourceNotFoundException":
+                raise DynamoDBError(f"Resource not found: {e}") from e
             else:
-                raise ValueError(f"Error deleting receipts: {e}") from e
+                raise DynamoDBError(f"Error deleting receipts: {e}") from e
 
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
         """

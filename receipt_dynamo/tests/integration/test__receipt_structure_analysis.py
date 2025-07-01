@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import (
     ContentPattern,
     ReceiptSection,
@@ -494,7 +495,7 @@ def test_listReceiptStructureAnalysesFromReceipt_success(
     if existing_analyses:
         client.delete_receipt_structure_analyses(existing_analyses)
 
-    # Add all analyses at once
+    # Add analyses using batch operation as originally intended
     client.add_receipt_structure_analyses(analyses)
 
     # Act

@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
@@ -35,9 +36,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 ConditionExpression="attribute_not_exists(PK)",
             )
         except ClientError as e:
-            raise ReceiptDynamoError(
-                f"Could not add completion batch result: {e}"
-            ) from e
+            raise OperationError(f"Could not add completion batch result: {e}") from e
 
     def add_completion_batch_results(self, results: List[CompletionBatchResult]):
         if not isinstance(results, list) or not all(
@@ -57,7 +56,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
 
     def update_completion_batch_result(self, result: CompletionBatchResult):
         if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.") from e
+            raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
             self._client.put_item(
                 TableName=self.table_name,
@@ -65,13 +64,13 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ReceiptDynamoError(
+            raise OperationError(
                 f"Could not update completion batch result: {e}"
             ) from e
 
     def delete_completion_batch_result(self, result: CompletionBatchResult):
         if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.") from e
+            raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
             self._client.delete_item(
                 TableName=self.table_name,
@@ -79,7 +78,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            raise ReceiptDynamoError(
+            raise OperationError(
                 f"Could not delete completion batch result: {e}"
             ) from e
 
@@ -102,10 +101,10 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 },
             )
             if "Item" not in response:
-                raise ValueError("Completion batch result not found.") from e
+                raise ValueError("Completion batch result not found.")
             return item_to_completion_batch_result(response["Item"])
         except ClientError as e:
-            raise ReceiptDynamoError(
+            raise OperationError(
                 f"Could not retrieve completion batch result: {e}"
             ) from e
 
@@ -153,7 +152,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
         self, status: str, limit: int = None, lastEvaluatedKey: dict = None
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if status not in [s.value for s in ValidationStatus]:
-            raise ValueError("Invalid status.") from e
+            raise ValueError("Invalid status.")
         if lastEvaluatedKey:
             validate_last_evaluated_key(lastEvaluatedKey)
 

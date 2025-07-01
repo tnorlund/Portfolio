@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptLetter
 
 # -------------------------------------------------------------------
@@ -803,7 +804,7 @@ def test_deleteReceiptLetter_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError, match=expected_error):
-        dynamo_client.deleteReceiptLetter(invalid_input)
+        dynamo_client.delete_receipt_letter(invalid_input)
 
 
 @pytest.mark.integration

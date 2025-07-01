@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import (
     ReceiptValidationResult,
     item_to_receipt_validation_result,
@@ -238,6 +239,22 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise DynamoDBError(
+                        f"Could not update ReceiptValidationResults in the database: {e}"
+                    ) from e
+                else:
+                    raise DynamoDBError(
+                        f"Could not update ReceiptValidationResults in the database: {e}"
                     ) from e
 
     def delete_receipt_validation_result(

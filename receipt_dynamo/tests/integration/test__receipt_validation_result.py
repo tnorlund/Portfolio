@@ -5,11 +5,18 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import (
     ReceiptValidationResult,
     item_to_receipt_validation_result,
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -698,49 +705,56 @@ def test_updateReceiptValidationResults_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons",
+    "error_code,error_message,expected_error,cancellation_reasons,exception_type",
     [
         (
             "ResourceNotFoundException",
             "Table not found",
             "Could not update ReceiptValidationResults in the database",
             None,
+            DynamoDBError,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
             "One or more ReceiptValidationResults do not exist",
             [{"Code": "ConditionalCheckFailed"}],
+            ValueError,
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
             None,
+            DynamoDBServerError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
             None,
+            Exception,  # Still Exception in the test
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
             None,
+            DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
             "Access denied",
             None,
+            DynamoDBAccessError,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
             "Could not update ReceiptValidationResults in the database",
             None,
+            DynamoDBError,
         ),
     ],
 )
@@ -752,6 +766,7 @@ def test_updateReceiptValidationResults_client_errors(
     error_message,
     expected_error,
     cancellation_reasons,
+    exception_type,
 ):
     """Test handling of client errors when updating multiple validation results"""
     # Arrange
@@ -784,7 +799,7 @@ def test_updateReceiptValidationResults_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(exception_type, match=expected_error):
         client.update_receipt_validation_results(validation_results)
 
 

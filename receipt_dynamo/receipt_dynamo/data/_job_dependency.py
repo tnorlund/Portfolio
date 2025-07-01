@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
@@ -62,9 +63,9 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None") from e
+            raise ValueError("dependent_job_id cannot be None")
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None") from e
+            raise ValueError("dependency_job_id cannot be None")
 
         response = self._client.get_item(
             TableName=self.table_name,
@@ -104,7 +105,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None") from e
+            raise ValueError("dependent_job_id cannot be None")
 
         # Prepare KeyConditionExpression
         key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
@@ -159,7 +160,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None") from e
+            raise ValueError("dependency_job_id cannot be None")
 
         # Prepare index query parameters
         index_name = "GSI2"
@@ -205,7 +206,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if job_dependency is None:
-            raise ValueError("job_dependency cannot be None") from e
+            raise ValueError("job_dependency cannot be None")
         if not isinstance(job_dependency, JobDependency):
             raise ValueError(
                 f"job_dependency must be a JobDependency instance, got {type(job_dependency)}"
@@ -238,7 +239,7 @@ class _JobDependency(DynamoClientProtocol):
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None") from e
+            raise ValueError("dependent_job_id cannot be None")
 
         # First, get all dependencies for the job
         dependencies, _ = self.list_dependencies(dependent_job_id)

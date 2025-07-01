@@ -2,6 +2,7 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 
@@ -402,12 +403,7 @@ def test_delete_receipt_word(
     client.add_receipt_word(sample_receipt_word)
 
     # Act
-    client.delete_receipt_word(
-        sample_receipt_word.receipt_id,
-        sample_receipt_word.image_id,
-        sample_receipt_word.line_id,
-        sample_receipt_word.word_id,
-    )
+    client.delete_receipt_word(sample_receipt_word)
 
     # Assert
     with pytest.raises(ValueError, match="not found"):

@@ -4,7 +4,14 @@ from typing import Literal
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, WordTag
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture
@@ -429,7 +436,9 @@ def test_updateWordTags_raises_clienterror_provisioned_throughput_exceeded(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Provisioned throughput exceeded"):
+    with pytest.raises(
+        DynamoDBThroughputError, match="Provisioned throughput exceeded"
+    ):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -456,7 +465,7 @@ def test_updateWordTags_raises_clienterror_internal_server_error(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Internal server error"):
+    with pytest.raises(DynamoDBServerError, match="Internal server error"):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -483,7 +492,9 @@ def test_updateWordTags_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(
+        DynamoDBValidationError, match="One or more parameters given were invalid"
+    ):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 
@@ -510,7 +521,7 @@ def test_updateWordTags_raises_clienterror_access_denied(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(Exception, match="Access denied"):
+    with pytest.raises(DynamoDBAccessError, match="Access denied"):
         client.update_word_tags([sample_word_tag])
     mock_transact.assert_called_once()
 

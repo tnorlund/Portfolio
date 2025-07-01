@@ -2,6 +2,7 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import (
     Image,
     Letter,
@@ -27,8 +28,11 @@ from receipt_dynamo import (
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    DynamoDBValidationError,
     OperationError,
 )
 from receipt_dynamo.entities import (
@@ -278,7 +282,7 @@ class _Image(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError("Error getting image: {e}") from e
+                raise OperationError(f"Error getting image: {e}") from e
 
     def update_image(self, image: Image):
         """
@@ -316,7 +320,7 @@ class _Image(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("Image with ID {image.image_id} not found") from e
+                raise ValueError(f"Image with ID {image.image_id} not found") from e
             else:
                 raise OperationError(f"Error updating image: {e}") from e
 
@@ -372,9 +376,28 @@ class _Image(DynamoClientProtocol):
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError("One or more images do not exist") from e
+                elif error_code == "TransactionCanceledException":
+                    if "ConditionalCheckFailed" in str(e):
+                        raise ValueError("One or more images do not exist") from e
+                    else:
+                        raise DynamoDBError(f"Transaction canceled: {e}") from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise DynamoDBError(f"Resource not found: {e}") from e
+                else:
+                    raise DynamoDBError(
+                        f"Could not update images in the database: {e}"
                     ) from e
 
     def get_image_details(self, image_id: str) -> ImageDetails:
@@ -420,7 +443,7 @@ class _Image(DynamoClientProtocol):
                 TableName=self.table_name,
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "PK"},
-                ExpressionAttributeValues={":pk_value": {"S": "IMAGE#{image_id}"}},
+                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                 ScanIndexForward=True,
             )
             items = response["Items"]
@@ -432,7 +455,7 @@ class _Image(DynamoClientProtocol):
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "PK"},
                     ExpressionAttributeValues={
-                        ":pk_value": {"S": "IMAGE#{image_id}"},
+                        ":pk_value": {"S": f"IMAGE#{image_id}"},
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                     ScanIndexForward=True,
@@ -503,7 +526,7 @@ class _Image(DynamoClientProtocol):
                 IndexName="GSI1",
                 KeyConditionExpression="#pk = :pk_value",
                 ExpressionAttributeNames={"#pk": "GSI1PK"},
-                ExpressionAttributeValues={":pk_value": {"S": "IMAGE#{image_id}"}},
+                ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                 ScanIndexForward=True,
             )
             items = response["Items"]
@@ -513,7 +536,7 @@ class _Image(DynamoClientProtocol):
                     IndexName="GSI1",
                     KeyConditionExpression="#pk = :pk_value",
                     ExpressionAttributeNames={"#pk": "GSI1PK"},
-                    ExpressionAttributeValues={":pk_value": {"S": "IMAGE#{image_id}"}},
+                    ExpressionAttributeValues={":pk_value": {"S": f"IMAGE#{image_id}"}},
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                     ScanIndexForward=True,
                 )
@@ -529,7 +552,7 @@ class _Image(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error getting image cluster details: {e}") from e
         except Exception as e:
-            raise OperationError("Error getting image cluster details: {e}") from e
+            raise OperationError(f"Error getting image cluster details: {e}") from e
         image = None
         lines = []
         receipts = []
@@ -647,7 +670,7 @@ class _Image(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "IndexName": "GSI2",
                 "KeyConditionExpression": "GSI2PK = :val",
-                "ExpressionAttributeValues": {":val": {"S": "IMAGE#{image_id}"}},
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_id}"}},
             }
 
             if lastEvaluatedKey is not None:
@@ -670,7 +693,7 @@ class _Image(DynamoClientProtocol):
 
         except ClientError as e:
             raise ValueError(
-                "Could not list images and words and tags from the database: {e}"
+                f"Could not list images and words and tags from the database: {e}"
             )
 
     def list_images(
@@ -739,7 +762,7 @@ class _Image(DynamoClientProtocol):
             return images, last_evaluated_key
 
         except ClientError as e:
-            raise ValueError("Could not list images from the database: {e}")
+            raise ValueError(f"Could not list images from the database: {e}")
 
     def list_images_by_type(
         self,
@@ -755,7 +778,7 @@ class _Image(DynamoClientProtocol):
                 raise ValueError("image_type must be a ImageType or a string")
             if image_type not in [t.value for t in ImageType]:
                 raise ValueError(
-                    "image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
                 )
         if isinstance(image_type, ImageType):
             image_type = image_type.value
@@ -766,7 +789,7 @@ class _Image(DynamoClientProtocol):
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "#t = :val",
                 "ExpressionAttributeNames": {"#t": "GSI3PK"},
-                "ExpressionAttributeValues": {":val": {"S": "IMAGE#{image_type}"}},
+                "ExpressionAttributeValues": {":val": {"S": f"IMAGE#{image_type}"}},
             }
 
             if lastEvaluatedKey is not None:

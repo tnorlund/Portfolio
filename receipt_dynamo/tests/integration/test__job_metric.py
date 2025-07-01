@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._job_metric import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.job import Job
@@ -90,13 +91,13 @@ def sample_job_metric_later(sample_job, sample_job_metric):
 def test_addJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
     """Test adding a job metric successfully"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metric
-    job_metric_dynamo.addJobMetric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
 
     # Verify the job metric was added by retrieving it
-    metrics, _ = job_metric_dynamo.getMetricsByName(sample_job_metric.metric_name)
+    metrics, _ = job_metric_dynamo.get_metrics_by_name(sample_job_metric.metric_name)
 
     # Find the metric matching our job_id
     job_metrics = [m for m in metrics if m.job_id == sample_job.job_id]
@@ -118,7 +119,7 @@ def test_addJobMetric_raises_value_error(job_metric_dynamo):
     with pytest.raises(
         ValueError, match="JobMetric parameter is required and cannot be None."
     ):
-        job_metric_dynamo.addJobMetric(None)
+        job_metric_dynamo.add_job_metric(None)
 
 
 @pytest.mark.integration
@@ -131,7 +132,7 @@ def test_addJobMetric_raises_value_error_not_instance(job_metric_dynamo):
         ValueError,
         match="job_metric must be an instance of the JobMetric class.",
     ):
-        job_metric_dynamo.addJobMetric("not a job metric")
+        job_metric_dynamo.add_job_metric("not a job metric")
 
 
 @pytest.mark.integration
@@ -142,10 +143,10 @@ def test_addJobMetric_raises_conditional_check_failed(
     Test that addJobMetric raises ValueError when the job metric already exists
     """
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metric first
-    job_metric_dynamo.addJobMetric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
 
     # Try to add it again
     with pytest.raises(
@@ -154,7 +155,7 @@ def test_addJobMetric_raises_conditional_check_failed(
         f"timestamp {sample_job_metric.timestamp} for job "
         f"{sample_job_metric.job_id} already exists",
     ):
-        job_metric_dynamo.addJobMetric(sample_job_metric)
+        job_metric_dynamo.add_job_metric(sample_job_metric)
 
 
 @pytest.mark.integration
@@ -177,7 +178,7 @@ def test_addJobMetric_raises_resource_not_found(
     )
 
     with pytest.raises(Exception, match="Could not add job metric to DynamoDB"):
-        job_metric_dynamo.addJobMetric(sample_job_metric)
+        job_metric_dynamo.add_job_metric(sample_job_metric)
     mock_put.assert_called_once()
 
 
@@ -190,13 +191,13 @@ def test_addJobMetric_raises_resource_not_found(
 def test_getJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
     """Test getting a job metric successfully"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metric
-    job_metric_dynamo.addJobMetric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
 
     # Get the job metric
-    metric = job_metric_dynamo.getJobMetric(
+    metric = job_metric_dynamo.get_job_metric(
         sample_job_metric.job_id,
         sample_job_metric.metric_name,
         sample_job_metric.timestamp,
@@ -216,7 +217,7 @@ def test_getJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
 def test_getJobMetric_raises_value_error_job_id_none(job_metric_dynamo):
     """Test that getJobMetric raises ValueError when job_id is None"""
     with pytest.raises(ValueError, match="Job ID is required and cannot be None."):
-        job_metric_dynamo.getJobMetric(None, "loss", "2021-01-01T12:30:45")
+        job_metric_dynamo.get_job_metric(None, "loss", "2021-01-01T12:30:45")
 
 
 @pytest.mark.integration
@@ -228,7 +229,7 @@ def test_getJobMetric_raises_value_error_metric_name_none(
         ValueError,
         match="Metric name is required and must be a non-empty string.",
     ):
-        job_metric_dynamo.getJobMetric(sample_job.job_id, None, "2021-01-01T12:30:45")
+        job_metric_dynamo.get_job_metric(sample_job.job_id, None, "2021-01-01T12:30:45")
 
 
 @pytest.mark.integration
@@ -238,7 +239,7 @@ def test_getJobMetric_raises_value_error_timestamp_none(job_metric_dynamo, sampl
         ValueError,
         match="Timestamp is required and must be a non-empty string.",
     ):
-        job_metric_dynamo.getJobMetric(sample_job.job_id, "loss", None)
+        job_metric_dynamo.get_job_metric(sample_job.job_id, "loss", None)
 
 
 @pytest.mark.integration
@@ -247,7 +248,7 @@ def test_getJobMetric_raises_value_error_not_found(job_metric_dynamo, sample_job
     Test that getJobMetric raises ValueError when the job metric does not exist
     """
     with pytest.raises(ValueError, match="No job metric found with job ID.*"):
-        job_metric_dynamo.getJobMetric(
+        job_metric_dynamo.get_job_metric(
             sample_job.job_id, "nonexistent", "2021-01-01T12:30:45"
         )
 
@@ -263,14 +264,14 @@ def test_listJobMetrics_success(
 ):
     """Test listing job metrics successfully"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)
-    job_metric_dynamo.addJobMetric(sample_job_metric_2)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric_2)
 
     # List the job metrics
-    metrics, last_evaluated_key = job_metric_dynamo.listJobMetrics(sample_job.job_id)
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(sample_job.job_id)
 
     # Verify
     assert len(metrics) == 2
@@ -289,15 +290,15 @@ def test_listJobMetrics_with_metric_name(
 ):
     """Test listing job metrics filtered by metric name"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)  # loss
-    job_metric_dynamo.addJobMetric(sample_job_metric_2)  # accuracy
-    job_metric_dynamo.addJobMetric(sample_job_metric_later)  # loss (later)
+    job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
+    job_metric_dynamo.add_job_metric(sample_job_metric_2)  # accuracy
+    job_metric_dynamo.add_job_metric(sample_job_metric_later)  # loss (later)
 
     # List the job metrics filtered by name
-    metrics, last_evaluated_key = job_metric_dynamo.listJobMetrics(
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(
         sample_job.job_id, metric_name="loss"
     )
 
@@ -317,14 +318,14 @@ def test_listJobMetrics_with_limit(
 ):
     """Test listing job metrics with a limit"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)
-    job_metric_dynamo.addJobMetric(sample_job_metric_2)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric_2)
 
     # List the job metrics with limit=1
-    metrics, last_evaluated_key = job_metric_dynamo.listJobMetrics(
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(
         sample_job.job_id, limit=1
     )
 
@@ -339,14 +340,14 @@ def test_listJobMetrics_with_pagination(
 ):
     """Test listing job metrics with pagination"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)
-    job_metric_dynamo.addJobMetric(sample_job_metric_2)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric_2)
 
     # List the first page
-    metrics_page1, last_evaluated_key = job_metric_dynamo.listJobMetrics(
+    metrics_page1, last_evaluated_key = job_metric_dynamo.list_job_metrics(
         sample_job.job_id, limit=1
     )
 
@@ -355,7 +356,7 @@ def test_listJobMetrics_with_pagination(
     assert last_evaluated_key is not None
 
     # List the second page
-    metrics_page2, last_evaluated_key2 = job_metric_dynamo.listJobMetrics(
+    metrics_page2, last_evaluated_key2 = job_metric_dynamo.list_job_metrics(
         sample_job.job_id, limit=1, lastEvaluatedKey=last_evaluated_key
     )
 
@@ -370,10 +371,10 @@ def test_listJobMetrics_with_pagination(
 def test_listJobMetrics_empty(job_metric_dynamo, sample_job):
     """Test listing job metrics when none exist"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # List the job metrics
-    metrics, last_evaluated_key = job_metric_dynamo.listJobMetrics(sample_job.job_id)
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(sample_job.job_id)
 
     # Verify
     assert len(metrics) == 0
@@ -391,14 +392,14 @@ def test_getMetricsByName_success(
 ):
     """Test getting metrics by name successfully"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)  # loss
-    job_metric_dynamo.addJobMetric(sample_job_metric_later)  # loss (later)
+    job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
+    job_metric_dynamo.add_job_metric(sample_job_metric_later)  # loss (later)
 
     # Get metrics by name
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByName("loss")
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name("loss")
 
     # Verify
     assert len(metrics) >= 2
@@ -424,14 +425,14 @@ def test_getMetricsByName_with_limit(
 ):
     """Test getting metrics by name with a limit"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)
-    job_metric_dynamo.addJobMetric(sample_job_metric_later)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric_later)
 
     # Get metrics by name with limit=1
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByName("loss", limit=1)
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name("loss", limit=1)
 
     # Verify
     assert len(metrics) == 1
@@ -442,13 +443,13 @@ def test_getMetricsByName_with_limit(
 def test_getMetricsByName_not_found(job_metric_dynamo, sample_job, sample_job_metric):
     """Test getting metrics by name when none match"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metric
-    job_metric_dynamo.addJobMetric(sample_job_metric)  # loss
+    job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
 
     # Get metrics by a non-existent name
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByName("nonexistent")
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name("nonexistent")
 
     # Verify
     assert len(metrics) == 0
@@ -462,7 +463,7 @@ def test_getMetricsByName_raises_value_error(job_metric_dynamo):
         ValueError,
         match="Metric name is required and must be a non-empty string.",
     ):
-        job_metric_dynamo.getMetricsByName(None)
+        job_metric_dynamo.get_metrics_by_name(None)
 
 
 # ---
@@ -476,7 +477,7 @@ def test_getMetricsByNameAcrossJobs_success(
 ):
     """Test getting metrics by name across jobs successfully"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Create a second job with different ID but same metric name
     from uuid import uuid4
@@ -494,7 +495,7 @@ def test_getMetricsByNameAcrossJobs_success(
         "medium",
         {},
     )
-    job_metric_dynamo.addJob(second_job)
+    job_metric_dynamo.add_job(second_job)
 
     # Create a metric for the second job with same name but different value
     from receipt_dynamo import JobMetric
@@ -510,14 +511,16 @@ def test_getMetricsByNameAcrossJobs_success(
     )
 
     # Add all job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)  # Original job, loss
-    job_metric_dynamo.addJobMetric(
+    job_metric_dynamo.add_job_metric(sample_job_metric)  # Original job, loss
+    job_metric_dynamo.add_job_metric(
         sample_job_metric_later
     )  # Original job, loss (later)
-    job_metric_dynamo.addJobMetric(second_job_metric)  # Second job, loss
+    job_metric_dynamo.add_job_metric(second_job_metric)  # Second job, loss
 
     # Get metrics by name across jobs
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs("loss")
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
+        "loss"
+    )
 
     # Verify
     assert len(metrics) >= 3
@@ -553,7 +556,7 @@ def test_getMetricsByNameAcrossJobs_with_limit(
 ):
     """Test getting metrics by name across jobs with a limit"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Create a second job with different ID
     from uuid import uuid4
@@ -571,7 +574,7 @@ def test_getMetricsByNameAcrossJobs_with_limit(
         "medium",
         {},
     )
-    job_metric_dynamo.addJob(second_job)
+    job_metric_dynamo.add_job(second_job)
 
     # Create metrics for both jobs
     from receipt_dynamo import JobMetric
@@ -587,12 +590,12 @@ def test_getMetricsByNameAcrossJobs_with_limit(
     )
 
     # Add all job metrics
-    job_metric_dynamo.addJobMetric(sample_job_metric)
-    job_metric_dynamo.addJobMetric(sample_job_metric_later)
-    job_metric_dynamo.addJobMetric(second_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric)
+    job_metric_dynamo.add_job_metric(sample_job_metric_later)
+    job_metric_dynamo.add_job_metric(second_job_metric)
 
     # Get metrics by name across jobs with limit=2
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs(
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
         "loss", limit=2
     )
 
@@ -608,13 +611,13 @@ def test_getMetricsByNameAcrossJobs_not_found(
 ):
     """Test getting metrics by name across jobs when none match"""
     # Add the job first
-    job_metric_dynamo.addJob(sample_job)
+    job_metric_dynamo.add_job(sample_job)
 
     # Add the job metric
-    job_metric_dynamo.addJobMetric(sample_job_metric)  # loss
+    job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
 
     # Get metrics by a non-existent name
-    metrics, last_evaluated_key = job_metric_dynamo.getMetricsByNameAcrossJobs(
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
         "nonexistent"
     )
 
@@ -633,7 +636,7 @@ def test_getMetricsByNameAcrossJobs_raises_value_error(job_metric_dynamo):
         ValueError,
         match="Metric name is required and must be a non-empty string.",
     ):
-        job_metric_dynamo.getMetricsByNameAcrossJobs(None)
+        job_metric_dynamo.get_metrics_by_name_across_jobs(None)
 
 
 # ---
@@ -686,7 +689,7 @@ def test_listJobMetrics_raises_client_error(job_metric_dynamo, sample_job, mocke
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Could not list job metrics from the database"):
-        job_metric_dynamo.listJobMetrics(sample_job.job_id)
+        job_metric_dynamo.list_job_metrics(sample_job.job_id)
     mock_query.assert_called_once()
 
 
@@ -714,5 +717,5 @@ def test_getMetricsByName_raises_client_error(job_metric_dynamo, mocker):
     with pytest.raises(
         Exception, match="Could not query metrics by name from the database"
     ):
-        job_metric_dynamo.getMetricsByName("loss")
+        job_metric_dynamo.get_metrics_by_name("loss")
     mock_query.assert_called_once()

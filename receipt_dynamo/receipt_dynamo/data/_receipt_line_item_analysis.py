@@ -348,14 +348,14 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         if receipt_id <= 0:
             raise ValueError("receipt_id must be greater than 0")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.f")
+            raise ValueError("image_id parameter is required and cannot be None.")
         assert_valid_uuid(image_id)
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SKf": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
                 },
             )
             if "Item" in response:

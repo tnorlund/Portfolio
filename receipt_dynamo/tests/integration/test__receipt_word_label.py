@@ -2,8 +2,15 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBValidationError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -575,7 +582,7 @@ def test_updateReceiptWordLabels_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="Error updating receipt word labels: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        match="One or more receipt word labels do not exist",
     ):
         client.update_receipt_word_labels(labels)
 
@@ -615,33 +622,43 @@ def test_updateReceiptWordLabels_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
+    "error_code,error_message,expected_exception,exception_type",
     [
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
             "One or more receipt word labels do not exist",
+            ValueError,
         ),
         (
             "ProvisionedThroughputExceededException",
             "Provisioned throughput exceeded",
             "Provisioned throughput exceeded",
+            Exception,  # This is handled in transact_write_items, stays as Exception
         ),
         (
             "InternalServerError",
             "Internal server error",
             "Internal server error",
+            DynamoDBServerError,
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            DynamoDBValidationError,
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied",
+            DynamoDBAccessError,
+        ),
         (
             "UnknownError",
             "Unknown error",
             "Error updating receipt word labels",
+            DynamoDBError,
         ),
     ],
 )
@@ -652,6 +669,7 @@ def test_updateReceiptWordLabels_client_errors(
     error_code,
     error_message,
     expected_exception,
+    exception_type,
 ):
     """
     Tests that updateReceiptWordLabels handles various client errors appropriately:
@@ -678,7 +696,7 @@ def test_updateReceiptWordLabels_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(exception_type, match=expected_exception):
         client.update_receipt_word_labels(labels)
     mock_transact_write.assert_called_once()
 
@@ -914,8 +932,8 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(
-        Exception,
-        match="Error deleting receipt word labels: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        ValueError,
+        match="One or more receipt word labels do not exist",
     ):
         client.delete_receipt_word_labels([sample_receipt_word_label])
 

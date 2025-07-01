@@ -139,7 +139,7 @@ class _Line(DynamoClientProtocol):
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
-        except ClientError:
+        except ClientError as e:
             raise ValueError(f"Line with ID {line_id} not found") from e
 
     def delete_lines(self, lines: list[Line]):

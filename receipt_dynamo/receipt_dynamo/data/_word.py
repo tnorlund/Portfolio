@@ -5,7 +5,11 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import Word, item_to_word
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
     DynamoDBThroughputError,
+    DynamoDBValidationError,
     OperationError,
 )
 
@@ -146,6 +150,20 @@ class _Word(DynamoClientProtocol):
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise ValueError(f"Error updating words: {e}") from e
+                else:
+                    raise DynamoDBError(
+                        f"Could not update words in the database: {e}"
                     ) from e
 
     def delete_word(self, image_id: str, line_id: int, word_id: int):
