@@ -148,11 +148,9 @@ def get_receipt_descriptions(
     """
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
-        receipt, lines, words, letters, tags, labels = (
-            dynamo_client.getReceiptDetails(
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
+        receipt, lines, words, letters, tags, labels = dynamo_client.getReceiptDetails(
+            image_id=image_id,
+            receipt_id=receipt_id,
         )
         receipt_metadata = dynamo_client.getReceiptMetadata(
             image_id=image_id,
@@ -237,9 +235,7 @@ def upsert_line_embeddings_to_pinecone(
             _format_line_context_embedding_input,
         )
 
-        embedding_input = _format_line_context_embedding_input(
-            target_line, lines
-        )
+        embedding_input = _format_line_context_embedding_input(target_line, lines)
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
 
         # Merchant name handling - same as word embeddings

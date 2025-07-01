@@ -2,7 +2,6 @@ from typing import Literal
 
 import boto3
 import pytest
-
 from receipt_dynamo import DynamoClient, Letter
 
 correct_letter_params = {
@@ -158,9 +157,7 @@ def test_letter_get(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_letter(letter)
-    response = client.get_letter(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
-    )
+    response = client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
     assert response == letter

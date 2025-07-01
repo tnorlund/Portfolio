@@ -2,7 +2,6 @@ import json
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 import pulumi
-
 from receipt_label.embedding.word import (
     download_openai_batch_result,
     get_openai_batch_status,
@@ -42,16 +41,12 @@ def poll_handler(event, context):
         pulumi.log.info(f"Got {len(downloaded_results)} results")
 
         receipt_descriptions = get_receipt_descriptions(downloaded_results)
-        pulumi.log.info(
-            f"Got {len(receipt_descriptions)} receipt descriptions"
-        )
+        pulumi.log.info(f"Got {len(receipt_descriptions)} receipt descriptions")
 
         upserted_vectors_count = upsert_embeddings_to_pinecone(
             downloaded_results, receipt_descriptions
         )
-        pulumi.log.info(
-            f"Upserted {upserted_vectors_count} vectors to Pinecone"
-        )
+        pulumi.log.info(f"Upserted {upserted_vectors_count} vectors to Pinecone")
 
         embedding_results_count = write_embedding_results_to_dynamo(
             downloaded_results, receipt_descriptions, batch_id

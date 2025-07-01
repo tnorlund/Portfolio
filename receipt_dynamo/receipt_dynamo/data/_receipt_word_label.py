@@ -225,9 +225,32 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                     raise ValueError(
                         "One or more receipt word labels do not exist"
                     ) from e
+                elif error_code == "TransactionCanceledException":
+                    if "ConditionalCheckFailed" in str(e):
+                        raise ValueError(
+                            "One or more receipt word labels do not exist"
+                        ) from e
+                    else:
+                        raise DynamoDBError(
+                            f"Error updating receipt word labels: {e}"
+                        ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
+                    ) from e
+                elif error_code == "InternalServerError":
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                elif error_code == "ValidationException":
+                    raise DynamoDBValidationError(
+                        f"One or more parameters given were invalid: {e}"
+                    ) from e
+                elif error_code == "AccessDeniedException":
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                elif error_code == "ResourceNotFoundException":
+                    raise ValueError(f"Error updating receipt word labels: {e}") from e
+                else:
+                    raise DynamoDBError(
+                        f"Error updating receipt word labels: {e}"
                     ) from e
 
     def delete_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
@@ -322,6 +345,13 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError("One or more receipt word labels do not exist") from e
+            elif error_code == "TransactionCanceledException":
+                if "ConditionalCheckFailed" in str(e):
+                    raise ValueError(
+                        "One or more receipt word labels do not exist"
+                    ) from e
+                else:
+                    raise DynamoDBError(f"Transaction canceled: {e}") from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -334,8 +364,10 @@ class _ReceiptWordLabel(DynamoClientProtocol):
                 ) from e
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
+            elif error_code == "ResourceNotFoundException":
+                raise DynamoDBError(f"Resource not found: {e}") from e
             else:
-                raise ValueError(f"Error deleting receipt word labels: {e}") from e
+                raise DynamoDBError(f"Error deleting receipt word labels: {e}") from e
 
     def get_receipt_word_label(
         self,
@@ -460,23 +492,23 @@ class _ReceiptWordLabel(DynamoClientProtocol):
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("Keys must contain 'PK' and 'SK'") from e
+                raise ValueError("Keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'") from e
+                raise ValueError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'") from e
+                raise ValueError("SK must start with 'RECEIPT#'")
             if len(key["SK"]["S"].split("#")[1]) != 5:
-                raise ValueError("SK must contain a 5-digit receipt ID") from e
+                raise ValueError("SK must contain a 5-digit receipt ID")
             if not key["SK"]["S"].split("#")[2] == "LINE":
-                raise ValueError("SK must contain 'LINE'") from e
+                raise ValueError("SK must contain 'LINE'")
             if len(key["SK"]["S"].split("#")[3]) != 5:
-                raise ValueError("SK must contain a 5-digit line ID") from e
+                raise ValueError("SK must contain a 5-digit line ID")
             if not key["SK"]["S"].split("#")[4] == "WORD":
-                raise ValueError("SK must contain 'WORD'") from e
+                raise ValueError("SK must contain 'WORD'")
             if len(key["SK"]["S"].split("#")[5]) != 5:
-                raise ValueError("SK must contain a 5-digit word ID") from e
+                raise ValueError("SK must contain a 5-digit word ID")
             if not key["SK"]["S"].split("#")[6] == "LABEL":
-                raise ValueError("SK must contain 'LABEL'") from e
+                raise ValueError("SK must contain 'LABEL'")
 
         results = []
         try:
@@ -670,7 +702,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
+                raise DynamoDBError(
                     f"Could not list receipt word labels by label type: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -684,7 +716,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise ReceiptDynamoError(
+                raise DynamoDBError(
                     f"Could not list receipt word labels by label type: {e}"
                 ) from e
 
@@ -834,7 +866,7 @@ class _ReceiptWordLabel(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
+                raise DynamoDBError(
                     f"Could not list receipt word labels by validation status: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -848,6 +880,6 @@ class _ReceiptWordLabel(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise ReceiptDynamoError(
+                raise DynamoDBError(
                     f"Could not list receipt word labels by validation status: {e}"
                 ) from e

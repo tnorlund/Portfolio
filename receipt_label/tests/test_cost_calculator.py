@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Dict, List, Tuple
 
 import pytest
-
 from receipt_label.utils.cost_calculator import AICostCalculator
 
 
@@ -527,9 +526,7 @@ class TestAICostCalculator:
 
     def test_openai_total_tokens_fallback_with_output(self):
         """Test OpenAI cost using total_tokens fallback for completion models."""
-        cost = self.calculator.calculate_openai_cost(
-            model="gpt-4o", total_tokens=1000
-        )
+        cost = self.calculator.calculate_openai_cost(model="gpt-4o", total_tokens=1000)
         # 50/50 split: 500 input + 500 output
         # $0.005 * 0.5 + $0.015 * 0.5 = $0.0025 + $0.0075 = $0.01
         assert cost == pytest.approx(0.01, rel=1e-6)
@@ -669,37 +666,24 @@ class TestAICostCalculator:
     def test_get_model_context_window_openai(self):
         """Test getting context window for OpenAI models."""
         assert self.calculator.get_model_context_window("gpt-4o") == 128000
-        assert (
-            self.calculator.get_model_context_window("gpt-3.5-turbo") == 4096
-        )
-        assert (
-            self.calculator.get_model_context_window("gpt-4-turbo") == 128000
-        )
+        assert self.calculator.get_model_context_window("gpt-3.5-turbo") == 4096
+        assert self.calculator.get_model_context_window("gpt-4-turbo") == 128000
 
     def test_get_model_context_window_anthropic(self):
         """Test getting context window for Anthropic models."""
-        assert (
-            self.calculator.get_model_context_window("claude-3.5-sonnet")
-            == 200000
-        )
-        assert (
-            self.calculator.get_model_context_window("claude-3-haiku")
-            == 200000
-        )
+        assert self.calculator.get_model_context_window("claude-3.5-sonnet") == 200000
+        assert self.calculator.get_model_context_window("claude-3-haiku") == 200000
         assert self.calculator.get_model_context_window("claude-2.1") == 200000
 
     def test_get_model_context_window_unknown(self):
         """Test getting context window for unknown model."""
-        assert (
-            self.calculator.get_model_context_window("unknown-model") is None
-        )
+        assert self.calculator.get_model_context_window("unknown-model") is None
 
     def test_get_model_context_window_partial_match(self):
         """Test getting context window with partial model name match."""
         # Should match "claude-3-opus" in the context windows dict
         assert (
-            self.calculator.get_model_context_window("claude-3-opus-20240229")
-            == 200000
+            self.calculator.get_model_context_window("claude-3-opus-20240229") == 200000
         )
 
     def test_get_pricing_info_openai(self):
@@ -762,15 +746,11 @@ class TestAICostCalculator:
 
             # Embedding models don't have output pricing
             if "embedding" not in model:
-                assert (
-                    "output" in pricing
-                ), f"Model {model} missing output pricing"
+                assert "output" in pricing, f"Model {model} missing output pricing"
                 assert isinstance(
                     pricing["output"], (int, float)
                 ), f"Model {model} output price not numeric"
-                assert (
-                    pricing["output"] >= 0
-                ), f"Model {model} output price negative"
+                assert pricing["output"] >= 0, f"Model {model} output price negative"
 
     def test_pricing_data_completeness_anthropic(self):
         """Test that all Anthropic models have required pricing data."""
@@ -784,9 +764,7 @@ class TestAICostCalculator:
                 pricing["output"], (int, float)
             ), f"Model {model} output price not numeric"
             assert pricing["input"] >= 0, f"Model {model} input price negative"
-            assert (
-                pricing["output"] >= 0
-            ), f"Model {model} output price negative"
+            assert pricing["output"] >= 0, f"Model {model} output price negative"
 
     def test_pricing_data_completeness_google_places(self):
         """Test that all Google Places operations have pricing data."""
