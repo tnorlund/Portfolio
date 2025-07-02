@@ -142,7 +142,6 @@ def get_receipt_descriptions(
             - lines
             - words
             - letters
-            - tags
             - labels
             - metadata
     """
@@ -161,7 +160,6 @@ def get_receipt_descriptions(
             "lines": lines,
             "words": words,
             "letters": letters,
-            "tags": tags,
             "labels": labels,
             "metadata": receipt_metadata,
         }
