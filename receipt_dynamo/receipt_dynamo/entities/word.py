@@ -1,7 +1,9 @@
 # infra/lambda_layer/python/dynamo/entities/word.py
+from dataclasses import dataclass
 from math import atan2, cos, degrees, pi, radians, sin
 from typing import Any, Dict, Generator, Optional, Tuple
 
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -14,7 +16,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class Word:
+@dataclass(eq=True, unsafe_hash=False)
+class Word(DynamoDBEntity):
     """Represents a word extracted from an image for DynamoDB.
 
     This class encapsulates word-related information such as its unique
@@ -41,88 +44,57 @@ class Word:
         num_chars (int): The number of characters in the word.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        line_id: int,
-        word_id: int,
-        text: str,
-        bounding_box: Dict[str, Any],
-        top_right: Dict[str, Any],
-        top_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        angle_degrees: float,
-        angle_radians: float,
-        confidence: float,
-        extracted_data: Optional[Dict[str, Any]] = None,
-    ):
-        """Initializes a new Word object for DynamoDB.
+    image_id: str
+    line_id: int
+    word_id: int
+    text: str
+    bounding_box: Dict[str, Any]
+    top_right: Dict[str, Any]
+    top_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    angle_degrees: float
+    angle_radians: float
+    confidence: float
+    extracted_data: Optional[Dict[str, Any]] = None
 
-        Args:
-            image_id (str): UUID identifying the image.
-            line_id (int): The ID of the line the word is in.
-            word_id (int): The ID of the word.
-            text (str): The text of the word.
-            bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
-            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
-            angle_degrees (float): The angle of the word in degrees.
-            angle_radians (float): The angle of the word in radians.
-            confidence (float): The confidence of the word (0 < confidence <= 1).
-            extracted_data (dict, optional): The extracted data of the word provided by Apple's NL API.
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
 
-        assert_type("line_id", line_id, int, ValueError)
-        if line_id < 0:
+        assert_type("line_id", self.line_id, int, ValueError)
+        if self.line_id < 0:
             raise ValueError("line_id must be positive")
-        self.line_id = line_id
 
-        assert_type("word_id", word_id, int, ValueError)
-        if word_id < 0:
+        assert_type("word_id", self.word_id, int, ValueError)
+        if self.word_id < 0:
             raise ValueError("id must be positive")
-        self.word_id = word_id
 
-        assert_type("text", text, str, ValueError)
-        self.text = text
+        assert_type("text", self.text, str, ValueError)
 
-        assert_valid_bounding_box(bounding_box)
-        self.bounding_box = bounding_box
+        assert_valid_bounding_box(self.bounding_box)
+        assert_valid_point(self.top_right)
+        assert_valid_point(self.top_left)
+        assert_valid_point(self.bottom_right)
+        assert_valid_point(self.bottom_left)
 
-        assert_valid_point(top_right)
-        self.top_right = top_right
+        assert_type(
+            "angle_degrees", self.angle_degrees, (float, int), ValueError
+        )
+        assert_type(
+            "angle_radians", self.angle_radians, (float, int), ValueError
+        )
 
-        assert_valid_point(top_left)
-        self.top_left = top_left
-
-        assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
-
-        assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
-
-        assert_type("angle_degrees", angle_degrees, (float, int), ValueError)
-        self.angle_degrees = angle_degrees
-
-        assert_type("angle_radians", angle_radians, (float, int), ValueError)
-        self.angle_radians = angle_radians
-
-        if isinstance(confidence, int):
-            confidence = float(confidence)
-        assert_type("confidence", confidence, float, ValueError)
-        if confidence <= 0.0 or confidence > 1.0:
+        if isinstance(self.confidence, int):
+            self.confidence = float(self.confidence)
+        assert_type("confidence", self.confidence, float, ValueError)
+        if self.confidence <= 0.0 or self.confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence: float = confidence
 
-        if extracted_data is not None:
-            assert_type("extracted_data", extracted_data, dict, ValueError)
-        self.extracted_data = extracted_data
+        if self.extracted_data is not None:
+            assert_type(
+                "extracted_data", self.extracted_data, dict, ValueError
+            )
 
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the Word.
@@ -773,77 +745,8 @@ class Word:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the Word object's attributes.
-
-        Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its value.
-        """
-        yield "image_id", self.image_id
-        yield "line_id", self.line_id
-        yield "word_id", self.word_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "confidence", self.confidence
-        yield "extracted_data", self.extracted_data
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Returns a dictionary representation of the Word object."""
-        return {
-            "image_id": self.image_id,
-            "line_id": self.line_id,
-            "word_id": self.word_id,
-            "text": self.text,
-            "bounding_box": self.bounding_box,
-            "top_right": self.top_right,
-            "top_left": self.top_left,
-            "bottom_right": self.bottom_right,
-            "bottom_left": self.bottom_left,
-            "angle_degrees": self.angle_degrees,
-            "angle_radians": self.angle_radians,
-            "confidence": self.confidence,
-            "extracted_data": self.extracted_data,
-        }
-
-    def __eq__(self, other: object) -> bool:
-        """Determines whether two Word objects are equal.
-
-        Args:
-            other (object): The object to compare.
-
-        Returns:
-            bool: True if the Word objects have the same attributes, False otherwise.
-        """
-        if not isinstance(other, Word):
-            return False
-        return (
-            self.image_id == other.image_id
-            and self.line_id == other.line_id
-            and self.word_id == other.word_id
-            and self.text == other.text
-            and self.bounding_box == other.bounding_box
-            and self.top_right == other.top_right
-            and self.top_left == other.top_left
-            and self.bottom_right == other.bottom_right
-            and self.bottom_left == other.bottom_left
-            and self.angle_degrees == other.angle_degrees
-            and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
-            and self.extracted_data == other.extracted_data
-        )
-
     def __hash__(self) -> int:
-        """Returns the hash value of the Word object.
-
-        Returns:
-            int: The hash value of the Word object.
-        """
+        """Returns the hash value of the Word object."""
         return hash(
             (
                 self.image_id,
