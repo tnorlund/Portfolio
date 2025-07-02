@@ -156,9 +156,9 @@ def get_receipt_descriptions(
             - lines
             - words
             - letters
-            - tags
             - labels
             - metadata
+            - sections
     """
     if client_manager is None:
         client_manager = get_client_manager()

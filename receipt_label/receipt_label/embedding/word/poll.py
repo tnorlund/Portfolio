@@ -158,7 +158,6 @@ def get_receipt_descriptions(
             - lines
             - words
             - letters
-            - tags
             - labels
             - metadata
     """
@@ -255,7 +254,6 @@ def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
         _ = receipt_details["lines"]  # lines
         words = receipt_details["words"]
         _ = receipt_details["letters"]  # letters
-        _ = receipt_details["tags"]  # tags
         labels = receipt_details["labels"]
         metadata = receipt_details["metadata"]
         # Get the target word from the list of words
