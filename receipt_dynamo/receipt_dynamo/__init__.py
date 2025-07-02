@@ -63,7 +63,7 @@ __all__ = [
     "item_to_receipt_validation_category",
     "ReceiptChatGPTValidation",
     "AIUsageMetric",
-    "itemToAIUsageMetric",
+    "item_to_ai_usage_metric",
     "ResilientDynamoClient",
     # Resilience patterns (moved from receipt_label)
     "BatchQueue",
@@ -113,7 +113,7 @@ from receipt_dynamo.entities import (
 )
 from receipt_dynamo.entities.ai_usage_metric import (
     AIUsageMetric,
-    itemToAIUsageMetric,
+    item_to_ai_usage_metric,
 )
 from receipt_dynamo.entities.instance import Instance, item_to_instance
 from receipt_dynamo.entities.instance_job import (
@@ -150,7 +150,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
         """Placeholder for DynamoClient when boto3 is unavailable."""
 
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for DynamoClient") from exc
+            raise ModuleNotFoundError(
+                "boto3 is required for DynamoClient"
+            ) from exc
 
     class ResilientDynamoClient:  # type: ignore
         """Placeholder for ResilientDynamoClient when boto3 is unavailable."""
@@ -166,7 +168,9 @@ try:  # Optional dependency
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def export_image(*_, **__):
-        raise ModuleNotFoundError("boto3 is required for export_image") from exc
+        raise ModuleNotFoundError(
+            "boto3 is required for export_image"
+        ) from exc
 
 
 try:
@@ -174,7 +178,9 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     def import_image(*_, **__):
-        raise ModuleNotFoundError("boto3 is required for import_image") from exc
+        raise ModuleNotFoundError(
+            "boto3 is required for import_image"
+        ) from exc
 
 
 try:  # Optional dependency
@@ -185,7 +191,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - boto3 missing
 
     class _ServicePlaceholder:  # type: ignore
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for service classes") from exc
+            raise ModuleNotFoundError(
+                "boto3 is required for service classes"
+            ) from exc
 
     InstanceService = _ServicePlaceholder
     JobService = _ServicePlaceholder
