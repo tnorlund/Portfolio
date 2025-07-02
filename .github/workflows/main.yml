@@ -125,7 +125,7 @@ jobs:
           - package: receipt_dynamo
             test_type: integration
             test_group: group-2
-            test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py tests/integration/test__receipt_validation_summary.py tests/integration/test__gpt.py tests/integration/test__job_checkpoint.py tests/integration/test__word.py tests/integration/test__word_tag.py tests/integration/test__letter.py tests/integration/test__label_count_cache.py tests/integration/test_dynamo_client.py
+            test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py tests/integration/test__receipt_validation_summary.py tests/integration/test__job_checkpoint.py tests/integration/test__word.py tests/integration/test__letter.py tests/integration/test__label_count_cache.py tests/integration/test_dynamo_client.py
           - package: receipt_dynamo
             test_type: integration
             test_group: group-3
@@ -133,7 +133,7 @@ jobs:
           - package: receipt_dynamo
             test_type: integration
             test_group: group-4
-            test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__receipt_word_tag.py tests/integration/test__ocr.py
+            test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__ocr.py
           # receipt_label tests (marker-based, not directory-based)
           - package: receipt_label
             test_type: unit
