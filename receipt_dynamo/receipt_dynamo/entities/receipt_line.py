@@ -13,7 +13,7 @@ from receipt_dynamo.entities.util import (
 )
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptLine(DynamoDBEntity):
     """
     Represents a receipt line and its associated metadata stored in a DynamoDB table.
@@ -91,16 +91,17 @@ class ReceiptLine(DynamoDBEntity):
         if not 0.0 < self.confidence <= 1.0:
             raise ValueError("confidence must be between 0 and 1")
 
-        status_value = (
-            self.embedding_status.value
-            if isinstance(self.embedding_status, EmbeddingStatus)
-            else self.embedding_status
-        )
-        if status_value not in [s.value for s in EmbeddingStatus]:
+        if isinstance(self.embedding_status, EmbeddingStatus):
+            self.embedding_status = self.embedding_status.value
+        elif isinstance(self.embedding_status, str):
+            if self.embedding_status not in [s.value for s in EmbeddingStatus]:
+                raise ValueError(
+                    f"embedding_status must be one of: {', '.join(s.value for s in EmbeddingStatus)}\nGot: {self.embedding_status}"
+                )
+        else:
             raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
+                "embedding_status must be an EmbeddingStatus or a string"
             )
-        self.embedding_status = status_value
 
     def key(self) -> Dict[str, Any]:
         """
@@ -202,6 +203,26 @@ class ReceiptLine(DynamoDBEntity):
             f"confidence={self.confidence}, "
             f"embedding_status={self.embedding_status}"
             f")"
+        )
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the ReceiptLine object."""
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.line_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+                self.embedding_status,
+            )
         )
 
     def calculate_centroid(self) -> Tuple[float, float]:
