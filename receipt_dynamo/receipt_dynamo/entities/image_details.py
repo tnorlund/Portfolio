@@ -11,9 +11,7 @@ from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.receipt_word_tag import ReceiptWordTag
 from receipt_dynamo.entities.word import Word
-from receipt_dynamo.entities.word_tag import WordTag
 
 
 @dataclass
@@ -23,12 +21,10 @@ class ImageDetails:
     images: List[Image]
     lines: List[Line]
     words: List[Word]
-    word_tags: List[WordTag]
     letters: List[Letter]
     receipts: List[Receipt]
     receipt_lines: List[ReceiptLine]
     receipt_words: List[ReceiptWord]
-    receipt_word_tags: List[ReceiptWordTag]
     receipt_letters: List[ReceiptLetter]
     receipt_metadatas: List[ReceiptMetadata]
     ocr_jobs: List[OCRJob]
@@ -38,12 +34,10 @@ class ImageDetails:
         yield self.images
         yield self.lines
         yield self.words
-        yield self.word_tags
         yield self.letters
         yield self.receipts
         yield self.receipt_lines
         yield self.receipt_words
-        yield self.receipt_word_tags
         yield self.receipt_letters
         yield self.receipt_metadatas
         yield self.ocr_jobs
