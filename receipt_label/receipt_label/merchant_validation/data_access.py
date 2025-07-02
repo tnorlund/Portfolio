@@ -12,7 +12,6 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptWordTag,
 )
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
@@ -114,14 +113,13 @@ def get_receipt_details(
     List[ReceiptLine],
     List[ReceiptWord],
     List[ReceiptLetter],
-    List[ReceiptWordTag],
     List[ReceiptWordLabel],
 ]:
     """
     Get a receipt with all its associated details from DynamoDB.
 
     Retrieves the complete set of receipt data including lines, words, letters,
-    tags, and labels needed for merchant validation processing.
+    and labels needed for merchant validation processing.
 
     Args:
         image_id: The image ID of the receipt
@@ -133,7 +131,6 @@ def get_receipt_details(
             - List[ReceiptLine]: Receipt lines
             - List[ReceiptWord]: Receipt words
             - List[ReceiptLetter]: Receipt letters
-            - List[ReceiptWordTag]: Receipt word tags
             - List[ReceiptWordLabel]: Receipt word labels
 
     Raises:
