@@ -14,7 +14,6 @@ from receipt_dynamo import (
     ReceiptLetter,
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptWordTag,
 )
 
 # -------------------------------------------------------------------
@@ -113,18 +112,6 @@ def sample_receipt_word_labels():
             timestamp_added=datetime.now().isoformat(),
         ),
     ]
-
-
-@pytest.fixture
-def sample_receipt_word_tag():
-    return ReceiptWordTag(
-        image_id=image_id,
-        receipt_id=1,
-        line_id=1,
-        word_id=1,
-        tag="SampleTag",
-        timestamp_added=datetime.now().isoformat(),
-    )
 
 
 @pytest.fixture
@@ -1774,7 +1761,6 @@ def test_getReceiptDetails_success(
     dynamodb_table,
     sample_receipt,
     sample_receipt_word,
-    sample_receipt_word_tag,
     sample_receipt_letter,
 ):
     """
@@ -1785,7 +1771,6 @@ def test_getReceiptDetails_success(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
     client.add_receipt_words([sample_receipt_word])
-    client.add_receipt_word_tags([sample_receipt_word_tag])
     client.add_receipt_letters([sample_receipt_letter])
 
     details = client.get_receipt_details(
@@ -1797,13 +1782,11 @@ def test_getReceiptDetails_success(
         lines,
         words,
         letters,
-        tags,
         labels,
     ) = details
 
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word
-    assert len(tags) == 1 and tags[0] == sample_receipt_word_tag
     assert len(letters) == 1 and letters[0] == sample_receipt_letter
     assert (
         lines == []

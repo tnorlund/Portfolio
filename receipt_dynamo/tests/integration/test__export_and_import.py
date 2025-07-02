@@ -14,9 +14,7 @@ from receipt_dynamo import (
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptWordTag,
     Word,
-    WordTag,
     export_image,
     import_image,
 )
@@ -121,15 +119,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
             angle_degrees=0,
             angle_radians=0,
             confidence=1,
-        )
-    ]
-    word_tags = [
-        WordTag(
-            image_id=image.image_id,
-            line_id=lines[0].line_id,
-            word_id=words[0].word_id,
-            tag="test_tag",
-            timestamp_added=datetime.datetime.now(datetime.timezone.utc),
         )
     ]
     letters = [
@@ -260,16 +249,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
             confidence=1,
         )
     ]
-    receipt_word_tags = [
-        ReceiptWordTag(
-            image_id=image.image_id,
-            receipt_id=receipts[0].receipt_id,
-            line_id=receipt_lines[0].line_id,
-            word_id=receipt_words[0].word_id,
-            tag="test_tag",
-            timestamp_added=datetime.datetime.now(datetime.timezone.utc),
-        )
-    ]
     receipt_letters = [
         ReceiptLetter(
             image_id=image.image_id,
@@ -309,12 +288,10 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.add_image(image)
     client.add_lines(lines)
     client.add_words(words)
-    client.add_word_tags(word_tags)
     client.add_letters(letters)
     client.add_receipts(receipts)
     client.add_receipt_lines(receipt_lines)
     client.add_receipt_words(receipt_words)
-    client.add_receipt_word_tags(receipt_word_tags)
     client.add_receipt_letters(receipt_letters)
     # Act
     export_image(dynamodb_table, image.image_id, output_dir=export_dir)
@@ -326,12 +303,10 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     client.delete_images([image])
     client.delete_lines(lines)
     client.delete_words(words)
-    client.delete_word_tags(word_tags)
     client.delete_letters(letters)
     client.delete_receipts(receipts)
     client.delete_receipt_lines(receipt_lines)
     client.delete_receipt_words(receipt_words)
-    client.delete_receipt_word_tags(receipt_word_tags)
     client.delete_receipt_letters(receipt_letters)
 
     # Assert
@@ -342,7 +317,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert len(client.list_receipts()[0]) == 0
     assert len(client.list_receipt_lines()[0]) == 0
     assert len(client.list_receipt_words()[0]) == 0
-    assert len(client.list_receipt_word_tags()[0]) == 0
     assert len(client.list_receipt_letters()[0]) == 0
 
     # Act
@@ -357,8 +331,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert len(client.list_words()[0]) == 1
     assert client.list_words()[0][0].word_id == 1
     assert client.list_words()[0][0].text == "Hello"
-    assert len(client.list_word_tags()[0]) == 1
-    assert client.list_word_tags()[0][0].tag == "test_tag"
     assert len(client.list_letters()[0]) == 1
     assert client.list_letters()[0][0].letter_id == 1
     assert client.list_letters()[0][0].text == "H"
@@ -368,8 +340,6 @@ def test_export_and_import_image(dynamodb_table, export_dir):
     assert client.list_receipt_lines()[0][0].receipt_id == 1
     assert len(client.list_receipt_words()[0]) == 1
     assert client.list_receipt_words()[0][0].text == "Hello"
-    assert len(client.list_receipt_word_tags()[0]) == 1
-    assert client.list_receipt_word_tags()[0][0].tag == "test_tag"
     assert len(client.list_receipt_letters()[0]) == 1
     assert client.list_receipt_letters()[0][0].text == "H"
 
