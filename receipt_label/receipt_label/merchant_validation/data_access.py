@@ -141,7 +141,7 @@ def get_receipt_details(
         ValueError: If image_id or receipt_id are invalid
 
     Example:
-        >>> receipt, lines, words, letters, tags, labels = get_receipt_details(
+        >>> receipt, lines, words, letters, labels = get_receipt_details(
         ...     "IMG123", 1
         ... )
         >>> print(f"Receipt has {len(words)} words and {len(lines)} lines")
@@ -159,9 +159,6 @@ def get_receipt_details(
         receipt_lines = client_manager.dynamo.getReceiptLines(image_id, receipt_id)
         receipt_words = client_manager.dynamo.getReceiptWords(image_id, receipt_id)
         receipt_letters = client_manager.dynamo.getReceiptLetters(image_id, receipt_id)
-        receipt_word_tags = client_manager.dynamo.getReceiptWordTags(
-            image_id, receipt_id
-        )
         receipt_word_labels = client_manager.dynamo.getReceiptWordLabels(
             image_id, receipt_id
         )
@@ -174,7 +171,6 @@ def get_receipt_details(
         receipt_lines,
         receipt_words,
         receipt_letters,
-        receipt_word_tags,
         receipt_word_labels,
     )
 

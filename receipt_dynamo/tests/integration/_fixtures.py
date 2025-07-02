@@ -32,12 +32,10 @@ def sample_gpt_receipt_1():
         [Image(**image_dict) for image_dict in data["images"]],
         [Line(**line_dict) for line_dict in data["lines"]],
         [Word(**word_dict) for word_dict in data["words"]],
-        [],  # word_tags removed
         [Letter(**letter_dict) for letter_dict in data["letters"]],
         [Receipt(**receipt_dict) for receipt_dict in data["receipts"]],
         [ReceiptLine(**line_dict) for line_dict in data["receipt_lines"]],
         [ReceiptWord(**word_dict) for word_dict in data["receipt_words"]],
-        [],  # receipt_word_tags removed
         [
             ReceiptLetter(**letter_dict)
             for letter_dict in data["receipt_letters"]
