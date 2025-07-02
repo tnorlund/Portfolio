@@ -3,9 +3,11 @@
 ## Issues Identified and Fixed
 
 ### 1. **Image Class** (receipt_dynamo/entities/image.py)
-- **Issue**: Missing validation for string image_type values
-- **Fix**: Added validation to ensure string values are valid ImageType enum values
-- **Status**: ✅ Fixed in PR
+- **Issue 1**: Missing validation for string image_type values
+  - **Fix**: Added validation to ensure string values are valid ImageType enum values
+- **Issue 2**: Breaking change in validation for raw_s3_bucket and raw_s3_key
+  - **Fix**: Restored original validation pattern to only check type if value is truthy
+- **Status**: ✅ Fixed
 
 ### 2. **ReceiptLine Class** (receipt_dynamo/entities/receipt_line.py)
 - **Issue 1**: Used `unsafe_hash=True` with mutable dict fields

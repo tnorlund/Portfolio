@@ -63,10 +63,10 @@ class Image(DynamoDBEntity):
                 "timestamp_added must be a datetime object or a string"
             )
 
-        if not isinstance(self.raw_s3_bucket, str):
+        if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
 
-        if not isinstance(self.raw_s3_key, str):
+        if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
         if self.sha256 is not None and not isinstance(self.sha256, str):
