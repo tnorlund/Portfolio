@@ -343,6 +343,6 @@ class AIUsageMetric:
         return costs_by_service
 
 
-def itemToAIUsageMetric(item: Dict) -> AIUsageMetric:
-    """Convert DynamoDB item to AIUsageMetric instance."""
+def item_to_ai_usage_metric(item: Dict) -> AIUsageMetric:
+    """Convert DynamoDB item to :class:`AIUsageMetric` instance."""
     return AIUsageMetric.from_dynamodb_item(item)
