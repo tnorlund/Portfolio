@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 from math import atan2, pi
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _format_float,
     assert_valid_bounding_box,
@@ -10,7 +12,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class ReceiptWord:
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptWord(DynamoDBEntity):
     """
     Represents a receipt word and its associated metadata stored in a DynamoDB table.
 
@@ -37,119 +40,83 @@ class ReceiptWord:
         embedding_status (str): The status of the embedding for the receipt word.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        line_id: int,
-        word_id: int,
-        text: str,
-        bounding_box: Dict[str, Any],
-        top_right: Dict[str, Any],
-        top_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        angle_degrees: float,
-        angle_radians: float,
-        confidence: float,
-        extracted_data: Optional[Dict[str, Any]] = None,
-        embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
-    ):
-        """
-        Initializes a new ReceiptWord object for DynamoDB.
+    receipt_id: int
+    image_id: str
+    line_id: int
+    word_id: int
+    text: str
+    bounding_box: Dict[str, Any]
+    top_right: Dict[str, Any]
+    top_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    angle_degrees: float
+    angle_radians: float
+    confidence: float
+    extracted_data: Optional[Dict[str, Any]] = None
+    embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
 
-        Args:
-            receipt_id (int): Identifier for the receipt.
-            image_id (str): UUID identifying the image to which the receipt word belongs.
-            line_id (int): Identifier for the receipt line.
-            word_id (int): Identifier for the receipt word.
-            text (str): The text content of the receipt word.
-            bounding_box (dict): The bounding box of the receipt word with keys 'x', 'y', 'width', and 'height'.
-            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
-            angle_degrees (float): The angle of the receipt word in degrees.
-            angle_radians (float): The angle of the receipt word in radians.
-            confidence (float): The confidence level of the receipt word (between 0 and 1).
-            embedding_status (EmbeddingStatus | str): The status of the embedding for the receipt word.
-            histogram (dict, optional): A histogram representing character frequencies in the text.
-            num_chars (int, optional): The number of characters in the receipt word.
-
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        if not isinstance(receipt_id, int):
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(line_id, int):
+        if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
-        if line_id < 0:
+        if self.line_id < 0:
             raise ValueError("line_id must be positive")
-        self.line_id: int = line_id
 
-        if not isinstance(word_id, int):
+        if not isinstance(self.word_id, int):
             raise ValueError("id must be an integer")
-        if word_id < 0:
+        if self.word_id < 0:
             raise ValueError("id must be positive")
-        self.word_id: int = word_id
 
-        if not isinstance(text, str):
+        if not isinstance(self.text, str):
             raise ValueError("text must be a string")
-        self.text: str = text
 
-        assert_valid_bounding_box(bounding_box)
-        self.bounding_box: Dict[str, Any] = bounding_box
-        assert_valid_point(top_right)
-        self.top_right: Dict[str, Any] = top_right
-        assert_valid_point(top_left)
-        self.top_left: Dict[str, Any] = top_left
-        assert_valid_point(bottom_right)
-        self.bottom_right: Dict[str, Any] = bottom_right
-        assert_valid_point(bottom_left)
-        self.bottom_left: Dict[str, Any] = bottom_left
+        assert_valid_bounding_box(self.bounding_box)
+        assert_valid_point(self.top_right)
+        assert_valid_point(self.top_left)
+        assert_valid_point(self.bottom_right)
+        assert_valid_point(self.bottom_left)
 
-        if not isinstance(angle_degrees, (float, int)):
+        if not isinstance(self.angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees: float = float(angle_degrees)
+        self.angle_degrees = float(self.angle_degrees)
 
-        if not isinstance(angle_radians, (float, int)):
+        if not isinstance(self.angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians: float = float(angle_radians)
+        self.angle_radians = float(self.angle_radians)
 
-        if isinstance(confidence, int):
-            confidence = float(confidence)
-        if not isinstance(confidence, float):
+        if isinstance(self.confidence, int):
+            self.confidence = float(self.confidence)
+        if not isinstance(self.confidence, float):
             raise ValueError("confidence must be a float")
-        if confidence <= 0.0 or confidence > 1.0:
+        if self.confidence <= 0.0 or self.confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence = confidence
 
-        if extracted_data is not None and not isinstance(extracted_data, dict):
+        if self.extracted_data is not None and not isinstance(
+            self.extracted_data, dict
+        ):
             raise ValueError("extracted_data must be a dict")
-        self.extracted_data = extracted_data
 
         # Normalize and validate embedding_status (allow enum or string)
-        if isinstance(embedding_status, EmbeddingStatus):
-            status_value = embedding_status.value
-        elif isinstance(embedding_status, str):
-            status_value = embedding_status
+        if isinstance(self.embedding_status, EmbeddingStatus):
+            self.embedding_status = self.embedding_status.value
+        elif isinstance(self.embedding_status, str):
+            valid_values = [s.value for s in EmbeddingStatus]
+            if self.embedding_status not in valid_values:
+                raise ValueError(
+                    f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {self.embedding_status}"
+                )
         else:
             raise ValueError(
                 "embedding_status must be a string or EmbeddingStatus enum"
             )
-        valid_values = [s.value for s in EmbeddingStatus]
-        if status_value not in valid_values:
-            raise ValueError(
-                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
-            )
-        self.embedding_status = status_value
 
     def key(self) -> Dict[str, Any]:
         """
@@ -424,59 +391,6 @@ class ReceiptWord:
             f")"
         )
 
-    def __eq__(self, other: object) -> bool:
-        """
-        Determines whether two ReceiptWord objects are equal.
-
-        Args:
-            other (object): The object to compare.
-
-        Returns:
-            bool: True if the ReceiptWord objects are equal, False otherwise.
-        """
-        if not isinstance(other, ReceiptWord):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.line_id == other.line_id
-            and self.word_id == other.word_id
-            and self.text == other.text
-            and self.bounding_box == other.bounding_box
-            and self.top_right == other.top_right
-            and self.top_left == other.top_left
-            and self.bottom_right == other.bottom_right
-            and self.bottom_left == other.bottom_left
-            and self.angle_degrees == other.angle_degrees
-            and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
-            and self.extracted_data == other.extracted_data
-            and self.embedding_status == other.embedding_status
-        )
-
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """
-        Returns an iterator over the ReceiptWord object's attributes.
-
-        Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
-        """
-        yield "image_id", self.image_id
-        yield "line_id", self.line_id
-        yield "receipt_id", self.receipt_id
-        yield "word_id", self.word_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "extracted_data", self.extracted_data
-        yield "confidence", self.confidence
-        yield "embedding_status", self.embedding_status
-
     def calculate_centroid(self) -> Tuple[float, float]:
         """
         Calculates the centroid of the receipt word.
@@ -515,33 +429,6 @@ class ReceiptWord:
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
-
-    def __hash__(self) -> int:
-        """
-        Returns the hash value of the ReceiptWord object.
-
-        Returns:
-            int: The hash value of the ReceiptWord object.
-        """
-        return hash(
-            (
-                self.receipt_id,
-                self.image_id,
-                self.line_id,
-                self.word_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-                self.extracted_data,
-                self.embedding_status,
-            )
-        )
 
     def is_point_in_bounding_box(self, x: float, y: float) -> bool:
         """Determines if a point (x,y) is inside the bounding box of the line.
@@ -590,6 +477,32 @@ class ReceiptWord:
                 else:
                     differences[attr] = {"self": value, "other": other_value}
         return differences
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the ReceiptWord object."""
+        return hash(
+            (
+                self.receipt_id,
+                self.image_id,
+                self.line_id,
+                self.word_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+                (
+                    tuple(self.extracted_data.items())
+                    if self.extracted_data
+                    else None
+                ),
+                self.embedding_status,
+            )
+        )
 
 
 def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:

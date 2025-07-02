@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from math import atan2, cos, degrees, pi, radians, sin, sqrt
 from typing import Any, Dict, Generator, Tuple
 
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -11,7 +13,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class Line:
+@dataclass(eq=True, unsafe_hash=False)
+class Line(DynamoDBEntity):
     """
     Represents a line and its associated metadata stored in a DynamoDB table.
 
@@ -36,79 +39,54 @@ class Line:
         num_chars (int): The number of characters in the line.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        line_id: int,
-        text: str,
-        bounding_box: Dict[str, Any],
-        top_right: Dict[str, Any],
-        top_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        angle_degrees: float,
-        angle_radians: float,
-        confidence: float,
-    ):
-        """Initializes a new Line object for DynamoDB.
+    image_id: str
+    line_id: int
+    text: str
+    bounding_box: Dict[str, Any]
+    top_right: Dict[str, Any]
+    top_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    angle_degrees: float
+    angle_radians: float
+    confidence: float
 
-        Args:
-            image_id (str): UUID identifying the image to which the line belongs.
-            line_id (int): Identifier for the line.
-            text (str): The text content of the line.
-            bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
-            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
-            angle_degrees (float): The angle of the line in degrees.
-            angle_radians (float): The angle of the line in radians.
-            confidence (float): The confidence level of the line (between 0 and 1).
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
 
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
-
-        if not isinstance(line_id, int):
+        if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
-        if line_id <= 0:
+        if self.line_id <= 0:
             raise ValueError("line_id must be positive")
-        self.line_id: int = line_id
 
-        if not isinstance(text, str):
+        if not isinstance(self.text, str):
             raise ValueError("text must be a string")
-        self.text: str = text
 
-        assert_valid_bounding_box(bounding_box)
-        self.bounding_box: Dict[str, Any] = bounding_box
+        assert_valid_bounding_box(self.bounding_box)
 
-        assert_valid_point(top_right)
-        self.top_right: Dict[str, Any] = top_right
+        assert_valid_point(self.top_right)
 
-        assert_valid_point(top_left)
-        self.top_left: Dict[str, Any] = top_left
+        assert_valid_point(self.top_left)
 
-        assert_valid_point(bottom_right)
-        self.bottom_right: Dict[str, Any] = bottom_right
+        assert_valid_point(self.bottom_right)
 
-        assert_valid_point(bottom_left)
-        self.bottom_left: Dict[str, Any] = bottom_left
+        assert_valid_point(self.bottom_left)
 
-        if not isinstance(angle_degrees, (float, int)):
+        if not isinstance(self.angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees: float = float(angle_degrees)
+        self.angle_degrees = float(self.angle_degrees)
 
-        if not isinstance(angle_radians, (float, int)):
+        if not isinstance(self.angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians: float = float(angle_radians)
+        self.angle_radians = float(self.angle_radians)
 
-        if isinstance(confidence, int):
-            confidence = float(confidence)
-        if not isinstance(confidence, float) or not (0 < confidence <= 1):
+        if isinstance(self.confidence, int):
+            self.confidence = float(self.confidence)
+        if not isinstance(self.confidence, float) or not (
+            0 < self.confidence <= 1
+        ):
             raise ValueError("confidence must be a float between 0 and 1")
-        self.confidence: float = confidence
 
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the line.
@@ -618,90 +596,6 @@ class Line:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the Line object's attributes.
-
-        Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its value.
-        """
-        yield "image_id", self.image_id
-        yield "line_id", self.line_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "confidence", self.confidence
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Returns a dictionary representation of the Line object."""
-        return {
-            "image_id": self.image_id,
-            "line_id": self.line_id,
-            "text": self.text,
-            "bounding_box": self.bounding_box,
-            "top_right": self.top_right,
-            "top_left": self.top_left,
-            "bottom_right": self.bottom_right,
-            "bottom_left": self.bottom_left,
-            "angle_degrees": self.angle_degrees,
-            "angle_radians": self.angle_radians,
-            "confidence": self.confidence,
-        }
-
-    def __eq__(self, other: object) -> bool:
-        """Determines whether two Line objects are equal.
-
-        Args:
-            other (object): The object to compare.
-
-        Returns:
-            bool: True if the Line objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of Line, False is returned.
-        """
-        if not isinstance(other, Line):
-            return False
-        return (
-            self.image_id == other.image_id
-            and self.line_id == other.line_id
-            and self.text == other.text
-            and self.bounding_box == other.bounding_box
-            and self.top_right == other.top_right
-            and self.top_left == other.top_left
-            and self.bottom_right == other.bottom_right
-            and self.bottom_left == other.bottom_left
-            and self.angle_degrees == other.angle_degrees
-            and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
-        )
-
-    def __hash__(self) -> int:
-        """Returns the hash value of the Line object.
-
-        Returns:
-            int: The hash value of the Line object.
-        """
-        return hash(
-            (
-                self.image_id,
-                self.line_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-            )
-        )
-
     def is_point_in_bounding_box(self, x: float, y: float) -> bool:
         """Determines if a point (x,y) is inside the bounding box of the line.
 
@@ -720,6 +614,24 @@ class Line:
             and self.bounding_box["y"]
             <= y
             <= self.bounding_box["y"] + self.bounding_box["height"]
+        )
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the Line object."""
+        return hash(
+            (
+                self.image_id,
+                self.line_id,
+                self.text,
+                tuple(self.bounding_box.items()),
+                tuple(self.top_right.items()),
+                tuple(self.top_left.items()),
+                tuple(self.bottom_right.items()),
+                tuple(self.bottom_left.items()),
+                self.angle_degrees,
+                self.angle_radians,
+                self.confidence,
+            )
         )
 
 
