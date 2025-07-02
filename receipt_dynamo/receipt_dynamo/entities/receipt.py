@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -9,7 +11,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class Receipt:
+@dataclass(eq=True, unsafe_hash=False)
+class Receipt(DynamoDBEntity):
     """
     Represents a receipt associated with an image in a DynamoDB table.
 
@@ -37,111 +40,70 @@ class Receipt:
         cdn_avif_s3_key (str, optional): S3 key for the AVIF version of the CDN-hosted receipt image.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        receipt_id: int,
-        width: int,
-        height: int,
-        timestamp_added: datetime,
-        raw_s3_bucket: str,
-        raw_s3_key: str,
-        top_left: Dict[str, Any],
-        top_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        sha256: Optional[str] = None,
-        cdn_s3_bucket: Optional[str] = None,
-        cdn_s3_key: Optional[str] = None,
-        cdn_webp_s3_key: Optional[str] = None,
-        cdn_avif_s3_key: Optional[str] = None,
-    ):
-        """Initializes a new Receipt object for DynamoDB.
+    image_id: str
+    receipt_id: int
+    width: int
+    height: int
+    timestamp_added: str | datetime
+    raw_s3_bucket: str
+    raw_s3_key: str
+    top_left: Dict[str, Any]
+    top_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    sha256: Optional[str] = None
+    cdn_s3_bucket: Optional[str] = None
+    cdn_s3_key: Optional[str] = None
+    cdn_webp_s3_key: Optional[str] = None
+    cdn_avif_s3_key: Optional[str] = None
 
-        Args:
-            image_id (str): UUID identifying the associated image.
-            receipt_id (int): Number identifying the receipt.
-            width (int): The width of the receipt in pixels.
-            height (int): The height of the receipt in pixels.
-            timestamp_added (datetime): The timestamp when the receipt was added.
-            raw_s3_bucket (str): The S3 bucket where the receipt is stored.
-            raw_s3_key (str): The S3 key where the receipt is stored.
-            top_left (dict): The top left corner of the bounding box.
-            top_right (dict): The top right corner of the bounding box.
-            bottom_left (dict): The bottom left corner of the bounding box.
-            bottom_right (dict): The bottom right corner of the bounding box.
-            sha256 (str): The SHA256 hash of the receipt.
-            cdn_s3_bucket (str, optional): The S3 bucket for the CDN version of the receipt.
-            cdn_s3_key (str, optional): The S3 key for the CDN version of the receipt.
-            cdn_webp_s3_key (str, optional): The S3 key for the WebP version of the receipt.
-            cdn_avif_s3_key (str, optional): The S3 key for the AVIF version of the receipt.
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
 
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
-
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("id must be positive")
-        self.receipt_id: int = receipt_id
 
         if (
-            width <= 0
-            or height <= 0
-            or not isinstance(width, int)
-            or not isinstance(height, int)
+            self.width <= 0
+            or self.height <= 0
+            or not isinstance(self.width, int)
+            or not isinstance(self.height, int)
         ):
             raise ValueError("width and height must be positive integers")
-        self.width: int = width
-        self.height: int = height
 
-        self.timestamp_added: str
-        if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
-        elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
-        else:
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif not isinstance(self.timestamp_added, str):
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
 
-        if raw_s3_bucket and not isinstance(raw_s3_bucket, str):
+        if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
-        self.raw_s3_bucket: str = raw_s3_bucket
-        if raw_s3_key and not isinstance(raw_s3_key, str):
+        if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
-        self.raw_s3_key = raw_s3_key
 
-        assert_valid_point(top_right)
-        self.top_right: Dict[str, Any] = top_right
-        assert_valid_point(top_left)
-        self.top_left: Dict[str, Any] = top_left
-        assert_valid_point(bottom_left)
-        self.bottom_left: Dict[str, Any] = bottom_left
-        assert_valid_point(bottom_right)
-        self.bottom_right: Dict[str, Any] = bottom_right
+        assert_valid_point(self.top_right)
+        assert_valid_point(self.top_left)
+        assert_valid_point(self.bottom_left)
+        assert_valid_point(self.bottom_right)
 
-        if sha256 and not isinstance(sha256, str):
+        if self.sha256 and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
-        self.sha256: Optional[str] = sha256
 
-        if cdn_s3_bucket and not isinstance(cdn_s3_bucket, str):
+        if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
-        self.cdn_s3_bucket: Optional[str] = cdn_s3_bucket
-        if cdn_s3_key and not isinstance(cdn_s3_key, str):
+        if self.cdn_s3_key and not isinstance(self.cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
-        self.cdn_s3_key: Optional[str] = cdn_s3_key
 
-        if cdn_webp_s3_key and not isinstance(cdn_webp_s3_key, str):
+        if self.cdn_webp_s3_key and not isinstance(self.cdn_webp_s3_key, str):
             raise ValueError("cdn_webp_s3_key must be a string")
-        self.cdn_webp_s3_key: Optional[str] = cdn_webp_s3_key
 
-        if cdn_avif_s3_key and not isinstance(cdn_avif_s3_key, str):
+        if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
             raise ValueError("cdn_avif_s3_key must be a string")
-        self.cdn_avif_s3_key: Optional[str] = cdn_avif_s3_key
 
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt.
@@ -278,68 +240,8 @@ class Receipt:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the Receipt object's attributes.
-
-        Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the Receipt object's attribute name/value pairs.
-        """
-        yield "receipt_id", self.receipt_id
-        yield "image_id", self.image_id
-        yield "width", self.width
-        yield "height", self.height
-        yield "timestamp_added", self.timestamp_added
-        yield "raw_s3_bucket", self.raw_s3_bucket
-        yield "raw_s3_key", self.raw_s3_key
-        yield "top_left", self.top_left
-        yield "top_right", self.top_right
-        yield "bottom_left", self.bottom_left
-        yield "bottom_right", self.bottom_right
-        yield "sha256", self.sha256
-        yield "cdn_s3_bucket", self.cdn_s3_bucket
-        yield "cdn_s3_key", self.cdn_s3_key
-        yield "cdn_webp_s3_key", self.cdn_webp_s3_key
-        yield "cdn_avif_s3_key", self.cdn_avif_s3_key
-
-    def __eq__(self, other) -> bool:
-        """Determines whether two Receipt objects are equal.
-
-        Args:
-            other (Receipt): The other Receipt object to compare.
-
-        Returns:
-            bool: True if the Receipt objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of Receipt, NotImplemented is returned.
-        """
-        if not isinstance(other, Receipt):
-            return NotImplemented
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.width == other.width
-            and self.height == other.height
-            and self.timestamp_added == other.timestamp_added
-            and self.raw_s3_bucket == other.raw_s3_bucket
-            and self.raw_s3_key == other.raw_s3_key
-            and self.top_left == other.top_left
-            and self.top_right == other.top_right
-            and self.bottom_left == other.bottom_left
-            and self.bottom_right == other.bottom_right
-            and self.sha256 == other.sha256
-            and self.cdn_s3_bucket == other.cdn_s3_bucket
-            and self.cdn_s3_key == other.cdn_s3_key
-            and self.cdn_webp_s3_key == other.cdn_webp_s3_key
-            and self.cdn_avif_s3_key == other.cdn_avif_s3_key
-        )
-
     def __hash__(self) -> int:
-        """Returns the hash value of the Receipt object.
-
-        Returns:
-            int: The hash value of the Receipt object.
-        """
+        """Returns the hash value of the Receipt object."""
         return hash(
             (
                 self.receipt_id,
