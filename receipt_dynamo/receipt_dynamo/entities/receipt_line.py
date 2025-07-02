@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from math import atan2, pi
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Dict, Tuple
 
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -11,7 +13,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class ReceiptLine:
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptLine(DynamoDBEntity):
     """
     Represents a receipt line and its associated metadata stored in a DynamoDB table.
 
@@ -36,104 +39,69 @@ class ReceiptLine:
         embedding_status (EmbeddingStatus): The status of the embedding for the receipt line.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        line_id: int,
-        text: str,
-        bounding_box: Dict[str, Any],
-        top_right: Dict[str, Any],
-        top_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        angle_degrees: float,
-        angle_radians: float,
-        confidence: float,
-        embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE,
-    ):
-        """
-        Initializes a new ReceiptLine object for DynamoDB.
+    receipt_id: int
+    image_id: str
+    line_id: int
+    text: str
+    bounding_box: Dict[str, Any]
+    top_right: Dict[str, Any]
+    top_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    angle_degrees: float
+    angle_radians: float
+    confidence: float
+    embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
 
-        Args:
-            receipt_id (int): Identifier for the receipt.
-            image_id (str): UUID identifying the image to which the receipt line belongs.
-            id (int): Identifier for the receipt line.
-            text (str): The text content of the receipt line.
-            bounding_box (dict): The bounding box of the receipt line with keys 'x', 'y', 'width', and 'height'.
-            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
-            angle_degrees (float): The angle of the receipt line in degrees.
-            angle_radians (float): The angle of the receipt line in radians.
-            confidence (float): The confidence level of the receipt line (between 0 and 1).
-            histogram (dict, optional): A histogram representing character frequencies in the text.
-            num_chars (int, optional): The number of characters in the receipt line.
-
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        if not isinstance(receipt_id, int):
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(line_id, int):
+        if not isinstance(self.line_id, int):
             raise ValueError("id must be an integer")
-        if line_id <= 0:
+        if self.line_id <= 0:
             raise ValueError("id must be positive")
-        self.line_id: int = line_id
 
-        if not isinstance(text, str):
+        if not isinstance(self.text, str):
             raise ValueError("text must be a string")
-        self.text: str = text
 
-        assert_valid_bounding_box(bounding_box)
-        self.bounding_box: Dict[str, Any] = bounding_box
-        assert_valid_point(top_right)
-        self.top_right: Dict[str, Any] = top_right
-        assert_valid_point(top_left)
-        self.top_left: Dict[str, Any] = top_left
-        assert_valid_point(bottom_right)
-        self.bottom_right: Dict[str, Any] = bottom_right
-        assert_valid_point(bottom_left)
-        self.bottom_left: Dict[str, Any] = bottom_left
+        assert_valid_bounding_box(self.bounding_box)
+        assert_valid_point(self.top_right)
+        assert_valid_point(self.top_left)
+        assert_valid_point(self.bottom_right)
+        assert_valid_point(self.bottom_left)
 
-        if not isinstance(angle_degrees, (float, int)):
+        if not isinstance(self.angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees: float = float(angle_degrees)
-        if not isinstance(angle_radians, (float, int)):
+        self.angle_degrees = float(self.angle_degrees)
+
+        if not isinstance(self.angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians: float = float(angle_radians)
+        self.angle_radians = float(self.angle_radians)
 
-        if isinstance(confidence, int):
-            confidence = float(confidence)
-        if not isinstance(confidence, float):
+        if isinstance(self.confidence, int):
+            self.confidence = float(self.confidence)
+        if not isinstance(self.confidence, float):
             raise ValueError("confidence must be a float")
-        if confidence <= 0.0 or confidence > 1.0:
+        if not 0.0 < self.confidence <= 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence: float = confidence
 
-        # Normalize and validate embedding_status (allow enum or string)
-        if isinstance(embedding_status, EmbeddingStatus):
-            status_value = embedding_status.value
-        elif isinstance(embedding_status, str):
-            status_value = embedding_status
+        if isinstance(self.embedding_status, EmbeddingStatus):
+            self.embedding_status = self.embedding_status.value
+        elif isinstance(self.embedding_status, str):
+            if self.embedding_status not in [s.value for s in EmbeddingStatus]:
+                raise ValueError(
+                    f"embedding_status must be one of: {', '.join(s.value for s in EmbeddingStatus)}\nGot: {self.embedding_status}"
+                )
         else:
             raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
+                "embedding_status must be an EmbeddingStatus or a string"
             )
-        valid_values = [s.value for s in EmbeddingStatus]
-        if status_value not in valid_values:
-            raise ValueError(
-                f"embedding_status must be one of: {', '.join(valid_values)}\nGot: {status_value}"
-            )
-        self.embedding_status: str = status_value
 
     def key(self) -> Dict[str, Any]:
         """
@@ -218,44 +186,7 @@ class ReceiptLine:
             "embedding_status": {"S": self.embedding_status},
         }
 
-    def __eq__(self, other: object) -> bool:
-        """
-        Determines whether two ReceiptLine objects are equal.
-
-        Args:
-            other (object): The object to compare.
-
-        Returns:
-            bool: True if the ReceiptLine objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of ReceiptLine, False is returned.
-        """
-        if not isinstance(other, ReceiptLine):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.line_id == other.line_id
-            and self.text == other.text
-            and self.bounding_box == other.bounding_box
-            and self.top_right == other.top_right
-            and self.top_left == other.top_left
-            and self.bottom_right == other.bottom_right
-            and self.bottom_left == other.bottom_left
-            and self.angle_degrees == other.angle_degrees
-            and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
-            and self.embedding_status == other.embedding_status
-        )
-
     def __repr__(self) -> str:
-        """
-        Returns a string representation of the ReceiptLine object.
-
-        Returns:
-            str: A string representation of the ReceiptLine object.
-        """
         return (
             f"ReceiptLine("
             f"receipt_id={self.receipt_id}, "
@@ -274,33 +205,8 @@ class ReceiptLine:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """
-        Returns an iterator over the ReceiptLine object's attributes.
-
-        Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
-        """
-        yield "image_id", self.image_id
-        yield "receipt_id", self.receipt_id
-        yield "line_id", self.line_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "confidence", self.confidence
-        yield "embedding_status", self.embedding_status
-
-    def __hash__(self):
-        """Returns a hash value for the ReceiptLine object.
-
-        Returns:
-            int: The hash value for the ReceiptLine object.
-        """
+    def __hash__(self) -> int:
+        """Returns the hash value of the ReceiptLine object."""
         return hash(
             (
                 self.receipt_id,
@@ -495,8 +401,8 @@ def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
         "confidence",
         # "embedding_status",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
+    missing_keys = DynamoDBEntity.validate_keys(item, required_keys)
+    if missing_keys:
         raise ValueError(f"Item is missing required keys: {missing_keys}")
     try:
         return ReceiptLine(
