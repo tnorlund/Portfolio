@@ -69,27 +69,19 @@ class Image(DynamoDBEntity):
         if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
-        if self.sha256 is not None and not isinstance(self.sha256, str):
+        if self.sha256 and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
 
-        if self.cdn_s3_bucket is not None and not isinstance(
-            self.cdn_s3_bucket, str
-        ):
+        if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
 
-        if self.cdn_s3_key is not None and not isinstance(
-            self.cdn_s3_key, str
-        ):
+        if self.cdn_s3_key and not isinstance(self.cdn_s3_key, str):
             raise ValueError("cdn_s3_key must be a string")
 
-        if self.cdn_webp_s3_key is not None and not isinstance(
-            self.cdn_webp_s3_key, str
-        ):
+        if self.cdn_webp_s3_key and not isinstance(self.cdn_webp_s3_key, str):
             raise ValueError("cdn_webp_s3_key must be a string")
 
-        if self.cdn_avif_s3_key is not None and not isinstance(
-            self.cdn_avif_s3_key, str
-        ):
+        if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
             raise ValueError("cdn_avif_s3_key must be a string")
 
         if isinstance(self.image_type, ImageType):

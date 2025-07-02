@@ -7,6 +7,8 @@
   - **Fix**: Added validation to ensure string values are valid ImageType enum values
 - **Issue 2**: Breaking change in validation for raw_s3_bucket and raw_s3_key
   - **Fix**: Restored original validation pattern to only check type if value is truthy
+- **Issue 3**: Inconsistent validation between required and optional fields
+  - **Fix**: Changed all string field validations to use truthiness checks for consistency
 - **Status**: ✅ Fixed
 
 ### 2. **ReceiptLine Class** (receipt_dynamo/entities/receipt_line.py)
