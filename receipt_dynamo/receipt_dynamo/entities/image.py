@@ -94,7 +94,12 @@ class Image(DynamoDBEntity):
 
         if isinstance(self.image_type, ImageType):
             self.image_type = self.image_type.value
-        elif not isinstance(self.image_type, str):
+        elif isinstance(self.image_type, str):
+            if self.image_type not in [t.value for t in ImageType]:
+                raise ValueError(
+                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {self.image_type}"
+                )
+        else:
             raise ValueError("image_type must be a ImageType or a string")
 
     def key(self) -> Dict[str, Any]:
