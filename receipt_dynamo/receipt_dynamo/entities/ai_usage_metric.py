@@ -3,14 +3,17 @@ AI Usage Metric entity for tracking costs and usage of AI services.
 """
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from .base import DynamoDBEntity
 from .util import _repr_str, assert_type
 
 
-class AIUsageMetric:
+@dataclass(eq=True, unsafe_hash=False)
+class AIUsageMetric(DynamoDBEntity):
     """
     Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google Places).
 
@@ -23,62 +26,53 @@ class AIUsageMetric:
     - GSI2SK: "COST#{date}#{service}"
     """
 
-    def __init__(
-        self,
-        service: str,  # "openai", "anthropic", "google_places"
-        model: str,  # "gpt-3.5-turbo", "claude-3-opus", etc.
-        operation: str,  # "completion", "embedding", "place_lookup", "code_review"
-        timestamp: datetime,
-        request_id: Optional[str] = None,
-        input_tokens: Optional[int] = None,
-        output_tokens: Optional[int] = None,
-        total_tokens: Optional[int] = None,
-        api_calls: int = 1,
-        cost_usd: Optional[float] = None,
-        latency_ms: Optional[int] = None,
-        user_id: Optional[str] = None,
-        job_id: Optional[str] = None,
-        batch_id: Optional[str] = None,
-        github_pr: Optional[int] = None,
-        environment: Optional[
-            str
-        ] = None,  # "production", "staging", "cicd", "development"
-        error: Optional[str] = None,
-        metadata: Optional[Dict] = None,
-    ):
-        self.service = service.lower()
-        self.model = model
-        self.operation = operation
-        self.timestamp = timestamp
-        self.request_id = request_id or str(uuid.uuid4())
+    service: str  # "openai", "anthropic", "google_places"
+    model: str  # "gpt-3.5-turbo", "claude-3-opus", etc.
+    operation: str  # "completion", "embedding", "place_lookup", "code_review"
+    timestamp: datetime
+    request_id: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    api_calls: int = 1
+    cost_usd: Optional[float] = None
+    latency_ms: Optional[int] = None
+    user_id: Optional[str] = None
+    job_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    github_pr: Optional[int] = None
+    environment: Optional[str] = (
+        None  # "production", "staging", "cicd", "development"
+    )
+    error: Optional[str] = None
+    metadata: Optional[Dict] = field(default_factory=dict)
+    # Computed fields
+    date: str = field(init=False)
+    month: str = field(init=False)
+    hour: str = field(init=False)
 
-        # Token usage
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.total_tokens = total_tokens or (
-            (input_tokens or 0) + (output_tokens or 0)
-            if input_tokens or output_tokens
-            else None
-        )
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        self.service = self.service.lower()
+        if not self.request_id:
+            self.request_id = str(uuid.uuid4())
 
-        # Metrics
-        self.api_calls = api_calls
-        self.cost_usd = cost_usd
-        self.latency_ms = latency_ms
+        # Calculate total_tokens if not provided
+        if self.total_tokens is None and (
+            self.input_tokens or self.output_tokens
+        ):
+            self.total_tokens = (self.input_tokens or 0) + (
+                self.output_tokens or 0
+            )
 
-        # Context
-        self.user_id = user_id
-        self.job_id = job_id
-        self.batch_id = batch_id
-        self.github_pr = github_pr
-        self.environment = environment
-        self.error = error
-        self.metadata = metadata or {}
+        # Ensure metadata is a dict
+        if self.metadata is None:
+            self.metadata = {}
 
         # Computed fields
-        self.date = timestamp.strftime("%Y-%m-%d")
-        self.month = timestamp.strftime("%Y-%m")
-        self.hour = timestamp.strftime("%Y-%m-%d-%H")
+        self.date = self.timestamp.strftime("%Y-%m-%d")
+        self.month = self.timestamp.strftime("%Y-%m")
+        self.hour = self.timestamp.strftime("%Y-%m-%d-%H")
 
     @property
     def pk(self) -> str:
@@ -341,6 +335,31 @@ class AIUsageMetric:
                 costs_by_service[metric.service] += metric.cost_usd
 
         return costs_by_service
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the AIUsageMetric object."""
+        return hash(
+            (
+                self.service,
+                self.model,
+                self.operation,
+                self.timestamp,
+                self.request_id,
+                self.input_tokens,
+                self.output_tokens,
+                self.total_tokens,
+                self.api_calls,
+                self.cost_usd,
+                self.latency_ms,
+                self.user_id,
+                self.job_id,
+                self.batch_id,
+                self.github_pr,
+                self.environment,
+                self.error,
+                tuple(self.metadata.items()) if self.metadata else None,
+            )
+        )
 
 
 def item_to_ai_usage_metric(item: Dict) -> AIUsageMetric:
