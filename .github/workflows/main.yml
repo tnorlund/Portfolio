@@ -103,7 +103,8 @@ jobs:
   test-python:
     name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
-    runs-on: self-hosted
+    # TODO: Revert to self-hosted runner after landing (airplane mode workaround)
+    runs-on: ubuntu-latest  # Temporarily using GitHub-hosted runners
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
@@ -146,23 +147,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        run: |
-          # Create and activate virtual environment for self-hosted runner
-          echo "Setting up Python virtual environment on self-hosted runner"
-          python3 --version
-
-          # Create fresh venv for this job
-          python3 -m venv .venv-ci
-          source .venv-ci/bin/activate
-
-          # Upgrade pip for faster installs
-          python -m pip install --upgrade pip wheel
-
-          # Verify environment
-          echo "Python: $(which python)"
-          echo "Pip: $(which pip)"
-          python --version
-          pip --version
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
 
       - name: Cache pip packages and virtual environment
         uses: actions/cache@v4  # Use latest cache action
@@ -191,9 +178,6 @@ jobs:
 
       - name: Install package with optimizations
         run: |
-          # Activate virtual environment
-          source .venv-ci/bin/activate
-
           # Upgrade pip for faster installs
           python -m pip install --upgrade pip wheel --disable-pip-version-check
 
@@ -245,9 +229,6 @@ jobs:
         env:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
-          # Activate virtual environment
-          source .venv-ci/bin/activate
-
           # Use smart test runner that can skip unchanged tests
           echo "🔍 Analyzing test dependencies and changes..."
 
