@@ -6,6 +6,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.utils.environment_config import (
     AIUsageEnvironmentConfig,
     Environment,
@@ -18,7 +19,9 @@ class TestEnvironmentDetection:
 
     def test_detect_explicit_environment_variable(self):
         """Test detection when ENVIRONMENT is explicitly set."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "production"}, clear=False
+        ):
             env = AIUsageEnvironmentConfig.detect_environment()
             assert env == Environment.PRODUCTION
 
@@ -151,7 +154,9 @@ class TestEnvironmentConfig:
             },
             clear=False,
         ):
-            config = AIUsageEnvironmentConfig.get_config(Environment.DEVELOPMENT)
+            config = AIUsageEnvironmentConfig.get_config(
+                Environment.DEVELOPMENT
+            )
 
             assert config.environment == Environment.DEVELOPMENT
             assert config.table_suffix == "-development"
@@ -172,7 +177,9 @@ class TestEnvironmentConfig:
             },
             clear=False,
         ):
-            config = AIUsageEnvironmentConfig.get_config(Environment.PRODUCTION)
+            config = AIUsageEnvironmentConfig.get_config(
+                Environment.PRODUCTION
+            )
 
             assert config.auto_tag["environment"] == "production"
             assert config.auto_tag["service"] == "receipt-processing"
@@ -225,7 +232,9 @@ class TestTableNaming:
     def test_auto_detect_table_name(self):
         """Test table naming with auto-detected environment."""
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=False):
-            table_name = AIUsageEnvironmentConfig.get_table_name("AIUsageMetrics")
+            table_name = AIUsageEnvironmentConfig.get_table_name(
+                "AIUsageMetrics"
+            )
             assert table_name == "AIUsageMetrics-staging"
 
 

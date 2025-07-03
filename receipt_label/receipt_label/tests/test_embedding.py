@@ -5,6 +5,7 @@ from typing import Literal
 
 import boto3
 import pytest
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import BatchStatus, BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
@@ -13,7 +14,6 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
 )
-
 from receipt_label.embedding.word import poll as poll_batch
 from receipt_label.embedding.word import submit as submit_batch
 
