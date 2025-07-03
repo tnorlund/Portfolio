@@ -9,6 +9,9 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
+from receipt_label.completion._format_prompt import _format_prompt, functions
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 from receipt_dynamo.constants import BatchStatus, BatchType, ValidationStatus
 from receipt_dynamo.entities import (
@@ -18,9 +21,6 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
-from receipt_label.completion._format_prompt import _format_prompt, functions
-from receipt_label.utils import get_client_manager
-from receipt_label.utils.client_manager import ClientManager
 
 
 def generate_completion_batch_id() -> str:
