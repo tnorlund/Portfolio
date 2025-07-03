@@ -45,7 +45,7 @@ class AIUsageMetric(DynamoDBEntity):
         None  # "production", "staging", "cicd", "development"
     )
     error: Optional[str] = None
-    metadata: Optional[Dict] = field(default_factory=dict)
+    metadata: Optional[Dict[str, Any]] = field(default_factory=dict)
     # Computed fields
     date: str = field(init=False)
     month: str = field(init=False)
