@@ -492,7 +492,9 @@ class ReceiptLineItemAnalysis:
 
         return " ".join(reasoning_parts)
 
-    def get_item_by_description(self, description: str) -> Optional[Dict[str, Any]]:
+    def get_item_by_description(
+        self, description: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Find a line item by its description.
 

@@ -2,11 +2,8 @@ from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities.util import (
-    _repr_str,
-    assert_valid_uuid,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import (_repr_str, assert_valid_uuid,
+                                          normalize_enum)
 
 
 class OCRJob:

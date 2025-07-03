@@ -6,31 +6,20 @@ from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                           TransactWriteItemTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    OperationError,
-)
+from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   OperationError)
 from receipt_dynamo.entities.ocr_routing_decision import (
-    OCRRoutingDecision,
-    item_to_ocr_routing_decision,
-)
+    OCRRoutingDecision, item_to_ocr_routing_decision)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
