@@ -7,8 +7,8 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 from receipt_label.utils.cost_monitoring import CostMonitor, ThresholdAlert
 from receipt_label.utils.cost_monitoring.cost_monitor import ThresholdLevel
 
