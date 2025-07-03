@@ -5,20 +5,14 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (PutRequestTypeDef,
+                                           QueryInputTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
+from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
