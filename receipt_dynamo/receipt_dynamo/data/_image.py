@@ -115,7 +115,7 @@ class _Image(DynamoClientProtocol):
             "This method should be implemented by subclasses"
         )
 
-    def add_image(self, image: Image):
+    def add_image(self, image: Image) -> None:
         """
         Adds an Image item to the database.
 
@@ -163,7 +163,7 @@ class _Image(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error putting image: {e}") from e
 
-    def add_images(self, images: List[Image]):
+    def add_images(self, images: List[Image]) -> None:
         """
         Adds multiple Image items to the database in batches of up to 25.
 
@@ -269,7 +269,7 @@ class _Image(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error getting image: {e}") from e
 
-    def update_image(self, image: Image):
+    def update_image(self, image: Image) -> None:
         """
         Updates an existing Image item in the database after validating the input.
 
@@ -311,7 +311,7 @@ class _Image(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error updating image: {e}") from e
 
-    def update_images(self, images: List[Image]):
+    def update_images(self, images: List[Image]) -> None:
         """
         Updates multiple Image items in the database.
 
@@ -570,7 +570,7 @@ class _Image(DynamoClientProtocol):
             raise ValueError(f"Image with ID {image_id} not found in database")
         return image, lines, receipts
 
-    def delete_image(self, image_id: str):
+    def delete_image(self, image_id: str) -> None:
         """
         Deletes an Image item from the database by its ID.
 
@@ -603,7 +603,7 @@ class _Image(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error deleting image: {e}") from e
 
-    def delete_images(self, images: list[Image]):
+    def delete_images(self, images: list[Image]) -> None:
         """
         Deletes multiple Image items from the database in batches of up to 25 items.
 

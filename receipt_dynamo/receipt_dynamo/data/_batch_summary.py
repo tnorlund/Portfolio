@@ -60,7 +60,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _BatchSummary(DynamoClientProtocol):
 
-    def add_batch_summary(self, batch_summary: BatchSummary):
+    def add_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Adds a single BatchSummary record to DynamoDB.
 
@@ -96,7 +96,7 @@ class _BatchSummary(DynamoClientProtocol):
             else:
                 raise ValueError(f"Error adding batch summary: {e}") from e
 
-    def add_batch_summaries(self, batch_summaries: List[BatchSummary]):
+    def add_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
         """
         Adds multiple BatchSummary records to DynamoDB in batches.
 
@@ -146,7 +146,7 @@ class _BatchSummary(DynamoClientProtocol):
             else:
                 raise ValueError(f"Error adding batch summaries: {e}") from e
 
-    def update_batch_summary(self, batch_summary: BatchSummary):
+    def update_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Updates an existing BatchSummary record in DynamoDB.
 
@@ -182,7 +182,7 @@ class _BatchSummary(DynamoClientProtocol):
             else:
                 raise ValueError(f"Error updating batch summary: {e}") from e
 
-    def update_batch_summaries(self, batch_summaries: List[BatchSummary]):
+    def update_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
         """
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
@@ -250,7 +250,7 @@ class _BatchSummary(DynamoClientProtocol):
                         f"Error updating batch summaries: {e}"
                     ) from e
 
-    def delete_batch_summary(self, batch_summary: BatchSummary):
+    def delete_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Deletes a single BatchSummary record from DynamoDB.
 
@@ -286,7 +286,7 @@ class _BatchSummary(DynamoClientProtocol):
             else:
                 raise ValueError(f"Error deleting batch summary: {e}") from e
 
-    def delete_batch_summaries(self, batch_summaries: List[BatchSummary]):
+    def delete_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
         """
         Deletes multiple BatchSummary records from DynamoDB using transactions.
 
