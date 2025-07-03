@@ -21,8 +21,8 @@ def gpt_request_tagging_validation(
     Makes a request to the OpenAI API to validate the tagging of a receipt.
 
     Returns:
-        tuple[dict, str, str]: The formatted response from the OpenAI API, the query
-            sent to OpenAI API, and the raw response from OpenAI API.
+        tuple[dict, str, str]: The formatted response from the OpenAI API, the
+            query sent to OpenAI API, and the raw response from OpenAI API.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
         raise ValueError("The OPENAI_API_KEY environment variable is not set.")
@@ -61,8 +61,8 @@ def gpt_request_initial_tagging(
     """Makes a request to the OpenAI API to label the receipt.
 
     Returns:
-        tuple[dict, str, str]: The formatted response from the OpenAI API, the query
-            sent to OpenAI API, and the raw response from OpenAI API.
+        tuple[dict, str, str]: The formatted response from the OpenAI API, the
+            query sent to OpenAI API, and the raw response from OpenAI API.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
         raise ValueError("The OPENAI_API_KEY environment variable is not set.")
@@ -99,7 +99,8 @@ def _validate_gpt_response_initial_tagging(
     """Validates the response from the OpenAI API.
 
     Validate the response from OpenAI API and raise an error if the response
-    is not formatted as expected. If the response is valid, return the parsed content.
+    is not formatted as expected. If the response is valid, return the parsed
+    content.
 
     Args:
         response (Response): The response from the OpenAI API
@@ -164,7 +165,8 @@ def _validate_gpt_response_tagging_validation(
     """Validates the response from the OpenAI API.
 
     Validate the response from OpenAI API and raise an error if the response
-    is not formatted as expected. If the response is valid, return the parsed content.
+    is not formatted as expected. If the response is valid, return the parsed
+    content.
 
     Args:
         response (Response): The response from the OpenAI API
@@ -272,7 +274,8 @@ def _llm_prompt_initial_tagging(
     )
     return (
         "\nYou are a helpful assistant that extracts structured data from a receipt.\n"
-        "\nBelow is a sample of the JSON you will receive. Notice that each 'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):\n"
+        "\nBelow is a sample of the JSON you will receive. Notice that each "
+        "'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):\n"
         "\n```json\n"
         "\n{"
         '  "receipt": {\n'
@@ -307,22 +310,29 @@ def _llm_prompt_initial_tagging(
         "   - taxes (number)\n"
         "   - address (string)\n"
         "   - For line items, return three separate fields:\n"
-        "       * line_item: includes all words that contribute to any line item\n"
-        "       * line_item_name: includes words that contribute to the item name\n"
-        "       * line_item_price: includes words that contribute to the item price\n\n"
-        '   Instead of returning the text or centroid, **return an array of {"l": <line_id>, "w": <word_id>} '
+        "       * line_item: includes all words that contribute to any line "
+        "item\n"
+        "       * line_item_name: includes words that contribute to the item "
+        "name\n"
+        "       * line_item_price: includes words that contribute to the item "
+        "price\n\n"
+        "   Instead of returning the text or centroid, **return an array of "
+        '{"l": <line_id>, "w": <word_id>} '
         "   for each field.**\n"
-        "   - For example, if you think the first two words (line_id=0, word_id=0 and line_id=0, word_id=1) "
+        "   - For example, if you think the first two words (line_id=0, "
+        "word_id=0 and line_id=0, word_id=1) "
         "     make up 'store_name', return:\n"
         '     "store_name": [\n'
         '       {"l": 0, "w": 0},\n'
         '       {"l": 0, "w": 1}\n'
         "]\n"
-        "   - If you cannot find a particular field, return an empty array for it.\n\n"
+        "   - If you cannot find a particular field, return an empty array for "
+        "it.\n\n"
         "**Output Requirements**:\n"
         " - Output must be valid JSON.\n"
         " - Do not return additional keys or text.\n"
-        ' - Do not invent new {"l", "w"} pairs. Only use those provided in the \'words\' list.\n'
+        ' - Do not invent new {"l", "w"} pairs. Only use those provided in '
+        "the 'words' list.\n"
         " - If none found, return empty arrays.\n\n"
         "Example output:\n"
         "```json\n"
@@ -548,8 +558,8 @@ def gpt_request_structure_analysis(
         gpt_api_key (str, optional): The OpenAI API key. Defaults to None.
 
     Returns:
-        tuple[dict, str, str]: The formatted response from the OpenAI API, the query
-            sent to OpenAI API, and the raw response from OpenAI API.
+        tuple[dict, str, str]: The formatted response from the OpenAI API, the
+            query sent to OpenAI API, and the raw response from OpenAI API.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
         raise ValueError("The OPENAI_API_KEY environment variable is not set.")
