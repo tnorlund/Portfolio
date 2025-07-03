@@ -348,7 +348,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                     duplicate_keys = []
 
                     for i, a in enumerate(analyses):
-                        key_str = "PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
+                        key_str = f"PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                         if key_str in keys_seen:
                             duplicate_keys.append(
                                 "Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
@@ -401,9 +401,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key={
-                    "PK": {"S": "IMAGE#{analysis.image_id}"},
+                    "PK": {"S": f"IMAGE#{analysis.image_id}"},
                     "SK": {
-                        "S": "RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
+                        "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                     },
                 },
             )
@@ -565,9 +565,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 response = self._client.get_item(
                     TableName=self.table_name,
                     Key={
-                        "PK": {"S": "IMAGE#{image_id}"},
+                        "PK": {"S": f"IMAGE#{image_id}"},
                         "SK": {
-                            "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}"
                         },
                     },
                 )
@@ -587,9 +587,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                         "#sk": "SK",
                     },
                     "ExpressionAttributeValues": {
-                        ":pk": {"S": "IMAGE#{image_id}"},
+                        ":pk": {"S": f"IMAGE#{image_id}"},
                         ":sk_prefix": {
-                            "S": "RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
                         },
                     },
                     "Limit": 1,  # We only need one result
