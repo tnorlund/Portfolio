@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
@@ -84,7 +85,9 @@ class TestAIUsageMetric:
         assert metric.request_id is not None  # auto-generated UUID
         assert metric.api_calls == 1  # default value
         assert metric.metadata == {}  # default empty dict
-        assert metric.total_tokens is None  # computed from input/output when available
+        assert (
+            metric.total_tokens is None
+        )  # computed from input/output when available
 
     def test_service_name_normalized(self):
         """Test that service names are normalized to lowercase."""
@@ -393,7 +396,9 @@ class TestAIUsageMetric:
         assert metric.service == "openai"
         assert metric.model == "gpt-4"
         assert metric.operation == "completion"
-        assert metric.timestamp == datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        assert metric.timestamp == datetime(
+            2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc
+        )
         assert metric.request_id == "test-123"
         assert metric.input_tokens == 100
         assert metric.output_tokens == 50
@@ -431,7 +436,9 @@ class TestAIUsageMetric:
         assert metric.service == "anthropic"
         assert metric.model == "claude-3-opus"
         assert metric.operation == "completion"
-        assert metric.timestamp == datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        assert metric.timestamp == datetime(
+            2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc
+        )
         assert metric.request_id == "test-456"
         assert metric.api_calls == 1
 
@@ -581,10 +588,14 @@ class TestAIUsageMetric:
         # Verify complex metadata is preserved
         assert restored_metric.metadata == complex_metadata
         assert (
-            restored_metric.metadata["nested_dict"]["level2"]["level3"]["deep_value"]
+            restored_metric.metadata["nested_dict"]["level2"]["level3"][
+                "deep_value"
+            ]
             == "found_me"
         )
-        assert restored_metric.metadata["mixed_list"][0]["type"] == "dict_in_list"
+        assert (
+            restored_metric.metadata["mixed_list"][0]["type"] == "dict_in_list"
+        )
         assert restored_metric.metadata["mixed_list"][1][2] == "in"
 
     def test_error_handling_in_metadata_serialization(self):
@@ -616,7 +627,9 @@ class TestAIUsageMetric:
         item = metric.to_dynamodb_item()
         restored_metric = AIUsageMetric.from_dynamodb_item(item)
 
-        assert restored_metric.metadata["custom_object"] == "CustomObject(test)"
+        assert (
+            restored_metric.metadata["custom_object"] == "CustomObject(test)"
+        )
         assert restored_metric.metadata["normal_field"] == "works_fine"
 
     def test_edge_cases_and_validation(self):
@@ -835,7 +848,9 @@ class TestAIUsageMetric:
         query_with_token["ExclusiveStartKey"] = mock_last_evaluated_key
 
         assert "ExclusiveStartKey" in query_with_token
-        assert query_with_token["ExclusiveStartKey"]["PK"]["S"].startswith("AI_USAGE#")
+        assert query_with_token["ExclusiveStartKey"]["PK"]["S"].startswith(
+            "AI_USAGE#"
+        )
 
     def test_dynamodb_value_conversion_edge_cases(self):
         """Test DynamoDB value conversion edge cases."""
@@ -862,7 +877,9 @@ class TestAIUsageMetric:
             "list_mixed": ["string", 123, True, None],
             "empty_list": [],
             "empty_dict": {},
-            "nested_structure": {"level1": {"level2": [1, 2, {"level3": "value"}]}},
+            "nested_structure": {
+                "level1": {"level2": [1, 2, {"level3": "value"}]}
+            },
         }
 
         # Test conversion to DynamoDB format
@@ -1126,7 +1143,9 @@ class TestAIUsageMetric:
                 costs_by_operation[metric.operation] = 0.0
             costs_by_operation[metric.operation] += metric.cost_usd
 
-        assert costs_by_operation["completion"] == sum(m.cost_usd for m in metrics)
+        assert costs_by_operation["completion"] == sum(
+            m.cost_usd for m in metrics
+        )
 
         # Test aggregation by date
         costs_by_date = {}
@@ -1150,7 +1169,9 @@ class TestAIUsageMetric:
             timestamp=timestamp,
             metadata={
                 "retention_days": 90,
-                "expires_at": int((timestamp + timedelta(days=90)).timestamp()),
+                "expires_at": int(
+                    (timestamp + timedelta(days=90)).timestamp()
+                ),
             },
         )
 

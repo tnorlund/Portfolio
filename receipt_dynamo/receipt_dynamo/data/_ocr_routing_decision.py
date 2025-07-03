@@ -35,7 +35,9 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class _OCRRoutingDecision(DynamoClientProtocol):
-    def add_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
+    def add_ocr_routing_decision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
@@ -64,7 +66,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error adding OCR routing decision: {e}") from e
+                raise OperationError(
+                    f"Error adding OCR routing decision: {e}"
+                ) from e
 
     def add_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -102,7 +106,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             unprocessed = response.get("UnprocessedItems", {})
             while unprocessed.get(self.table_name):
                 try:
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
                 except ClientError as e:
                     error_code = e.response.get("Error", {}).get("Code", "")
@@ -111,7 +117,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                             f"Provisioned throughput exceeded: {e}"
                         ) from e
 
-    def update_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
+    def update_ocr_routing_decision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
@@ -131,7 +139,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' not found"
                 ) from e
             else:
-                raise OperationError(f"Error updating OCR routing decision: {e}") from e
+                raise OperationError(
+                    f"Error updating OCR routing decision: {e}"
+                ) from e
 
     def get_ocr_routing_decision(
         self, image_id: str, job_id: str
@@ -173,9 +183,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error getting OCR routing decision: {e}") from e
+                raise OperationError(
+                    f"Error getting OCR routing decision: {e}"
+                ) from e
 
-    def delete_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
+    def delete_ocr_routing_decision(
+        self, ocr_routing_decision: OCRRoutingDecision
+    ):
         if ocr_routing_decision is None:
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
@@ -198,7 +212,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' does not exist."
                 ) from e
             else:
-                raise OperationError(f"Error deleting OCR routing decision: {e}") from e
+                raise OperationError(
+                    f"Error deleting OCR routing decision: {e}"
+                ) from e
 
     def delete_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -232,9 +248,13 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("OCR routing decision does not exist") from e
+                    raise ValueError(
+                        "OCR routing decision does not exist"
+                    ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise RuntimeError(f"Provisioned throughput exceeded: {e}") from e
+                    raise RuntimeError(
+                        f"Provisioned throughput exceeded: {e}"
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise RuntimeError(f"Internal server error: {e}") from e
                 elif error_code == "AccessDeniedException":
