@@ -7,14 +7,14 @@ from typing import Any, Dict, List, Optional, cast
 import requests
 from requests.models import Response
 
-from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord
+from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
 def gpt_request_tagging_validation(
     receipt: Receipt,
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
-    receipt_word_tags: list[ReceiptWordTag],
+    receipt_word_tags: list[ReceiptWordLabel],
     gpt_api_key=None,
 ) -> tuple[List[Dict[str, Any]], str, str]:
     """
@@ -347,7 +347,7 @@ def _llm_prompt_tagging_validation(
     receipt: Receipt,
     receipt_lines: list[ReceiptLine],
     receipt_words: list[ReceiptWord],
-    receipt_word_tags: list[ReceiptWordTag],
+    receipt_word_tags: list[ReceiptWordLabel],
 ) -> str:
     """
     Generates a prompt string for validating and potentially revising receipt word tags.
@@ -428,8 +428,8 @@ def _llm_prompt_tagging_validation(
                     "bounding_box": word.bounding_box,
                     "tags": [
                         {
-                            "tag": tag.tag,
-                            "validated": tag.validated,
+                            "tag": tag.label,
+                            "validated": tag.validation_status,
                         }
                         for tag in tags
                     ],

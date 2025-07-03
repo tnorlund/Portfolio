@@ -149,7 +149,7 @@ class JobCheckpoint:
 
         return item
 
-    def _dict_to_dynamodb_map(self, d: Dict) -> Dict:
+    def _dict_to_dynamodb_map(self, d: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a Python dictionary to a DynamoDB map.
 
         Args:
@@ -178,7 +178,7 @@ class JobCheckpoint:
                 result[k] = {"S": str(v)}
         return result
 
-    def _to_dynamodb_value(self, v: Any) -> Dict:
+    def _to_dynamodb_value(self, v: Any) -> Dict[str, Any]:
         """Converts a Python value to a DynamoDB value.
 
         Args:
@@ -290,7 +290,7 @@ class JobCheckpoint:
         )
 
 
-def _parse_dynamodb_map(m: Dict) -> Dict:
+def _parse_dynamodb_map(m: Dict[str, Any]) -> Dict[str, Any]:
     """Parses a DynamoDB map to a Python dictionary.
 
     Args:
