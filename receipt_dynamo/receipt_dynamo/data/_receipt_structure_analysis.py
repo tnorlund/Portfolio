@@ -77,10 +77,12 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         """Adds a ReceiptStructureAnalysis to DynamoDB.
 
         Args:
-            analysis (ReceiptStructureAnalysis): The ReceiptStructureAnalysis to add.
+            analysis (ReceiptStructureAnalysis): The ReceiptStructureAnalysis
+                to add.
 
         Raises:
-            ValueError: If the analysis is None or not an instance of ReceiptStructureAnalysis.
+            ValueError: If the analysis is None or not an instance of
+                ReceiptStructureAnalysis.
             Exception: If the analysis cannot be added to DynamoDB.
         """
         if analysis is None:
@@ -89,23 +91,29 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptStructureAnalysis class."
+                "analysis must be an instance of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             self._client.put_item(
                 TableName=self.table_name,
                 Item=analysis.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} already exists"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
+                    "Could not add receipt structure analysis to DynamoDB: "
+                    "Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -121,7 +129,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 raise DynamoDBAccessError("Access denied")
             else:
                 raise DynamoDBError(
-                    f"Could not add receipt structure analysis to DynamoDB: {e}"
+                    f"Could not add receipt structure analysis to "
+                    f"DynamoDB: {e}"
                 )
 
     def add_receipt_structure_analyses(
@@ -130,7 +139,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
 
         Args:
-            analyses (list[ReceiptStructureAnalysis]): The ReceiptStructureAnalyses to add.
+            analyses (list[ReceiptStructureAnalysis]): The
+                ReceiptStructureAnalyses to add.
 
         Raises:
             ValueError: If the analyses are None or not a list.
@@ -142,11 +152,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptStructureAnalysis instances."
+                "analyses must be a list of ReceiptStructureAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptStructureAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptStructureAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             for i in range(0, len(analyses), 25):
@@ -206,7 +218,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             analysis (ReceiptStructureAnalysis): The ReceiptStructureAnalysis to update.
 
         Raises:
-            ValueError: If the analysis is None or not an instance of ReceiptStructureAnalysis.
+            ValueError: If the analysis is None or not an instance of
+                ReceiptStructureAnalysis.
             Exception: If the analysis cannot be updated in DynamoDB.
         """
         if analysis is None:
@@ -215,23 +228,29 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptStructureAnalysis class."
+                "analysis must be an instance of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             self._client.put_item(
                 TableName=self.table_name,
                 Item=analysis.to_item(),
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
+                    "Could not add receipt structure analysis to DynamoDB: "
+                    "Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -268,11 +287,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptStructureAnalysis instances."
+                "analyses must be a list of ReceiptStructureAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptStructureAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptStructureAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             for i in range(0, len(analyses), 25):
@@ -363,7 +384,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             analysis (ReceiptStructureAnalysis): The ReceiptStructureAnalysis to delete.
 
         Raises:
-            ValueError: If the analysis is None or not an instance of ReceiptStructureAnalysis.
+            ValueError: If the analysis is None or not an instance of
+                ReceiptStructureAnalysis.
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         if analysis is None:
@@ -372,7 +394,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptStructureAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptStructureAnalysis class."
+                "analysis must be an instance of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             self._client.delete_item(
@@ -388,11 +411,14 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt {analysis.receipt_id} and image {analysis.image_id} does not exist"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    "Could not add receipt structure analysis to DynamoDB: Table not found"
+                    "Could not add receipt structure analysis to DynamoDB: "
+                    "Table not found"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -429,11 +455,13 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptStructureAnalysis instances."
+                "analyses must be a list of ReceiptStructureAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptStructureAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptStructureAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptStructureAnalysis class."
             )
         try:
             for i in range(0, len(analyses), 25):

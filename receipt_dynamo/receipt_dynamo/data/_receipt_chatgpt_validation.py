@@ -38,23 +38,33 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
     -------
     add_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Adds a ReceiptChatGPTValidation to DynamoDB.
-    add_receipt_chat_gpt_validations(validations: list[ReceiptChatGPTValidation])
+    add_receipt_chat_gpt_validations(validations:
+            list[ReceiptChatGPTValidation])
         Adds multiple ReceiptChatGPTValidations to DynamoDB in batches.
     update_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Updates an existing ReceiptChatGPTValidation in the database.
-    update_receipt_chat_gpt_validations(validations: list[ReceiptChatGPTValidation])
+    update_receipt_chat_gpt_validations(validations:
+            list[ReceiptChatGPTValidation])
         Updates multiple ReceiptChatGPTValidations in the database.
     delete_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Deletes a single ReceiptChatGPTValidation.
-    delete_receipt_chat_gpt_validations(validations: list[ReceiptChatGPTValidation])
+    delete_receipt_chat_gpt_validations(validations:
+            list[ReceiptChatGPTValidation])
         Deletes multiple ReceiptChatGPTValidations in batch.
-    get_receipt_chat_gpt_validation(receipt_id: int, image_id: str, timestamp: str) -> ReceiptChatGPTValidation
+    get_receipt_chat_gpt_validation(receipt_id: int, image_id: str,
+            timestamp: str) -> ReceiptChatGPTValidation
         Retrieves a single ReceiptChatGPTValidation by IDs.
-    list_receipt_chat_gpt_validations(limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations(limit: Optional[int] = None,
+            last_evaluated_key: dict | None = None)
+            -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns all ReceiptChatGPTValidations and the last evaluated key.
-    list_receipt_chat_gpt_validations_for_receipt(receipt_id: int, image_id: str) -> list[ReceiptChatGPTValidation]
+    list_receipt_chat_gpt_validations_for_receipt(receipt_id: int,
+            image_id: str) -> list[ReceiptChatGPTValidation]
         Returns all ReceiptChatGPTValidations for a given receipt.
-    list_receipt_chat_gpt_validations_by_status(status: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations_by_status(status: str,
+            limit: Optional[int] = None,
+            last_evaluated_key: dict | None = None)
+            -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns ReceiptChatGPTValidations with a specific status."""
 
     def add_receipt_chat_gpt_validation(
