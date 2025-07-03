@@ -54,7 +54,9 @@ class CostAwareAIUsageTracker(AIUsageTracker):
         self.cost_monitor = cost_monitor
         self.budget_manager = budget_manager
         self.alert_manager = alert_manager
-        self.enable_cost_monitoring = enable_cost_monitoring and bool(cost_monitor)
+        self.enable_cost_monitoring = enable_cost_monitoring and bool(
+            cost_monitor
+        )
         # Store references to alert tasks to prevent garbage collection
         self._alert_tasks: Set[asyncio.Task] = set()
 
@@ -89,7 +91,9 @@ class CostAwareAIUsageTracker(AIUsageTracker):
 
         # Check job budget if applicable
         if metric.job_id:
-            self._check_budget_for_scope(metric, f"job:{metric.job_id}", "Job budget")
+            self._check_budget_for_scope(
+                metric, f"job:{metric.job_id}", "Job budget"
+            )
 
     def _check_budget_for_scope(
         self,
@@ -116,7 +120,9 @@ class CostAwareAIUsageTracker(AIUsageTracker):
 
         if alert and self.alert_manager:
             # Send alert asynchronously
-            task = asyncio.create_task(self._send_alert_async(alert, budget_name))
+            task = asyncio.create_task(
+                self._send_alert_async(alert, budget_name)
+            )
             self._alert_tasks.add(task)
             # Clean up completed tasks
             task.add_done_callback(lambda t: self._alert_tasks.discard(t))

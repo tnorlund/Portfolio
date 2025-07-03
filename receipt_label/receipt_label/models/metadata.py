@@ -105,7 +105,9 @@ class MetadataMixin:
         # Update the timestamp_updated field
         self.timestamp_updated = event["timestamp"]
 
-    def update_version(self, new_version: str, reason: Optional[str] = None) -> None:
+    def update_version(
+        self, new_version: str, reason: Optional[str] = None
+    ) -> None:
         """
         Update the version of this analysis.
 
