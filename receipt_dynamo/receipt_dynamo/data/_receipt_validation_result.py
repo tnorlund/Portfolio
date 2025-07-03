@@ -82,7 +82,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             result (ReceiptValidationResult): The ReceiptValidationResult to add.
 
         Raises:
-            ValueError: If the result is None or not an instance of ReceiptValidationResult.
+            ValueError: If the result is None or not an instance of
+                ReceiptValidationResult.
             Exception: If the result cannot be added to DynamoDB.
         """
         if result is None:
@@ -91,7 +92,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
-                "result must be an instance of the ReceiptValidationResult class."
+                "result must be an instance of the "
+                "ReceiptValidationResult class."
             )
         try:
             self._client.put_item(
@@ -103,11 +105,13 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptValidationResult with field {result.field_name} and index {result.result_index} already exists"
+                    f"ReceiptValidationResult with field {result.field_name} "
+                    f"and index {result.result_index} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not add receipt validation result to DynamoDB: {e}"
+                    f"Could not add receipt validation result to "
+                    f"DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -123,7 +127,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not add receipt validation result to DynamoDB: {e}"
+                    f"Could not add receipt validation result to "
+                    f"DynamoDB: {e}"
                 )
 
     def add_receipt_validation_results(
@@ -132,7 +137,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """Adds multiple ReceiptValidationResults to DynamoDB in batches.
 
         Args:
-            results (list[ReceiptValidationResult]): The ReceiptValidationResults to add.
+            results (list[ReceiptValidationResult]): The
+                ReceiptValidationResults to add.
 
         Raises:
             ValueError: If the results are None or not a list.
@@ -144,13 +150,15 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(results, list):
             raise ValueError(
-                "results must be a list of ReceiptValidationResult instances."
+                "results must be a list of ReceiptValidationResult "
+                "instances."
             )
         if not all(
             isinstance(res, ReceiptValidationResult) for res in results
         ):
             raise ValueError(
-                "All results must be instances of the ReceiptValidationResult class."
+                "All results must be instances of the "
+                "ReceiptValidationResult class."
             )
         try:
             for i in range(0, len(results), 25):
@@ -186,7 +194,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not add ReceiptValidationResults to the database: {e}"
+                    f"Could not add ReceiptValidationResults to the "
+                    f"database: {e}"
                 )
 
     def update_receipt_validation_result(
@@ -195,10 +204,12 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """Updates an existing ReceiptValidationResult in the database.
 
         Args:
-            result (ReceiptValidationResult): The ReceiptValidationResult to update.
+            result (ReceiptValidationResult): The ReceiptValidationResult
+                to update.
 
         Raises:
-            ValueError: If the result is None or not an instance of ReceiptValidationResult.
+            ValueError: If the result is None or not an instance of
+                ReceiptValidationResult.
             Exception: If the result cannot be updated in DynamoDB.
         """
         if result is None:
@@ -207,7 +218,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
-                "result must be an instance of the ReceiptValidationResult class."
+                "result must be an instance of the "
+                "ReceiptValidationResult class."
             )
         try:
             self._client.put_item(
@@ -219,7 +231,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptValidationResult with field {result.field_name} and index {result.result_index} does not exist"
+                    f"ReceiptValidationResult with field {result.field_name} "
+                    f"and index {result.result_index} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -235,7 +248,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not update ReceiptValidationResult in the database: {e}"
+                    f"Could not update ReceiptValidationResult in the "
+                    f"database: {e}"
                 )
 
     def update_receipt_validation_results(
@@ -244,7 +258,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """Updates multiple ReceiptValidationResults in the database.
 
         Args:
-            results (list[ReceiptValidationResult]): The ReceiptValidationResults to update.
+            results (list[ReceiptValidationResult]): The
+                ReceiptValidationResults to update.
 
         Raises:
             ValueError: If the results are None or not a list.
@@ -256,13 +271,15 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(results, list):
             raise ValueError(
-                "results must be a list of ReceiptValidationResult instances."
+                "results must be a list of ReceiptValidationResult "
+                "instances."
             )
         if not all(
             isinstance(res, ReceiptValidationResult) for res in results
         ):
             raise ValueError(
-                "All results must be instances of the ReceiptValidationResult class."
+                "All results must be instances of the "
+                "ReceiptValidationResult class."
             )
         for i in range(0, len(results), 25):
             chunk = results[i : i + 25]
@@ -284,7 +301,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     # Check if cancellation was due to conditional check failure
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
-                            "One or more ReceiptValidationResults do not exist"
+                            "One or more ReceiptValidationResults do not "
+                            "exist"
                         ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
@@ -302,11 +320,13 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                     raise DynamoDBAccessError(f"Access denied: {e}") from e
                 elif error_code == "ResourceNotFoundException":
                     raise DynamoDBError(
-                        f"Could not update ReceiptValidationResults in the database: {e}"
+                        f"Could not update ReceiptValidationResults in the "
+                        f"database: {e}"
                     ) from e
                 else:
                     raise DynamoDBError(
-                        f"Could not update ReceiptValidationResults in the database: {e}"
+                        f"Could not update ReceiptValidationResults in the "
+                        f"database: {e}"
                     ) from e
 
     def delete_receipt_validation_result(
@@ -316,10 +336,12 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """Deletes a single ReceiptValidationResult.
 
         Args:
-            result (ReceiptValidationResult): The ReceiptValidationResult to delete.
+            result (ReceiptValidationResult): The ReceiptValidationResult
+                to delete.
 
         Raises:
-            ValueError: If the result is None or not an instance of ReceiptValidationResult.
+            ValueError: If the result is None or not an instance of
+                ReceiptValidationResult.
             Exception: If the result cannot be deleted from DynamoDB.
         """
         if result is None:
@@ -328,7 +350,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(result, ReceiptValidationResult):
             raise ValueError(
-                "result must be an instance of the ReceiptValidationResult class."
+                "result must be an instance of the "
+                "ReceiptValidationResult class."
             )
         try:
             self._client.delete_item(
@@ -340,7 +363,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"ReceiptValidationResult with field {result.field_name} and index {result.result_index} does not exist"
+                    f"ReceiptValidationResult with field {result.field_name} "
+                    f"and index {result.result_index} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -356,7 +380,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not delete ReceiptValidationResult from the database: {e}"
+                    f"Could not delete ReceiptValidationResult from the "
+                    f"database: {e}"
                 ) from e
 
     def delete_receipt_validation_results(
@@ -365,7 +390,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         """Deletes multiple ReceiptValidationResults in batch.
 
         Args:
-            results (list[ReceiptValidationResult]): The ReceiptValidationResults to delete.
+            results (list[ReceiptValidationResult]): The
+                ReceiptValidationResults to delete.
 
         Raises:
             ValueError: If the results are None or not a list.
@@ -377,13 +403,15 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             )
         if not isinstance(results, list):
             raise ValueError(
-                "results must be a list of ReceiptValidationResult instances."
+                "results must be a list of ReceiptValidationResult "
+                "instances."
             )
         if not all(
             isinstance(res, ReceiptValidationResult) for res in results
         ):
             raise ValueError(
-                "All results must be instances of the ReceiptValidationResult class."
+                "All results must be instances of the "
+                "ReceiptValidationResult class."
             )
         try:
             for i in range(0, len(results), 25):
@@ -419,7 +447,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not delete ReceiptValidationResults from the database: {e}"
+                    f"Could not delete ReceiptValidationResults from the "
+                    f"database: {e}"
                 )
 
     def get_receipt_validation_result(
@@ -439,7 +468,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt validation result cannot be retrieved from DynamoDB.
+            Exception: If the receipt validation result cannot be retrieved
+                from DynamoDB.
 
         Returns:
             ReceiptValidationResult: The retrieved receipt validation result.
@@ -478,7 +508,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#{result_index}"
                     },
                 },
             )
@@ -486,7 +517,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 return item_to_receipt_validation_result(response["Item"])
             else:
                 raise ValueError(
-                    f"ReceiptValidationResult with field {field_name} and index {result_index} not found"
+                    f"ReceiptValidationResult with field {field_name} and "
+                    f"index {result_index} not found"
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -506,21 +538,27 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 )
 
     def list_receipt_validation_results(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: dict | None = None,
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         """Returns all ReceiptValidationResults from the table.
 
         Args:
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
+            limit (int, optional): The maximum number of results to return.
+                Defaults to None.
+            lastEvaluatedKey (dict, optional): The last evaluated key from a
+                previous request. Defaults to None.
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt validation results cannot be retrieved from DynamoDB.
+            Exception: If the receipt validation results cannot be retrieved
+                from DynamoDB.
 
         Returns:
-            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptValidationResult], dict | None]: A tuple
+                containing a list of validation results and the last evaluated
+                key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
@@ -577,7 +615,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not list receipt validation results from DynamoDB: {e}"
+                    f"Could not list receipt validation results from "
+                    f"DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -606,10 +645,12 @@ class _ReceiptValidationResult(DynamoClientProtocol):
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt validation results cannot be retrieved from DynamoDB.
+            Exception: If the receipt validation results cannot be retrieved
+                from DynamoDB.
 
         Returns:
-            list[ReceiptValidationResult]: A list of validation results for the specified field.
+            list[ReceiptValidationResult]: A list of validation results for
+                the specified field.
         """
         if receipt_id is None:
             raise ValueError(
@@ -635,11 +676,14 @@ class _ReceiptValidationResult(DynamoClientProtocol):
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#"
                     },
                 },
             )
@@ -653,11 +697,14 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
-                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
+                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                            f"CATEGORY#{field_name}#RESULT#"
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
@@ -686,7 +733,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
                 raise DynamoDBError(
-                    f"Could not list ReceiptValidationResults from the database: {e}"
+                    f"Could not list ReceiptValidationResults from the "
+                    f"database: {e}"
                 )
 
     def list_receipt_validation_results_by_type(
@@ -699,16 +747,20 @@ class _ReceiptValidationResult(DynamoClientProtocol):
 
         Args:
             result_type (str): The type of validation results to retrieve.
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
+            limit (int, optional): The maximum number of results to return.
+                Defaults to None.
+            lastEvaluatedKey (dict, optional): The last evaluated key from a
+                previous request. Defaults to None.
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt validation results cannot be retrieved from DynamoDB.
+            Exception: If the receipt validation results cannot be retrieved
+                from DynamoDB.
 
         Returns:
-            tuple[list[ReceiptValidationResult], dict | None]: A tuple containing a list of validation results and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptValidationResult], dict | None]: A tuple
+                containing a list of validation results and the last evaluated
+                key (or None if no more results).
         """
         if result_type is None:
             raise ValueError(
@@ -773,7 +825,8 @@ class _ReceiptValidationResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not list receipt validation results from DynamoDB: {e}"
+                    f"Could not list receipt validation results from "
+                    f"DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(

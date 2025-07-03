@@ -86,18 +86,22 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """Adds a receipt label analysis to the database
 
         Args:
-            receipt_label_analysis (ReceiptLabelAnalysis): The receipt label analysis to add to the database
+            receipt_label_analysis (ReceiptLabelAnalysis): The receipt label
+                analysis to add to the database
 
         Raises:
-            ValueError: When a receipt label analysis with the same ID already exists
+            ValueError: When a receipt label analysis with the same ID already
+                exists
         """
         if receipt_label_analysis is None:
             raise ValueError(
-                "ReceiptLabelAnalysis parameter is required and cannot be None."
+                "ReceiptLabelAnalysis parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analysis, ReceiptLabelAnalysis):
             raise ValueError(
-                "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class."
+                "receipt_label_analysis must be an instance of the "
+                "ReceiptLabelAnalysis class."
             )
         try:
             self._client.put_item(
@@ -109,11 +113,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Receipt label analysis for Image ID '{receipt_label_analysis.image_id}' already exists"
+                    f"Receipt label analysis for Image ID "
+                    f"'{receipt_label_analysis.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not add receipt label analysis to DynamoDB: {e}"
+                    f"Could not add receipt label analysis to "
+                    f"DynamoDB: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -123,7 +129,8 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
                 raise DynamoDBError(
-                    f"Could not add receipt label analysis to DynamoDB: {e}"
+                    f"Could not add receipt label analysis to "
+                    f"DynamoDB: {e}"
                 ) from e
 
     def add_receipt_label_analyses(
@@ -132,14 +139,17 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """Adds a list of receipt label analyses to the database
 
         Args:
-            receipt_label_analyses (list[ReceiptLabelAnalysis]): The receipt label analyses to add to the database
+            receipt_label_analyses (list[ReceiptLabelAnalysis]): The receipt
+                label analyses to add to the database
 
         Raises:
-            ValueError: When a receipt label analysis with the same ID already exists
+            ValueError: When a receipt label analysis with the same ID already
+                exists
         """
         if receipt_label_analyses is None:
             raise ValueError(
-                "ReceiptLabelAnalyses parameter is required and cannot be None."
+                "ReceiptLabelAnalyses parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analyses, list):
             raise ValueError(
@@ -204,11 +214,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """
         if receipt_label_analysis is None:
             raise ValueError(
-                "ReceiptLabelAnalysis parameter is required and cannot be None."
+                "ReceiptLabelAnalysis parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analysis, ReceiptLabelAnalysis):
             raise ValueError(
-                "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class."
+                "receipt_label_analysis must be an instance of the "
+                "ReceiptLabelAnalysis class."
             )
 
         try:
@@ -255,7 +267,8 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """
         if receipt_label_analyses is None:
             raise ValueError(
-                "ReceiptLabelAnalyses parameter is required and cannot be None."
+                "ReceiptLabelAnalyses parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analyses, list):
             raise ValueError(
@@ -334,11 +347,13 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """
         if receipt_label_analysis is None:
             raise ValueError(
-                "ReceiptLabelAnalysis parameter is required and cannot be None."
+                "ReceiptLabelAnalysis parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analysis, ReceiptLabelAnalysis):
             raise ValueError(
-                "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class."
+                "receipt_label_analysis must be an instance of the "
+                "ReceiptLabelAnalysis class."
             )
         try:
             self._client.delete_item(
@@ -383,7 +398,8 @@ class _ReceiptLabelAnalysis(DynamoClientProtocol):
         """
         if receipt_label_analyses is None:
             raise ValueError(
-                "ReceiptLabelAnalyses parameter is required and cannot be None."
+                "ReceiptLabelAnalyses parameter is required and cannot be "
+                "None."
             )
         if not isinstance(receipt_label_analyses, list):
             raise ValueError(
