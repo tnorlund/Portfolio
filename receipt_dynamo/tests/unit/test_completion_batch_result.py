@@ -4,7 +4,9 @@ import pytest
 
 from receipt_dynamo.constants import BatchStatus, PassNumber, ValidationStatus
 from receipt_dynamo.entities.completion_batch_result import (
-    CompletionBatchResult, item_to_completion_batch_result)
+    CompletionBatchResult,
+    item_to_completion_batch_result,
+)
 
 
 @pytest.fixture

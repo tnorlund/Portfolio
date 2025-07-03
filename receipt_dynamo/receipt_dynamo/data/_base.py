@@ -2,24 +2,27 @@ from typing import TYPE_CHECKING, Dict, Protocol
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
-    from mypy_boto3_dynamodb.type_defs import (AttributeValueTypeDef,
-                                               BatchGetItemInputTypeDef,
-                                               BatchWriteItemInputTypeDef,
-                                               ConditionCheckTypeDef,
-                                               DeleteItemInputTypeDef,
-                                               DeleteRequestTypeDef,
-                                               DeleteTypeDef,
-                                               GetItemInputTypeDef,
-                                               KeysAndAttributesTypeDef,
-                                               PutItemInputTypeDef,
-                                               PutRequestTypeDef, PutTypeDef,
-                                               QueryInputTypeDef,
-                                               ScanInputTypeDef,
-                                               TransactWriteItemsInputTypeDef,
-                                               TransactWriteItemTypeDef,
-                                               UpdateItemInputTypeDef,
-                                               UpdateTypeDef,
-                                               WriteRequestTypeDef)
+    from mypy_boto3_dynamodb.type_defs import (
+        AttributeValueTypeDef,
+        BatchGetItemInputTypeDef,
+        BatchWriteItemInputTypeDef,
+        ConditionCheckTypeDef,
+        DeleteItemInputTypeDef,
+        DeleteRequestTypeDef,
+        DeleteTypeDef,
+        GetItemInputTypeDef,
+        KeysAndAttributesTypeDef,
+        PutItemInputTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        ScanInputTypeDef,
+        TransactWriteItemsInputTypeDef,
+        TransactWriteItemTypeDef,
+        UpdateItemInputTypeDef,
+        UpdateTypeDef,
+        WriteRequestTypeDef,
+    )
 else:
     # Runtime fallback
     DynamoDBClient = object
