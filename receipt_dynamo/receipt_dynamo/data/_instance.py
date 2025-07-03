@@ -6,34 +6,24 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (PutRequestTypeDef,
+                                           QueryInputTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
+from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
 from receipt_dynamo.data._job import validate_last_evaluated_key
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityNotFoundError,
-    OperationError,
-)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   EntityNotFoundError,
+                                                   OperationError)
 from receipt_dynamo.entities.instance import Instance, item_to_instance
-from receipt_dynamo.entities.instance_job import (
-    InstanceJob,
-    item_to_instance_job,
-)
+from receipt_dynamo.entities.instance_job import (InstanceJob,
+                                                  item_to_instance_job)
 
 
 class _Instance(DynamoClientProtocol):

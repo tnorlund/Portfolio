@@ -6,22 +6,16 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (PutRequestTypeDef,
+                                           QueryInputTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
-from receipt_dynamo.data.shared_exceptions import (
-    BatchOperationError,
-    OperationError,
-)
+from receipt_dynamo.data.shared_exceptions import (BatchOperationError,
+                                                   OperationError)
 from receipt_dynamo.entities.completion_batch_result import (
-    CompletionBatchResult,
-    item_to_completion_batch_result,
-)
+    CompletionBatchResult, item_to_completion_batch_result)
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -38,7 +32,9 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _CompletionBatchResult(DynamoClientProtocol):
-    def add_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def add_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
@@ -79,7 +75,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
 
-    def update_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def update_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
@@ -93,7 +91,9 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not update completion batch result: {e}"
             ) from e
 
-    def delete_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def delete_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
