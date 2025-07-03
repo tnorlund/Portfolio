@@ -9,17 +9,33 @@ This package provides geometric operations for:
 """
 
 # Re-export main functions to maintain backward compatibility
-from .edge_detection import (compute_edge, compute_final_receipt_tilt,
-                             compute_receipt_box_from_boundaries,
-                             find_hull_extremes_along_angle,
-                             find_line_edges_at_secondary_extremes,
-                             refine_hull_extremes_with_hull_edge_alignment)
-from .hull_operations import (box_points, compute_hull_centroid, convex_hull,
-                              min_area_rect)
-from .receipt_box import (compute_receipt_box_from_skewed_extents,
-                          find_hull_extents_relative_to_centroid)
-from .transformations import (find_perspective_coeffs, invert_affine,
-                              invert_warp, pad_corners_opposite)
+from .edge_detection import (
+    compute_edge,
+    compute_final_receipt_tilt,
+    compute_receipt_box_from_boundaries,
+    create_boundary_line_from_points,
+    create_boundary_line_from_theil_sen,
+    create_horizontal_boundary_line_from_points,
+    find_hull_extremes_along_angle,
+    find_line_edges_at_secondary_extremes,
+    refine_hull_extremes_with_hull_edge_alignment,
+)
+from .hull_operations import (
+    box_points,
+    compute_hull_centroid,
+    convex_hull,
+    min_area_rect,
+)
+from .receipt_box import (
+    compute_receipt_box_from_skewed_extents,
+    find_hull_extents_relative_to_centroid,
+)
+from .transformations import (
+    find_perspective_coeffs,
+    invert_affine,
+    invert_warp,
+    pad_corners_opposite,
+)
 from .utils import theil_sen
 
 __all__ = [
@@ -27,6 +43,9 @@ __all__ = [
     "compute_edge",
     "compute_final_receipt_tilt",
     "compute_receipt_box_from_boundaries",
+    "create_boundary_line_from_points",
+    "create_boundary_line_from_theil_sen",
+    "create_horizontal_boundary_line_from_points",
     "find_hull_extremes_along_angle",
     "find_line_edges_at_secondary_extremes",
     "refine_hull_extremes_with_hull_edge_alignment",

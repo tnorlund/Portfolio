@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.cost_monitoring import CostMonitor, ThresholdAlert
 from receipt_label.utils.cost_monitoring.cost_monitor import ThresholdLevel
 
@@ -43,7 +44,9 @@ class TestCostMonitor:
             user_id="test-user",
         )
 
-    def test_check_budget_threshold_no_alert(self, cost_monitor, sample_usage_metric):
+    def test_check_budget_threshold_no_alert(
+        self, cost_monitor, sample_usage_metric
+    ):
         """Test budget check when no threshold is crossed."""
         # Mock current spend at 30%
         with patch.object(
@@ -58,7 +61,9 @@ class TestCostMonitor:
 
             assert alert is None
 
-    def test_check_budget_threshold_warning(self, cost_monitor, sample_usage_metric):
+    def test_check_budget_threshold_warning(
+        self, cost_monitor, sample_usage_metric
+    ):
         """Test budget check when warning threshold is crossed."""
         # Mock current spend at 79.5% (will be 80% with new usage)
         with patch.object(
@@ -78,7 +83,9 @@ class TestCostMonitor:
             assert alert.budget_limit == Decimal("100.00")
             assert "WARNING" in alert.message
 
-    def test_check_budget_threshold_exceeded(self, cost_monitor, sample_usage_metric):
+    def test_check_budget_threshold_exceeded(
+        self, cost_monitor, sample_usage_metric
+    ):
         """Test budget check when budget is exceeded."""
         # Mock current spend at 99.5% (will be 100% with new usage)
         with patch.object(
@@ -130,7 +137,9 @@ class TestCostMonitor:
             MagicMock(service="google_places", cost_usd=Decimal("5.00")),
         ]
 
-        with patch.object(cost_monitor, "_query_metrics", return_value=mock_metrics):
+        with patch.object(
+            cost_monitor, "_query_metrics", return_value=mock_metrics
+        ):
             breakdown = cost_monitor.get_cost_breakdown(
                 scope="global:all",
                 period="daily",
@@ -178,7 +187,9 @@ class TestCostMonitor:
             # Wednesday
             mock_now = datetime(2024, 1, 17, 14, 30, 0, tzinfo=timezone.utc)
             mock_dt.now.return_value = mock_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = lambda *args, **kwargs: datetime(
+                *args, **kwargs
+            )
 
             start, end = cost_monitor._get_period_dates("weekly")
 
@@ -202,7 +213,9 @@ class TestCostMonitor:
     def test_query_metrics_by_service(self, cost_monitor, mock_dynamo_client):
         """Test querying metrics by service."""
         expected_metrics = [MagicMock(), MagicMock()]
-        AIUsageMetric.query_by_service_date = MagicMock(return_value=expected_metrics)
+        AIUsageMetric.query_by_service_date = MagicMock(
+            return_value=expected_metrics
+        )
 
         metrics = cost_monitor._query_metrics(
             "service",
@@ -266,7 +279,9 @@ class TestCostMonitor:
         monitor = CostMonitor(mock_dynamo_client)
 
         # Mock current spend
-        with patch.object(monitor, "_get_period_spend", return_value=Decimal("0")):
+        with patch.object(
+            monitor, "_get_period_spend", return_value=Decimal("0")
+        ):
             # Create usage metric
             usage = AIUsageMetric(
                 service="openai",
@@ -292,12 +307,16 @@ class TestCostMonitor:
             assert alert.threshold_percent == 100
             assert alert.current_spend == Decimal("0.50")
 
-    def test_check_budget_threshold_zero_budget_no_spend(self, mock_dynamo_client):
+    def test_check_budget_threshold_zero_budget_no_spend(
+        self, mock_dynamo_client
+    ):
         """Test budget check with zero budget and no spend."""
         monitor = CostMonitor(mock_dynamo_client)
 
         # Mock current spend
-        with patch.object(monitor, "_get_period_spend", return_value=Decimal("0")):
+        with patch.object(
+            monitor, "_get_period_spend", return_value=Decimal("0")
+        ):
             # Create usage metric with no cost
             usage = AIUsageMetric(
                 service="openai",
@@ -359,7 +378,8 @@ class TestCostMonitor:
         call_kwargs = mock_dynamo_client._client.query.call_args[1]
         assert call_kwargs["IndexName"] == "GSI3"
         assert (
-            call_kwargs["ExpressionAttributeValues"][":pk"]["S"] == "JOB#test-job-123"
+            call_kwargs["ExpressionAttributeValues"][":pk"]["S"]
+            == "JOB#test-job-123"
         )
 
     def test_query_metrics_environment_scope(self, mock_dynamo_client):

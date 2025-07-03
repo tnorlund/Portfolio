@@ -96,7 +96,9 @@ class FieldGroup:
         if self.metadata is None:
             self.metadata = {}
         if not self.reasoning and self.words:
-            word_reasonings = [word.reasoning for word in self.words if word.reasoning]
+            word_reasonings = [
+                word.reasoning for word in self.words if word.reasoning
+            ]
             if word_reasonings:
                 self.reasoning = f"Field composed of {len(self.words)} words: {' '.join(word_reasonings[:3])}..."
 
@@ -165,8 +167,12 @@ class LabelAnalysis(MetadataMixin):
     """
 
     labels: List[WordLabel]
-    receipt_id: Optional[str] = None  # Made optional but will be required for to_dynamo
-    image_id: Optional[str] = None  # Made optional but will be required for to_dynamo
+    receipt_id: Optional[str] = (
+        None  # Made optional but will be required for to_dynamo
+    )
+    image_id: Optional[str] = (
+        None  # Made optional but will be required for to_dynamo
+    )
     sections: List[SectionLabels] = field(default_factory=list)
     total_labeled_words: int = 0
     requires_review: bool = False
@@ -197,7 +203,9 @@ class LabelAnalysis(MetadataMixin):
                 "flagged_for_review", {"reasons": self.review_reasons}
             )
 
-    def set_receipt_info(self, receipt_id: str, image_id: str) -> "LabelAnalysis":
+    def set_receipt_info(
+        self, receipt_id: str, image_id: str
+    ) -> "LabelAnalysis":
         """Set receipt and image IDs after instance creation.
 
         This allows for deferred setting of IDs when they're not available at creation time.
@@ -233,7 +241,9 @@ class LabelAnalysis(MetadataMixin):
             )
 
         if section_parts:
-            reasoning_parts.append("Section summary: " + "; ".join(section_parts))
+            reasoning_parts.append(
+                "Section summary: " + "; ".join(section_parts)
+            )
 
         # Add review reasons if any
         if self.requires_review:
@@ -272,7 +282,9 @@ class LabelAnalysis(MetadataMixin):
 
         return field_groups
 
-    def get_section_by_name(self, section_name: str) -> Optional[SectionLabels]:
+    def get_section_by_name(
+        self, section_name: str
+    ) -> Optional[SectionLabels]:
         """Get a section by its name."""
         for section in self.sections:
             if section.section_name.lower() == section_name.lower():
@@ -294,7 +306,9 @@ class LabelAnalysis(MetadataMixin):
             return ""
 
         # Sort by line_id and word_id to maintain original order
-        sorted_words = sorted(matching_words, key=lambda w: (w.line_id, w.word_id))
+        sorted_words = sorted(
+            matching_words, key=lambda w: (w.line_id, w.word_id)
+        )
 
         # Group by line_id
         lines = {}
@@ -420,7 +434,9 @@ class LabelAnalysis(MetadataMixin):
         return result
 
     @classmethod
-    def from_dynamo(cls, analysis: DynamoReceiptLabelAnalysis) -> "LabelAnalysis":
+    def from_dynamo(
+        cls, analysis: DynamoReceiptLabelAnalysis
+    ) -> "LabelAnalysis":
         """
         Create a LabelAnalysis instance from a DynamoDB ReceiptLabelAnalysis entity.
 
@@ -462,7 +478,9 @@ class LabelAnalysis(MetadataMixin):
             receipt_id=str(analysis.receipt_id),  # Convert to string
             image_id=analysis.image_id,
             sections=sections,
-            total_labeled_words=getattr(analysis, "total_labeled_words", len(labels)),
+            total_labeled_words=getattr(
+                analysis, "total_labeled_words", len(labels)
+            ),
             requires_review=getattr(analysis, "requires_review", False),
             review_reasons=getattr(analysis, "review_reasons", []),
             analysis_reasoning=getattr(analysis, "overall_reasoning", ""),
@@ -519,7 +537,9 @@ class LabelAnalysis(MetadataMixin):
             labels=labels,
             receipt_id=receipt_id,
             image_id=image_id,
-            total_labeled_words=metadata.get("total_labeled_words", len(labels)),
+            total_labeled_words=metadata.get(
+                "total_labeled_words", len(labels)
+            ),
             requires_review=metadata.get("requires_review", False),
             review_reasons=metadata.get("review_reasons", []),
             analysis_reasoning=metadata.get("analysis_reasoning", ""),

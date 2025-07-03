@@ -8,6 +8,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.utils.cost_monitoring import (
     Budget,
     BudgetManager,
@@ -71,7 +72,9 @@ class TestBudgetManager:
         assert call_args["TableName"] == "test-table"
         assert call_args["Item"]["PK"]["S"] == "BUDGET#user:test-user"
 
-    def test_get_active_budget(self, budget_manager, mock_dynamo_client, sample_budget):
+    def test_get_active_budget(
+        self, budget_manager, mock_dynamo_client, sample_budget
+    ):
         """Test retrieving active budget."""
         # Mock DynamoDB response
         mock_dynamo_client._client.query.return_value = {
@@ -84,14 +87,18 @@ class TestBudgetManager:
             ]
         }
 
-        budget = budget_manager.get_active_budget("user:test", BudgetPeriod.DAILY)
+        budget = budget_manager.get_active_budget(
+            "user:test", BudgetPeriod.DAILY
+        )
 
         assert budget is not None
         assert budget.scope == "user:test"
         assert budget.amount == Decimal("100.00")
         assert budget.period == BudgetPeriod.DAILY
 
-    def test_get_active_budget_expired(self, budget_manager, mock_dynamo_client):
+    def test_get_active_budget_expired(
+        self, budget_manager, mock_dynamo_client
+    ):
         """Test that expired budgets are not returned."""
         expired_budget = Budget(
             budget_id="BUDGET#user:test#daily#123456",
@@ -115,7 +122,9 @@ class TestBudgetManager:
         budget = budget_manager.get_active_budget("user:test")
         assert budget is None
 
-    def test_update_budget(self, budget_manager, mock_dynamo_client, sample_budget):
+    def test_update_budget(
+        self, budget_manager, mock_dynamo_client, sample_budget
+    ):
         """Test updating an existing budget."""
         # Mock get_item response
         mock_dynamo_client._client.get_item.return_value = {
@@ -138,7 +147,9 @@ class TestBudgetManager:
         # Verify put_item was called to save update
         assert mock_dynamo_client._client.put_item.call_count == 1
 
-    def test_deactivate_budget(self, budget_manager, mock_dynamo_client, sample_budget):
+    def test_deactivate_budget(
+        self, budget_manager, mock_dynamo_client, sample_budget
+    ):
         """Test deactivating a budget."""
         mock_dynamo_client._client.get_item.return_value = {
             "Item": {
@@ -229,7 +240,9 @@ class TestBudgetManager:
         assert new_budget is not None
         assert new_budget.scope == sample_budget.scope
         assert new_budget.amount == sample_budget.amount
-        assert new_budget.metadata["rolled_over_from"] == sample_budget.budget_id
+        assert (
+            new_budget.metadata["rolled_over_from"] == sample_budget.budget_id
+        )
 
         # Verify old budget was deactivated
         assert (
@@ -247,4 +260,6 @@ class TestBudgetManager:
         mock_dynamo_client._client.get_item.return_value = {}
 
         with pytest.raises(ValueError, match="Budget not found"):
-            budget_manager.update_budget("non-existent-id", amount=Decimal("100.00"))
+            budget_manager.update_budget(
+                "non-existent-id", amount=Decimal("100.00")
+            )

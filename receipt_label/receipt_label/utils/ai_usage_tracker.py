@@ -84,7 +84,8 @@ class AIUsageTracker:
         """
         # Environment configuration
         self.environment_config = (
-            environment_config or AIUsageEnvironmentConfig.get_config(environment)
+            environment_config
+            or AIUsageEnvironmentConfig.get_config(environment)
         )
 
         # Set up table name - if table_name is provided, use it as-is
@@ -92,7 +93,9 @@ class AIUsageTracker:
         if table_name:
             self.table_name = table_name
         else:
-            base_table_name = os.environ.get("DYNAMODB_TABLE_NAME", "AIUsageMetrics")
+            base_table_name = os.environ.get(
+                "DYNAMODB_TABLE_NAME", "AIUsageMetrics"
+            )
             self.table_name = AIUsageEnvironmentConfig.get_table_name(
                 base_table_name, self.environment_config.environment
             )
@@ -178,7 +181,9 @@ class AIUsageTracker:
                     self.dynamo_client.put_ai_usage_metric(metric)
                 else:
                     # Basic Mock or minimalist stub → vanilla put_item path
-                    self.dynamo_client.put_item(TableName=self.table_name, Item=item)
+                    self.dynamo_client.put_item(
+                        TableName=self.table_name, Item=item
+                    )
             except Exception as e:
                 print(f"Failed to store metric in DynamoDB: {e}")
 
@@ -220,7 +225,9 @@ class AIUsageTracker:
 
         return metadata
 
-    def track_openai_completion(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_completion(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI completion API calls.
 
@@ -261,7 +268,9 @@ class AIUsageTracker:
                     usage = response.usage
                     if usage:
                         input_tokens = getattr(usage, "prompt_tokens", None)
-                        output_tokens = getattr(usage, "completion_tokens", None)
+                        output_tokens = getattr(
+                            usage, "completion_tokens", None
+                        )
                         total_tokens = getattr(usage, "total_tokens", None)
 
                         # Calculate cost
@@ -269,7 +278,8 @@ class AIUsageTracker:
                             model=model,
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
-                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
@@ -316,7 +326,9 @@ class AIUsageTracker:
 
         return wrapper
 
-    def track_openai_embedding(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def track_openai_embedding(
+        self, func: Callable[..., Any]
+    ) -> Callable[..., Any]:
         """
         Decorator for tracking OpenAI embedding API calls.
         """
@@ -355,7 +367,8 @@ class AIUsageTracker:
                         cost_usd = AICostCalculator.calculate_openai_cost(
                             model=model,
                             total_tokens=total_tokens,
-                            is_batch=kwargs.get("is_batch", False) or self.batch_mode,
+                            is_batch=kwargs.get("is_batch", False)
+                            or self.batch_mode,
                         )
 
                 # Create base metadata with environment auto-tags
@@ -377,7 +390,9 @@ class AIUsageTracker:
                     {
                         "function": func.__name__,
                         "input_count": (
-                            len(kwargs.get("input", [])) if "input" in kwargs else None
+                            len(kwargs.get("input", []))
+                            if "input" in kwargs
+                            else None
                         ),
                     }
                 )
@@ -664,7 +679,9 @@ class AIUsageTracker:
                                                 "operation_type": current_context.get(
                                                     "operation_type"
                                                 ),
-                                                "job_id": current_context.get("job_id"),
+                                                "job_id": current_context.get(
+                                                    "job_id"
+                                                ),
                                                 "batch_id": current_context.get(
                                                     "batch_id"
                                                 ),
@@ -707,8 +724,12 @@ class AIUsageTracker:
                                         "operation_type": current_context.get(
                                             "operation_type"
                                         ),
-                                        "job_id": current_context.get("job_id"),
-                                        "batch_id": current_context.get("batch_id"),
+                                        "job_id": current_context.get(
+                                            "job_id"
+                                        ),
+                                        "batch_id": current_context.get(
+                                            "batch_id"
+                                        ),
                                     }
                                 )
 
@@ -723,3 +744,72 @@ class AIUsageTracker:
                 return attr
 
         return TrackedOpenAIClient(openai_client, tracker)
+
+    @classmethod
+    def create_wrapped_places_client(
+        cls, places_client: Any, tracker: "AIUsageTracker"
+    ) -> Any:
+        """
+        Create a wrapped Google Places client that automatically tracks usage.
+
+        Usage:
+            tracker = AIUsageTracker(dynamo_client)
+            client = googlemaps.Client(key="...")
+            tracked_client = AIUsageTracker.create_wrapped_places_client(client, tracker)
+
+            # Now all calls are automatically tracked
+            results = tracked_client.places("restaurants near me")
+        """
+
+        # Create a wrapper class dynamically
+        class TrackedPlacesClient:
+            def __init__(self, client: Any, tracker: AIUsageTracker):
+                self._client = client
+                self._tracker = tracker
+
+            def __getattr__(self, name):
+                attr = getattr(self._client, name)
+
+                # List of Places API methods to track
+                places_methods = [
+                    "places",
+                    "places_nearby",
+                    "place",
+                    "places_autocomplete",
+                    "places_autocomplete_query",
+                    "places_photo",
+                    "find_place",
+                ]
+
+                if name in places_methods:
+
+                    def tracked_method(*args, **kwargs):
+                        # Import here to avoid circular dependency
+                        from .ai_usage_context import get_current_context
+
+                        # Get thread-local context
+                        current_context = get_current_context()
+
+                        # The decorator will track the call
+                        @self._tracker.track_google_places(name)
+                        def _call(*a, **kw):
+                            return attr(*a, **kw)
+
+                        # If we have context, update the tracker's current job_id
+                        if current_context:
+                            old_job_id = self._tracker.current_job_id
+                            try:
+                                self._tracker.current_job_id = (
+                                    current_context.get("job_id", old_job_id)
+                                )
+                                return _call(*args, **kwargs)
+                            finally:
+                                self._tracker.current_job_id = old_job_id
+                        else:
+                            return _call(*args, **kwargs)
+
+                    return tracked_method
+
+                return attr
+
+        return TrackedPlacesClient(places_client, tracker)
