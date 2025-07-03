@@ -2,38 +2,27 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    ReceiptValidationCategory,
-    item_to_receipt_validation_category,
-)
+from receipt_dynamo import (ReceiptValidationCategory,
+                            item_to_receipt_validation_category)
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (DeleteRequestTypeDef,
+                                           PutRequestTypeDef, PutTypeDef,
+                                           QueryInputTypeDef,
+                                           TransactWriteItemTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
+from receipt_dynamo.data._base import (DeleteRequestTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

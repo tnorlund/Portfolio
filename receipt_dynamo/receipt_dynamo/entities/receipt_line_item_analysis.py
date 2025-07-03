@@ -38,7 +38,7 @@ class ReceiptLineItemAnalysis:
         image_id: str,
         receipt_id: int,
         timestamp_added: Union[datetime, str],
-        items: List[Dict],
+        items: List[Dict[str, Any]],
         reasoning: str,
         version: str,
         subtotal: Optional[Union[Decimal, str]] = None,
@@ -49,8 +49,8 @@ class ReceiptLineItemAnalysis:
         tips: Optional[Union[Decimal, str]] = None,
         total_found: Optional[int] = None,
         discrepancies: Optional[List[str]] = None,
-        metadata: Optional[Dict] = None,
-        word_labels: Optional[Dict] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        word_labels: Optional[Dict[Tuple[int, int], Any]] = None,
         timestamp_updated: Optional[str] = None,
     ):
         """Initializes a new ReceiptLineItemAnalysis object for DynamoDB.
@@ -161,7 +161,7 @@ class ReceiptLineItemAnalysis:
         if word_labels is not None:
             if not isinstance(word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
-            self.word_labels: Dict[Tuple[int, int], Any] = word_labels
+            self.word_labels = word_labels
         else:
             self.word_labels = {}
 
@@ -309,7 +309,7 @@ class ReceiptLineItemAnalysis:
 
         return item
 
-    def _convert_item_to_dynamo(self, item: Dict) -> Dict:
+    def _convert_item_to_dynamo(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a line item dictionary to DynamoDB format.
 
         Args:
@@ -421,7 +421,7 @@ class ReceiptLineItemAnalysis:
         self.metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
-        self, event_type: str, details: Optional[Dict] = None
+        self, event_type: str, details: Optional[Dict[str, Any]] = None
     ) -> None:
         """Adds a history event to the metadata.
 
@@ -492,7 +492,9 @@ class ReceiptLineItemAnalysis:
 
         return " ".join(reasoning_parts)
 
-    def get_item_by_description(self, description: str) -> Optional[Dict]:
+    def get_item_by_description(
+        self, description: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Find a line item by its description.
 

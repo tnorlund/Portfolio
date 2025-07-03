@@ -6,49 +6,31 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                           PutTypeDef, QueryInputTypeDef,
+                                           TransactWriteItemTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
+from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    ReceiptLetter,
-    item_to_receipt_letter,
-)
-from receipt_dynamo.entities.receipt_line import (
-    ReceiptLine,
-    item_to_receipt_line,
-)
-from receipt_dynamo.entities.receipt_word import (
-    ReceiptWord,
-    item_to_receipt_word,
-)
+from receipt_dynamo.entities.receipt_letter import (ReceiptLetter,
+                                                    item_to_receipt_letter)
+from receipt_dynamo.entities.receipt_line import (ReceiptLine,
+                                                  item_to_receipt_line)
+from receipt_dynamo.entities.receipt_word import (ReceiptWord,
+                                                  item_to_receipt_word)
 from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
-    item_to_receipt_word_label,
-)
+    ReceiptWordLabel, item_to_receipt_word_label)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -844,7 +826,7 @@ class _Receipt(DynamoClientProtocol):
                         word = item_to_receipt_word(item)
                         words.append(word)
                     except ValueError as e:
-                        print(f"Error processing word item: {e}")
+                        # TODO: Use proper logging instead of print
                         continue
 
             if not receipt:

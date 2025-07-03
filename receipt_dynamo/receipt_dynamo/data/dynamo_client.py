@@ -10,7 +10,6 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
 from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
-
 # Import all the modules needed for multiple inheritance
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
@@ -29,30 +28,24 @@ from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
-from receipt_dynamo.data._receipt_chatgpt_validation import (
-    _ReceiptChatGPTValidation,
-)
+from receipt_dynamo.data._receipt_chatgpt_validation import \
+    _ReceiptChatGPTValidation
 from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
-from receipt_dynamo.data._receipt_line_item_analysis import (
-    _ReceiptLineItemAnalysis,
-)
+from receipt_dynamo.data._receipt_line_item_analysis import \
+    _ReceiptLineItemAnalysis
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_section import _ReceiptSection
-from receipt_dynamo.data._receipt_structure_analysis import (
-    _ReceiptStructureAnalysis,
-)
-from receipt_dynamo.data._receipt_validation_category import (
-    _ReceiptValidationCategory,
-)
-from receipt_dynamo.data._receipt_validation_result import (
-    _ReceiptValidationResult,
-)
-from receipt_dynamo.data._receipt_validation_summary import (
-    _ReceiptValidationSummary,
-)
+from receipt_dynamo.data._receipt_structure_analysis import \
+    _ReceiptStructureAnalysis
+from receipt_dynamo.data._receipt_validation_category import \
+    _ReceiptValidationCategory
+from receipt_dynamo.data._receipt_validation_result import \
+    _ReceiptValidationResult
+from receipt_dynamo.data._receipt_validation_summary import \
+    _ReceiptValidationSummary
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._word import _Word
