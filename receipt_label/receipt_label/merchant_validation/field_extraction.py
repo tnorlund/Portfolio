@@ -49,7 +49,9 @@ def extract_candidate_merchant_fields(words: List[ReceiptWord]) -> dict:
                     email_words.append(word.text)
                 elif "url" in label.lower() or "website" in label.lower():
                     url_words.append(word.text)
-                elif "merchant" in label.lower() or "business" in label.lower():
+                elif (
+                    "merchant" in label.lower() or "business" in label.lower()
+                ):
                     name_words.append(word.text)
 
         # Note: Word tags have been removed from the system

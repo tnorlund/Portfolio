@@ -2,11 +2,14 @@ CORE_LABELS: dict[str, str] = {
     # ── Merchant & store info ───────────────────────────────────
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": "Telephone number printed on the receipt " "(store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt " "(e.g., sprouts.com).",
+    "PHONE_NUMBER": "Telephone number printed on the receipt "
+    "(store's main line).",
+    "WEBSITE": "Web or email address printed on the receipt "
+    "(e.g., sprouts.com).",
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
     # ── Location / address ──────────────────────────────────────
-    "ADDRESS_LINE": "Full address line (street + city etc.) printed on " "the receipt.",
+    "ADDRESS_LINE": "Full address line (street + city etc.) printed on "
+    "the receipt.",
     # If you later break it down, add:
     # "ADDRESS_NUMBER": "Street/building number.",
     # "STREET_NAME":    "Street name.",
@@ -16,9 +19,11 @@ CORE_LABELS: dict[str, str] = {
     # ── Transaction info ───────────────────────────────────────
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": "Payment instrument summary " "(e.g., VISA ••••1234, CASH).",
+    "PAYMENT_METHOD": "Payment instrument summary "
+    "(e.g., VISA ••••1234, CASH).",
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": "Any non-coupon discount line item " "(e.g., 10% member discount).",
+    "DISCOUNT": "Any non-coupon discount line item "
+    "(e.g., 10% member discount).",
     # ── Line-item fields ───────────────────────────────────────
     "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
     "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
