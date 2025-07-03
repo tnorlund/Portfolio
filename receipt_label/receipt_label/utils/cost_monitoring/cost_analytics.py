@@ -164,7 +164,9 @@ class CostAnalytics:
 
         # Calculate trend
         current_period = self._aggregate_by_period(daily_costs[-7:], period)
-        previous_period = self._aggregate_by_period(daily_costs[-14:-7], period)
+        previous_period = self._aggregate_by_period(
+            daily_costs[-14:-7], period
+        )
 
         if previous_period > 0:
             change_percent = float(
@@ -248,7 +250,9 @@ class CostAnalytics:
 
                 if z_score > sensitivity:
                     deviation_percent = (
-                        ((float(cost) - mean) / mean * 100) if mean > 0 else 100
+                        ((float(cost) - mean) / mean * 100)
+                        if mean > 0
+                        else 100
                     )
 
                     # Determine severity
@@ -399,7 +403,9 @@ class CostAnalytics:
                 "total_cost": str(total_cost),
                 "total_requests": total_requests,
                 "average_cost_per_request": (
-                    str(total_cost / total_requests) if total_requests > 0 else "0"
+                    str(total_cost / total_requests)
+                    if total_requests > 0
+                    else "0"
                 ),
             },
             "breakdown": {
@@ -416,7 +422,8 @@ class CostAnalytics:
                 for key, values in grouped.items()
             },
             "top_users": [
-                {"user_id": user, "cost": str(cost)} for user, cost in top_users
+                {"user_id": user, "cost": str(cost)}
+                for user, cost in top_users
             ],
         }
 
@@ -490,7 +497,9 @@ class CostAnalytics:
             result[service] = sorted(
                 [
                     (
-                        datetime.combine(date, datetime.min.time(), timezone.utc),
+                        datetime.combine(
+                            date, datetime.min.time(), timezone.utc
+                        ),
                         cost,
                     )
                     for date, cost in daily_costs.items()
@@ -553,7 +562,9 @@ class CostAnalytics:
             causes.append("Significant spike in usage volume")
             causes.append("Possible runaway process or infinite loop")
 
-        if service == "openai" and actual_cost > expected_cost * Decimal("1.5"):
+        if service == "openai" and actual_cost > expected_cost * Decimal(
+            "1.5"
+        ):
             causes.append("Increased usage of expensive models (GPT-4)")
             causes.append("Longer prompt/completion tokens than usual")
 
@@ -577,7 +588,9 @@ class CostAnalytics:
             if metric.service == "openai":
                 model = metric.model
                 cost = metric.cost_usd or Decimal("0")
-                model_costs[model] = model_costs.get(model, Decimal("0")) + cost
+                model_costs[model] = (
+                    model_costs.get(model, Decimal("0")) + cost
+                )
                 model_counts[model] = model_counts.get(model, 0) + 1
 
         # Check for GPT-4 usage that could use GPT-3.5
