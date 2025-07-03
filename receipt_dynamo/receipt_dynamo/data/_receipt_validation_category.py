@@ -45,15 +45,18 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
     -------
     add_receipt_validation_category(category: ReceiptValidationCategory)
         Adds a ReceiptValidationCategory to DynamoDB.
-    add_receipt_validation_categories(categories: list[ReceiptValidationCategory])
+    add_receipt_validation_categories(categories:
+            list[ReceiptValidationCategory])
         Adds multiple ReceiptValidationCategories to DynamoDB in batches.
     update_receipt_validation_category(category: ReceiptValidationCategory)
         Updates an existing ReceiptValidationCategory in the database.
-    update_receipt_validation_categories(categories: list[ReceiptValidationCategory])
+    update_receipt_validation_categories(categories:
+            list[ReceiptValidationCategory])
         Updates multiple ReceiptValidationCategories in the database.
     delete_receipt_validation_category(category: ReceiptValidationCategory)
         Deletes a single ReceiptValidationCategory.
-    delete_receipt_validation_categories(categories: list[ReceiptValidationCategory])
+    delete_receipt_validation_categories(categories:
+            list[ReceiptValidationCategory])
         Deletes multiple ReceiptValidationCategories in batch.
     get_receipt_validation_category(
         receipt_id: int,
@@ -87,10 +90,12 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         """Adds a ReceiptValidationCategory to DynamoDB.
 
         Args:
-            category (ReceiptValidationCategory): The ReceiptValidationCategory to add.
+            category (ReceiptValidationCategory): The ReceiptValidationCategory
+                to add.
 
         Raises:
-            ValueError: If the category is None or not an instance of ReceiptValidationCategory.
+            ValueError: If the category is None or not an instance of
+                ReceiptValidationCategory.
             Exception: If the category cannot be added to DynamoDB.
         """
         if category is None:
@@ -206,7 +211,8 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             category (ReceiptValidationCategory): The ReceiptValidationCategory to update.
 
         Raises:
-            ValueError: If the category is None or not an instance of ReceiptValidationCategory.
+            ValueError: If the category is None or not an instance of
+                ReceiptValidationCategory.
             Exception: If the category cannot be updated in DynamoDB.
         """
         if category is None:
@@ -326,7 +332,8 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             category (ReceiptValidationCategory): The ReceiptValidationCategory to delete.
 
         Raises:
-            ValueError: If the category is None or not an instance of ReceiptValidationCategory.
+            ValueError: If the category is None or not an instance of
+                ReceiptValidationCategory.
             Exception: If the category cannot be deleted from DynamoDB.
         """
         if category is None:

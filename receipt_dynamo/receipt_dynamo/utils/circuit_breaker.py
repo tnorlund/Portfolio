@@ -43,7 +43,8 @@ class CircuitBreaker:
         Initialize circuit breaker.
 
         Args:
-            failure_threshold: Number of consecutive failures before opening circuit
+            failure_threshold: Number of consecutive failures before opening
+                circuit
             timeout_seconds: Time to wait before attempting recovery
             expected_exception: Exception type to catch and count as failure
         """

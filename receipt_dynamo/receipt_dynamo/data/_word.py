@@ -126,10 +126,10 @@ class _Word(DynamoClientProtocol):
         """
         Updates multiple Word items in the database.
 
-        This method validates that the provided parameter is a list of Word instances.
-        It uses DynamoDB's transact_write_items operation, which can handle up to 25 items
-        per transaction. Any unprocessed items are automatically retried until no unprocessed
-        items remain.
+        This method validates that the provided parameter is a list of Word
+        instances. It uses DynamoDB's transact_write_items operation, which can
+        handle up to 25 items per transaction. Any unprocessed items are
+        automatically retried until no unprocessed items remain.
 
         Parameters
         ----------
@@ -152,7 +152,8 @@ class _Word(DynamoClientProtocol):
             raise ValueError("Words must be provided as a list.")
         if not all(isinstance(word, Word) for word in words):
             raise ValueError(
-                "All items in the words list must be instances of the Word class."
+                "All items in the words list must be instances of the Word "
+                "class."
             )
 
         for i in range(0, len(words), CHUNK_SIZE):
@@ -285,7 +286,8 @@ class _Word(DynamoClientProtocol):
             request: BatchGetItemInputTypeDef = {
                 "RequestItems": {self.table_name: {"Keys": chunk}}
             }
-            # (Optional) "ProjectionExpression": "..." if you only want certain attributes
+            # (Optional) "ProjectionExpression": "..." if you only want
+            # certain attributes
 
             # Perform BatchGet
             response = self._client.batch_get_item(**request)
@@ -296,7 +298,9 @@ class _Word(DynamoClientProtocol):
 
             # Retry unprocessed keys if any
             unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):  # type: ignore[call-overload]
+            while unprocessed.get(self.table_name, {}).get(
+                "Keys"
+            ):  # type: ignore[call-overload]
                 response = self._client.batch_get_item(
                     RequestItems=unprocessed
                 )
@@ -343,11 +347,22 @@ class _Word(DynamoClientProtocol):
             raise ValueError("Could not list words from the database") from e
 
     def list_words_from_line(self, image_id: str, line_id: int) -> list[Word]:
+        """List all words from a specific line in an image.
+
+        Args:
+            image_id: The UUID of the image
+            line_id: The ID of the line
+
+        Returns:
+            List of Word objects from the specified line
+        """
         words = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
@@ -357,7 +372,9 @@ class _Word(DynamoClientProtocol):
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
