@@ -2,8 +2,12 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import (_repr_str, assert_type,
-                                          assert_valid_uuid, format_type_error)
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_type,
+    assert_valid_uuid,
+    format_type_error,
+)
 
 
 class JobMetric:

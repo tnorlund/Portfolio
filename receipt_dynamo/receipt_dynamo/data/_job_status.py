@@ -7,11 +7,13 @@ from receipt_dynamo.data._base import DynamoClientProtocol
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
 
-from receipt_dynamo.data.shared_exceptions import (DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError,
-                                                   OperationError)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 

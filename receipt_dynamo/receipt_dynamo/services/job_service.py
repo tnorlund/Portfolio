@@ -8,11 +8,13 @@ import boto3
 
 from receipt_dynamo import Job, JobStatus
 from receipt_dynamo.data._job import _Job
-from receipt_dynamo.services.job_operations import (JobCheckpointOperations,
-                                                    JobDependencyOperations,
-                                                    JobMetricOperations,
-                                                    JobResourceOperations,
-                                                    JobStatusOperations)
+from receipt_dynamo.services.job_operations import (
+    JobCheckpointOperations,
+    JobDependencyOperations,
+    JobMetricOperations,
+    JobResourceOperations,
+    JobStatusOperations,
+)
 
 
 class JobService(

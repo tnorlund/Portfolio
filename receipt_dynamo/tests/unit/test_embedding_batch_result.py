@@ -2,7 +2,9 @@ import pytest
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.embedding_batch_result import (
-    EmbeddingBatchResult, item_to_embedding_batch_result)
+    EmbeddingBatchResult,
+    item_to_embedding_batch_result,
+)
 
 
 @pytest.fixture
