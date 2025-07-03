@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Dict, List, Tuple
 
 import pytest
-
 from receipt_label.utils.cost_calculator import AICostCalculator
 
 

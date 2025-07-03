@@ -5,11 +5,11 @@ import uuid
 from datetime import datetime
 
 import boto3
+from receipt_upload.utils import send_message_to_sqs
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
-from receipt_upload.utils import send_message_to_sqs
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
