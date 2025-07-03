@@ -64,7 +64,9 @@ def submit_list_handler(event, context):
         "statusCode": 200,
         "batches": upload_serialized_labels(
             serialize_labels(
-                chunk_into_completion_batches(list_labels_that_need_validation())
+                chunk_into_completion_batches(
+                    list_labels_that_need_validation()
+                )
             ),
             S3_BUCKET,
         ),
@@ -81,7 +83,9 @@ def submit_format_handler(event, context):
     s3_bucket = event["s3_bucket"]
     receipt_id = int(event["receipt_id"])
     logger.info(f"Processing image_id: {image_id}, receipt_id: {receipt_id}")
-    labels_need_validation = deserialize_labels(download_serialized_labels(event))
+    labels_need_validation = deserialize_labels(
+        download_serialized_labels(event)
+    )
     lines, words, metadata, labels = get_receipt_details(image_id, receipt_id)
     first_pass_labels, second_pass_labels = split_first_and_second_pass(
         labels_need_validation, labels
@@ -120,9 +124,9 @@ def submit_openai_handler(event, context):
             if status == "failed":
                 try:
                     details = openai_client.batches.retrieve(open_ai_batch_id)
-                    error_message = getattr(details, "status_details", None) or getattr(
-                        details, "error", str(details)
-                    )
+                    error_message = getattr(
+                        details, "status_details", None
+                    ) or getattr(details, "error", str(details))
                 except Exception as e:
                     error_message = str(e)
                 raise RuntimeError(
@@ -156,7 +160,9 @@ def poll_list_handler(event, context):
     logger.info("Starting poll_list_handler")
     return {
         "statusCode": 200,
-        "batches": [dict(batch) for batch in list_pending_completion_batches()],
+        "batches": [
+            dict(batch) for batch in list_pending_completion_batches()
+        ],
     }
 
 
@@ -170,7 +176,9 @@ def poll_download_handler(event, context):
         pending_labels_to_update, valid_labels, invalid_labels = (
             download_openai_batch_result(batch)
         )
-        logger.info(f"Pending labels to update: {len(pending_labels_to_update)}")
+        logger.info(
+            f"Pending labels to update: {len(pending_labels_to_update)}"
+        )
         update_pending_labels(pending_labels_to_update)
         logger.info(f"Valid labels: {len(valid_labels)}")
         update_valid_labels(valid_labels)

@@ -2,8 +2,10 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.places_cache import (PlacesCache,
-                                                  item_to_places_cache)
+from receipt_dynamo.entities.places_cache import (
+    PlacesCache,
+    item_to_places_cache,
+)
 
 
 @pytest.fixture
