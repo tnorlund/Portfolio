@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
@@ -192,7 +193,9 @@ def test_batch_summary_invalid_dynamodb_format():
         "result_file_id": {"S": "file-456"},
         "receipt_refs": {"L": []},
     }
-    with pytest.raises(ValueError, match="Error converting item to BatchSummary"):
+    with pytest.raises(
+        ValueError, match="Error converting item to BatchSummary"
+    ):
         item_to_batch_summary(item)
 
 
@@ -218,4 +221,6 @@ def test_batch_summary_iter(example_batch_summary):
     assert keys["batch_id"] == example_batch_summary.batch_id
     assert keys["receipt_refs"] == example_batch_summary.receipt_refs
     # Test end to end serialization and deserialization
-    example_batch_summary_item = BatchSummary(**example_batch_summary.to_dict())
+    example_batch_summary_item = BatchSummary(
+        **example_batch_summary.to_dict()
+    )
