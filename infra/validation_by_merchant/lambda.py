@@ -3,8 +3,6 @@
 import os
 from logging import INFO, Formatter, StreamHandler, getLogger
 
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 from receipt_label.label_validation import (
     LabelValidationResult,
     get_unique_merchants_and_data,
@@ -18,6 +16,9 @@ from receipt_label.label_validation import (
     validate_time,
 )
 from receipt_label.utils import get_clients
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 logger = getLogger()
 logger.setLevel(INFO)

@@ -3,6 +3,12 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pytest
+from receipt_label.models.structure import (
+    ContentPattern,
+    ReceiptSection,
+    SpatialPattern,
+    StructureAnalysis,
+)
 
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ContentPattern as DynamoContentPattern,
@@ -15,12 +21,6 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
 )
 from receipt_dynamo.entities.receipt_structure_analysis import (
     SpatialPattern as DynamoSpatialPattern,
-)
-from receipt_label.models.structure import (
-    ContentPattern,
-    ReceiptSection,
-    SpatialPattern,
-    StructureAnalysis,
 )
 
 
