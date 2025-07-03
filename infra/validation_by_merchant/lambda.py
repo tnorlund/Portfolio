@@ -125,7 +125,9 @@ def validate_handler(event, _context):
         image_id=image_id,
         receipt_id=receipt_id,
     )
-    logger.info("Got receipt details for image %s and receipt %s", image_id, receipt_id)
+    logger.info(
+        "Got receipt details for image %s and receipt %s", image_id, receipt_id
+    )
 
     labels_and_words: list[tuple[ReceiptWordLabel, ReceiptWord]] = []
     labels_and_words.extend(
@@ -141,7 +143,9 @@ def validate_handler(event, _context):
         ]
     )
     logger.info("Got %s labels and words to validate", len(labels_and_words))
-    label_validation_results: list[tuple[LabelValidationResult, ReceiptWordLabel]] = []
+    label_validation_results: list[
+        tuple[LabelValidationResult, ReceiptWordLabel]
+    ] = []
     for label, word in labels_and_words:
         if label.label in [
             "LINE_TOTAL",
@@ -150,28 +154,40 @@ def validate_handler(event, _context):
             "SUBTOTAL",
             "GRAND_TOTAL",
         ]:
-            label_validation_results.append((validate_currency(word, label), label))
+            label_validation_results.append(
+                (validate_currency(word, label), label)
+            )
         elif label.label == "MERCHANT_NAME":
             if receipt_count > 4:
                 label_validation_results.append(
                     (
-                        validate_merchant_name_pinecone(word, label, merchant_name),
+                        validate_merchant_name_pinecone(
+                            word, label, merchant_name
+                        ),
                         label,
                     )
                 )
             else:
                 label_validation_results.append(
                     (
-                        validate_merchant_name_google(word, label, receipt_metadata),
+                        validate_merchant_name_google(
+                            word, label, receipt_metadata
+                        ),
                         label,
                     )
                 )
         elif label.label == "PHONE_NUMBER":
-            label_validation_results.append((validate_phone_number(word, label), label))
+            label_validation_results.append(
+                (validate_phone_number(word, label), label)
+            )
         elif label.label == "DATE":
-            label_validation_results.append((validate_date(word, label), label))
+            label_validation_results.append(
+                (validate_date(word, label), label)
+            )
         elif label.label == "TIME":
-            label_validation_results.append((validate_time(word, label), label))
+            label_validation_results.append(
+                (validate_time(word, label), label)
+            )
         elif label.label == "ADDRESS_LINE":
             label_validation_results.append(
                 (validate_address(word, label, receipt_metadata), label)

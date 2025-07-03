@@ -17,7 +17,9 @@ class VpcForCodeBuild(ComponentResource):
     - Security Groups for CodeBuild and EFS
     """
 
-    def __init__(self, name: str, opts: Optional[pulumi.ResourceOptions] = None):
+    def __init__(
+        self, name: str, opts: Optional[pulumi.ResourceOptions] = None
+    ):
         super().__init__("custom:network:VpcForCodeBuild", name, {}, opts)
 
         # Create VPC
