@@ -43,8 +43,8 @@ from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: F401
 from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
     OCRRoutingDecision, item_to_ocr_routing_decision)
-from receipt_dynamo.entities.places_cache import (PlacesCache,  # noqa: F401
-                                                  item_to_places_cache)
+from receipt_dynamo.entities.places_cache import PlacesCache  # noqa: F401
+from receipt_dynamo.entities.places_cache import item_to_places_cache
 from receipt_dynamo.entities.queue_job import QueueJob  # noqa: F401
 from receipt_dynamo.entities.queue_job import item_to_queue_job
 from receipt_dynamo.entities.receipt import Receipt  # noqa: F401
@@ -70,12 +70,9 @@ from receipt_dynamo.entities.receipt_metadata import (  # noqa: F401
 from receipt_dynamo.entities.receipt_section import (  # noqa: F401
     ReceiptSection, item_to_receipt_section)
 # Import receipt structure analysis types before __all__
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    ContentPattern  # noqa: F401
-from receipt_dynamo.entities.receipt_structure_analysis import \
-    SpatialPattern  # noqa: F401
 from receipt_dynamo.entities.receipt_structure_analysis import (  # noqa: F401
-    ReceiptStructureAnalysis, item_to_receipt_structure_analysis)
+    ContentPattern, ReceiptStructureAnalysis, SpatialPattern,
+    item_to_receipt_structure_analysis)
 from receipt_dynamo.entities.receipt_validation_category import (  # noqa: F401
     ReceiptValidationCategory, item_to_receipt_validation_category)
 from receipt_dynamo.entities.receipt_validation_result import (  # noqa: F401

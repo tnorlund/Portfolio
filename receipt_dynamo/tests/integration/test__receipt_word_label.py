@@ -6,12 +6,10 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBValidationError,
-)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBValidationError)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
