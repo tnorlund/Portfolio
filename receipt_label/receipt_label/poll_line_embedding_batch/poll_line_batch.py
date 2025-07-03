@@ -142,13 +142,12 @@ def get_receipt_descriptions(
             - lines
             - words
             - letters
-            - tags
             - labels
             - metadata
     """
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
-        receipt, lines, words, letters, tags, labels = dynamo_client.getReceiptDetails(
+        receipt, lines, words, letters, labels = dynamo_client.getReceiptDetails(
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -161,7 +160,6 @@ def get_receipt_descriptions(
             "lines": lines,
             "words": words,
             "letters": letters,
-            "tags": tags,
             "labels": labels,
             "metadata": receipt_metadata,
         }

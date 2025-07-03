@@ -52,20 +52,8 @@ def extract_candidate_merchant_fields(words: List[ReceiptWord]) -> dict:
                 elif "merchant" in label.lower() or "business" in label.lower():
                     name_words.append(word.text)
 
-        # Check word tags for additional context
-        if hasattr(word, "tags") and word.tags:
-            for tag in word.tags:
-                tag_value = tag.tag if hasattr(tag, "tag") else str(tag)
-                if tag_value.lower() in ["address", "location"]:
-                    address_words.append(word.text)
-                elif tag_value.lower() in ["phone", "telephone"]:
-                    phone_words.append(word.text)
-                elif tag_value.lower() in ["email"]:
-                    email_words.append(word.text)
-                elif tag_value.lower() in ["url", "website"]:
-                    url_words.append(word.text)
-                elif tag_value.lower() in ["merchant_name", "business_name"]:
-                    name_words.append(word.text)
+        # Note: Word tags have been removed from the system
+        # Labels are now used instead, which are already processed above
 
     # Join extracted words into strings
     if name_words:
