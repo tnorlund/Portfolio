@@ -13,7 +13,7 @@ def dynamodb_table() -> str:
         str: The name of the DynamoDB table
     """
     env_vars = load_env("prod")
-    return env_vars["dynamodb_table_name"]
+    return env_vars["dynamodb_table_name"]  # type: ignore[no-any-return]
 
 
 @pytest.mark.end_to_end

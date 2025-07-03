@@ -209,10 +209,10 @@ from fast_lambda_layer import fast_dynamo_layer, fast_label_layer, fast_upload_l
 
 **The Fast Lambda Layer approach gives you the best of both worlds:**
 
-✅ **Fast development** - `pulumi up` is quick  
-✅ **Simple architecture** - Easy to understand and debug  
-✅ **Smart CI/CD** - Automatically waits in CI environments  
-✅ **Background builds** - Work continues while builds happen  
+✅ **Fast development** - `pulumi up` is quick
+✅ **Simple architecture** - Easy to understand and debug
+✅ **Smart CI/CD** - Automatically waits in CI environments
+✅ **Background builds** - Work continues while builds happen
 ✅ **Clear monitoring** - Direct links to build status
 
 **Perfect for your use case** where you wanted fast development cycles without the complexity of the original event-driven system.

@@ -94,6 +94,6 @@ After deployment:
 - Main API Gateway configuration: `infra/api_gateway.py`
 - Lambda layer definitions: `infra/fast_lambda_layer.py`, `infra/simple_lambda_layer.py`
 - Route implementations: `infra/routes/*/infra.py`
-- New documentation: 
+- New documentation:
   - `infra/API_DOCUMENTATION.md` (comprehensive API docs)
   - `infra/routes/ai_usage/README.md` (route-specific docs)

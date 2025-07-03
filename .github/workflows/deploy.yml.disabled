@@ -28,11 +28,11 @@ jobs:
       - name: Auto-format code
         run: |
           pip install black isort
-          
+
           # Format all Python code
           black receipt_dynamo receipt_label infra
           isort receipt_dynamo receipt_label infra
-          
+
           # Commit if changes
           if [[ -n $(git diff --name-only) ]]; then
             git config user.email "action@github.com"
@@ -52,18 +52,18 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.12'
-      
+
       - name: Check Python
         run: |
           pip install black mypy
           black --check receipt_dynamo receipt_label infra
-      
+
       - uses: actions/setup-node@v3
         with:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: 'portfolio/package-lock.json'
-      
+
       - name: Check TypeScript
         working-directory: portfolio
         run: |
@@ -81,13 +81,13 @@ jobs:
         package: [receipt_dynamo, receipt_label, portfolio]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         if: matrix.package != 'portfolio'
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
-      
+
       - name: Setup Node
         if: matrix.package == 'portfolio'
         uses: actions/setup-node@v3
@@ -95,14 +95,14 @@ jobs:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: 'portfolio/package-lock.json'
-      
+
       - name: Test Python package
         if: matrix.package != 'portfolio'
         run: |
           pip install -e "${{ matrix.package }}[test]"
           cd ${{ matrix.package }}
           pytest -n auto --cov=${{ matrix.package }} --cov-report=xml
-      
+
       - name: Test TypeScript
         if: matrix.package == 'portfolio'
         working-directory: portfolio
@@ -118,13 +118,13 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup environments
         run: |
           # Node for Next.js
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
-          
+
           # Python for Pulumi
           sudo apt-get install -y python3.12 python3.12-venv python3-pip
 
@@ -157,12 +157,12 @@ jobs:
           # Get outputs
           BUCKET=$(pulumi stack output cdn_bucket_name)
           DISTRIBUTION=$(pulumi stack output cdn_distribution_id)
-          
+
           # Sync files
           aws s3 sync ../portfolio/out "s3://$BUCKET" \
             --delete \
             --cache-control "public, max-age=3600"
-          
+
           # Invalidate CloudFront
           aws cloudfront create-invalidation \
             --distribution-id "$DISTRIBUTION" \
@@ -180,7 +180,7 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.12'
-      
+
       - name: Run E2E tests
         run: |
           pip install -e "receipt_dynamo[test]"

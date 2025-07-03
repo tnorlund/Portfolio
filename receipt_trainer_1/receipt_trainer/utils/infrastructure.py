@@ -49,7 +49,9 @@ class EC2Metadata:
         if not cls.is_ec2_instance():
             return None
         try:
-            response = requests.get(f"{cls.BASE_URL}instance-id", timeout=cls.TIMEOUT)
+            response = requests.get(
+                f"{cls.BASE_URL}instance-id", timeout=cls.TIMEOUT
+            )
             return response.text
         except requests.RequestException:
             return None
@@ -60,7 +62,9 @@ class EC2Metadata:
         if not cls.is_ec2_instance():
             return None
         try:
-            response = requests.get(f"{cls.BASE_URL}instance-type", timeout=cls.TIMEOUT)
+            response = requests.get(
+                f"{cls.BASE_URL}instance-type", timeout=cls.TIMEOUT
+            )
             return response.text
         except requests.RequestException:
             return None
@@ -189,7 +193,9 @@ class EFSManager:
             return False
 
         # Mount training directory
-        training_success = cls.mount_efs(efs_dns_name, "/mnt/training", training_ap_id)
+        training_success = cls.mount_efs(
+            efs_dns_name, "/mnt/training", training_ap_id
+        )
 
         # Mount checkpoints directory
         checkpoints_success = cls.mount_efs(
@@ -210,7 +216,9 @@ class InstanceRegistry:
             region: AWS region (optional, will try to autodetect)
         """
         self.table_name = table_name
-        self.region = region or EC2Metadata.get_instance_region() or "us-east-1"
+        self.region = (
+            region or EC2Metadata.get_instance_region() or "us-east-1"
+        )
         self.dynamodb = boto3.resource("dynamodb", region_name=self.region)
         self.table = self.dynamodb.Table(table_name)
 
@@ -319,7 +327,10 @@ class InstanceRegistry:
             logger.info(f"Instance {self.instance_id} is now the leader")
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
                 # Another instance might have become leader first
                 logger.info("Failed to become leader - condition failed")
             else:
@@ -336,7 +347,9 @@ class InstanceRegistry:
             return False
 
         try:
-            response = self.table.get_item(Key={"instance_id": self.instance_id})
+            response = self.table.get_item(
+                Key={"instance_id": self.instance_id}
+            )
             item = response.get("Item", {})
             return item.get("is_leader", False)
         except ClientError as e:
@@ -405,7 +418,9 @@ class SpotInstanceHandler:
 
         def handle_sigterm(*args):
             """Handle SIGTERM signal (2-minute warning for spot termination)."""
-            logger.warning("Received SIGTERM - Spot Instance interruption imminent!")
+            logger.warning(
+                "Received SIGTERM - Spot Instance interruption imminent!"
+            )
 
             # Create emergency checkpoint path if needed
             if self.checkpoint_dir and self.job_id:
@@ -539,15 +554,20 @@ class TrainingEnvironment:
             try:
                 # Import here to avoid circular imports
                 from receipt_trainer.utils.cluster import ClusterManager
-                from receipt_trainer.utils.coordinator import \
-                    InstanceCoordinator
+                from receipt_trainer.utils.coordinator import (
+                    InstanceCoordinator,
+                )
 
                 # Initialize coordinator
-                self.instance_coordinator = InstanceCoordinator(self.registry_table)
+                self.instance_coordinator = InstanceCoordinator(
+                    self.registry_table
+                )
                 coord_result = self.instance_coordinator.initialize()
 
                 if coord_result:
-                    logger.info("Instance coordinator initialized successfully")
+                    logger.info(
+                        "Instance coordinator initialized successfully"
+                    )
 
                     # Initialize cluster manager
                     self.cluster_manager = ClusterManager(self.registry_table)
@@ -578,13 +598,17 @@ class TrainingEnvironment:
         self.spot_handler = SpotInstanceHandler(
             callback=checkpoint_callback,
             checkpoint_dir=(
-                "/mnt/checkpoints" if os.path.exists("/mnt/checkpoints") else None
+                "/mnt/checkpoints"
+                if os.path.exists("/mnt/checkpoints")
+                else None
             ),
             job_id=self.job_id,
         )
         return self.spot_handler.register_handler()
 
-    def start_heartbeat_thread(self, interval_seconds: int = 60) -> Optional[Any]:
+    def start_heartbeat_thread(
+        self, interval_seconds: int = 60
+    ) -> Optional[Any]:
         """Start a background thread to send heartbeats to the registry.
 
         Args:
@@ -612,9 +636,13 @@ class TrainingEnvironment:
 
                 time.sleep(interval_seconds)
 
-        self._heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        self._heartbeat_thread = threading.Thread(
+            target=heartbeat_loop, daemon=True
+        )
         self._heartbeat_thread.start()
-        logger.info(f"Started heartbeat thread with interval {interval_seconds}s")
+        logger.info(
+            f"Started heartbeat thread with interval {interval_seconds}s"
+        )
         return self._heartbeat_thread
 
     def register_task_handler(
@@ -632,7 +660,9 @@ class TrainingEnvironment:
             True if registered successfully, False otherwise
         """
         if self.instance_coordinator:
-            self.instance_coordinator.register_task_callback(task_type, handler)
+            self.instance_coordinator.register_task_callback(
+                task_type, handler
+            )
             logger.info(f"Registered handler for task type '{task_type}'")
             return True
         else:
@@ -741,7 +771,9 @@ class TrainingEnvironment:
                 instance_id = EC2Metadata.get_instance_id()
                 if instance_id:
                     table.delete_item(Key={"instance_id": instance_id})
-                    logger.info(f"Deregistered instance {instance_id} from registry")
+                    logger.info(
+                        f"Deregistered instance {instance_id} from registry"
+                    )
             except Exception as e:
                 logger.error(f"Error deregistering from registry: {e}")
 

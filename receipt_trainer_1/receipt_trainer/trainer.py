@@ -20,18 +20,36 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-from datasets import (Dataset, DatasetDict, Features, Sequence, Value,
-                      load_dataset)
-from sklearn.metrics import (accuracy_score, classification_report,
-                             confusion_matrix, f1_score,
-                             precision_recall_fscore_support, precision_score,
-                             recall_score)
-from transformers import (AutoModel, AutoTokenizer,
-                          DataCollatorForTokenClassification,
-                          EarlyStoppingCallback,
-                          LayoutLMForTokenClassification,
-                          LayoutLMTokenizerFast, Trainer, TrainerCallback,
-                          TrainerControl, TrainerState, TrainingArguments)
+from datasets import (
+    Dataset,
+    DatasetDict,
+    Features,
+    Sequence,
+    Value,
+    load_dataset,
+)
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_fscore_support,
+    precision_score,
+    recall_score,
+)
+from transformers import (
+    AutoModel,
+    AutoTokenizer,
+    DataCollatorForTokenClassification,
+    EarlyStoppingCallback,
+    LayoutLMForTokenClassification,
+    LayoutLMTokenizerFast,
+    Trainer,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+)
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.services.job_service import JobService
@@ -40,15 +58,20 @@ from receipt_trainer.constants import REQUIRED_ENV_VARS
 from receipt_trainer.jobs import JobQueue
 from receipt_trainer.utils.aws import get_dynamo_table
 from receipt_trainer.utils.checkpoint import CheckpointManager
-from receipt_trainer.utils.data import (augment_example, balance_dataset,
-                                        create_sliding_windows,
-                                        process_receipt_details)
+from receipt_trainer.utils.data import (
+    augment_example,
+    balance_dataset,
+    create_sliding_windows,
+    process_receipt_details,
+)
 from receipt_trainer.utils.infrastructure import TrainingEnvironment
-from receipt_trainer.utils.metrics import (compute_all_ner_metrics,
-                                           confusion_matrix_entities,
-                                           entity_class_accuracy,
-                                           entity_level_metrics,
-                                           field_extraction_accuracy)
+from receipt_trainer.utils.metrics import (
+    compute_all_ner_metrics,
+    confusion_matrix_entities,
+    entity_class_accuracy,
+    entity_level_metrics,
+    field_extraction_accuracy,
+)
 from receipt_trainer.version import __version__
 
 # Set tokenizer parallelism to false to avoid deadlocks
@@ -56,9 +79,12 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from receipt_trainer.config import DataConfig, TrainingConfig
 from receipt_trainer.constants import REQUIRED_ENV_VARS
-from receipt_trainer.utils.data import (augment_example, balance_dataset,
-                                        create_sliding_windows,
-                                        process_receipt_details)
+from receipt_trainer.utils.data import (
+    augment_example,
+    balance_dataset,
+    create_sliding_windows,
+    process_receipt_details,
+)
 from receipt_trainer.version import __version__
 
 
@@ -164,8 +190,12 @@ class DynamoMetricsCallback(TrainerCallback):
             accuracy = accuracy_score(true_flat, pred_flat)
 
             # Calculate entity-level metrics
-            entity_metrics = entity_level_metrics(true_flat_labels, pred_flat_labels)
-            entity_acc = entity_class_accuracy(true_flat_labels, pred_flat_labels)
+            entity_metrics = entity_level_metrics(
+                true_flat_labels, pred_flat_labels
+            )
+            entity_acc = entity_class_accuracy(
+                true_flat_labels, pred_flat_labels
+            )
             entity_confusion = confusion_matrix_entities(
                 true_flat_labels, pred_flat_labels
             )
@@ -215,7 +245,9 @@ class DynamoMetricsCallback(TrainerCallback):
                         job_id=self.job_id,
                         metric_name=metric_key,
                         metric_value=(
-                            float(value) if isinstance(value, (int, float)) else value
+                            float(value)
+                            if isinstance(value, (int, float))
+                            else value
                         ),
                         step=self.step,
                         metadata={"type": "entity_level"},
@@ -243,7 +275,8 @@ class DynamoMetricsCallback(TrainerCallback):
                     valid_tokens = [
                         self.trainer.tokenizer.convert_ids_to_tokens(idx)
                         for idx in example["input_ids"]
-                        if idx > 0 and idx != self.trainer.tokenizer.pad_token_id
+                        if idx > 0
+                        and idx != self.trainer.tokenizer.pad_token_id
                     ]
                     tokens.extend(valid_tokens)
 
@@ -454,7 +487,9 @@ class ReceiptTrainer:
             # Check if job already exists
             job = self.job_service.get_job(self.job_id)
             if job:
-                self.logger.info(f"Job record already exists for {self.job_id}")
+                self.logger.info(
+                    f"Job record already exists for {self.job_id}"
+                )
                 return job
 
             # Create new job
@@ -484,14 +519,17 @@ class ReceiptTrainer:
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
         missing_vars = [
-            var for var, desc in REQUIRED_ENV_VARS.items() if not os.environ.get(var)
+            var
+            for var, desc in REQUIRED_ENV_VARS.items()
+            if not os.environ.get(var)
         ]
         if missing_vars:
             raise EnvironmentError(
                 f"Missing required environment variables: {missing_vars}\n"
                 f"Required variables and their purposes:\n"
                 + "\n".join(
-                    f"- {var}: {desc}" for var, desc in REQUIRED_ENV_VARS.items()
+                    f"- {var}: {desc}"
+                    for var, desc in REQUIRED_ENV_VARS.items()
                 )
             )
 
@@ -511,17 +549,24 @@ class ReceiptTrainer:
                 self.logger.info("Saving emergency checkpoint...")
 
                 # Create a local checkpoint directory
-                checkpoint_dir = os.path.join(self.output_dir, "interrupt_checkpoint")
+                checkpoint_dir = os.path.join(
+                    self.output_dir, "interrupt_checkpoint"
+                )
                 self.save_checkpoint(checkpoint_dir)
 
                 # If we have EFS checkpoint manager, also save directly to EFS
-                if self.checkpoint_manager and self.checkpoint_manager.is_efs_mounted():
+                if (
+                    self.checkpoint_manager
+                    and self.checkpoint_manager.is_efs_mounted()
+                ):
                     try:
                         interrupt_checkpoint_name = f"emergency_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
                         # Get current step and epoch
                         step = (
-                            self.global_step if hasattr(self, "global_step") else None
+                            self.global_step
+                            if hasattr(self, "global_step")
+                            else None
                         )
                         epoch = (
                             self.current_epoch
@@ -552,7 +597,9 @@ class ReceiptTrainer:
                 try:
                     self._upload_checkpoint_to_s3(checkpoint_dir)
                 except Exception as e:
-                    self.logger.error(f"Failed to upload checkpoint to S3: {e}")
+                    self.logger.error(
+                        f"Failed to upload checkpoint to S3: {e}"
+                    )
 
             # Log the interruption to DynamoDB
             if self.job_service:
@@ -568,7 +615,9 @@ class ReceiptTrainer:
                         "Training interrupted due to spot instance termination",
                     )
                 except Exception as e:
-                    self.logger.error(f"Failed to log interruption to DynamoDB: {e}")
+                    self.logger.error(
+                        f"Failed to log interruption to DynamoDB: {e}"
+                    )
 
         signal.signal(signal.SIGTERM, handle_sigterm)
         self.logger.info("Spot interruption handler configured")
@@ -613,10 +662,14 @@ class ReceiptTrainer:
                 checkpoint_metadata = {
                     "path": checkpoint_dir,
                     "global_step": (
-                        self.global_step if hasattr(self, "global_step") else None
+                        self.global_step
+                        if hasattr(self, "global_step")
+                        else None
                     ),
                     "epoch": (
-                        self.current_epoch if hasattr(self, "current_epoch") else None
+                        self.current_epoch
+                        if hasattr(self, "current_epoch")
+                        else None
                     ),
                 }
 
@@ -637,11 +690,15 @@ class ReceiptTrainer:
         # Save to EFS using checkpoint manager if available
         if self.checkpoint_manager:
             try:
-                checkpoint_name = (
-                    f"checkpoint_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                checkpoint_name = f"checkpoint_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                step = (
+                    self.global_step if hasattr(self, "global_step") else None
                 )
-                step = self.global_step if hasattr(self, "global_step") else None
-                epoch = self.current_epoch if hasattr(self, "current_epoch") else None
+                epoch = (
+                    self.current_epoch
+                    if hasattr(self, "current_epoch")
+                    else None
+                )
 
                 # Get metrics if available
                 metrics = {}
@@ -660,7 +717,9 @@ class ReceiptTrainer:
                 )
 
                 if efs_path:
-                    self.logger.info(f"Checkpoint also saved to EFS at {efs_path}")
+                    self.logger.info(
+                        f"Checkpoint also saved to EFS at {efs_path}"
+                    )
 
                     # Update job log
                     if self.job_service:
@@ -688,9 +747,7 @@ class ReceiptTrainer:
             raise ValueError("CHECKPOINT_BUCKET environment variable not set")
 
         # Create a checkpoint ID using job ID
-        checkpoint_id = (
-            f"{self.job_id}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        checkpoint_id = f"{self.job_id}/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # Upload all files in checkpoint directory
         for root, _, files in os.walk(checkpoint_dir):
@@ -765,7 +822,9 @@ class ReceiptTrainer:
                     checkpoints = []
 
                     # Get job resources of checkpoint type
-                    resources = self.job_service.get_job_resources(target_job_id)
+                    resources = self.job_service.get_job_resources(
+                        target_job_id
+                    )
                     for resource in resources:
                         if resource.resource_type == "CHECKPOINT_S3":
                             checkpoints.append(resource)
@@ -783,10 +842,14 @@ class ReceiptTrainer:
                             "prefix", f"checkpoints/{target_job_id}"
                         )
 
-                        self.logger.info(f"Found checkpoint in job resources: {prefix}")
+                        self.logger.info(
+                            f"Found checkpoint in job resources: {prefix}"
+                        )
 
                         # List objects with this prefix
-                        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+                        response = s3.list_objects_v2(
+                            Bucket=bucket_name, Prefix=prefix
+                        )
 
                         if "Contents" in response:
                             # Download all checkpoint files
@@ -795,7 +858,9 @@ class ReceiptTrainer:
                                     checkpoint_dir,
                                     os.path.basename(obj["Key"]),
                                 )
-                                s3.download_file(bucket_name, obj["Key"], local_path)
+                                s3.download_file(
+                                    bucket_name, obj["Key"], local_path
+                                )
 
                             self.logger.info(
                                 f"Downloaded checkpoint from {prefix} to {checkpoint_dir}"
@@ -825,7 +890,9 @@ class ReceiptTrainer:
 
             # Download all checkpoint files
             for obj in response["Contents"]:
-                local_path = os.path.join(checkpoint_dir, os.path.basename(obj["Key"]))
+                local_path = os.path.join(
+                    checkpoint_dir, os.path.basename(obj["Key"])
+                )
                 s3.download_file(bucket_name, obj["Key"], local_path)
 
             return checkpoint_dir
@@ -844,7 +911,10 @@ class ReceiptTrainer:
         self.logger.info("Attempting to resume from checkpoint...")
 
         # First try to load from EFS if checkpoint manager is available
-        if self.checkpoint_manager and self.checkpoint_manager.is_efs_mounted():
+        if (
+            self.checkpoint_manager
+            and self.checkpoint_manager.is_efs_mounted()
+        ):
             try:
                 # Sync metadata from DynamoDB first
                 self.checkpoint_manager.sync_from_dynamo()
@@ -852,7 +922,9 @@ class ReceiptTrainer:
                 # Try to get best checkpoint first
                 best_checkpoint = self.checkpoint_manager.get_best_checkpoint()
                 if best_checkpoint:
-                    self.logger.info(f"Found best checkpoint on EFS: {best_checkpoint}")
+                    self.logger.info(
+                        f"Found best checkpoint on EFS: {best_checkpoint}"
+                    )
 
                     # Create a local directory for the checkpoint
                     local_checkpoint_dir = os.path.join(
@@ -880,11 +952,15 @@ class ReceiptTrainer:
                                 f"Resuming from best checkpoint on EFS: {best_checkpoint}",
                             )
                     else:
-                        self.logger.warning("Failed to load best checkpoint from EFS")
+                        self.logger.warning(
+                            "Failed to load best checkpoint from EFS"
+                        )
 
                 # If no best checkpoint or loading failed, try latest
                 if not checkpoint_dir:
-                    latest_checkpoint = self.checkpoint_manager.get_latest_checkpoint()
+                    latest_checkpoint = (
+                        self.checkpoint_manager.get_latest_checkpoint()
+                    )
                     if latest_checkpoint:
                         self.logger.info(
                             f"Found latest checkpoint on EFS: {latest_checkpoint}"
@@ -969,10 +1045,14 @@ class ReceiptTrainer:
                 label2id=self.label2id,
                 id2label=self.id2label,
             )
-            self.tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
+            self.tokenizer = LayoutLMTokenizerFast.from_pretrained(
+                checkpoint_dir
+            )
 
             # Load training state if available
-            training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
+            training_state_path = os.path.join(
+                checkpoint_dir, "training_state.pt"
+            )
             if os.path.exists(training_state_path):
                 training_state = torch.load(training_state_path)
                 if hasattr(self, "optimizer"):
@@ -1039,7 +1119,9 @@ class ReceiptTrainer:
             ValueError: If DynamoDB client cannot be initialized.
         """
         if self.dynamo_client is not None and self.job_service is not None:
-            self.logger.debug("DynamoDB client and JobService already initialized")
+            self.logger.debug(
+                "DynamoDB client and JobService already initialized"
+            )
             return
 
         if not self.dynamo_table:
@@ -1049,7 +1131,9 @@ class ReceiptTrainer:
                     f"Retrieved DynamoDB table name from Pulumi: {self.dynamo_table}"
                 )
             except Exception as e:
-                raise ValueError(f"Failed to get DynamoDB table name from Pulumi: {e}")
+                raise ValueError(
+                    f"Failed to get DynamoDB table name from Pulumi: {e}"
+                )
 
         try:
             # Initialize DynamoDB client
@@ -1068,13 +1152,17 @@ class ReceiptTrainer:
                 try:
                     self.create_training_job()
                 except Exception as e:
-                    self.logger.error(f"Failed to create training job record: {e}")
+                    self.logger.error(
+                        f"Failed to create training job record: {e}"
+                    )
 
             self.logger.info(
                 f"Successfully initialized DynamoDB client and JobService for table: {self.dynamo_table}"
             )
         except Exception as e:
-            raise ValueError(f"Failed to initialize DynamoDB client or JobService: {e}")
+            raise ValueError(
+                f"Failed to initialize DynamoDB client or JobService: {e}"
+            )
 
     def _load_dynamo_data(self) -> Dict[str, Any]:
         """Load receipt data from DynamoDB."""
@@ -1248,13 +1336,17 @@ class ReceiptTrainer:
             token_labels = token_labels[:512]
 
         # Create attention mask (1 for real tokens, 0 for padding)
-        attention_mask = [1] * min(len(example["words"]) + 2, 512)  # +2 for CLS and SEP
+        attention_mask = [1] * min(
+            len(example["words"]) + 2, 512
+        )  # +2 for CLS and SEP
         attention_mask.extend([0] * max(512 - len(attention_mask), 0))
 
         # Normalize box coordinates
         normalized_boxes = []
         for box in token_boxes:
-            normalized_boxes.append([min(max(0, int(coord)), 1000) for coord in box])
+            normalized_boxes.append(
+                [min(max(0, int(coord)), 1000) for coord in box]
+            )
 
         return {
             "input_ids": tokens,
@@ -1293,7 +1385,9 @@ class ReceiptTrainer:
             self.logger.info(f"Preprocessing {split} split...")
 
             # Create a unique cache file name that includes model info and split
-            cache_dir = os.path.join(self.data_config.cache_dir, "preprocessed")
+            cache_dir = os.path.join(
+                self.data_config.cache_dir, "preprocessed"
+            )
             os.makedirs(cache_dir, exist_ok=True)
 
             # Create a stable cache identifier
@@ -1342,7 +1436,9 @@ class ReceiptTrainer:
         # Load data from DynamoDB
         self.logger.info("Loading data from DynamoDB...")
         dynamo_examples = self._load_dynamo_data()
-        self.logger.info(f"Loaded {len(dynamo_examples)} receipts from DynamoDB")
+        self.logger.info(
+            f"Loaded {len(dynamo_examples)} receipts from DynamoDB"
+        )
 
         # Convert DynamoDB data to list format
         examples = {"words": [], "bboxes": [], "labels": [], "image_id": []}
@@ -1365,8 +1461,12 @@ class ReceiptTrainer:
 
         # Balance dataset if requested and if we have examples
         if balance_ratio > 0 and len(examples["words"]) > 0:
-            self.logger.info(f"Balancing dataset with target ratio {balance_ratio}...")
-            examples = balance_dataset(examples, target_entity_ratio=balance_ratio)
+            self.logger.info(
+                f"Balancing dataset with target ratio {balance_ratio}..."
+            )
+            examples = balance_dataset(
+                examples, target_entity_ratio=balance_ratio
+            )
 
         # Apply data augmentation if requested and if we have examples
         if augment and len(examples["words"]) > 0:
@@ -1442,7 +1542,9 @@ class ReceiptTrainer:
         self._print_dataset_statistics(val_dataset, "Validation")
 
         # Create dataset dictionary
-        dataset_dict = DatasetDict({"train": train_dataset, "validation": val_dataset})
+        dataset_dict = DatasetDict(
+            {"train": train_dataset, "validation": val_dataset}
+        )
 
         # Create label mappings before preprocessing
         unique_labels = set()
@@ -1505,7 +1607,9 @@ class ReceiptTrainer:
                     label2id=self.label2id,
                     id2label=self.id2label,
                 )
-                self.logger.info(f"Successfully initialized model: {self.model_name}")
+                self.logger.info(
+                    f"Successfully initialized model: {self.model_name}"
+                )
             except Exception as e:
                 raise ValueError(f"Failed to initialize model: {str(e)}")
 
@@ -1527,7 +1631,9 @@ class ReceiptTrainer:
                 self.logger.debug(f"Setting {key} = {value}")
                 setattr(self.training_config, key, value)
             else:
-                self.logger.warning(f"Unknown training config parameter: {key}")
+                self.logger.warning(
+                    f"Unknown training config parameter: {key}"
+                )
 
         # Set up output directory with path validation
         try:
@@ -1604,7 +1710,9 @@ class ReceiptTrainer:
             self.logger.info(f"Model moved to device: {self.device}")
 
         except Exception as e:
-            raise ValueError(f"Failed to configure device and optimizations: {str(e)}")
+            raise ValueError(
+                f"Failed to configure device and optimizations: {str(e)}"
+            )
 
         # Create training arguments
         try:
@@ -1643,7 +1751,9 @@ class ReceiptTrainer:
             )
             self.logger.info("Training arguments configured successfully")
         except Exception as e:
-            raise ValueError(f"Failed to configure training arguments: {str(e)}")
+            raise ValueError(
+                f"Failed to configure training arguments: {str(e)}"
+            )
 
         # Log final configuration summary
         self.logger.info("\nTraining Configuration Summary:")
@@ -1702,8 +1812,12 @@ class ReceiptTrainer:
         os.makedirs(eval_output_dir, exist_ok=True)
 
         # Get metrics for both splits
-        train_metrics = self.evaluate("train", eval_output_dir, detailed_report=True)
-        val_metrics = self.evaluate("validation", eval_output_dir, detailed_report=True)
+        train_metrics = self.evaluate(
+            "train", eval_output_dir, detailed_report=True
+        )
+        val_metrics = self.evaluate(
+            "validation", eval_output_dir, detailed_report=True
+        )
 
         # Prepare metrics for logging
         metrics = {
@@ -1753,9 +1867,13 @@ class ReceiptTrainer:
         # Print summary
         self.logger.info("\nTraining Results Summary:")
         self.logger.info(f"Total steps: {train_result.global_step}")
-        self.logger.info(f"Average training loss: {train_result.training_loss:.4f}")
+        self.logger.info(
+            f"Average training loss: {train_result.training_loss:.4f}"
+        )
         self.logger.info(f"\nTrain Metrics:")
-        self.logger.info(f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Macro F1: {train_metrics['train/macro_avg/f1-score']:.4f}"
+        )
         self.logger.info(
             f"Weighted F1: {train_metrics['train/weighted_avg/f1-score']:.4f}"
         )
@@ -1790,7 +1908,9 @@ class ReceiptTrainer:
         self.logger.info(f"Starting evaluation on {split} split...")
 
         if not self.model or not self.dataset:
-            raise ValueError("Model and dataset must be initialized before evaluation")
+            raise ValueError(
+                "Model and dataset must be initialized before evaluation"
+            )
 
         if split not in self.dataset:
             raise ValueError(f"Dataset split '{split}' not found")
@@ -1848,7 +1968,9 @@ class ReceiptTrainer:
         for avg_type in ["macro avg", "weighted avg"]:
             if avg_type in report:
                 for metric, value in report[avg_type].items():
-                    metrics[f"{split}/{avg_type.replace(' ', '_')}/{metric}"] = value
+                    metrics[
+                        f"{split}/{avg_type.replace(' ', '_')}/{metric}"
+                    ] = value
 
         if detailed_report:
             # Generate confusion matrix
@@ -1916,7 +2038,9 @@ class ReceiptTrainer:
         # Print summary
         self.logger.info("\nEvaluation Results:")
         self.logger.info(f"Split: {split}")
-        self.logger.info(f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}")
+        self.logger.info(
+            f"Macro F1: {metrics[f'{split}/macro_avg/f1-score']:.4f}"
+        )
         self.logger.info(
             f"Weighted F1: {metrics[f'{split}/weighted_avg/f1-score']:.4f}"
         )
@@ -1971,8 +2095,12 @@ class ReceiptTrainer:
                                 recall = recall_score(
                                     label_true, label_pred, zero_division=0
                                 )
-                                f1 = f1_score(label_true, label_pred, zero_division=0)
-                                doc_metrics[label].append((precision, recall, f1))
+                                f1 = f1_score(
+                                    label_true, label_pred, zero_division=0
+                                )
+                                doc_metrics[label].append(
+                                    (precision, recall, f1)
+                                )
 
                 # Reset for new document
                 current_doc = image_id
@@ -2011,13 +2139,17 @@ class ReceiptTrainer:
             self.logger.info("Using Apple Neural Engine (MPS)")
             return torch.device("mps")
         elif torch.cuda.is_available():
-            self.logger.info(f"Using CUDA GPU: {torch.cuda.get_device_name(0)}")
+            self.logger.info(
+                f"Using CUDA GPU: {torch.cuda.get_device_name(0)}"
+            )
             return torch.device("cuda")
 
         self.logger.info("Using CPU")
         return torch.device("cpu")
 
-    def _generate_hyperparameter_report(self, sweep_job_id: str) -> Dict[str, Any]:
+    def _generate_hyperparameter_report(
+        self, sweep_job_id: str
+    ) -> Dict[str, Any]:
         """Generate a comprehensive report of hyperparameter performance.
 
         Args:
@@ -2040,8 +2172,12 @@ class ReceiptTrainer:
             for dependency in dependencies:
                 # Get the full job with its metrics
                 dependent_job_id = dependency.job_id
-                trial_job, _ = self.job_service.get_job_with_status(dependent_job_id)
-                trial_metrics = self.job_service.get_job_metrics(dependent_job_id)
+                trial_job, _ = self.job_service.get_job_with_status(
+                    dependent_job_id
+                )
+                trial_metrics = self.job_service.get_job_metrics(
+                    dependent_job_id
+                )
 
                 # Find the best validation metric
                 best_f1 = 0.0
@@ -2141,7 +2277,9 @@ class ReceiptTrainer:
             ValueError: If model or tokenizer is not initialized, or if validation fails
         """
         if not self.model or not self.tokenizer:
-            raise ValueError("Model and tokenizer must be initialized before saving")
+            raise ValueError(
+                "Model and tokenizer must be initialized before saving"
+            )
 
     def start_heartbeat_thread(self):
         """Start a background thread to extend the SQS visibility timeout."""
@@ -2174,10 +2312,14 @@ class ReceiptTrainer:
                     self.logger.error(f"Error in heartbeat thread: {e}")
 
                 # Sleep for half the interval to ensure we extend before timeout
-                sleep_time = min(self.heartbeat_interval // 2, 300)  # Max 5 minutes
+                sleep_time = min(
+                    self.heartbeat_interval // 2, 300
+                )  # Max 5 minutes
                 time.sleep(sleep_time)
 
-        self._heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        self._heartbeat_thread = threading.Thread(
+            target=heartbeat_loop, daemon=True
+        )
         self._heartbeat_thread.start()
         self.logger.info(
             f"Started SQS visibility heartbeat thread for job {self.job_id}"
@@ -2264,7 +2406,10 @@ class ReceiptTrainer:
 
             # First check for EFS checkpoint
             checkpoint_path = None
-            if self.checkpoint_manager and self.checkpoint_manager.is_efs_mounted():
+            if (
+                self.checkpoint_manager
+                and self.checkpoint_manager.is_efs_mounted()
+            ):
                 self.logger.info("Checking for checkpoints on EFS...")
 
                 # Sync metadata from DynamoDB
@@ -2274,14 +2419,18 @@ class ReceiptTrainer:
                 best_checkpoint = self.checkpoint_manager.get_best_checkpoint()
                 if best_checkpoint:
                     checkpoint_path = best_checkpoint
-                    self.logger.info(f"Found best checkpoint on EFS: {checkpoint_path}")
+                    self.logger.info(
+                        f"Found best checkpoint on EFS: {checkpoint_path}"
+                    )
                     self.update_job_status(
                         "running",
                         f"Resuming training from best checkpoint: {checkpoint_path}",
                     )
                 else:
                     # Try to get latest checkpoint
-                    latest_checkpoint = self.checkpoint_manager.get_latest_checkpoint()
+                    latest_checkpoint = (
+                        self.checkpoint_manager.get_latest_checkpoint()
+                    )
                     if latest_checkpoint:
                         checkpoint_path = latest_checkpoint
                         self.logger.info(
@@ -2301,7 +2450,9 @@ class ReceiptTrainer:
             resume_training = bool(checkpoint_path)
 
             if checkpoint_path:
-                self.logger.info(f"Found existing checkpoint: {checkpoint_path}")
+                self.logger.info(
+                    f"Found existing checkpoint: {checkpoint_path}"
+                )
                 self.update_job_status(
                     "running",
                     f"Resuming training from checkpoint: {checkpoint_path}",
@@ -2324,7 +2475,9 @@ class ReceiptTrainer:
                 logging_steps=job_config.get("logging_steps", 100),
                 save_steps=job_config.get("save_steps", 500),
                 save_total_limit=job_config.get("save_total_limit", 3),
-                evaluation_strategy=job_config.get("evaluation_strategy", "epoch"),
+                evaluation_strategy=job_config.get(
+                    "evaluation_strategy", "epoch"
+                ),
                 save_strategy=job_config.get("save_strategy", "epoch"),
                 fp16=job_config.get("fp16", False),
                 gradient_accumulation_steps=job_config.get(
@@ -2341,7 +2494,9 @@ class ReceiptTrainer:
                 enable_checkpointing=True,
                 enable_early_stopping=job_config.get("early_stopping", False),
                 resume_training=resume_training,
-                resume_from_checkpoint=(checkpoint_path if resume_training else None),
+                resume_from_checkpoint=(
+                    checkpoint_path if resume_training else None
+                ),
             )
 
             # Save final model
@@ -2349,12 +2504,13 @@ class ReceiptTrainer:
             self.save_model(final_model_path)
 
             # Save final model to EFS if available
-            if self.checkpoint_manager and self.checkpoint_manager.is_efs_mounted():
+            if (
+                self.checkpoint_manager
+                and self.checkpoint_manager.is_efs_mounted()
+            ):
                 try:
                     # Save final model to EFS
-                    final_checkpoint_name = (
-                        f"final_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    )
+                    final_checkpoint_name = f"final_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
                     # Add metrics to final checkpoint
                     metrics = {}
@@ -2365,7 +2521,9 @@ class ReceiptTrainer:
                         source_dir=final_model_path,
                         checkpoint_name=final_checkpoint_name,
                         step=(
-                            self.global_step if hasattr(self, "global_step") else None
+                            self.global_step
+                            if hasattr(self, "global_step")
+                            else None
                         ),
                         epoch=(
                             self.current_epoch
@@ -2377,9 +2535,13 @@ class ReceiptTrainer:
                     )
 
                     if efs_path:
-                        self.logger.info(f"Final model saved to EFS at {efs_path}")
+                        self.logger.info(
+                            f"Final model saved to EFS at {efs_path}"
+                        )
                 except Exception as e:
-                    self.logger.error(f"Failed to save final model to EFS: {e}")
+                    self.logger.error(
+                        f"Failed to save final model to EFS: {e}"
+                    )
 
             # Upload to S3 if bucket configured
             if self.data_config.s3_bucket:
@@ -2467,7 +2629,9 @@ class ReceiptTrainer:
         try:
             # Start training
             self.logger.info(f"Starting training with Trainer...")
-            train_result = trainer.train(resume_from_checkpoint=checkpoint_path)
+            train_result = trainer.train(
+                resume_from_checkpoint=checkpoint_path
+            )
 
             # Save the final model
             self.logger.info("Saving final model...")

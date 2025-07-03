@@ -1,3 +1,7 @@
 {
-  "recommendations": ["openai.chatgpt", "ms-python.python", "ms-python.pylint"]
+  "recommendations": [
+    "openai.chatgpt",
+    "ms-python.python",
+    "ms-python.pylint"
+  ]
 }

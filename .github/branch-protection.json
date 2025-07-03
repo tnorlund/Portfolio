@@ -27,7 +27,7 @@
   },
   "old_status_checks_to_remove": [
     "Lint Python",
-    "Run unit Tests", 
+    "Run unit Tests",
     "Run integration Tests",
     "Build and Deploy",
     "PR Status",
@@ -36,7 +36,7 @@
   "notes": {
     "status_checks": {
       "pr-status": "Summary check from pr-checks.yml workflow",
-      "ci-status": "Summary check from ci-improved.yml workflow", 
+      "ci-status": "Summary check from ci-improved.yml workflow",
       "ci-success": "Summary check from main.yml workflow"
     },
     "update_instructions": "Use GitHub API or UI to apply these settings to the main branch"

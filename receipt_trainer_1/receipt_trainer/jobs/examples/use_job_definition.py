@@ -105,7 +105,9 @@ def submit_job_to_queue(
 def main():
     """Main function."""
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Submit a LayoutLM training job")
+    parser = argparse.ArgumentParser(
+        description="Submit a LayoutLM training job"
+    )
     parser.add_argument(
         "job_file",
         help="Path to the job definition file (YAML or JSON)",
@@ -140,10 +142,14 @@ def main():
         if args.output:
             if args.output.endswith(".yaml") or args.output.endswith(".yml"):
                 job_definition.to_yaml(args.output)
-                logger.info(f"Job definition saved to YAML file: {args.output}")
+                logger.info(
+                    f"Job definition saved to YAML file: {args.output}"
+                )
             elif args.output.endswith(".json"):
                 job_definition.to_json(args.output)
-                logger.info(f"Job definition saved to JSON file: {args.output}")
+                logger.info(
+                    f"Job definition saved to JSON file: {args.output}"
+                )
             else:
                 logger.warning(f"Unsupported output format: {args.output}")
 

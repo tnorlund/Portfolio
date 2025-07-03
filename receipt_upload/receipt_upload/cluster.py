@@ -3,7 +3,6 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.entities import Line
-
 from receipt_upload.geometry import box_points, min_area_rect
 
 

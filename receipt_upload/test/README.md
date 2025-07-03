@@ -8,7 +8,7 @@ This directory contains tests for the receipt upload service's OCR processing an
 
 - **`test_boundary_fitting.py`** - Comprehensive boundary fitting tests (NEW - consolidated)
   - `TestBoundaryFitting`: Core boundary fitting tests including Theil-Sen bug demonstration
-  - `TestBarReceiptBoundaries`: Bar receipt specific boundary detection tests  
+  - `TestBarReceiptBoundaries`: Bar receipt specific boundary detection tests
   - `TestProposedFix`: Tests for the proposed horizontal line fix
 
 - **`test_geometry.py`** - Core geometry function tests

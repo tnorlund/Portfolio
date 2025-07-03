@@ -51,7 +51,9 @@ class CheckpointManager:
 
         # Create job-specific checkpoint directory structure
         self.job_checkpoint_dir = os.path.join(efs_mount_point, job_id)
-        self.lock_file = os.path.join(self.job_checkpoint_dir, ".checkpoint.lock")
+        self.lock_file = os.path.join(
+            self.job_checkpoint_dir, ".checkpoint.lock"
+        )
 
         # Initialize directory structure
         self._init_directory_structure()
@@ -80,7 +82,9 @@ class CheckpointManager:
 
         try:
             # Try creating and removing a test file
-            test_file = os.path.join(self.efs_mount_point, f".test_{time.time()}")
+            test_file = os.path.join(
+                self.efs_mount_point, f".test_{time.time()}"
+            )
             with open(test_file, "w") as f:
                 f.write("test")
             os.remove(test_file)
@@ -170,9 +174,13 @@ class CheckpointManager:
         if not checkpoint_name:
             return None
 
-        checkpoint_path = os.path.join(self.job_checkpoint_dir, checkpoint_name)
+        checkpoint_path = os.path.join(
+            self.job_checkpoint_dir, checkpoint_name
+        )
         if not os.path.exists(checkpoint_path):
-            logger.warning(f"Latest checkpoint directory not found: {checkpoint_path}")
+            logger.warning(
+                f"Latest checkpoint directory not found: {checkpoint_path}"
+            )
             return None
 
         return checkpoint_path
@@ -196,9 +204,13 @@ class CheckpointManager:
         if not checkpoint_name:
             return None
 
-        checkpoint_path = os.path.join(self.job_checkpoint_dir, checkpoint_name)
+        checkpoint_path = os.path.join(
+            self.job_checkpoint_dir, checkpoint_name
+        )
         if not os.path.exists(checkpoint_path):
-            logger.warning(f"Best checkpoint directory not found: {checkpoint_path}")
+            logger.warning(
+                f"Best checkpoint directory not found: {checkpoint_path}"
+            )
             return None
 
         return checkpoint_path
@@ -262,7 +274,9 @@ class CheckpointManager:
                 }
 
                 # Save checkpoint-specific metadata in the temp directory
-                with open(os.path.join(temp_dir, "checkpoint_info.json"), "w") as f:
+                with open(
+                    os.path.join(temp_dir, "checkpoint_info.json"), "w"
+                ) as f:
                     json.dump(checkpoint_metadata, f, indent=2)
 
                 # Update global metadata file
@@ -312,7 +326,9 @@ class CheckpointManager:
                             },
                         )
                     except Exception as e:
-                        logger.error(f"Failed to record checkpoint in DynamoDB: {e}")
+                        logger.error(
+                            f"Failed to record checkpoint in DynamoDB: {e}"
+                        )
 
                 logger.info(f"Checkpoint saved to {dest_dir}")
                 return dest_dir
@@ -370,7 +386,9 @@ class CheckpointManager:
             os.makedirs(dest_dir, exist_ok=True)
 
             # Read checkpoint metadata for logging
-            checkpoint_info_path = os.path.join(source_dir, "checkpoint_info.json")
+            checkpoint_info_path = os.path.join(
+                source_dir, "checkpoint_info.json"
+            )
             if os.path.exists(checkpoint_info_path):
                 try:
                     with open(checkpoint_info_path, "r") as f:
@@ -478,7 +496,9 @@ class CheckpointManager:
             logger.error("EFS not mounted, cannot delete checkpoint")
             return False
 
-        checkpoint_path = os.path.join(self.job_checkpoint_dir, checkpoint_name)
+        checkpoint_path = os.path.join(
+            self.job_checkpoint_dir, checkpoint_name
+        )
         if not os.path.exists(checkpoint_path):
             logger.error(f"Checkpoint not found: {checkpoint_path}")
             return False
@@ -515,7 +535,9 @@ class CheckpointManager:
             True if synchronization was successful, False otherwise
         """
         if not self.job_service:
-            logger.warning("No job service available, cannot sync from DynamoDB")
+            logger.warning(
+                "No job service available, cannot sync from DynamoDB"
+            )
             return False
 
         if not self.is_efs_mounted():
@@ -525,7 +547,9 @@ class CheckpointManager:
         try:
             with self._get_lock():
                 # Get checkpoints from DynamoDB
-                dynamo_checkpoints = self.job_service.get_job_checkpoints(self.job_id)
+                dynamo_checkpoints = self.job_service.get_job_checkpoints(
+                    self.job_id
+                )
 
                 # Get local metadata
                 metadata = self._get_metadata()
@@ -548,15 +572,21 @@ class CheckpointManager:
 
                         # Update metrics if available
                         if "metrics" in checkpoint_metadata:
-                            local_checkpoint["metrics"] = checkpoint_metadata["metrics"]
+                            local_checkpoint["metrics"] = checkpoint_metadata[
+                                "metrics"
+                            ]
 
                         updated_checkpoints.append(local_checkpoint)
                     else:
                         # Create new checkpoint entry
                         # Handle created_at attribute whether it's a string or has an isoformat method
                         if hasattr(dynamo_checkpoint, "created_at"):
-                            if hasattr(dynamo_checkpoint.created_at, "isoformat"):
-                                created_at = dynamo_checkpoint.created_at.isoformat()
+                            if hasattr(
+                                dynamo_checkpoint.created_at, "isoformat"
+                            ):
+                                created_at = (
+                                    dynamo_checkpoint.created_at.isoformat()
+                                )
                             else:
                                 created_at = dynamo_checkpoint.created_at
                         else:
@@ -575,7 +605,9 @@ class CheckpointManager:
                 # Save updated metadata
                 metadata["checkpoints"] = updated_checkpoints
                 metadata["last_updated"] = datetime.datetime.now().isoformat()
-                metadata["synced_from_dynamo"] = datetime.datetime.now().isoformat()
+                metadata["synced_from_dynamo"] = (
+                    datetime.datetime.now().isoformat()
+                )
                 self._save_metadata(metadata)
 
                 logger.info(
