@@ -2,29 +2,22 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    ReceiptValidationSummary,
-    item_to_receipt_validation_summary,
-)
+from receipt_dynamo import (ReceiptValidationSummary,
+                            item_to_receipt_validation_summary)
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-    )
+    from receipt_dynamo.data._base import (PutTypeDef, QueryInputTypeDef,
+                                           TransactWriteItemTypeDef)
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import PutTypeDef, TransactWriteItemTypeDef
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

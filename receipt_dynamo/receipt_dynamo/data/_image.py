@@ -3,62 +3,36 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-    item_to_image,
-    item_to_letter,
-    item_to_line,
-    item_to_receipt,
-    item_to_receipt_letter,
-    item_to_receipt_line,
-    item_to_receipt_word,
-    item_to_word,
-)
+from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
+                            ReceiptLine, ReceiptWord, Word, item_to_image,
+                            item_to_letter, item_to_line, item_to_receipt,
+                            item_to_receipt_letter, item_to_receipt_line,
+                            item_to_receipt_word, item_to_word)
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (DeleteRequestTypeDef,
+                                           PutRequestTypeDef, PutTypeDef,
+                                           QueryInputTypeDef,
+                                           TransactWriteItemTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-    ReceiptDynamoError,
-)
-from receipt_dynamo.entities import (
-    ImageDetails,
-    ReceiptMetadata,
-    assert_valid_uuid,
-    item_to_ocr_job,
-    item_to_ocr_routing_decision,
-    item_to_receipt_metadata,
-)
+from receipt_dynamo.data._base import (DeleteRequestTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError,
+                                                   ReceiptDynamoError)
+from receipt_dynamo.entities import (ImageDetails, ReceiptMetadata,
+                                     assert_valid_uuid, item_to_ocr_job,
+                                     item_to_ocr_routing_decision,
+                                     item_to_receipt_metadata)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So we chunk the items in groups of 25 for bulk operations.
