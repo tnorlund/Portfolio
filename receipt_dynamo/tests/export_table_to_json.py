@@ -52,10 +52,6 @@ if __name__ == "__main__":
             Bucket=image.raw_s3_bucket,
             Key=obj["Key"],
         )
-        # Uncomment to print GPT responses:
-        # print(f"{obj['Key']}")
-        # print(response["Body"].read().decode("utf-8"))
-        # print()
 
     # -------------------------------------------------------------------------
     # NEW CODE: Download the raw image file from image.raw_s3_bucket/image.raw_s3_key
