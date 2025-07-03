@@ -6,17 +6,13 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
-from receipt_dynamo import (
-    ReceiptValidationResult,
-    item_to_receipt_validation_result,
-)
+from receipt_dynamo import (ReceiptValidationResult,
+                            item_to_receipt_validation_result)
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBValidationError,
-)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBValidationError)
 
 
 @pytest.fixture
