@@ -113,7 +113,9 @@ async def process_with_context_manager():
         result = {"status": "processed"}
 
         # Add metadata during operation
-        tracker.add_context_metadata({"items_processed": 5, "processing_time_ms": 150})
+        tracker.add_context_metadata(
+            {"items_processed": 5, "processing_time_ms": 150}
+        )
 
     # Batch context manager with automatic batch pricing
     with batch_ai_usage_context("batch-789", item_count=100) as tracker:
@@ -180,7 +182,9 @@ def main():
 
     # Example 4: Async function
     print("4. Async function:")
-    async_result = asyncio.run(analyze_receipt_async("https://example.com/receipt.jpg"))
+    async_result = asyncio.run(
+        analyze_receipt_async("https://example.com/receipt.jpg")
+    )
     print(f"   Async result: {async_result}\n")
 
     # Example 5: Context managers
@@ -224,12 +228,34 @@ def main():
                 ctx["success_count"] += 1
             except Exception as e:
                 print(f"   Failed {receipt['id']}: {e}")
-                ctx["errors"].append({"receipt_id": receipt["id"], "error": str(e)})
+                ctx["errors"].append(
+                    {"receipt_id": receipt["id"], "error": str(e)}
+                )
                 ctx["failure_count"] += 1
 
     print(
         f"   Summary: {ctx['success_count']} succeeded, {ctx['failure_count']} failed\n"
     )
+
+    # Example 9: Google Places API with context
+    print("9. Google Places API with automatic context:")
+    print("   # Create wrapped Places client")
+    print("   from receipt_label.utils.ai_usage_tracker import AIUsageTracker")
+    print("   import googlemaps")
+    print("   ")
+    print("   places_client = googlemaps.Client(key='YOUR_API_KEY')")
+    print("   tracker = AIUsageTracker.create_for_environment()")
+    print("   wrapped_places = AIUsageTracker.create_wrapped_places_client(")
+    print("       places_client, tracker")
+    print("   )")
+    print("   ")
+    print("   # Use with context - all calls automatically tracked")
+    print("   with ai_usage_context('location_enrichment', job_id='job-789'):")
+    print("       results = wrapped_places.places('restaurants near me')")
+    print("       place_details = wrapped_places.place(place_id='...')")
+    print("   ")
+    print("   # Context automatically propagates to all Places API calls!")
+    print()
 
     print("=== Demo Complete ===")
 

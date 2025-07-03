@@ -11,11 +11,17 @@ except ModuleNotFoundError:
     dbscan_lines = None
     pytest.skip("PIL not installed", allow_module_level=True)
 from receipt_upload.geometry import (
-    compute_final_receipt_tilt, compute_hull_centroid,
-    compute_receipt_box_from_boundaries, convex_hull,
-    create_boundary_line_from_points, create_boundary_line_from_theil_sen,
-    find_hull_extremes_along_angle, find_line_edges_at_secondary_extremes,
-    refine_hull_extremes_with_hull_edge_alignment, theil_sen)
+    compute_final_receipt_tilt,
+    compute_hull_centroid,
+    compute_receipt_box_from_boundaries,
+    convex_hull,
+    create_boundary_line_from_points,
+    create_boundary_line_from_theil_sen,
+    find_hull_extremes_along_angle,
+    find_line_edges_at_secondary_extremes,
+    refine_hull_extremes_with_hull_edge_alignment,
+    theil_sen,
+)
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.route_images import classify_image_layout
 
@@ -121,8 +127,12 @@ def test_bar_receipt_boundaries() -> None:
 
     hull = convex_hull(all_word_corners)
     centroid = compute_hull_centroid(hull)
-    avg_angle = sum(l.angle_degrees for l in cluster_lines) / len(cluster_lines)
-    final_angle = compute_final_receipt_tilt(cluster_lines, hull, centroid, avg_angle)
+    avg_angle = sum(l.angle_degrees for l in cluster_lines) / len(
+        cluster_lines
+    )
+    final_angle = compute_final_receipt_tilt(
+        cluster_lines, hull, centroid, avg_angle
+    )
     extremes = find_hull_extremes_along_angle(hull, centroid, final_angle)
     refined = refine_hull_extremes_with_hull_edge_alignment(
         hull, extremes["leftPoint"], extremes["rightPoint"], final_angle
@@ -131,8 +141,12 @@ def test_bar_receipt_boundaries() -> None:
         cluster_lines, hull, centroid, final_angle
     )
     boundaries = {
-        "top": create_boundary_line_from_theil_sen(theil_sen(edges["topEdge"])),
-        "bottom": create_boundary_line_from_theil_sen(theil_sen(edges["bottomEdge"])),
+        "top": create_boundary_line_from_theil_sen(
+            theil_sen(edges["topEdge"])
+        ),
+        "bottom": create_boundary_line_from_theil_sen(
+            theil_sen(edges["bottomEdge"])
+        ),
         "left": create_boundary_line_from_points(
             refined["leftSegment"]["extreme"],
             refined["leftSegment"]["optimizedNeighbor"],
