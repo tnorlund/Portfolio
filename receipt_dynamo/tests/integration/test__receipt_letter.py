@@ -4,11 +4,13 @@ import pytest
 from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptLetter
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES

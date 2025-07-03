@@ -7,10 +7,10 @@ import boto3
 import pytest
 from moto import mock_aws
 from PIL import Image as PIL_Image
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, OCRRoutingDecision
-
 from receipt_upload.ocr import process_ocr_dict_as_image
 
 # Bar receipt image dimensions (portrait orientation)

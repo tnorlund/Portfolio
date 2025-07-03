@@ -4,8 +4,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from receipt_trainer.utils.data import (create_sliding_windows,
-                                        process_receipt_details)
+from receipt_trainer.utils.data import (
+    create_sliding_windows,
+    process_receipt_details,
+)
 
 
 @pytest.fixture
@@ -59,7 +61,9 @@ def test_process_receipt_details(mock_receipt_details):
     assert result["labels"][1] == "I-store_name"  # Second word should be I-
 
     # Check coordinate scaling
-    assert all(0 <= coord <= 1000 for bbox in result["bboxes"] for coord in bbox)
+    assert all(
+        0 <= coord <= 1000 for bbox in result["bboxes"] for coord in bbox
+    )
 
 
 def test_process_receipt_details_no_labels():

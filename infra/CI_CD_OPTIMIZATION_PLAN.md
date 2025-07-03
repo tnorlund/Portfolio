@@ -74,7 +74,7 @@ jobs:
             if (pr.additions + pr.deletions > 1000) {
               core.setFailed('PR too large for automated review (>1000 lines)');
             }
-      
+
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-action@beta
         with:
@@ -115,7 +115,7 @@ jobs:
   review:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.issue.pull_request && 
+      (github.event.issue.pull_request &&
        contains(github.event.comment.body, '/claude review'))
     # ... rest of workflow
 ```

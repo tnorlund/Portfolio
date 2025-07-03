@@ -62,31 +62,31 @@ Updates the `BatchSummary` to `status = "COMPLETED"` to prevent reprocessing.
 
 1. **PollList** state
 
-   1. Retrieve all pending line embedding batches →  
-      `list_pending_line_embedding_batches()`.  
+   1. Retrieve all pending line embedding batches →
+      `list_pending_line_embedding_batches()`.
       _Output:_ array of batches with `openai_batch_id` and `batch_id`.
 
 2. **PollDownload** state _(Map – runs once per pending batch)_
 
-   1. Check the OpenAI batch status →  
+   1. Check the OpenAI batch status →
       `get_openai_batch_status()`.
    2. If status is `"completed"`:
-      - Download embedding results →  
+      - Download embedding results →
         `download_openai_batch_result()`.
-      - Fetch full receipt context →  
+      - Fetch full receipt context →
         `get_receipt_descriptions()`.
-      - Upsert vectors to Pinecone →  
+      - Upsert vectors to Pinecone →
         `upsert_line_embeddings_to_pinecone()`.
-      - Write audit records →  
+      - Write audit records →
         `write_line_embedding_results_to_dynamo()`.
-      - Update line status →  
+      - Update line status →
         `update_line_embedding_status_to_success()`.
-      - Mark batch complete →  
+      - Mark batch complete →
         `mark_batch_complete()`.
    3. If status is not completed:
       - Skip processing and wait for next poll cycle.
 
-> **Important:** Line embeddings are stored in Pinecone's "lines" namespace,  
+> **Important:** Line embeddings are stored in Pinecone's "lines" namespace,
 > separate from word embeddings which use the "words" namespace.
 
 ---
@@ -97,7 +97,7 @@ Updates the `BatchSummary` to `status = "COMPLETED"` to prevent reprocessing.
 flowchart TB
     Start([Start]) --> ListPending["List Pending Line Embedding Batches"]
     ListPending --> PollMap
-    
+
     subgraph PollMap["For each Pending Batch (Map State)"]
         direction TB
         CheckStatus["Check OpenAI Batch Status"]
@@ -110,6 +110,6 @@ flowchart TB
         WriteDynamo --> UpdateSuccess["Update Lines<br/>to SUCCESS"]
         UpdateSuccess --> MarkComplete["Mark Batch<br/>as COMPLETED"]
     end
-    
+
     PollMap --> End([End])
 ```

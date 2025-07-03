@@ -25,8 +25,10 @@ from receipt_trainer.jobs.job import Job, JobPriority, JobStatus
 from receipt_trainer.jobs.queue import JobQueue, JobQueueConfig
 from receipt_trainer.jobs.submit import submit_training_job
 from receipt_trainer.utils.auto_scaling import AutoScalingManager
-from receipt_trainer.utils.pulumi import (create_auto_scaling_manager,
-                                          get_auto_scaling_config)
+from receipt_trainer.utils.pulumi import (
+    create_auto_scaling_manager,
+    get_auto_scaling_config,
+)
 
 # from receipt_dynamo.services.job_service import JobService
 # from receipt_dynamo.services.instance_service import InstanceService
@@ -94,7 +96,10 @@ def check_job_status(
 
                 # Check if this message contains our job ID
                 attrs = message.get("MessageAttributes", {})
-                if "JobId" in attrs and attrs["JobId"]["StringValue"] == job_id:
+                if (
+                    "JobId" in attrs
+                    and attrs["JobId"]["StringValue"] == job_id
+                ):
                     # Parse the job status from the message
                     body = json.loads(message.get("Body", "{}"))
                     return {"status": body.get("status", "unknown")}
@@ -240,7 +245,9 @@ def get_all_entities(dynamo_client: DynamoClient) -> Dict[str, List[str]]:
         if isinstance(instances_result, tuple) and len(instances_result) > 0:
             instances, _ = instances_result
             if instances:
-                entities["instances"] = [instance.instance_id for instance in instances]
+                entities["instances"] = [
+                    instance.instance_id for instance in instances
+                ]
         elif isinstance(instances_result, list):
             # Some implementations might return just a list instead of a tuple
             if instances_result:
@@ -269,7 +276,9 @@ def get_all_entities(dynamo_client: DynamoClient) -> Dict[str, List[str]]:
                 try:
                     tasks, _ = dynamo_client.listTasksByStatus(status)
                     if tasks:
-                        entities["tasks"].extend([task.task_id for task in tasks])
+                        entities["tasks"].extend(
+                            [task.task_id for task in tasks]
+                        )
                 except Exception as e:
                     # This is expected if the method doesn't exist
                     pass
@@ -298,7 +307,9 @@ def check_queue_contents(queue_url, region="us-east-1"):
         )
         attrs = response.get("Attributes", {})
         visible = int(attrs.get("ApproximateNumberOfMessages", "0"))
-        not_visible = int(attrs.get("ApproximateNumberOfMessagesNotVisible", "0"))
+        not_visible = int(
+            attrs.get("ApproximateNumberOfMessagesNotVisible", "0")
+        )
         print(f"Queue {queue_url} stats:")
         print(f" - Visible messages: {visible}")
         print(f" - In-flight messages: {not_visible}")
@@ -313,7 +324,9 @@ def check_queue_contents(queue_url, region="us-east-1"):
             )
 
             if "Messages" in peek:
-                print(f"Queue contains {len(peek['Messages'])} visible messages")
+                print(
+                    f"Queue contains {len(peek['Messages'])} visible messages"
+                )
                 for idx, msg in enumerate(peek["Messages"]):
                     print(f"Message {idx+1}:")
                     body = json.loads(msg.get("Body", "{}"))
@@ -343,7 +356,9 @@ def check_queue_contents(queue_url, region="us-east-1"):
     not os.environ.get("ENABLE_REAL_AWS_TESTS"),
     reason="Real AWS tests disabled. Set ENABLE_REAL_AWS_TESTS=1 to run",
 )
-def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name):
+def test_single_model_training(
+    aws_credentials, pulumi_config, dynamo_table_name
+):
     """
     End-to-end test for training a single model using GPU instances.
 
@@ -508,7 +523,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
         check_queue_contents(config["queue_url"])
 
         # Wait for job to be processed
-        print("Waiting for job to be processed (this may take several minutes)...")
+        print(
+            "Waiting for job to be processed (this may take several minutes)..."
+        )
         max_wait_time = 15 * 60  # 15 minutes maximum wait time
         start_time = time.time()
 
@@ -524,7 +541,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
             status = manager.get_instance_status()
             running_count = sum(
                 count
-                for state, count in status.get("instances_by_state", {}).items()
+                for state, count in status.get(
+                    "instances_by_state", {}
+                ).items()
                 if state in ["pending", "running"]
             )
 
@@ -539,7 +558,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
                 spot_requests = ec2.describe_spot_instance_requests(
                     Filters=[{"Name": "state", "Values": ["open", "active"]}]
                 )
-                spot_request_count = len(spot_requests.get("SpotInstanceRequests", []))
+                spot_request_count = len(
+                    spot_requests.get("SpotInstanceRequests", [])
+                )
 
                 if spot_request_count > 0 and not saw_spot_requests:
                     saw_spot_requests = True
@@ -560,9 +581,13 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
             if running_count > 0 and not scaling_observed:
                 scaling_observed = True
                 instance_creation_attempted = True
-                print(f"Observed scaling: {running_count} instances running/pending")
+                print(
+                    f"Observed scaling: {running_count} instances running/pending"
+                )
                 print(f"Instance types: {status.get('instances_by_type', {})}")
-                print(f"Instance states: {status.get('instances_by_state', {})}")
+                print(
+                    f"Instance states: {status.get('instances_by_state', {})}"
+                )
 
                 # Get actual EC2 instance IDs
                 ec2 = boto3.client("ec2")
@@ -594,7 +619,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
                 )
                 found_entities["instances"].update(new_instances)
 
-                print(f"Current instances in DynamoDB: {current_entities['instances']}")
+                print(
+                    f"Current instances in DynamoDB: {current_entities['instances']}"
+                )
                 print(
                     f"Baseline instances in DynamoDB: {baseline_entities['instances']}"
                 )
@@ -622,11 +649,15 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
                         )
                         if instance_details:
                             print(f"Instance details: {instance_details}")
-                            assert instance_details["instance_id"] == instance_id
+                            assert (
+                                instance_details["instance_id"] == instance_id
+                            )
                             assert "instance_type" in instance_details
                             assert "health_status" in instance_details
                 else:
-                    print("No new instance entities found, will check again later")
+                    print(
+                        "No new instance entities found, will check again later"
+                    )
 
             # Check if job has been processed
             job_status = check_job_status(config["queue_url"], job_id)
@@ -683,7 +714,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
                 "cancelled",
             ], f"Job should be in terminal state, but is in {job_details['status']}"
         else:
-            print(f"Warning: Job {job_id} not found in DynamoDB after processing")
+            print(
+                f"Warning: Job {job_id} not found in DynamoDB after processing"
+            )
 
         # Final check for all entities
         print("Final check for all entities in DynamoDB...")
@@ -706,13 +739,16 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
                 print(
                     f"Coordinator module path: {receipt_trainer.utils.coordinator.__file__}"
                 )
-                print(f"Coordinator features: {dir(receipt_trainer.utils.coordinator)}")
+                print(
+                    f"Coordinator features: {dir(receipt_trainer.utils.coordinator)}"
+                )
             except Exception as e:
                 print(f"ERROR: Failed to import coordinator module: {e}")
 
             try:
-                from receipt_trainer.utils.coordinator import \
-                    InstanceCoordinator
+                from receipt_trainer.utils.coordinator import (
+                    InstanceCoordinator,
+                )
 
                 print(f"InstanceCoordinator found in module")
             except Exception as e:
@@ -720,7 +756,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
 
             # Continue test without failing
         else:
-            print(f"Found {len(found_entities['instances'])} instance entities")
+            print(
+                f"Found {len(found_entities['instances'])} instance entities"
+            )
 
         if len(found_entities["tasks"]) == 0:
             print("WARNING: No task entities were created in DynamoDB")
@@ -740,7 +778,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
             status = manager.get_instance_status()
             active_instances = sum(
                 count
-                for state, count in status.get("instances_by_state", {}).items()
+                for state, count in status.get(
+                    "instances_by_state", {}
+                ).items()
                 if state in ["pending", "running"]
             )
 
@@ -761,7 +801,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
         # Check if the job was consumed by something else
         print("\nFinal check of job processing:")
         print(f"Was job found in DynamoDB? {'Yes' if job_details else 'No'}")
-        print(f"Was job processed according to SQS? {'Yes' if job_processed else 'No'}")
+        print(
+            f"Was job processed according to SQS? {'Yes' if job_processed else 'No'}"
+        )
         print(
             f"Did auto-scaling attempt to create instances? {'Yes' if instance_creation_attempted else 'No'}"
         )
@@ -771,7 +813,9 @@ def test_single_model_training(aws_credentials, pulumi_config, dynamo_table_name
         try:
             import subprocess
 
-            worker_check = subprocess.run(["ps", "-ef"], capture_output=True, text=True)
+            worker_check = subprocess.run(
+                ["ps", "-ef"], capture_output=True, text=True
+            )
             if (
                 "receipt-training-worker" in worker_check.stdout
                 or "receipt_trainer" in worker_check.stdout

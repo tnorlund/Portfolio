@@ -1,6 +1,6 @@
 # Prevent git operations
 git commit
 git push
-git add 
+git add
 # Pulumi stack outputs are not needed in the repo
 pulumi

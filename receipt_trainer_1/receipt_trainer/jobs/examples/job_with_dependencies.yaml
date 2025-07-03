@@ -27,7 +27,7 @@ config:
   model:
     name: microsoft/layoutlm-base-uncased
     max_seq_length: 512
-    
+
   # Training configuration
   training:
     batch_size: 8
@@ -37,7 +37,7 @@ config:
     warmup_steps: 500
     gradient_accumulation_steps: 4
     use_fp16: true
-    
+
   # Data configuration
   data:
     train_files:
@@ -46,33 +46,33 @@ config:
       - s3://bucket/preprocessed/val.jsonl
     test_files:
       - s3://bucket/preprocessed/test.jsonl
-    
+
   # Optimization configuration
   optimization:
     early_stopping:
       patience: 3
       metric: eval_f1
       mode: max
-    
+
   # Checkpoint configuration
   checkpoints:
     save_total_limit: 3
     save_steps: 1000
-    
+
   # Output configuration
   output:
     model_dir: s3://bucket/models/fine-tuned/
     tensorboard_dir: s3://bucket/logs/tensorboard/
-    
+
   # Resource configuration
   resources:
     gpu_count: 1
     gpu_type: V100
     memory: 16G
-    
+
   # Notifications
   notifications:
     email:
       - data_scientist@example.com
     slack:
-      channel: model-training-alerts 
+      channel: model-training-alerts

@@ -30,7 +30,7 @@ response = client_manager.openai.chat.completions.create(...)
 
 ## Cost Optimization
 1. Use GPT-3.5 over GPT-4 (15x cheaper)
-2. Use Claude Haiku over Opus (60x cheaper)  
+2. Use Claude Haiku over Opus (60x cheaper)
 3. Cache embeddings and set max_tokens
 4. Use batch APIs for 50% OpenAI discount
 

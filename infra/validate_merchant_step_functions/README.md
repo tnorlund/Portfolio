@@ -34,17 +34,17 @@ The system ensures merchant data consistency by:
 ```mermaid
 graph TD
     A[CloudWatch Event<br/>Weekly Schedule] -->|Wednesdays| B[Batch Clean Lambda]
-    
+
     C[Step Function Trigger] --> D[List Receipts Lambda]
     D --> E[Map State: ForEachReceipt]
     E --> F[Validate Receipt Lambda]
     F --> G[Consolidate Metadata Lambda]
-    
+
     H[(DynamoDB<br/>Receipt Metadata)] --> D
     F --> H
     G --> H
     B --> H
-    
+
     I[Google Places API] --> F
     J[OpenAI API] --> F
     J --> B
@@ -142,44 +142,44 @@ validate_merchant_step_functions/
 ## 🚀 Lambda Functions
 
 ### 1. handlers/list_receipts.py
-**Purpose**: Queries DynamoDB for receipts needing merchant validation  
-**Trigger**: Step Function start  
-**Output**: List of receipt identifiers (image_id, receipt_id)  
-**Timeout**: 900s  
-**Memory**: 512MB  
+**Purpose**: Queries DynamoDB for receipts needing merchant validation
+**Trigger**: Step Function start
+**Output**: List of receipt identifiers (image_id, receipt_id)
+**Timeout**: 900s
+**Memory**: 512MB
 
 ### 2. handlers/validate_single_receipt_v2.py
-**Purpose**: Enriches individual receipts with merchant data  
-**Trigger**: ForEachReceipt Map state  
+**Purpose**: Enriches individual receipts with merchant data
+**Trigger**: ForEachReceipt Map state
 **Key Features**:
 - Google Places API integration
 - Address normalization
 - Merchant name standardization
-- Place ID resolution  
-**Timeout**: 900s  
-**Memory**: 512MB  
+- Place ID resolution
+**Timeout**: 900s
+**Memory**: 512MB
 
 ### 3. handlers/consolidate_new_metadata.py
-**Purpose**: Updates canonical merchant information  
-**Trigger**: After ForEachReceipt completion  
+**Purpose**: Updates canonical merchant information
+**Trigger**: After ForEachReceipt completion
 **Key Features**:
 - Processes validation results
 - Updates canonical fields
-- Self-canonizes new merchants  
-**Timeout**: 300s  
-**Memory**: 512MB  
+- Self-canonizes new merchants
+**Timeout**: 300s
+**Memory**: 512MB
 **Code Quality**: 10.00/10 pylint score
 
 ### 4. handlers/batch_clean_merchants.py
-**Purpose**: Comprehensive merchant data reconciliation  
-**Trigger**: CloudWatch Events (weekly)  
+**Purpose**: Comprehensive merchant data reconciliation
+**Trigger**: CloudWatch Events (weekly)
 **Key Features**:
 - Clusters similar merchants
 - Geographic validation
 - Canonical data propagation
-- Alias consolidation  
-**Timeout**: 900s  
-**Memory**: 512MB  
+- Alias consolidation
+**Timeout**: 900s
+**Memory**: 512MB
 **Code Quality**: 10.00/10 pylint score
 
 ## ⚙️ Configuration
@@ -274,7 +274,7 @@ print(f"Status: {response['status']}")
   - ExecutionsSucceeded
   - ExecutionsFailed
   - ExecutionTime
-  
+
 - **Lambda Metrics**:
   - Invocations
   - Errors

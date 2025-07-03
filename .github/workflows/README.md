@@ -7,8 +7,8 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ### Core CI/CD Workflows
 
 #### 🚀 [`main.yml`](./main.yml)
-**Purpose**: Primary CI/CD pipeline for production deployments  
-**Triggers**: 
+**Purpose**: Primary CI/CD pipeline for production deployments
+**Triggers**:
 - Push to `main` branch
 - Pull requests (for testing only, no deployment)
 
@@ -29,7 +29,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### ✅ [`pr-checks.yml`](./pr-checks.yml)
-**Purpose**: Quick validation for pull requests  
+**Purpose**: Quick validation for pull requests
 **Triggers**: All pull request events
 
 **Jobs**:
@@ -45,8 +45,8 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 🔧 [`ci-improved.yml`](./ci-improved.yml)
-**Purpose**: Full CI pipeline with comprehensive checks  
-**Triggers**: 
+**Purpose**: Full CI pipeline with comprehensive checks
+**Triggers**:
 - Push to main
 - Pull requests
 
@@ -63,7 +63,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 🚢 [`deploy.yml`](./deploy.yml)
-**Purpose**: Standalone deployment workflow  
+**Purpose**: Standalone deployment workflow
 **Triggers**: Manual dispatch
 
 **Configuration Options**:
@@ -74,8 +74,8 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ### Claude AI Workflows
 
 #### 🤖 [`claude.yml`](./claude.yml)
-**Purpose**: Interactive AI assistant  
-**Triggers**: 
+**Purpose**: Interactive AI assistant
+**Triggers**:
 - Comments with `@claude` mention
 - New issues with `@claude`
 - PR review comments with `@claude`
@@ -90,7 +90,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 🔍 [`claude-review.yml`](./claude-review.yml)
-**Purpose**: Automated PR code reviews  
+**Purpose**: Automated PR code reviews
 **Triggers**:
 - PR marked "ready for review"
 - PR labeled with `claude-review-requested`
@@ -105,7 +105,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 🔍+ [`claude-review-enhanced.yml`](./claude-review-enhanced.yml)
-**Purpose**: Advanced review with comment management  
+**Purpose**: Advanced review with comment management
 **Triggers**: PR ready, labeled, or synchronized
 
 **Enhanced Features**:
@@ -117,7 +117,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 🧹 [`claude-cleanup.yml`](./claude-cleanup.yml)
-**Purpose**: Manage Claude comment lifecycle  
+**Purpose**: Manage Claude comment lifecycle
 **Triggers**:
 - Weekly schedule (Sundays at midnight)
 - Manual: workflow dispatch
@@ -131,7 +131,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 ---
 
 #### 📊 [`track-ai-usage.yml`](./track-ai-usage.yml)
-**Purpose**: Track Claude API usage and costs  
+**Purpose**: Track Claude API usage and costs
 **Triggers**: After Claude review workflows complete
 
 **Tracking**:

@@ -8,7 +8,9 @@ DYNAMO_TABLE_NAME = os.getenv("DYNAMO_TABLE_NAME")
 LIST_CHUNK_SIZE = 1000
 
 
-def _get_word(label: ReceiptWordLabel, words: list[ReceiptWord]) -> ReceiptWord:
+def _get_word(
+    label: ReceiptWordLabel, words: list[ReceiptWord]
+) -> ReceiptWord:
     """
     Get the word that matches the label
     """
@@ -71,22 +73,30 @@ def create_dataset(labels: list[str]) -> list[dict]:
 
         # Only use the VALID labels
         word_labels = [
-            label for label in word_labels if label.validation_status == "VALID"
+            label
+            for label in word_labels
+            if label.validation_status == "VALID"
         ]
 
         # Get the words
         words_for_label = [_get_word(label, words) for label in word_labels]
 
         # Get the receipts
-        receipts_for_label = [_get_receipt(word, receipts) for word in words_for_label]
+        receipts_for_label = [
+            _get_receipt(word, receipts) for word in words_for_label
+        ]
 
         # Calculate scale factor maintaining aspect ratio
         max_dim = 1000
         # If no valid receipts, skip
-        if not receipts_for_label or all(r is None for r in receipts_for_label):
+        if not receipts_for_label or all(
+            r is None for r in receipts_for_label
+        ):
             continue
         # Use the first non-None receipt for scaling
-        first_receipt = next((r for r in receipts_for_label if r is not None), None)
+        first_receipt = next(
+            (r for r in receipts_for_label if r is not None), None
+        )
         if first_receipt is None:
             continue
         scale = max_dim / max(first_receipt.width, first_receipt.height)
@@ -99,7 +109,9 @@ def create_dataset(labels: list[str]) -> list[dict]:
             if word is None or receipt is None:
                 continue
 
-            tag_label = label_obj.label if label_obj.label in CORE_LABELS else "O"
+            tag_label = (
+                label_obj.label if label_obj.label in CORE_LABELS else "O"
+            )
 
             x1 = min(word.top_left["x"], word.bottom_left["x"])
             y1 = min(word.top_left["y"], word.top_right["y"])
@@ -150,7 +162,9 @@ def create_dataset(labels: list[str]) -> list[dict]:
                 if same_label and y_diff < 20 and x_diff < 50:
                     is_continuation = True
 
-            iob_label = f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            iob_label = (
+                f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            )
 
         word_entry["label"] = iob_label
         processed_dataset.append(word_entry)

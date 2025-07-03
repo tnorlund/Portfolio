@@ -7,11 +7,11 @@ on:
         description: 'PR number to clean up (optional, cleans all if not specified)'
         required: false
         type: number
-      
+
   schedule:
     # Run weekly to clean up old comments
     - cron: '0 0 * * 0'
-  
+
   issue_comment:
     types: [created]
 
@@ -20,7 +20,7 @@ jobs:
     name: Manual Comment Cleanup
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issue_comment' && 
+      (github.event_name == 'issue_comment' &&
        contains(github.event.comment.body, '/claude cleanup'))
     runs-on: ubuntu-latest
     permissions:
@@ -32,7 +32,7 @@ jobs:
         with:
           script: |
             let prs_to_clean = [];
-            
+
             if (context.eventName === 'workflow_dispatch' && context.payload.inputs.pr_number) {
               // Clean specific PR
               prs_to_clean = [parseInt(context.payload.inputs.pr_number)];
@@ -54,12 +54,12 @@ jobs:
               );
               prs_to_clean = pulls.map(pr => pr.number);
             }
-            
+
             console.log(`Cleaning ${prs_to_clean.length} PRs`);
-            
+
             for (const pr_number of prs_to_clean) {
               console.log(`Processing PR #${pr_number}`);
-              
+
               try {
                 // Get all comments
                 const comments = await github.paginate(
@@ -70,14 +70,14 @@ jobs:
                     issue_number: pr_number,
                   }
                 );
-                
+
                 // Find Claude's comments
-                const claudeComments = comments.filter(comment => 
+                const claudeComments = comments.filter(comment =>
                   comment.user.login === 'github-actions[bot]' &&
                   (comment.body.includes('Claude') || comment.body.includes('🤖')) &&
                   !comment.body.includes('[OUTDATED]')
                 );
-                
+
                 // Group comments by date
                 const commentsByDate = {};
                 for (const comment of claudeComments) {
@@ -87,26 +87,26 @@ jobs:
                   }
                   commentsByDate[date].push(comment);
                 }
-                
+
                 // Keep only the latest comment per day, collapse others
                 for (const [date, dateComments] of Object.entries(commentsByDate)) {
                   // Sort by created_at descending
-                  dateComments.sort((a, b) => 
+                  dateComments.sort((a, b) =>
                     new Date(b.created_at) - new Date(a.created_at)
                   );
-                  
+
                   // Skip the most recent one
                   for (let i = 1; i < dateComments.length; i++) {
                     const comment = dateComments[i];
-                    
+
                     // Collapse older comments
                     const updatedBody = `<details>
             <summary>🤖 [OUTDATED] Claude Review (${new Date(comment.created_at).toLocaleString()})</summary>
-            
+
             ${comment.body}
-            
+
             </details>`;
-                    
+
                     await github.rest.issues.updateComment({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
@@ -115,14 +115,14 @@ jobs:
                     });
                   }
                 }
-                
+
                 console.log(`Cleaned ${claudeComments.length} comments in PR #${pr_number}`);
-                
+
               } catch (error) {
                 console.error(`Error processing PR #${pr_number}: ${error.message}`);
               }
             }
-            
+
             // Add summary comment if triggered by comment
             if (context.eventName === 'issue_comment') {
               await github.rest.issues.createComment({
@@ -148,7 +148,7 @@ jobs:
             // Get all closed PRs from the last month
             const since = new Date();
             since.setDate(since.getDate() - 30);
-            
+
             const pulls = await github.paginate(
               github.rest.pulls.list,
               {
@@ -160,14 +160,14 @@ jobs:
                 per_page: 100
               }
             );
-            
+
             // Filter to PRs updated in the last month
-            const recentPulls = pulls.filter(pr => 
+            const recentPulls = pulls.filter(pr =>
               new Date(pr.updated_at) > since
             );
-            
+
             console.log(`Found ${recentPulls.length} recently closed PRs to clean`);
-            
+
             for (const pr of recentPulls) {
               try {
                 // Get all comments
@@ -179,13 +179,13 @@ jobs:
                     issue_number: pr.number,
                   }
                 );
-                
+
                 // Find Claude's comments
-                const claudeComments = comments.filter(comment => 
+                const claudeComments = comments.filter(comment =>
                   comment.user.login === 'github-actions[bot]' &&
                   (comment.body.includes('Claude') || comment.body.includes('🤖'))
                 );
-                
+
                 // Delete all Claude comments on merged PRs
                 if (pr.merged_at) {
                   for (const comment of claudeComments) {
@@ -200,14 +200,14 @@ jobs:
                   // Just collapse comments on closed but not merged PRs
                   for (const comment of claudeComments) {
                     if (comment.body.includes('[OUTDATED]')) continue;
-                    
+
                     const updatedBody = `<details>
             <summary>🤖 [CLOSED] Claude Review</summary>
-            
+
             ${comment.body}
-            
+
             </details>`;
-                    
+
                     await github.rest.issues.updateComment({
                       owner: context.repo.owner,
                       repo: context.repo.repo,

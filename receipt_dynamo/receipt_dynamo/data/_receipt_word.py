@@ -7,27 +7,36 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (BatchGetItemInputTypeDef,
-                                           DeleteRequestTypeDef,
-                                           GetItemInputTypeDef,
-                                           KeysAndAttributesTypeDef,
-                                           PutRequestTypeDef, PutTypeDef,
-                                           QueryInputTypeDef,
-                                           TransactWriteItemTypeDef,
-                                           WriteRequestTypeDef)
+    from receipt_dynamo.data._base import (
+        BatchGetItemInputTypeDef,
+        DeleteRequestTypeDef,
+        GetItemInputTypeDef,
+        KeysAndAttributesTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
 
 # These are used at runtime, not just for type checking
 from typing import TYPE_CHECKING, Dict, Optional
 
-from receipt_dynamo.data._base import (DeleteRequestTypeDef, PutRequestTypeDef,
-                                       PutTypeDef, TransactWriteItemTypeDef,
-                                       WriteRequestTypeDef)
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError,
-                                                   OperationError)
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call

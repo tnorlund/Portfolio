@@ -2,9 +2,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import LabelStatus
-from receipt_dynamo.entities.util import (_repr_str, assert_type,
-                                          assert_valid_uuid, format_type_error,
-                                          normalize_enum)
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_type,
+    assert_valid_uuid,
+    format_type_error,
+    normalize_enum,
+)
 
 
 class LabelMetadata:

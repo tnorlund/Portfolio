@@ -64,9 +64,9 @@ struct OCRResult: Codable {
 
 /// Converts an `NSImage` to a `CGImage`.
 func cgImage(from nsImage: NSImage) -> CGImage? {
-    guard 
+    guard
         let imageData = nsImage.tiffRepresentation,
-        let bitmap = NSBitmapImageRep(data: imageData) 
+        let bitmap = NSBitmapImageRep(data: imageData)
     else {
         return nil
     }
@@ -111,9 +111,9 @@ func rectangleObservation(
 /// Throws an error if Vision fails or can't load the image.
 func performOCRSync(from imageURL: URL) throws -> [Line] {
     // 1) Load the image
-    guard 
+    guard
         let nsImage = NSImage(contentsOf: imageURL),
-        let cgImg = cgImage(from: nsImage) 
+        let cgImg = cgImage(from: nsImage)
     else {
         throw NSError(domain: "OCRScript", code: -1, userInfo: [
             NSLocalizedDescriptionKey: "Unable to load image at \(imageURL.path)"
@@ -131,9 +131,9 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
     try requestHandler.perform([request])
 
     // 4) Process results or handle "no text recognized"
-    guard 
+    guard
         let observations = request.results,
-        !observations.isEmpty  
+        !observations.isEmpty
     else {
         throw NSError(domain: "OCRScript", code: -2, userInfo: [
             NSLocalizedDescriptionKey: "No text recognized."
@@ -161,14 +161,14 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         var wordModels = [Word]()
 
         for w in wordsArray where !w.isEmpty {
-            guard 
+            guard
                 let range = lineText.range(of: w, range: runningIndex..<lineText.endIndex)
             else {
                 continue
             }
             let wordRectObs = rectangleObservation(in: candidate, range: range)
             let (wordDegrees, wordRadians) = wordRectObs.map(angles(for:)) ?? (0, 0)
-            let wordBox = wordRectObs.map(normalizedRect) 
+            let wordBox = wordRectObs.map(normalizedRect)
                 ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
 
             let wordTopLeft     = wordRectObs.map { codablePoint(from: $0.topLeft) }     ?? Point(x: 0, y: 0)
@@ -179,13 +179,13 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
             // Build letters
             var letterModels = [Letter]()
             for i in w.indices {
-                let globalLetterStart = lineText.index(range.lowerBound, 
+                let globalLetterStart = lineText.index(range.lowerBound,
                                                        offsetBy: i.utf16Offset(in: w))
                 let globalLetterRange = globalLetterStart..<lineText.index(globalLetterStart, offsetBy: 1)
 
                 let letterRectObs = rectangleObservation(in: candidate, range: globalLetterRange)
                 let (letterDegrees, letterRadians) = letterRectObs.map(angles(for:)) ?? (0, 0)
-                let letterBox = letterRectObs.map(normalizedRect) 
+                let letterBox = letterRectObs.map(normalizedRect)
                     ?? NormalizedRect(x: 0, y: 0, width: 0, height: 0)
 
                 let letterTopLeft     = letterRectObs.map { codablePoint(from: $0.topLeft) }     ?? Point(x: 0, y: 0)
@@ -245,7 +245,7 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
 
 // MARK: - Main
 
-// Example usage: 
+// Example usage:
 //   swift OCRSwift.swift <outputDirectory> <img1.png> <img2.png> ... <imgN.png>
 // No run loop needed—this script will exit on its own once done.
 

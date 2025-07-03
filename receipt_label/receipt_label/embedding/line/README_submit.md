@@ -71,38 +71,38 @@ Updates all processed lines to `embedding_status = "PENDING"` in DynamoDB.
 
 1. **SubmitList** state
 
-   1. Retrieve all lines needing embeddings →  
+   1. Retrieve all lines needing embeddings →
       `list_receipt_lines_with_no_embeddings()`.
-   2. Group them by receipt →  
+   2. Group them by receipt →
       `chunk_into_line_embedding_batches()`.
-   3. Serialize each group to NDJSON →  
+   3. Serialize each group to NDJSON →
       `serialize_receipt_lines()`.
-   4. Upload all files to S3 →  
-      `upload_serialized_lines()`.  
+   4. Upload all files to S3 →
+      `upload_serialized_lines()`.
       _Output:_ array of file metadata containing `image_id`, `receipt_id`, and `s3_key`.
 
 2. **SubmitUpload** state _(Map – runs once per serialized file)_
 
-   1. Download the serialized file from S3 →  
+   1. Download the serialized file from S3 →
       `download_serialized_lines()`.
-   2. Deserialize back to `ReceiptLine` objects →  
+   2. Deserialize back to `ReceiptLine` objects →
       `deserialize_receipt_lines()`.
-   3. Generate a unique batch ID →  
+   3. Generate a unique batch ID →
       `generate_batch_id()`.
-   4. Format lines for OpenAI embeddings →  
+   4. Format lines for OpenAI embeddings →
       `format_line_context_embedding()`.
-   5. Write formatted requests to NDJSON →  
+   5. Write formatted requests to NDJSON →
       `write_ndjson()`.
-   6. Upload to OpenAI Files API →  
+   6. Upload to OpenAI Files API →
       `upload_to_openai()`.
-   7. Submit the batch job →  
+   7. Submit the batch job →
       `submit_openai_batch()`.
-   8. Update line status in DynamoDB →  
+   8. Update line status in DynamoDB →
       `update_line_embedding_status()`.
-   9. Create and store batch summary →  
+   9. Create and store batch summary →
       `create_batch_summary()` → `add_batch_summary()`.
 
-> **Note:** Each line's custom_id follows the format:  
+> **Note:** Each line's custom_id follows the format:
 > `IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}`
 
 ---
@@ -116,7 +116,7 @@ flowchart TB
     ChunkByReceipt --> SerializeLines["Serialize Lines to NDJSON"]
     SerializeLines --> UploadToS3["Upload Serialized Files to S3"]
     UploadToS3 --> SubmitMap
-    
+
     subgraph SubmitMap["For each Serialized File (Map State)"]
         direction TB
         DownloadFromS3["Download from S3"] --> DeserializeLines["Deserialize Lines"]
@@ -129,6 +129,6 @@ flowchart TB
         UpdateStatus --> CreateSummary["Create Batch Summary"]
         CreateSummary --> AddSummary["Add to DynamoDB"]
     end
-    
+
     SubmitMap --> End([End])
 ```

@@ -4,8 +4,10 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.entities.receipt_metadata import (ReceiptMetadata,
-                                                      item_to_receipt_metadata)
+from receipt_dynamo.entities.receipt_metadata import (
+    ReceiptMetadata,
+    item_to_receipt_metadata,
+)
 
 
 @pytest.fixture

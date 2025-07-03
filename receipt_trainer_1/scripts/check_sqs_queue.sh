@@ -76,4 +76,4 @@ else
     echo -e "${GREEN}No in-flight messages detected, likely no active consumers${NC}"
 fi
 
-echo -e "\n${GREEN}Queue check completed.${NC}" 
+echo -e "\n${GREEN}Queue check completed.${NC}"

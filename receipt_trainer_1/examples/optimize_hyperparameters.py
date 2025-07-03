@@ -24,7 +24,12 @@ class PerStepLoggingCallback(TrainerCallback):
         self.job_id = job_id
 
     def on_step_end(self, args, state, control, logs=None, **kwargs):
-        if logs and state.is_world_process_zero and self.job_service and self.job_id:
+        if (
+            logs
+            and state.is_world_process_zero
+            and self.job_service
+            and self.job_id
+        ):
             for k, v in logs.items():
                 self.job_service.add_job_metric(
                     job_id=self.job_id,
@@ -34,7 +39,12 @@ class PerStepLoggingCallback(TrainerCallback):
                 )
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        if metrics and state.is_world_process_zero and self.job_service and self.job_id:
+        if (
+            metrics
+            and state.is_world_process_zero
+            and self.job_service
+            and self.job_id
+        ):
             for k, v in metrics.items():
                 self.job_service.add_job_metric(
                     job_id=self.job_id,
@@ -60,15 +70,17 @@ def validate_environment():
         "DYNAMO_TABLE": "DynamoDB table for metrics and job tracking",
     }
 
-    missing_vars = [var for var, desc in required_vars.items() if not os.getenv(var)]
+    missing_vars = [
+        var for var, desc in required_vars.items() if not os.getenv(var)
+    ]
 
     if missing_vars:
-        error_msg = "The following required environment variables are not set:\n"
+        error_msg = (
+            "The following required environment variables are not set:\n"
+        )
         for var in missing_vars:
             error_msg += f"- {var}: {required_vars[var]}\n"
-        error_msg += (
-            "\nPlease set these environment variables before running the script."
-        )
+        error_msg += "\nPlease set these environment variables before running the script."
         raise ValueError(error_msg)
 
 

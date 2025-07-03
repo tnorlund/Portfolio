@@ -42,7 +42,7 @@ matrix:
       test_path: tests/integration/test__receipt_word_label.py tests/integration/test__receipt.py ... (10 files)
     - package: receipt_dynamo
       test_type: integration
-      test_group: group-2  
+      test_group: group-2
       test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py ... (10 files)
     # Groups 3 and 4 similarly balanced
 ```
@@ -82,14 +82,14 @@ New comprehensive toolkit:
 - **Improvement**: 50% faster
 
 ### Scenario 3: Warm Cache (Subsequent Runs)
-- **Before**: 4+ minutes total  
+- **Before**: 4+ minutes total
 - **After**: 30-60 seconds total
 - **Improvement**: 6-8x faster
 
 ### Scenario 4: Optimal Load Balancing
 - **Group 1**: 395 tests, ~16 minutes (heaviest files)
 - **Group 2**: 396 tests, ~16 minutes
-- **Group 3**: 396 tests, ~16 minutes  
+- **Group 3**: 396 tests, ~16 minutes
 - **Group 4**: 392 tests, ~15 minutes (lightest)
 
 ## Optimization Breakdown

@@ -57,4 +57,4 @@ if [ "$IN_FLIGHT" -gt 0 ]; then
     echo -e "${YELLOW}You may want to wait for these to complete or run this script again later.${NC}"
 else
     echo -e "${GREEN}No in-flight messages detected. Queue is empty!${NC}"
-fi 
+fi

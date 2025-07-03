@@ -65,7 +65,7 @@ def gsi3pk(self) -> Optional[str]:
         return f"ENV#{self.environment}"  # NEW: Environment scope support
     return None
 
-@property  
+@property
 def gsi3sk(self) -> Optional[str]:
     """GSI3 SK for temporal ordering."""
     if self.job_id or self.user_id or self.batch_id or self.environment:
@@ -113,7 +113,7 @@ query_params = {
 
 # Query all AI usage in production environment
 query_params = {
-    "IndexName": "GSITYPE", 
+    "IndexName": "GSITYPE",
     "KeyConditionExpression": "GSITYPEPK = :pk AND GSITYPESK BETWEEN :start AND :end",
     "ExpressionAttributeValues": {
         ":pk": {"S": "SCOPE#ENV#production#AIUsageMetric"},
@@ -131,7 +131,7 @@ Store multiple GSITYPE entries per AIUsageMetric to support all scope queries:
 def to_dynamodb_items(self) -> List[Dict]:
     """Generate multiple items for different scope access patterns."""
     items = [self.to_dynamodb_item()]  # Primary item
-    
+
     # Add scope-specific index items
     scope_items = []
     if self.user_id:
@@ -140,7 +140,7 @@ def to_dynamodb_items(self) -> List[Dict]:
         scope_items.append(self._create_scope_item("ENV", self.environment))
     if self.job_id:
         scope_items.append(self._create_scope_item("JOB", self.job_id))
-        
+
     return items + scope_items
 
 def _create_scope_item(self, scope_type: str, scope_value: str) -> Dict:
@@ -203,41 +203,41 @@ def _create_scope_item(self, scope_type: str, scope_value: str) -> Dict:
 def _query_by_scope_gsitype(
     self,
     scope_type: str,
-    scope_value: str, 
+    scope_value: str,
     start_date: str,
     end_date: str,
     service: Optional[str] = None,
 ) -> List[AIUsageMetric]:
     """Query metrics using GSITYPE for user/environment scopes."""
-    
+
     key_condition = "GSITYPEPK = :pk AND GSITYPESK BETWEEN :start AND :end"
     expression_values = {
         ":pk": {"S": f"SCOPE#{scope_type.upper()}#{scope_value}#AIUsageMetric"},
         ":start": {"S": f"DATE#{start_date}#"},
         ":end": {"S": f"DATE#{end_date}#~"}  # ~ sorts after all timestamps
     }
-    
+
     query_params = {
         "TableName": self.dynamo_client.table_name,
-        "IndexName": "GSITYPE", 
+        "IndexName": "GSITYPE",
         "KeyConditionExpression": key_condition,
         "ExpressionAttributeValues": expression_values
     }
-    
+
     if service:
         query_params["FilterExpression"] = "#service = :service"
         query_params["ExpressionAttributeNames"] = {"#service": "service"}
         expression_values[":service"] = {"S": service}
-    
+
     response = self.dynamo_client._client.query(**query_params)
-    
+
     # Convert to AIUsageMetric objects
     metrics = []
     for item in response.get("Items", []):
         metric = self._dynamodb_item_to_metric(item)
         if metric:
             metrics.append(metric)
-    
+
     return metrics
 ```
 
@@ -245,13 +245,13 @@ def _query_by_scope_gsitype(
 ```python
 def _query_metrics(self, scope_type: str, scope_value: str, start_date: str, end_date: str, service: Optional[str] = None) -> List[AIUsageMetric]:
     """Query metrics using the most efficient index for each scope type."""
-    
+
     if scope_type == "service":
         # Use GSI1 (most efficient for service queries)
         return AIUsageMetric.query_by_service_date(
             self.dynamo_client, service=scope_value, start_date=start_date, end_date=end_date
         )
-    elif scope_type in ["user", "environment"]: 
+    elif scope_type in ["user", "environment"]:
         # Use GSITYPE (eliminates scans)
         return self._query_by_scope_gsitype(scope_type, scope_value, start_date, end_date, service)
     elif scope_type == "job":

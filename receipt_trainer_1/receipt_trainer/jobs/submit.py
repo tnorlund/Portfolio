@@ -40,7 +40,9 @@ def load_job_config(config_file: str) -> Dict[str, Any]:
         with open(filepath, "r") as f:
             return json.load(f)
     else:
-        raise ValueError(f"Unsupported configuration file format: {filepath.suffix}")
+        raise ValueError(
+            f"Unsupported configuration file format: {filepath.suffix}"
+        )
 
 
 def submit_training_job(
@@ -198,7 +200,9 @@ def submit_hyperparameter_sweep(
         config = {param_keys[i]: combo[i] for i in range(len(param_keys))}
         sweep_configs.append(config)
 
-    logger.info(f"Generated {len(sweep_configs)} hyperparameter configurations")
+    logger.info(
+        f"Generated {len(sweep_configs)} hyperparameter configurations"
+    )
 
     # Initialize queue
     aws_region = region or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
@@ -244,8 +248,9 @@ def submit_hyperparameter_sweep(
                         globals()["job_service"].create_job(sweep_job)
                     # Otherwise try to use DynamoDB client directly
                     else:
-                        from receipt_dynamo.data.dynamo_client import \
-                            DynamoClient
+                        from receipt_dynamo.data.dynamo_client import (
+                            DynamoClient,
+                        )
 
                         dynamo_client = DynamoClient(dynamo_table)
 
@@ -254,9 +259,13 @@ def submit_hyperparameter_sweep(
                         elif hasattr(dynamo_client, "addJob"):
                             dynamo_client.addJob(sweep_job)
 
-                    logger.info(f"Created parent sweep job with ID: {parent_job_id}")
+                    logger.info(
+                        f"Created parent sweep job with ID: {parent_job_id}"
+                    )
                 except Exception as inner_e:
-                    logger.warning(f"Failed to store parent sweep job: {inner_e}")
+                    logger.warning(
+                        f"Failed to store parent sweep job: {inner_e}"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to create parent sweep job: {e}")
 
@@ -319,7 +328,9 @@ def submit_hyperparameter_sweep(
 
 def main():
     """Command-line entry point for job submission."""
-    parser = argparse.ArgumentParser(description="Submit training jobs to SQS queue")
+    parser = argparse.ArgumentParser(
+        description="Submit training jobs to SQS queue"
+    )
     parser.add_argument(
         "--config",
         required=True,
@@ -333,7 +344,9 @@ def main():
         help="Job priority",
     )
     parser.add_argument("--region", help="AWS region")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose logging"
+    )
 
     args = parser.parse_args()
 
