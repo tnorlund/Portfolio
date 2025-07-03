@@ -826,7 +826,7 @@ class _Receipt(DynamoClientProtocol):
                         word = item_to_receipt_word(item)
                         words.append(word)
                     except ValueError as e:
-                        print(f"Error processing word item: {e}")
+                        # TODO: Use proper logging instead of print
                         continue
 
             if not receipt:
