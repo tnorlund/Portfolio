@@ -106,9 +106,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt "
-                    "{analysis.receipt_id} and image {analysis.image_id} "
-                    "already exists"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -243,9 +243,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt "
-                    "{analysis.receipt_id} and image {analysis.image_id} "
-                    "does not exist"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -411,9 +411,9 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    "ReceiptStructureAnalysis for receipt "
-                    "{analysis.receipt_id} and image {analysis.image_id} "
-                    "does not exist"
+                    f"ReceiptStructureAnalysis for receipt "
+                    f"{analysis.receipt_id} and image {analysis.image_id} "
+                    f"does not exist"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
