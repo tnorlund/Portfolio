@@ -22,6 +22,12 @@ from receipt_dynamo.entities.instance import item_to_instance
 from receipt_dynamo.entities.instance_job import InstanceJob  # noqa: F401
 from receipt_dynamo.entities.instance_job import item_to_instance_job
 from receipt_dynamo.entities.job import Job, item_to_job  # noqa: F401
+from receipt_dynamo.entities.job_checkpoint import JobCheckpoint  # noqa: F401
+from receipt_dynamo.entities.job_checkpoint import item_to_job_checkpoint
+from receipt_dynamo.entities.job_dependency import JobDependency  # noqa: F401
+from receipt_dynamo.entities.job_dependency import item_to_job_dependency
+from receipt_dynamo.entities.job_log import JobLog  # noqa: F401
+from receipt_dynamo.entities.job_log import item_to_job_log
 from receipt_dynamo.entities.job_metric import JobMetric  # noqa: F401
 from receipt_dynamo.entities.job_metric import item_to_job_metric
 from receipt_dynamo.entities.job_resource import JobResource  # noqa: F401
@@ -130,6 +136,9 @@ __all__ = [
     "Instance",
     "InstanceJob",
     "Job",
+    "JobCheckpoint",
+    "JobDependency",
+    "JobLog",
     "JobMetric",
     "JobResource",
     "JobStatus",
@@ -170,6 +179,9 @@ __all__ = [
     "item_to_instance",
     "item_to_instance_job",
     "item_to_job",
+    "item_to_job_checkpoint",
+    "item_to_job_dependency",
+    "item_to_job_log",
     "item_to_job_metric",
     "item_to_job_resource",
     "item_to_job_status",
