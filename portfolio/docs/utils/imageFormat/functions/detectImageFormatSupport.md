@@ -8,7 +8,7 @@
 
 > **detectImageFormatSupport**(): `Promise`\<[`FormatSupport`](../interfaces/FormatSupport.md)\>
 
-Defined in: [utils/imageFormat.ts:9](https://github.com/tnorlund/Portfolio/blob/63c49938f962827925da93dffd20d392d3c7887d/portfolio/utils/imageFormat.ts#L9)
+Defined in: [utils/imageFormat.ts:9](https://github.com/tnorlund/Portfolio/blob/62ed0b1349babeb3a8eb6937ddbb2cd867c29a6a/portfolio/utils/imageFormat.ts#L9)
 
 Detect browser support for AVIF and WebP image formats.
 
