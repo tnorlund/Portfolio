@@ -1,112 +1,89 @@
 # Project Specifications
 
-This directory contains technical specifications and implementation plans for the receipt processing system.
+This directory contains active technical specifications and implementation plans for the receipt processing system.
 
-## 📊 Implementation Status Dashboard
+## 📊 Active Development Roadmap
 
 | Specification | Status | Priority | GitHub Issue | Effort |
 |---------------|--------|----------|--------------|---------|
-| **AI Usage Tracking (Phases 1-2)** | ✅ Complete | High | #119 | Complete |
-| **System Resilience** | ✅ Complete | High | #130 | Complete |
-| **BugBot Remediation** | ✅ 100% Complete | High | N/A | All resolved |
-| **AI Usage Tracking (Phases 3-5)** | 🔴 Planned | Medium | #120-122 | 15-21 days |
-| **Agentic Refactor (4 phases)** | ✅ Ready | Medium | TBD | 12-16 weeks |
-| **Technical Analysis** | ✅ Complete | Low | N/A | Reference |
+| **AI Usage Tracking (Phase 5)** | 🟡 Next | High | #122 | 5-7 days |
+| **Google Places API Tracking** | 🔴 Planned | Medium | #147 | 2-3 days |
+| **Receipt Upload Reformatting** | 🔴 Planned | Medium | #146 | 3-5 days |
+| **Agentic Refactor** | 📋 Specified | Low | TBD | 12-16 weeks |
 
-## 🎯 Current Priorities
+## 🎯 Current Focus
 
-### **Recently Completed** ✅
-1. **Issue #119** - Environment-based AI usage configuration ✅
-2. **Issue #130** - System resilience improvements ✅
-3. **BugBot Remediation** - All 8 issues resolved ✅
-4. **Environment Variable Standardization** - DYNAMODB_TABLE_NAME with backward compatibility ✅
+### **Next Sprint (Issue #122)**
+**AI Usage Tracking Phase 5 - Production Deployment**
+- Deploy complete AI usage tracking system to production
+- Implement advanced analytics and reporting
+- Achieve sub-100ms latency and 99.99% availability
 
-### **Immediate (Next 2-4 weeks)**
-1. **Issue #120** - Context manager patterns (AI Usage Phase 3)
+### **Upcoming Work**
+1. **Issue #147** - Google Places API context manager integration
+2. **Issue #146** - Receipt upload package reformatting to match standards
+3. **Agentic Refactor** - Long-term architectural transformation
 
-### **Short-term (Next 1-2 months)**
-3. **Issue #121** - Cost monitoring and alerting (AI Usage Phase 4)
-4. **Issue #122** - Production deployment (AI Usage Phase 5)
-
-### **Long-term (Next 3-6 months)**
-5. **Agentic Refactor** - Complete architectural transformation
+### **Long-term Vision**
+**Agentic Architecture Transformation** - Complete system refactor to agent-based architecture with:
+- RAG-based intelligent labeling
+- Standardized tool registry
+- Real-time streaming capabilities
+- Advanced observability
 
 ## 📁 Directory Structure
 
 ```
 spec/
-├── ai-usage-tracking/           # AI usage tracking system specs
-│   ├── implementation.md        # Core architecture and best practices
-│   └── testing-project.md       # Comprehensive test implementation
-├── agentic-refactor/           # 4-week agentic architecture plan
-│   ├── week1-retrieval.md      # RAG-based labeling system
-│   ├── week2-tools.md          # Tool standardization and registry
-│   ├── week3-orchestration.md # Intelligent orchestration layer
-│   └── week4-streaming.md      # Real-time streaming and observability
-├── technical-analysis/         # Current system analysis
-│   ├── dynamo-entities.md      # DynamoDB entity documentation
-│   ├── client-refactor.md      # Client management patterns
-│   └── labeler-refactor.md     # ReceiptLabeler analysis
-├── bugbot-remediation-plan.md  # BugBot issue resolution (100% complete)
-├── remaining-issues.md         # All issues resolved tracker
-├── issue-130-completion-summary.md # Issue #130 completion details
-└── README.md                   # This file
+├── ai-usage-tracking/          # AI usage tracking system (Phases 3-5)
+│   ├── implementation.md       # Core architecture and patterns
+│   └── testing-project.md      # Comprehensive test strategy
+├── agentic-refactor/          # 4-phase architecture transformation
+│   ├── week1-retrieval.md     # RAG-based intelligent labeling
+│   ├── week2-tools.md         # Tool registry and standardization
+│   ├── week3-orchestration.md # Agent orchestration patterns
+│   └── week4-streaming.md     # Real-time streaming and observability
+├── technical-analysis/        # System architecture documentation
+│   ├── dynamo-entities.md     # DynamoDB entity reference
+│   ├── client-refactor.md     # Client management patterns
+│   └── labeler-refactor.md    # ReceiptLabeler architecture
+├── archive/                   # Completed work (reference only)
+│   └── completed-2024/        # 2024 completed specifications
+└── README.md                  # This file (active roadmap)
 ```
 
-## 🔗 Dependencies
+## 📋 Key Specifications
 
-### **AI Usage Tracking Pipeline**
-```
-WS1-4 (✅ Complete) → Issue #119 (✅ Complete) → Issue #120 → Issue #121 → Issue #122
-                                                      ↓
-                                              Issue #130 (✅ Complete)
-                                                      ↓
-                                            BugBot Remediation (✅ 100% Complete)
-```
+### **AI Usage Tracking - Phase 5 (Issue #122)** 🟡 NEXT
+**Production Deployment & Advanced Analytics**
+- Deploy complete tracking system to production
+- Advanced analytics dashboard with insights
+- Sub-100ms tracking latency (99th percentile)
+- 10,000+ requests per second support
+- 99.99% availability SLA
+- See: `ai-usage-tracking/implementation.md`
 
-### **Agentic Refactor Pipeline**
-```
-Week 1 (Retrieval) → Week 2 (Tools) → Week 3 (Orchestration) → Week 4 (Streaming)
-```
+### **Google Places API Integration (Issue #147)** 🔴 PLANNED
+**Context Manager for Places API**
+- Extend AI usage tracking to Google Places API calls
+- Implement cost tracking for Places API usage
+- Maintain consistency with existing AI tracking patterns
+- See: `ai-usage-tracking/implementation.md`
 
-## 📋 Acceptance Criteria Summary
+### **Receipt Upload Reformatting (Issue #146)** 🔴 PLANNED
+**Code Quality Standards**
+- Reformat receipt_upload package to match PR #135 standards
+- Implement consistent code style and structure
+- Add comprehensive type hints and documentation
+- See: `technical-analysis/` for patterns
 
-### **Phase 1-2 (Issue #119) - Environment Configuration** ✅ COMPLETE
-- ✅ Environment detection works automatically
-- ✅ Table isolation prevents cross-environment data mixing
-- ✅ Auto-tagging includes all required metadata
-- ✅ Integration with existing AIUsageTracker
-
-### **Resilience (Issue #130) - System Stress Handling** ✅ COMPLETE
-- ✅ Maintains >3% throughput under CI load (10% local)
-- ✅ Circuit breaker pattern for DynamoDB failures
-- ✅ Exponential backoff retry logic
-- ✅ Batch processing for rate limiting
-
-### **BugBot Remediation** ✅ 100% COMPLETE
-- ✅ Architectural violations fixed (package boundaries)
-- ✅ Thread safety issues resolved (context managers)
-- ✅ DynamoDB key mismatches standardized
-- ✅ Test environment detection improved
-- ✅ Environment variable naming conflicts resolved
-- ✅ Dead code removed
-- ✅ Client detection logic fixed
-- ✅ Resilient client bypass issues resolved
-
-### **Phase 3 (Issue #120) - Context Managers** 🔴 PLANNED
-- ⏳ Context automatically propagates to all AI calls
-- ⏳ Thread-safe for concurrent operations
-- ⏳ Performance impact < 5ms per operation
-
-### **Phase 4 (Issue #121) - Cost Monitoring** 🔴 PLANNED
-- ⏳ Real-time cost tracking within 1% margin
-- ⏳ Alert delivery within 5 minutes of threshold breach
-- ⏳ Support for 1000+ concurrent budget tracking
-
-### **Phase 5 (Issue #122) - Production Deployment** 🔴 PLANNED
-- ⏳ Sub-100ms tracking latency for 99th percentile
-- ⏳ Support for 10,000+ requests per second
-- ⏳ 99.99% availability SLA
+### **Agentic Architecture Refactor** 📋 SPECIFIED
+**4-Phase Transformation Plan**
+1. **Week 1**: RAG-based intelligent labeling
+2. **Week 2**: Tool registry and standardization
+3. **Week 3**: Agent orchestration layer
+4. **Week 4**: Streaming and observability
+- See: `agentic-refactor/` directory
 
 ## 🛠 Implementation Guidelines
 
@@ -185,5 +162,5 @@ cd spec/[category]/[specification].md
 # Submit PR when ready
 ```
 
-**Last Updated**: 2025-06-27
-**Next Review**: Weekly during active development phases
+**Last Updated**: 2025-07-03
+**Next Review**: Weekly sprint planning
