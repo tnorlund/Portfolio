@@ -4,10 +4,9 @@
 
 __version__ = "0.2.0"
 
+# Additional exports that might not be in entities.__all__
 # Import all entities
 from receipt_dynamo.entities import *  # noqa: F401, F403
-
-# Additional exports that might not be in entities.__all__
 from receipt_dynamo.entities import (
     ContentPattern,
     ReceiptSection,
