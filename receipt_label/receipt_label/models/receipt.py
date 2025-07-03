@@ -48,13 +48,19 @@ class ReceiptWord:
             bounding_box=word.bounding_box,
             # Extract font information from extracted_data if available
             font_size=(
-                word.extracted_data.get("font_size") if word.extracted_data else None
+                word.extracted_data.get("font_size")
+                if word.extracted_data
+                else None
             ),
             font_weight=(
-                word.extracted_data.get("font_weight") if word.extracted_data else None
+                word.extracted_data.get("font_weight")
+                if word.extracted_data
+                else None
             ),
             font_style=(
-                word.extracted_data.get("font_style") if word.extracted_data else None
+                word.extracted_data.get("font_style")
+                if word.extracted_data
+                else None
             ),
             receipt_id=word.receipt_id,
             image_id=word.image_id,
@@ -70,7 +76,9 @@ class ReceiptWord:
             ValueError: If receipt_id or image_id are not set
         """
         if self.receipt_id is None:
-            raise ValueError("receipt_id must be set before calling to_dynamo()")
+            raise ValueError(
+                "receipt_id must be set before calling to_dynamo()"
+            )
 
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
@@ -154,7 +162,9 @@ class ReceiptLine:
             ValueError: If receipt_id or image_id are not set
         """
         if self.receipt_id is None:
-            raise ValueError("receipt_id must be set before calling to_dynamo()")
+            raise ValueError(
+                "receipt_id must be set before calling to_dynamo()"
+            )
 
         if self.image_id is None:
             raise ValueError("image_id must be set before calling to_dynamo()")
@@ -297,18 +307,23 @@ class Receipt:
 
     def get_section_words(self, section: ReceiptSection) -> List[ReceiptWord]:
         """Get all words in a specific section."""
-        return [word for word in self.words if word.line_id in section.line_ids]
+        return [
+            word for word in self.words if word.line_id in section.line_ids
+        ]
 
     def get_section_lines(self, section: ReceiptSection) -> List[ReceiptLine]:
         """Get all lines in a specific section."""
-        return [line for line in self.lines if line.line_id in section.line_ids]
+        return [
+            line for line in self.lines if line.line_id in section.line_ids
+        ]
 
     def get_field_words(self, field_name: str) -> List[ReceiptWord]:
         """Get all words associated with a specific field."""
         return [
             word
             for word in self.words
-            if word.extracted_data and word.extracted_data.get("field") == field_name
+            if word.extracted_data
+            and word.extracted_data.get("field") == field_name
         ]
 
     def to_dict(self) -> Dict:
@@ -359,8 +374,12 @@ class Receipt:
                 for section in (self.sections or [])
             ],
             "metadata": self.metadata,
-            "created_at": (self.created_at.isoformat() if self.created_at else None),
-            "updated_at": (self.updated_at.isoformat() if self.updated_at else None),
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
         }
 
     @classmethod
@@ -370,7 +389,9 @@ class Receipt:
             receipt_id=data["receipt_id"],
             image_id=data["image_id"],
             words=[ReceiptWord(**word_data) for word_data in data["words"]],
-            lines=[ReceiptLine(**line_data) for line_data in data.get("lines", [])],
+            lines=[
+                ReceiptLine(**line_data) for line_data in data.get("lines", [])
+            ],
             sections=[
                 ReceiptSection(**section_data)
                 for section_data in data.get("sections", [])
