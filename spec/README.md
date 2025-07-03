@@ -6,24 +6,23 @@ This directory contains active technical specifications and implementation plans
 
 | Specification | Status | Priority | GitHub Issue | Effort |
 |---------------|--------|----------|--------------|---------|
-| **AI Usage Tracking (Phase 3)** | 🟡 Next | High | #120 | 5-7 days |
-| **AI Usage Tracking (Phase 4)** | 🔴 Planned | Medium | #121 | 5-7 days |
-| **AI Usage Tracking (Phase 5)** | 🔴 Planned | Medium | #122 | 5-7 days |
-| **Agentic Refactor** | 📋 Specified | Medium | TBD | 12-16 weeks |
-| **Receipt Upload Reformatting** | 🔴 Planned | Low | #146 | 3-5 days |
+| **AI Usage Tracking (Phase 5)** | 🟡 Next | High | #122 | 5-7 days |
+| **Google Places API Tracking** | 🔴 Planned | Medium | #147 | 2-3 days |
+| **Receipt Upload Reformatting** | 🔴 Planned | Medium | #146 | 3-5 days |
+| **Agentic Refactor** | 📋 Specified | Low | TBD | 12-16 weeks |
 
 ## 🎯 Current Focus
 
-### **Next Sprint (Issue #120)**
-**AI Usage Tracking Phase 3 - Context Manager Patterns**
-- Implement context managers for automatic AI call tracking
-- Thread-safe operation for concurrent requests
-- Performance target: < 5ms overhead per operation
+### **Next Sprint (Issue #122)**
+**AI Usage Tracking Phase 5 - Production Deployment**
+- Deploy complete AI usage tracking system to production
+- Implement advanced analytics and reporting
+- Achieve sub-100ms latency and 99.99% availability
 
 ### **Upcoming Work**
-1. **Issue #121** - Cost monitoring and alerting (Phase 4)
-2. **Issue #122** - Production deployment (Phase 5)
-3. **Issue #146** - Receipt upload package reformatting
+1. **Issue #147** - Google Places API context manager integration
+2. **Issue #146** - Receipt upload package reformatting to match standards
+3. **Agentic Refactor** - Long-term architectural transformation
 
 ### **Long-term Vision**
 **Agentic Architecture Transformation** - Complete system refactor to agent-based architecture with:
@@ -55,26 +54,28 @@ spec/
 
 ## 📋 Key Specifications
 
-### **AI Usage Tracking - Phase 3 (Issue #120)** 🟡 NEXT
-**Context Manager Implementation**
-- Automatic context propagation to all AI calls
-- Thread-safe concurrent operation support
-- Performance target: < 5ms overhead
-- See: `ai-usage-tracking/implementation.md`
-
-### **AI Usage Tracking - Phase 4 (Issue #121)** 🔴 PLANNED
-**Cost Monitoring & Alerting**
-- Real-time cost tracking (1% accuracy margin)
-- Alert delivery within 5 minutes of threshold
-- Support for 1000+ concurrent budgets
-- See: `ai-usage-tracking/implementation.md`
-
-### **AI Usage Tracking - Phase 5 (Issue #122)** 🔴 PLANNED
-**Production Deployment**
+### **AI Usage Tracking - Phase 5 (Issue #122)** 🟡 NEXT
+**Production Deployment & Advanced Analytics**
+- Deploy complete tracking system to production
+- Advanced analytics dashboard with insights
 - Sub-100ms tracking latency (99th percentile)
 - 10,000+ requests per second support
 - 99.99% availability SLA
 - See: `ai-usage-tracking/implementation.md`
+
+### **Google Places API Integration (Issue #147)** 🔴 PLANNED
+**Context Manager for Places API**
+- Extend AI usage tracking to Google Places API calls
+- Implement cost tracking for Places API usage
+- Maintain consistency with existing AI tracking patterns
+- See: `ai-usage-tracking/implementation.md`
+
+### **Receipt Upload Reformatting (Issue #146)** 🔴 PLANNED
+**Code Quality Standards**
+- Reformat receipt_upload package to match PR #135 standards
+- Implement consistent code style and structure
+- Add comprehensive type hints and documentation
+- See: `technical-analysis/` for patterns
 
 ### **Agentic Architecture Refactor** 📋 SPECIFIED
 **4-Phase Transformation Plan**
