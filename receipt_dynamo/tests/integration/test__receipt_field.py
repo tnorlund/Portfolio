@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
@@ -29,7 +30,7 @@ def sample_receipt_field():
             }
         ],
         reasoning="This field appears to be the business name",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
 
 
@@ -200,7 +201,7 @@ def test_addReceiptFields_success(
                 }
             ],
             reasoning="This field appears to be the business name",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         ),
         ReceiptField(
             field_type="ADDRESS",
@@ -214,7 +215,7 @@ def test_addReceiptFields_success(
                 }
             ],
             reasoning="This field appears to be the address",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         ),
     ]
 
@@ -388,7 +389,7 @@ def test_updateReceiptField_success(
         receipt_id=sample_receipt_field.receipt_id,
         words=sample_receipt_field.words,
         reasoning="Updated reasoning",
-        timestamp_added=sample_receipt_field.timestamp_added,
+        timestamp_added=datetime.fromisoformat(sample_receipt_field.timestamp_added),
     )
 
     # Act
@@ -540,7 +541,7 @@ def test_updateReceiptFields_success(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -552,7 +553,7 @@ def test_updateReceiptFields_success(
             receipt_id=sample_receipt_field.receipt_id,
             words=sample_receipt_field.words,
             reasoning="Updated reasoning 1",
-            timestamp_added=sample_receipt_field.timestamp_added,
+            timestamp_added=datetime.fromisoformat(sample_receipt_field.timestamp_added),
         ),
         ReceiptField(
             field_type=second_field.field_type,
@@ -560,7 +561,7 @@ def test_updateReceiptFields_success(
             receipt_id=second_field.receipt_id,
             words=second_field.words,
             reasoning="Updated reasoning 2",
-            timestamp_added=second_field.timestamp_added,
+            timestamp_added=datetime.fromisoformat(second_field.timestamp_added),
         ),
     ]
 
@@ -733,7 +734,7 @@ def test_updateReceiptFields_chunking(
                 }
             ],
             reasoning=f"Reasoning {i}",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         )
         for i in range(1, 31)
     ]
@@ -914,7 +915,7 @@ def test_deleteReceiptFields_success(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -944,7 +945,7 @@ def test_deleteReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         Exception,
-        match="Error deleting receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        match=r"Error deleting receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
     ):
         client.delete_receipt_fields([sample_receipt_field])
 
@@ -1077,7 +1078,7 @@ def test_deleteReceiptFields_chunking(
                 }
             ],
             reasoning=f"Reasoning {i}",
-            timestamp_added="2024-03-20T12:00:00Z",
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         )
         for i in range(1, 31)
     ]
@@ -1280,7 +1281,7 @@ def test_listReceiptFields_success(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1316,7 +1317,7 @@ def test_listReceiptFields_with_limit(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1350,7 +1351,7 @@ def test_listReceiptFields_with_last_evaluated_key(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1572,7 +1573,7 @@ def test_getReceiptFieldsByImage_success(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1610,7 +1611,7 @@ def test_getReceiptFieldsByImage_with_limit(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1646,7 +1647,7 @@ def test_getReceiptFieldsByImage_with_last_evaluated_key(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1904,7 +1905,7 @@ def test_getReceiptFieldsByReceipt_success(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1943,7 +1944,7 @@ def test_getReceiptFieldsByReceipt_with_limit(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
@@ -1981,7 +1982,7 @@ def test_getReceiptFieldsByReceipt_with_last_evaluated_key(
             }
         ],
         reasoning="This field appears to be the address",
-        timestamp_added="2024-03-20T12:00:00Z",
+        timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
     )
     client.add_receipt_field(second_field)
 
