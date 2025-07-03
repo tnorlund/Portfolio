@@ -390,7 +390,9 @@ def test_updateReceiptLabelAnalysis_success(
                 "reasoning": "Updated reasoning",
             }
         ],
-        timestamp_added=datetime.fromisoformat(sample_receipt_label_analysis.timestamp_added),
+        timestamp_added=datetime.fromisoformat(
+            sample_receipt_label_analysis.timestamp_added
+        ),
         version="1.0",
         overall_reasoning="Updated reasoning for the label analysis",
     )
@@ -572,7 +574,9 @@ def test_updateReceiptLabelAnalyses_success(
                     "reasoning": "Updated reasoning",
                 }
             ],
-            timestamp_added=datetime.fromisoformat(analyses[0].timestamp_added),
+            timestamp_added=datetime.fromisoformat(
+                analyses[0].timestamp_added
+            ),
             version="1.0",
             overall_reasoning="Updated reasoning for the label analysis",
         ),
@@ -588,7 +592,9 @@ def test_updateReceiptLabelAnalyses_success(
                     "reasoning": "Updated address reasoning",
                 }
             ],
-            timestamp_added=datetime.fromisoformat(analyses[1].timestamp_added),
+            timestamp_added=datetime.fromisoformat(
+                analyses[1].timestamp_added
+            ),
             version="1.0",
             overall_reasoning="Updated reasoning for the address analysis",
         ),
