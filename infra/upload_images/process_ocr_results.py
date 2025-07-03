@@ -8,10 +8,6 @@ from pathlib import Path
 
 import boto3
 from PIL import Image as PIL_Image
-
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
-from receipt_dynamo.entities import Letter, Line, Word
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -25,6 +21,10 @@ from receipt_upload.utils import (
     get_ocr_routing_decision,
     image_ocr_to_receipt_ocr,
 )
+
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.entities import Letter, Line, Word
 
 TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
 if TABLE_NAME is None:

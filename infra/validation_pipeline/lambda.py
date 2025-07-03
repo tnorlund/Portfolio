@@ -2,8 +2,6 @@ import os
 import time
 from logging import INFO, Formatter, StreamHandler, getLogger
 
-from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.entities import BatchSummary, ReceiptWordLabel
 from receipt_label.completion import (
     add_batch_summary,
     chunk_into_completion_batches,
@@ -33,6 +31,9 @@ from receipt_label.completion import (
     write_completion_batch_results,
 )
 from receipt_label.utils import get_clients
+
+from receipt_dynamo.constants import BatchStatus, BatchType
+from receipt_dynamo.entities import BatchSummary, ReceiptWordLabel
 
 _, openai_client, _ = get_clients()
 

@@ -10,7 +10,6 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
-
 from receipt_label.utils import (
     ClientConfig,
     ClientManager,
