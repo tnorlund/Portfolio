@@ -47,19 +47,19 @@ UUID_V4_REGEX = re.compile(
 
 def compute_histogram(text: str) -> Dict[str, float]:
     """Compute a character frequency histogram for the given text.
-    
+
     Calculates the relative frequency of each character in a predefined set
     of known characters (ASCII printable characters). This is useful for
     text analysis and character distribution comparisons.
-    
+
     Args:
         text: The input text to analyze.
-        
+
     Returns:
         A dictionary mapping each known character to its relative frequency
         (0.0 to 1.0) in the input text. Characters not present in the text
         will have a frequency of 0.0.
-        
+
     Example:
         >>> compute_histogram("AAB")
         {'A': 0.67, 'B': 0.33, ' ': 0.0, '!': 0.0, ...}
