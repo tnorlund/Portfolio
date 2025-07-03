@@ -8,6 +8,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
 from openai.types.create_embedding_response import CreateEmbeddingResponse
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
@@ -86,7 +87,9 @@ def create_mock_anthropic_response(
         Mock object mimicking Anthropic response structure
     """
     response = Mock()
-    response.usage = Mock(input_tokens=input_tokens, output_tokens=output_tokens)
+    response.usage = Mock(
+        input_tokens=input_tokens, output_tokens=output_tokens
+    )
     response.model = model
     response.content = [Mock(text=content, type="text")]
     response.id = "msg_test123"
@@ -379,7 +382,9 @@ def create_mock_embedding_response(
     embeddings = []
     for i in range(embeddings_count):
         embedding = Mock()
-        embedding.embedding = [0.1 * j for j in range(1536)]  # Standard embedding size
+        embedding.embedding = [
+            0.1 * j for j in range(1536)
+        ]  # Standard embedding size
         embedding.index = i
         embeddings.append(embedding)
 

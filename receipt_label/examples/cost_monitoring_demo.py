@@ -51,7 +51,9 @@ async def main():
         alert_thresholds=[50, 80, 95, 100],
         metadata={"department": "engineering", "project": "demo"},
     )
-    print(f"   ✓ Created daily budget: ${user_budget.amount} for {user_budget.scope}")
+    print(
+        f"   ✓ Created daily budget: ${user_budget.amount} for {user_budget.scope}"
+    )
 
     # Create monthly budget for OpenAI service
     service_budget = budget_manager.create_budget(
@@ -121,8 +123,12 @@ async def main():
     # Create a wrapped OpenAI client
     from openai import OpenAI
 
-    openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "demo-key"))
-    tracked_client = AIUsageTracker.create_wrapped_openai_client(openai_client, tracker)
+    openai_client = OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY", "demo-key")
+    )
+    tracked_client = AIUsageTracker.create_wrapped_openai_client(
+        openai_client, tracker
+    )
 
     # Simulate some usage (in real scenario, these would be actual API calls)
     print("   - Simulating API calls...")
@@ -233,7 +239,9 @@ async def main():
     print(f"     - Service Breakdown:")
 
     for service, data in report["breakdown"].items():
-        print(f"       • {service}: ${data['cost']} ({data['percentage']:.1f}%)")
+        print(
+            f"       • {service}: ${data['cost']} ({data['percentage']:.1f}%)"
+        )
 
     # 7. Budget status check
     print("\n7. Checking budget status...")

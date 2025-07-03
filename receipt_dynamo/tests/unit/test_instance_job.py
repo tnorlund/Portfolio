@@ -2,8 +2,10 @@ from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.instance_job import (InstanceJob,
-                                                  item_to_instance_job)
+from receipt_dynamo.entities.instance_job import (
+    InstanceJob,
+    item_to_instance_job,
+)
 
 
 @pytest.fixture
