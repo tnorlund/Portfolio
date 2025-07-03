@@ -3,10 +3,9 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, FileArchive
-
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer
+from pulumi import AssetArchive, FileArchive
 
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
 ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
@@ -55,7 +54,9 @@ lambda_role_policy_attachment = aws.iam.RolePolicyAttachment(
 aws.iam.RolePolicyAttachment(
     f"api_{ROUTE_NAME}_lambda_basic_execution",
     role=lambda_role.name,
-    policy_arn=("arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"),
+    policy_arn=(
+        "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+    ),
 )
 
 images_lambda = aws.lambda_.Function(

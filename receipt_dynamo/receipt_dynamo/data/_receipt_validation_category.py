@@ -81,7 +81,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         Returns ReceiptValidationCategories for a specific receipt.
     """
 
-    def add_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def add_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Adds a ReceiptValidationCategory to DynamoDB.
 
         Args:
@@ -92,7 +94,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the category cannot be added to DynamoDB.
         """
         if category is None:
-            raise ValueError("category parameter is required and cannot be None.")
+            raise ValueError(
+                "category parameter is required and cannot be None."
+            )
         if not isinstance(category, ReceiptValidationCategory):
             raise ValueError(
                 "category must be an instance of the ReceiptValidationCategory class."
@@ -114,7 +118,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"Could not add receipt validation category to DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
@@ -141,12 +147,16 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the categories cannot be added to DynamoDB.
         """
         if categories is None:
-            raise ValueError("categories parameter is required and cannot be None.")
+            raise ValueError(
+                "categories parameter is required and cannot be None."
+            )
         if not isinstance(categories, list):
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -164,12 +174,16 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
@@ -183,7 +197,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"Could not add ReceiptValidationCategories to the database: {e}"
                 )
 
-    def update_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def update_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Updates an existing ReceiptValidationCategory in the database.
 
         Args:
@@ -194,7 +210,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the category cannot be updated in DynamoDB.
         """
         if category is None:
-            raise ValueError("category parameter is required and cannot be None.")
+            raise ValueError(
+                "category parameter is required and cannot be None."
+            )
         if not isinstance(category, ReceiptValidationCategory):
             raise ValueError(
                 "category must be an instance of the ReceiptValidationCategory class."
@@ -212,7 +230,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"ReceiptValidationCategory with field {category.field_name} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
@@ -239,12 +259,16 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the categories cannot be updated in DynamoDB.
         """
         if categories is None:
-            raise ValueError("categories parameter is required and cannot be None.")
+            raise ValueError(
+                "categories parameter is required and cannot be None."
+            )
         if not isinstance(categories, list):
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -275,7 +299,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                         f"Provisioned throughput exceeded: {e}"
                     )
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(
+                        f"Internal server error: {e}"
+                    ) from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -291,7 +317,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                         f"Could not update ReceiptValidationCategories in the database: {e}"
                     ) from e
 
-    def delete_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def delete_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Deletes a single ReceiptValidationCategory.
 
         Args:
@@ -302,7 +330,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the category cannot be deleted from DynamoDB.
         """
         if category is None:
-            raise ValueError("category parameter is required and cannot be None.")
+            raise ValueError(
+                "category parameter is required and cannot be None."
+            )
         if not isinstance(category, ReceiptValidationCategory):
             raise ValueError(
                 "category must be an instance of the ReceiptValidationCategory class."
@@ -320,7 +350,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"ReceiptValidationCategory with field {category.field_name} does not exist"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
@@ -347,12 +379,16 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the categories cannot be deleted from DynamoDB.
         """
         if categories is None:
-            raise ValueError("categories parameter is required and cannot be None.")
+            raise ValueError(
+                "categories parameter is required and cannot be None."
+            )
         if not isinstance(categories, list):
             raise ValueError(
                 "categories must be a list of ReceiptValidationCategory instances."
             )
-        if not all(isinstance(cat, ReceiptValidationCategory) for cat in categories):
+        if not all(
+            isinstance(cat, ReceiptValidationCategory) for cat in categories
+        ):
             raise ValueError(
                 "All categories must be instances of the ReceiptValidationCategory class."
             )
@@ -360,7 +396,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             for i in range(0, len(categories), 25):
                 chunk = categories[i : i + 25]
                 request_items = [
-                    WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=cat.key))
+                    WriteRequestTypeDef(
+                        DeleteRequest=DeleteRequestTypeDef(Key=cat.key)
+                    )
                     for cat in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -368,12 +406,16 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}")
             elif error_code == "ValidationException":
@@ -405,14 +447,20 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             Exception: If the ReceiptValidationCategory cannot be retrieved from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if field_name is None:
-            raise ValueError("field_name parameter is required and cannot be None.")
+            raise ValueError(
+                "field_name parameter is required and cannot be None."
+            )
         if not isinstance(field_name, str):
             raise ValueError("field_name must be a string.")
         if not field_name:
@@ -437,7 +485,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "ValidationException":
                 raise OperationError(f"Validation error: {e}")
             elif error_code == "InternalServerError":
@@ -445,7 +495,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}")
             else:
-                raise OperationError(f"Error getting receipt validation category: {e}")
+                raise OperationError(
+                    f"Error getting receipt validation category: {e}"
+                )
 
     def list_receipt_validation_categories(
         self,
@@ -468,8 +520,12 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         validation_categories = []
         try:
@@ -500,7 +556,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the validation categories.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_categories.extend(
                         [
@@ -520,7 +578,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"Could not list receipt validation categories from DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
@@ -554,15 +614,21 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                                                                the last evaluated key (or None if no more results).
         """
         if status is None:
-            raise ValueError("status parameter is required and cannot be None.")
+            raise ValueError(
+                "status parameter is required and cannot be None."
+            )
         if not isinstance(status, str):
             raise ValueError("status must be a string.")
         if not status:
             raise ValueError("status must not be empty.")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         validation_categories = []
         try:
@@ -593,7 +659,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the validation categories.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_categories.extend(
                         [
@@ -613,7 +681,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"Could not list receipt validation categories from DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
@@ -649,16 +719,24 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                                                                the last evaluated key (or None if no more results).
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         assert_valid_uuid(image_id)
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         validation_categories = []
         try:
@@ -690,7 +768,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
             if limit is None:
                 # Paginate through all the validation categories.
                 while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                     response = self._client.query(**query_params)
                     validation_categories.extend(
                         [
@@ -710,7 +790,9 @@ class _ReceiptValidationCategory(DynamoClientProtocol):
                     f"Could not list receipt validation categories from DynamoDB: {e}"
                 )
             elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(f"Provisioned throughput exceeded: {e}")
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                )
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"

@@ -10,6 +10,7 @@ os.environ["DYNAMODB_TABLE_NAME"] = "test-table"
 
 # third‑party
 import pytest
+
 from receipt_dynamo.entities import ReceiptMetadata
 
 # Mock get_clients before importing modules that use it
