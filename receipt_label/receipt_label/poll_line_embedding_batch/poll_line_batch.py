@@ -28,7 +28,6 @@ from receipt_dynamo.constants import (
     ValidationStatus,
 )
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
-
 from receipt_label.submit_line_embedding_batch.submit_line_batch import (
     _format_line_context_embedding_input,
 )

@@ -100,7 +100,9 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
       5) Verifies final S3 (RAW/CDN) + Dynamo states match the originals.
       6) Restores original data automatically after test completion.
     """
-    temp_dir, grouped, cdn_keys, raw_keys, dynamo_backup_path = setup_and_cleanup
+    temp_dir, grouped, cdn_keys, raw_keys, dynamo_backup_path = (
+        setup_and_cleanup
+    )
 
     all_png_files = sorted(
         f for f in os.listdir(temp_dir) if f.lower().endswith(".png")
@@ -108,8 +110,12 @@ def test_e2e(monkeypatch, setup_and_cleanup, pulumi_outputs):
     if not all_png_files:
         pytest.skip("No .png files found in temp directory; nothing to test.")
 
-    derived_uuids = [os.path.splitext(filename)[0] for filename in all_png_files]
-    image_indexes = [grouped[uuid]["dynamo"]["image"].id for uuid in derived_uuids]
+    derived_uuids = [
+        os.path.splitext(filename)[0] for filename in all_png_files
+    ]
+    image_indexes = [
+        grouped[uuid]["dynamo"]["image"].id for uuid in derived_uuids
+    ]
     uuid_queue = deque(derived_uuids)
 
     def mock_uuid4():
