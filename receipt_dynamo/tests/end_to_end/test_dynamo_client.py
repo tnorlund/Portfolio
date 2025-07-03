@@ -31,7 +31,7 @@ def test_dynamo_client_list_images(dynamodb_table: str):
     Tests that DynamoClient can list images from the table.
     """
     client = DynamoClient(dynamodb_table)
-    images, _ = client.listImages(10)
+    images, _ = client.list_images(10)
     assert len(images) == 10
 
 
@@ -41,7 +41,7 @@ def test_dynamo_client_list_lines(dynamodb_table: str):
     Tests that DynamoClient can list lines from the table.
     """
     client = DynamoClient(dynamodb_table)
-    lines, _ = client.listLines(10)
+    lines, _ = client.list_lines(10)
     assert len(lines) == 10
 
 
@@ -51,7 +51,7 @@ def test_dynamo_client_list_words(dynamodb_table: str):
     Tests that DynamoClient can list words from the table.
     """
     client = DynamoClient(dynamodb_table)
-    words, _ = client.listWords(10)
+    words, _ = client.list_words(10)
     assert len(words) == 10
 
 
@@ -61,7 +61,7 @@ def test_dynamo_client_list_letters(dynamodb_table: str):
     Tests that DynamoClient can list letters from the table.
     """
     client = DynamoClient(dynamodb_table)
-    letters, _ = client.listLetters(10)
+    letters, _ = client.list_letters(10)
     assert len(letters) == 10
 
 
@@ -71,7 +71,7 @@ def test_dynamo_client_list_receipts(dynamodb_table: str):
     Tests that DynamoClient can list receipts from the table.
     """
     client = DynamoClient(dynamodb_table)
-    receipts, _ = client.listReceipts(10)
+    receipts, _ = client.list_receipts(10)
     assert len(receipts) == 10
 
 
@@ -81,7 +81,7 @@ def test_dynamo_client_list_receipt_words(dynamodb_table: str):
     Tests that DynamoClient can list receipt words from the table.
     """
     client = DynamoClient(dynamodb_table)
-    receipt_words, _ = client.listReceiptWords(10)
+    receipt_words, _ = client.list_receipt_words(10)
     assert len(receipt_words) == 10
 
 
@@ -91,5 +91,5 @@ def test_dynamo_client_list_receipt_letters(dynamodb_table: str):
     Tests that DynamoClient can list receipt letters from the table.
     """
     client = DynamoClient(dynamodb_table)
-    receipt_letters, _ = client.listReceiptLetters(10)
+    receipt_letters, _ = client.list_receipt_letters(10)
     assert len(receipt_letters) == 10
