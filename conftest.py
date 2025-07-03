@@ -65,7 +65,9 @@ def pytest_collection_modifyitems(config: Config, items: list[Item]) -> None:
         deselected_items = []
 
         for item in items:
-            if item.get_closest_marker("unit") and not item.get_closest_marker("slow"):
+            if item.get_closest_marker("unit") and not item.get_closest_marker(
+                "slow"
+            ):
                 selected_items.append(item)
             else:
                 deselected_items.append(item)
@@ -85,7 +87,9 @@ def pytest_runtest_setup(item: Item) -> None:
     # Skip performance tests if SKIP_PERFORMANCE_TESTS is set
     if item.get_closest_marker("performance"):
         if os.environ.get("SKIP_PERFORMANCE_TESTS", "").lower() == "true":
-            pytest.skip("Skipping performance tests (SKIP_PERFORMANCE_TESTS=true)")
+            pytest.skip(
+                "Skipping performance tests (SKIP_PERFORMANCE_TESTS=true)"
+            )
 
 
 # Configure pytest-xdist for optimal performance
@@ -108,5 +112,8 @@ def pytest_addoption(parser) -> None:
         help="Run tests that require AWS credentials",
     )
     parser.addoption(
-        "--quick", action="store_true", default=False, help="Run only quick unit tests"
+        "--quick",
+        action="store_true",
+        default=False,
+        help="Run only quick unit tests",
     )

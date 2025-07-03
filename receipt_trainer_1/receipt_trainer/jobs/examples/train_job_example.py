@@ -15,12 +15,17 @@ from typing import Any, Dict, Optional
 import boto3
 
 # Add the parent directory to the path so we can import the jobs package
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+)
 
 from receipt_trainer.jobs.aws import create_queue_with_dlq, get_queue_url
 from receipt_trainer.jobs.job import Job, JobPriority, JobStatus
-from receipt_trainer.jobs.queue import (JobQueue, JobQueueConfig,
-                                        JobRetryStrategy)
+from receipt_trainer.jobs.queue import (
+    JobQueue,
+    JobQueueConfig,
+    JobRetryStrategy,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -62,7 +67,8 @@ def create_training_job(
         "model_name": model_name,
         "dataset_id": dataset_id,
         "hyperparameters": hyperparameters,
-        "expected_training_time": training_time_minutes * 60,  # Convert to seconds
+        "expected_training_time": training_time_minutes
+        * 60,  # Convert to seconds
         "output_bucket": "my-ml-models",
         "output_prefix": f"models/{model_name}/{job_id}",
     }

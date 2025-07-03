@@ -18,7 +18,9 @@ from typing import Any, Dict, List, Optional
 import boto3
 
 from receipt_trainer.utils.auto_scaling import (
-    AutoScalingManager, generate_training_worker_user_data)
+    AutoScalingManager,
+    generate_training_worker_user_data,
+)
 from receipt_trainer.utils.pulumi import create_auto_scaling_manager
 
 # Configure logging
@@ -37,7 +39,9 @@ def parse_args():
 
     # Configuration source options
     config_group = parser.add_mutually_exclusive_group(required=True)
-    config_group.add_argument("--stack", help="Pulumi stack name (dev, prod, etc.)")
+    config_group.add_argument(
+        "--stack", help="Pulumi stack name (dev, prod, etc.)"
+    )
     config_group.add_argument(
         "--manual-config",
         action="store_true",
@@ -47,16 +51,24 @@ def parse_args():
     # Manual AWS resource configurations (only needed with --manual-config)
     manual_group = parser.add_argument_group("Manual configuration options")
     manual_group.add_argument("--queue", help="SQS queue URL")
-    manual_group.add_argument("--dynamo-table", help="DynamoDB table for receipt data")
+    manual_group.add_argument(
+        "--dynamo-table", help="DynamoDB table for receipt data"
+    )
     manual_group.add_argument("--ami", help="AMI ID for training instances")
-    manual_group.add_argument("--instance-profile", help="IAM instance profile name")
+    manual_group.add_argument(
+        "--instance-profile", help="IAM instance profile name"
+    )
     manual_group.add_argument("--subnet", help="Subnet ID for instances")
     manual_group.add_argument("--security-group", help="Security group ID")
 
     # Optional resource configurations
-    parser.add_argument("--registry-table", help="DynamoDB table for instance registry")
+    parser.add_argument(
+        "--registry-table", help="DynamoDB table for instance registry"
+    )
     parser.add_argument("--key-name", help="SSH key name")
-    parser.add_argument("--efs-id", help="EFS file system ID for shared storage")
+    parser.add_argument(
+        "--efs-id", help="EFS file system ID for shared storage"
+    )
     parser.add_argument("--s3-bucket", help="S3 bucket for artifacts")
 
     # Scaling parameters
@@ -74,14 +86,22 @@ def parse_args():
     )
 
     # Instance type options
-    parser.add_argument("--cpu-instances", nargs="+", help="CPU instance types to use")
-    parser.add_argument("--gpu-instances", nargs="+", help="GPU instance types to use")
+    parser.add_argument(
+        "--cpu-instances", nargs="+", help="CPU instance types to use"
+    )
+    parser.add_argument(
+        "--gpu-instances", nargs="+", help="GPU instance types to use"
+    )
 
     # Actions
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--start", action="store_true", help="Start auto-scaling")
+    group.add_argument(
+        "--start", action="store_true", help="Start auto-scaling"
+    )
     group.add_argument("--stop", action="store_true", help="Stop auto-scaling")
-    group.add_argument("--status", action="store_true", help="Show current status")
+    group.add_argument(
+        "--status", action="store_true", help="Show current status"
+    )
     group.add_argument(
         "--scale-up", type=int, metavar="N", help="Manually add N instances"
     )
@@ -294,7 +314,9 @@ def main():
                 "subnet",
                 "security_group",
             ]
-            missing_args = [arg for arg in required_args if not getattr(args, arg)]
+            missing_args = [
+                arg for arg in required_args if not getattr(args, arg)
+            ]
 
             if missing_args:
                 logger.error(

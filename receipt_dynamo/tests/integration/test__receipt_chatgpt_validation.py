@@ -7,11 +7,13 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptChatGPTValidation
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture

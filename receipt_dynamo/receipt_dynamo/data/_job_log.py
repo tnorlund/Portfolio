@@ -5,9 +5,11 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (PutRequestTypeDef,
-                                           QueryInputTypeDef,
-                                           WriteRequestTypeDef)
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef

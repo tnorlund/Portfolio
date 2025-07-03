@@ -218,38 +218,38 @@ persist_alias_updates(updated_records)
 flowchart TD
     Start([Start]) --> ListReceipts[List receipts needing validation]
     ListReceipts --> ProcessReceipt[Process Receipt]
-    
+
     subgraph ProcessReceipt [Process Individual Receipt]
         GetDetails[Get receipt details] --> ExtractFields[Extract merchant fields]
         ExtractFields --> QueryGoogle[Query Google Places]
         QueryGoogle --> HasMatch{Google match found?}
-        
+
         HasMatch -->|Yes| ValidateMatch[Validate match]
         ValidateMatch --> IsValid{Valid match?}
         IsValid -->|Yes| BuildSuccess[Build success metadata]
         IsValid -->|No| InferGPT[Infer with GPT]
-        
+
         HasMatch -->|No| InferGPT
         InferGPT --> RetryGoogle[Retry Google with GPT data]
         RetryGoogle --> HasRetryMatch{Retry match found?}
         HasRetryMatch -->|Yes| BuildSuccess
         HasRetryMatch -->|No| BuildNoMatch[Build no-match metadata]
-        
+
         BuildSuccess --> WriteDB[(Write to DynamoDB)]
         BuildNoMatch --> WriteDB
     end
-    
+
     ProcessReceipt --> AllDone{All receipts processed?}
     AllDone -->|No| ProcessReceipt
     AllDone -->|Yes| Consolidate[Consolidate merchants]
-    
+
     subgraph Consolidate [Merchant Consolidation]
         ClusterByPlaceID[Cluster by Place ID] --> ClusterOrphans[Cluster orphan records]
         ClusterOrphans --> CanonicalizeGPT[GPT canonicalization]
         CanonicalizeGPT --> MergeAliases[Merge aliases]
         MergeAliases --> PersistUpdates[Persist updates]
     end
-    
+
     Consolidate --> End([End])
 ```
 
@@ -262,7 +262,7 @@ flowchart TD
 #### `list_receipt_metadatas() -> List[ReceiptMetadata]`
 Lists all receipt metadata entities from DynamoDB.
 
-**Returns:** List of all ReceiptMetadata records  
+**Returns:** List of all ReceiptMetadata records
 **Raises:** `ClientError` if DynamoDB operation fails
 
 #### `get_receipt_details(image_id: str, receipt_id: int) -> Tuple[...]`
@@ -272,7 +272,7 @@ Retrieves complete receipt data including lines, words, letters, tags, and label
 - `image_id`: The image ID of the receipt
 - `receipt_id`: The receipt ID
 
-**Returns:** Tuple containing all receipt components  
+**Returns:** Tuple containing all receipt components
 **Raises:** `ValueError` for invalid IDs, `ClientError` for DynamoDB failures
 
 ### Google Places Functions

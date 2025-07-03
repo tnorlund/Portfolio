@@ -1,10 +1,13 @@
 from math import atan2, pi
 from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_valid_bounding_box,
-                                          assert_valid_point,
-                                          assert_valid_uuid)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_bounding_box,
+    assert_valid_point,
+    assert_valid_uuid,
+)
 
 
 class ReceiptLetter:

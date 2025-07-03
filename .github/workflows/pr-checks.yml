@@ -26,7 +26,7 @@ jobs:
           pip install isort black
 
           # Check if code is formatted
-          if isort --check-only . && black --check .; then
+          if isort --check-only --profile=black --line-length=79 . && black --check --line-length=79 .; then
             echo "formatted=true" >> $GITHUB_OUTPUT
           else
             echo "formatted=false" >> $GITHUB_OUTPUT

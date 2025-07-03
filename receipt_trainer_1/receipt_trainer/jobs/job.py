@@ -18,7 +18,9 @@ class JobStatus(enum.Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
-    INTERRUPTED = "interrupted"  # For jobs interrupted by spot instance termination
+    INTERRUPTED = (
+        "interrupted"  # For jobs interrupted by spot instance termination
+    )
 
 
 class JobPriority(enum.Enum):

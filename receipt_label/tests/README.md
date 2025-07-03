@@ -99,7 +99,7 @@ Shared utilities for creating test data and assertions:
 
 - `create_mock_usage_metric()`: Factory for AIUsageMetric test objects
 - `create_mock_openai_response()`: Mock OpenAI API responses
-- `create_mock_anthropic_response()`: Mock Anthropic API responses  
+- `create_mock_anthropic_response()`: Mock Anthropic API responses
 - `create_mock_google_places_response()`: Mock Google Places responses
 - `assert_usage_metric_equal()`: Compare metrics in tests
 - `create_test_tracking_context()`: Create test tracking contexts
