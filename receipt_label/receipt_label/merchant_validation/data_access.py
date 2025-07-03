@@ -12,7 +12,6 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptWordTag,
 )
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
@@ -114,14 +113,13 @@ def get_receipt_details(
     List[ReceiptLine],
     List[ReceiptWord],
     List[ReceiptLetter],
-    List[ReceiptWordTag],
     List[ReceiptWordLabel],
 ]:
     """
     Get a receipt with all its associated details from DynamoDB.
 
     Retrieves the complete set of receipt data including lines, words, letters,
-    tags, and labels needed for merchant validation processing.
+    and labels needed for merchant validation processing.
 
     Args:
         image_id: The image ID of the receipt
@@ -133,7 +131,6 @@ def get_receipt_details(
             - List[ReceiptLine]: Receipt lines
             - List[ReceiptWord]: Receipt words
             - List[ReceiptLetter]: Receipt letters
-            - List[ReceiptWordTag]: Receipt word tags
             - List[ReceiptWordLabel]: Receipt word labels
 
     Raises:
@@ -141,7 +138,7 @@ def get_receipt_details(
         ValueError: If image_id or receipt_id are invalid
 
     Example:
-        >>> receipt, lines, words, letters, tags, labels = get_receipt_details(
+        >>> receipt, lines, words, letters, labels = get_receipt_details(
         ...     "IMG123", 1
         ... )
         >>> print(f"Receipt has {len(words)} words and {len(lines)} lines")
@@ -159,9 +156,6 @@ def get_receipt_details(
         receipt_lines = client_manager.dynamo.getReceiptLines(image_id, receipt_id)
         receipt_words = client_manager.dynamo.getReceiptWords(image_id, receipt_id)
         receipt_letters = client_manager.dynamo.getReceiptLetters(image_id, receipt_id)
-        receipt_word_tags = client_manager.dynamo.getReceiptWordTags(
-            image_id, receipt_id
-        )
         receipt_word_labels = client_manager.dynamo.getReceiptWordLabels(
             image_id, receipt_id
         )
@@ -174,7 +168,6 @@ def get_receipt_details(
         receipt_lines,
         receipt_words,
         receipt_letters,
-        receipt_word_tags,
         receipt_word_labels,
     )
 

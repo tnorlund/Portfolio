@@ -6,7 +6,6 @@ from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo.entities.receipt_word_tag import ReceiptWordTag
 
 
 @dataclass
@@ -17,7 +16,6 @@ class ReceiptDetails:
     lines: List[ReceiptLine]
     words: List[ReceiptWord]
     letters: List[ReceiptLetter]
-    tags: List[ReceiptWordTag]
     labels: List[ReceiptWordLabel]
 
     def __iter__(self) -> Generator[List | Receipt, None, None]:
@@ -25,5 +23,4 @@ class ReceiptDetails:
         yield self.lines
         yield self.words
         yield self.letters
-        yield self.tags
         yield self.labels
