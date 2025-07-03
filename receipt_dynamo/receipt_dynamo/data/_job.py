@@ -41,7 +41,9 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -72,7 +74,9 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Job with ID {job.job_id} already exists") from e
+                raise ValueError(
+                    f"Job with ID {job.job_id} already exists"
+                ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBResourceNotFoundError(
                     f"Could not add job to DynamoDB: {e}"
@@ -84,7 +88,9 @@ class _Job(DynamoClientProtocol):
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise DynamoDBError(f"Could not add job to DynamoDB: {e}") from e
+                raise DynamoDBError(
+                    f"Could not add job to DynamoDB: {e}"
+                ) from e
 
     def add_jobs(self, jobs: list[Job]):
         """Adds a list of jobs to the database
@@ -117,7 +123,9 @@ class _Job(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -248,7 +256,9 @@ class _Job(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(f"Job with ID {job.job_id} does not exist") from e
+                raise ValueError(
+                    f"Job with ID {job.job_id} does not exist"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -350,7 +360,9 @@ class _Job(DynamoClientProtocol):
             if "Item" in response:
                 return item_to_job(response["Item"])
             else:
-                raise EntityNotFoundError(f"Job with ID {job_id} does not exist.")
+                raise EntityNotFoundError(
+                    f"Job with ID {job_id} does not exist."
+                )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
@@ -416,7 +428,9 @@ class _Job(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise OperationError(f"Error getting job with status: {e}") from e
+                raise OperationError(
+                    f"Error getting job with status: {e}"
+                ) from e
 
     def list_jobs(
         self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
@@ -478,7 +492,9 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -547,7 +563,9 @@ class _Job(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
-            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]):
+            if not all(
+                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+            ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
                 )
@@ -588,7 +606,9 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -649,7 +669,9 @@ class _Job(DynamoClientProtocol):
             if not isinstance(lastEvaluatedKey, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
-            if not all(k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]):
+            if not all(
+                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+            ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
                 )
@@ -693,7 +715,9 @@ class _Job(DynamoClientProtocol):
                 # Continue paginating if there's more data; otherwise, we're
                 # done.
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
