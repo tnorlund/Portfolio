@@ -161,7 +161,7 @@ from receipt_label.merchant_validation import (
 )
 
 # 1. Get receipt data
-receipt, lines, words, letters, tags, labels = get_receipt_details(image_id, receipt_id)
+receipt, lines, words, letters, labels = get_receipt_details(image_id, receipt_id)
 
 # 2. Extract merchant fields
 extracted_fields = extract_candidate_merchant_fields(words)

@@ -156,15 +156,15 @@ def get_receipt_descriptions(
             - lines
             - words
             - letters
-            - tags
             - labels
             - metadata
+            - sections
     """
     if client_manager is None:
         client_manager = get_client_manager()
     descriptions: dict[str, dict[int, dict]] = {}
     for receipt_id, image_id in _get_unique_receipt_and_image_ids(results):
-        receipt, lines, words, letters, tags, labels = (
+        receipt, lines, words, letters, labels = (
             client_manager.dynamo.get_receipt_details(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -183,7 +183,6 @@ def get_receipt_descriptions(
             "lines": lines,
             "words": words,
             "letters": letters,
-            "tags": tags,
             "labels": labels,
             "metadata": receipt_metadata,
             "sections": receipt_sections,

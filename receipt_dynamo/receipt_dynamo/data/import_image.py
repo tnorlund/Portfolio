@@ -14,9 +14,7 @@ from receipt_dynamo.entities import (
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
-    ReceiptWordTag,
     Word,
-    WordTag,
 )
 
 
@@ -53,7 +51,6 @@ def import_image(table_name: str, json_path: str) -> None:
         "images": [Image(**item) for item in data["images"]],
         "lines": [Line(**item) for item in data["lines"]],
         "words": [Word(**item) for item in data["words"]],
-        "word_tags": [WordTag(**item) for item in data["word_tags"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
         "receipt_lines": [
@@ -61,9 +58,6 @@ def import_image(table_name: str, json_path: str) -> None:
         ],
         "receipt_words": [
             ReceiptWord(**item) for item in data["receipt_words"]
-        ],
-        "receipt_word_tags": [
-            ReceiptWordTag(**item) for item in data["receipt_word_tags"]
         ],
         "receipt_letters": [
             ReceiptLetter(**item) for item in data["receipt_letters"]
@@ -85,9 +79,6 @@ def import_image(table_name: str, json_path: str) -> None:
     if entities["words"]:
         dynamo_client.add_words(entities["words"])  # type: ignore[arg-type]
 
-    if entities["word_tags"]:
-        dynamo_client.add_word_tags(entities["word_tags"])  # type: ignore[arg-type]
-
     if entities["letters"]:
         dynamo_client.add_letters(entities["letters"])  # type: ignore[arg-type]
 
@@ -99,9 +90,6 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_words"]:
         dynamo_client.add_receipt_words(entities["receipt_words"])  # type: ignore[arg-type]
-
-    if entities["receipt_word_tags"]:
-        dynamo_client.add_receipt_word_tags(entities["receipt_word_tags"])  # type: ignore[arg-type]
 
     if entities["receipt_letters"]:
         dynamo_client.add_receipt_letters(entities["receipt_letters"])  # type: ignore[arg-type]
