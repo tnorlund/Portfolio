@@ -5,9 +5,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
-    )
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
@@ -35,7 +33,9 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(f"LastEvaluatedKey must contain keys: {required_keys}")
+        raise ValueError(
+            f"LastEvaluatedKey must contain keys: {required_keys}"
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
@@ -54,7 +54,9 @@ class _ReceiptField(DynamoClientProtocol):
             ValueError: When a receipt field with the same ID already exists
         """
         if receipt_field is None:
-            raise ValueError("ReceiptField parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptField parameter is required and cannot be None."
+            )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
                 "receipt_field must be an instance of the ReceiptField class."
@@ -96,10 +98,16 @@ class _ReceiptField(DynamoClientProtocol):
             ValueError: When a receipt field with the same ID already exists
         """
         if receipt_fields is None:
-            raise ValueError("ReceiptFields parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptFields parameter is required and cannot be None."
+            )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -119,7 +127,9 @@ class _ReceiptField(DynamoClientProtocol):
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
                     # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(RequestItems=unprocessed)
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -148,7 +158,9 @@ class _ReceiptField(DynamoClientProtocol):
             ValueError: When the receipt field does not exist
         """
         if receipt_field is None:
-            raise ValueError("ReceiptField parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptField parameter is required and cannot be None."
+            )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
                 "receipt_field must be an instance of the ReceiptField class."
@@ -194,10 +206,16 @@ class _ReceiptField(DynamoClientProtocol):
             Exception: For underlying DynamoDB errors.
         """
         if receipt_fields is None:
-            raise ValueError("ReceiptFields parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptFields parameter is required and cannot be None."
+            )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -222,20 +240,26 @@ class _ReceiptField(DynamoClientProtocol):
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more receipt fields do not exist") from e
+                    raise ValueError(
+                        "One or more receipt fields do not exist"
+                    ) from e
                 elif error_code == "TransactionCanceledException":
                     if "ConditionalCheckFailed" in str(e):
                         raise ValueError(
                             "One or more receipt fields do not exist"
                         ) from e
                     else:
-                        raise DynamoDBError(f"Transaction canceled: {e}") from e
+                        raise DynamoDBError(
+                            f"Transaction canceled: {e}"
+                        ) from e
                 elif error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(
+                        f"Internal server error: {e}"
+                    ) from e
                 elif error_code == "ValidationException":
                     raise DynamoDBValidationError(
                         f"One or more parameters given were invalid: {e}"
@@ -243,7 +267,9 @@ class _ReceiptField(DynamoClientProtocol):
                 elif error_code == "AccessDeniedException":
                     raise DynamoDBAccessError(f"Access denied: {e}") from e
                 else:
-                    raise DynamoDBError(f"Error updating receipt fields: {e}") from e
+                    raise DynamoDBError(
+                        f"Error updating receipt fields: {e}"
+                    ) from e
 
     def delete_receipt_field(self, receipt_field: ReceiptField):
         """Deletes a receipt field from the database
@@ -255,7 +281,9 @@ class _ReceiptField(DynamoClientProtocol):
             ValueError: When the receipt field does not exist
         """
         if receipt_field is None:
-            raise ValueError("ReceiptField parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptField parameter is required and cannot be None."
+            )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
                 "receipt_field must be an instance of the ReceiptField class."
@@ -299,10 +327,16 @@ class _ReceiptField(DynamoClientProtocol):
             ValueError: When a receipt field does not exist or if another error occurs.
         """
         if receipt_fields is None:
-            raise ValueError("ReceiptFields parameter is required and cannot be None.")
+            raise ValueError(
+                "ReceiptFields parameter is required and cannot be None."
+            )
         if not isinstance(receipt_fields, list):
-            raise ValueError("receipt_fields must be a list of ReceiptField instances.")
-        if not all(isinstance(field, ReceiptField) for field in receipt_fields):
+            raise ValueError(
+                "receipt_fields must be a list of ReceiptField instances."
+            )
+        if not all(
+            isinstance(field, ReceiptField) for field in receipt_fields
+        ):
             raise ValueError(
                 "All receipt fields must be instances of the ReceiptField class."
             )
@@ -328,7 +362,9 @@ class _ReceiptField(DynamoClientProtocol):
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError("One or more receipt fields do not exist") from e
+                raise ValueError(
+                    "One or more receipt fields do not exist"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
@@ -403,7 +439,9 @@ class _ReceiptField(DynamoClientProtocol):
             elif error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
-                raise OperationError(f"Error getting receipt field: {e}") from e
+                raise OperationError(
+                    f"Error getting receipt field: {e}"
+                ) from e
 
     def list_receipt_fields(
         self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
@@ -462,7 +500,9 @@ class _ReceiptField(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -530,7 +570,9 @@ class _ReceiptField(DynamoClientProtocol):
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
                 "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": f"IMAGE#{image_id}"}},
+                "ExpressionAttributeValues": {
+                    ":pk": {"S": f"IMAGE#{image_id}"}
+                },
             }
             if lastEvaluatedKey is not None:
                 query_params["ExclusiveStartKey"] = lastEvaluatedKey
@@ -551,7 +593,9 @@ class _ReceiptField(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break
@@ -649,7 +693,9 @@ class _ReceiptField(DynamoClientProtocol):
                     break
 
                 if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
                 else:
                     last_evaluated_key = None
                     break

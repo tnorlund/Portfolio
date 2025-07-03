@@ -107,7 +107,9 @@ def test_job_checkpoint_init_invalid_id():
 def test_job_checkpoint_init_invalid_timestamp():
     """Test that a JobCheckpoint cannot be created with an invalid timestamp"""
     job_id = str(uuid.uuid4())
-    with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="timestamp must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp="",
@@ -117,7 +119,9 @@ def test_job_checkpoint_init_invalid_timestamp():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="timestamp must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=None,
@@ -127,7 +131,9 @@ def test_job_checkpoint_init_invalid_timestamp():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="timestamp must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=123,
@@ -144,7 +150,9 @@ def test_job_checkpoint_init_invalid_s3_bucket():
     """Test that a JobCheckpoint cannot be created with an invalid s3_bucket"""
     job_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    with pytest.raises(ValueError, match="s3_bucket must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="s3_bucket must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -154,7 +162,9 @@ def test_job_checkpoint_init_invalid_s3_bucket():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="s3_bucket must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="s3_bucket must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -164,7 +174,9 @@ def test_job_checkpoint_init_invalid_s3_bucket():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="s3_bucket must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="s3_bucket must be a non-empty string"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -218,7 +230,9 @@ def test_job_checkpoint_init_invalid_size_bytes():
     """JobCheckpoint cannot be created with an invalid size_bytes"""
     job_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    with pytest.raises(ValueError, match="size_bytes must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="size_bytes must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -228,7 +242,9 @@ def test_job_checkpoint_init_invalid_size_bytes():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="size_bytes must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="size_bytes must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -238,7 +254,9 @@ def test_job_checkpoint_init_invalid_size_bytes():
             step=1000,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="size_bytes must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="size_bytes must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -255,7 +273,9 @@ def test_job_checkpoint_init_invalid_step():
     """Test that a JobCheckpoint cannot be created with an invalid step"""
     job_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    with pytest.raises(ValueError, match="step must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="step must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -265,7 +285,9 @@ def test_job_checkpoint_init_invalid_step():
             step=-1,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="step must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="step must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -275,7 +297,9 @@ def test_job_checkpoint_init_invalid_step():
             step=None,
             epoch=5,
         )
-    with pytest.raises(ValueError, match="step must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="step must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -292,7 +316,9 @@ def test_job_checkpoint_init_invalid_epoch():
     """Test that a JobCheckpoint cannot be created with an invalid epoch"""
     job_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    with pytest.raises(ValueError, match="epoch must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="epoch must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -302,7 +328,9 @@ def test_job_checkpoint_init_invalid_epoch():
             step=1000,
             epoch=-1,
         )
-    with pytest.raises(ValueError, match="epoch must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="epoch must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -312,7 +340,9 @@ def test_job_checkpoint_init_invalid_epoch():
             step=1000,
             epoch=None,
         )
-    with pytest.raises(ValueError, match="epoch must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="epoch must be a non-negative integer"
+    ):
         JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
@@ -460,7 +490,9 @@ def test_job_checkpoint_gsi1_key(example_job_checkpoint):
 
 
 @pytest.mark.unit
-def test_job_checkpoint_to_item(example_job_checkpoint, example_job_checkpoint_minimal):
+def test_job_checkpoint_to_item(
+    example_job_checkpoint, example_job_checkpoint_minimal
+):
     """Test that a JobCheckpoint generates the correct DynamoDB item"""
     # Test full example
     item = example_job_checkpoint.to_item()
@@ -480,7 +512,10 @@ def test_job_checkpoint_to_item(example_job_checkpoint, example_job_checkpoint_m
     assert item["step"]["N"] == str(example_job_checkpoint.step)
     assert item["epoch"]["N"] == str(example_job_checkpoint.epoch)
     assert item["model_state"]["BOOL"] == example_job_checkpoint.model_state
-    assert item["optimizer_state"]["BOOL"] == example_job_checkpoint.optimizer_state
+    assert (
+        item["optimizer_state"]["BOOL"]
+        == example_job_checkpoint.optimizer_state
+    )
     assert item["is_best"]["BOOL"] == example_job_checkpoint.is_best
     assert "metrics" in item
     assert item["metrics"]["M"]["loss"]["N"] == "0.1234"
@@ -557,7 +592,9 @@ def test_job_checkpoint_repr(example_job_checkpoint):
     assert f"step={example_job_checkpoint.step}" in repr_str
     assert f"epoch={example_job_checkpoint.epoch}" in repr_str
     assert f"model_state={example_job_checkpoint.model_state}" in repr_str
-    assert f"optimizer_state={example_job_checkpoint.optimizer_state}" in repr_str
+    assert (
+        f"optimizer_state={example_job_checkpoint.optimizer_state}" in repr_str
+    )
     assert f"is_best={example_job_checkpoint.is_best}" in repr_str
     assert "metrics=" in repr_str
 
@@ -574,7 +611,9 @@ def test_job_checkpoint_iter(example_job_checkpoint):
     assert attributes["step"] == example_job_checkpoint.step
     assert attributes["epoch"] == example_job_checkpoint.epoch
     assert attributes["model_state"] == example_job_checkpoint.model_state
-    assert attributes["optimizer_state"] == example_job_checkpoint.optimizer_state
+    assert (
+        attributes["optimizer_state"] == example_job_checkpoint.optimizer_state
+    )
     assert attributes["metrics"] == example_job_checkpoint.metrics
     assert attributes["is_best"] == example_job_checkpoint.is_best
 
@@ -687,7 +726,9 @@ def test_parse_dynamodb_value():
 
 
 @pytest.mark.unit
-def test_itemToJobCheckpoint(example_job_checkpoint, example_job_checkpoint_minimal):
+def test_itemToJobCheckpoint(
+    example_job_checkpoint, example_job_checkpoint_minimal
+):
     """Test that a DynamoDB item can be converted to a JobCheckpoint"""
     # Convert to item and back for the full example
     item = example_job_checkpoint.to_item()
@@ -710,10 +751,15 @@ def test_itemToJobCheckpoint(example_job_checkpoint, example_job_checkpoint_mini
     checkpoint_minimal = item_to_job_checkpoint(item_minimal)
 
     assert checkpoint_minimal.job_id == example_job_checkpoint_minimal.job_id
-    assert checkpoint_minimal.timestamp == example_job_checkpoint_minimal.timestamp
+    assert (
+        checkpoint_minimal.timestamp
+        == example_job_checkpoint_minimal.timestamp
+    )
     assert checkpoint_minimal.metrics == {}
     assert checkpoint_minimal.is_best is False
 
     # Test with invalid item
-    with pytest.raises(ValueError, match="Error converting item to JobCheckpoint"):
+    with pytest.raises(
+        ValueError, match="Error converting item to JobCheckpoint"
+    ):
         item_to_job_checkpoint({"job_id": {"S": "invalid-job-id"}})
