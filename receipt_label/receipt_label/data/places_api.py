@@ -14,8 +14,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
 import requests
-from receipt_dynamo.entities.places_cache import PlacesCache
 
+from receipt_dynamo.entities.places_cache import PlacesCache
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
