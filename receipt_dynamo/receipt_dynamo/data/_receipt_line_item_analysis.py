@@ -49,15 +49,19 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
         Adds multiple ReceiptLineItemAnalyses to DynamoDB in batches.
     update_receipt_line_item_analysis(analysis: ReceiptLineItemAnalysis)
         Updates an existing ReceiptLineItemAnalysis in the database.
-    update_receipt_line_item_analyses(analyses: list[ReceiptLineItemAnalysis])
+    update_receipt_line_item_analyses(analyses:
+            list[ReceiptLineItemAnalysis])
         Updates multiple ReceiptLineItemAnalyses in the database.
     delete_receipt_line_item_analysis(image_id: str, receipt_id: int)
         Deletes a single ReceiptLineItemAnalysis.
     delete_receipt_line_item_analyses(keys: list[tuple[str, int]])
         Deletes multiple ReceiptLineItemAnalyses in batch.
-    get_receipt_line_item_analysis(receipt_id: int, image_id: str) -> ReceiptLineItemAnalysis
+    get_receipt_line_item_analysis(receipt_id: int, image_id: str) ->
+            ReceiptLineItemAnalysis
         Retrieves a single ReceiptLineItemAnalysis by IDs.
-    list_receipt_line_item_analyses(limit: Optional[int] = None, lastEvaluatedKey: dict | None = None) -> tuple[list[ReceiptLineItemAnalysis], dict | None]
+    list_receipt_line_item_analyses(limit: Optional[int] = None,
+            lastEvaluatedKey: dict | None = None) ->
+            tuple[list[ReceiptLineItemAnalysis], dict | None]
         Returns ReceiptLineItemAnalyses and the last evaluated key.
     list_receipt_line_item_analyses_for_image(image_id: str) -> list[ReceiptLineItemAnalysis]
         Returns all ReceiptLineItemAnalyses for a given image.
@@ -81,7 +85,8 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptLineItemAnalysis class."
+                "analysis must be an instance of the "
+                "ReceiptLineItemAnalysis class."
             )
         try:
             self._client.put_item(
@@ -134,11 +139,13 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptLineItemAnalysis instances."
+                "analyses must be a list of ReceiptLineItemAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptLineItemAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptLineItemAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptLineItemAnalysis class."
             )
         try:
             for i in range(0, len(analyses), 25):
@@ -195,7 +202,8 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+                "analysis must be an instance of the "
+                "ReceiptLineItemAnalysis class.",
                 f"\nGot type: {type(analysis)}",
             )
         try:
@@ -245,11 +253,13 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptLineItemAnalysis instances."
+                "analyses must be a list of ReceiptLineItemAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptLineItemAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptLineItemAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptLineItemAnalysis class."
             )
         for i in range(0, len(analyses), 25):
             chunk = analyses[i : i + 25]
@@ -311,7 +321,8 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analysis, ReceiptLineItemAnalysis):
             raise ValueError(
-                "analysis must be an instance of the ReceiptLineItemAnalysis class."
+                "analysis must be an instance of the "
+                "ReceiptLineItemAnalysis class."
             )
         try:
             self._client.delete_item(
@@ -360,11 +371,13 @@ class _ReceiptLineItemAnalysis(DynamoClientProtocol):
             )
         if not isinstance(analyses, list):
             raise ValueError(
-                "analyses must be a list of ReceiptLineItemAnalysis instances."
+                "analyses must be a list of ReceiptLineItemAnalysis "
+                "instances."
             )
         if not all(isinstance(a, ReceiptLineItemAnalysis) for a in analyses):
             raise ValueError(
-                "All analyses must be instances of the ReceiptLineItemAnalysis class."
+                "All analyses must be instances of the "
+                "ReceiptLineItemAnalysis class."
             )
         try:
             for i in range(0, len(analyses), 25):
