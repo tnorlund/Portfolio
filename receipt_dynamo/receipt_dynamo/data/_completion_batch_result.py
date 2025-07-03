@@ -19,6 +19,14 @@ from receipt_dynamo.entities.completion_batch_result import (
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+    """Validate that a LastEvaluatedKey has the required DynamoDB format.
+
+    Args:
+        lek: The LastEvaluatedKey dictionary to validate.
+
+    Raises:
+        ValueError: If the key format is invalid or missing required fields.
+    """
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
@@ -35,6 +43,15 @@ class _CompletionBatchResult(DynamoClientProtocol):
     def add_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
+        """Add a new completion batch result to DynamoDB.
+
+        Args:
+            result: The CompletionBatchResult to add.
+
+        Raises:
+            ValueError: If result is None or not a CompletionBatchResult.
+            OperationError: If the DynamoDB operation fails.
+        """
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
@@ -51,6 +68,15 @@ class _CompletionBatchResult(DynamoClientProtocol):
     def add_completion_batch_results(
         self, results: List[CompletionBatchResult]
     ):
+        """Add multiple completion batch results to DynamoDB in batches.
+
+        Args:
+            results: List of CompletionBatchResult instances to add.
+
+        Raises:
+            ValueError: If results is None, empty, or contains invalid items.
+            BatchOperationError: If any batch operation fails.
+        """
         if not isinstance(results, list) or not all(
             isinstance(r, CompletionBatchResult) for r in results
         ):
