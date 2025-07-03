@@ -2,7 +2,6 @@ import json
 from logging import INFO, Formatter, StreamHandler, getLogger
 
 import pulumi
-
 from receipt_label.embedding.word import (
     download_openai_batch_result,
     get_openai_batch_status,

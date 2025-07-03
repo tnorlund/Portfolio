@@ -14,7 +14,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from receipt_dynamo import DynamoClient
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_monitoring import (
     AlertChannel,
@@ -27,6 +26,8 @@ from receipt_label.utils.cost_monitoring import (
     CostMonitor,
     create_cost_monitored_tracker,
 )
+
+from receipt_dynamo import DynamoClient
 
 
 async def main():
