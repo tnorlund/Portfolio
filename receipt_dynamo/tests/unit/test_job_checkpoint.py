@@ -3,10 +3,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from receipt_dynamo.entities.job_checkpoint import (JobCheckpoint,
-                                                    _parse_dynamodb_map,
-                                                    _parse_dynamodb_value,
-                                                    item_to_job_checkpoint)
+from receipt_dynamo.entities.job_checkpoint import (
+    JobCheckpoint,
+    _parse_dynamodb_map,
+    _parse_dynamodb_value,
+    item_to_job_checkpoint,
+)
 
 
 @pytest.fixture
