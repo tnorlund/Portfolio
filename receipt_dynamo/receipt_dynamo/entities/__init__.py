@@ -42,8 +42,8 @@ from receipt_dynamo.entities.label_metadata import (  # noqa: F401
 )
 from receipt_dynamo.entities.letter import Letter, item_to_letter  # noqa: F401
 from receipt_dynamo.entities.line import Line, item_to_line  # noqa: F401
-from receipt_dynamo.entities.ocr_job import (  # noqa: F401
-    OCRJob,
+from receipt_dynamo.entities.ocr_job import (
+    OCRJob,  # noqa: F401
     item_to_ocr_job,
 )
 from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
@@ -54,16 +54,16 @@ from receipt_dynamo.entities.queue_job import QueueJob  # noqa: F401
 from receipt_dynamo.entities.queue_job import item_to_queue_job
 from receipt_dynamo.entities.receipt import Receipt  # noqa: F401
 from receipt_dynamo.entities.receipt import item_to_receipt
-from receipt_dynamo.entities.receipt_analysis import (  # noqa: F401
+from receipt_dynamo.entities.receipt_analysis import (
     ReceiptAnalysis,
-)
+)  # noqa: F401
 from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
     ReceiptChatGPTValidation,
     item_to_receipt_chat_gpt_validation,
 )
-from receipt_dynamo.entities.receipt_details import (  # noqa: F401
+from receipt_dynamo.entities.receipt_details import (
     ReceiptDetails,
-)
+)  # noqa: F401
 from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
 from receipt_dynamo.entities.receipt_field import item_to_receipt_field
 from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
@@ -110,8 +110,8 @@ from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
-from receipt_dynamo.entities.rwl_queue import (  # noqa: F401
-    Queue,
+from receipt_dynamo.entities.rwl_queue import (
+    Queue,  # noqa: F401
     item_to_queue,
 )
 
