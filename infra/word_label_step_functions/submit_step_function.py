@@ -46,7 +46,9 @@ stack = pulumi.get_stack()
 
 class WordLabelStepFunctions(ComponentResource):
     def __init__(self, name: str, opts: ResourceOptions = None):
-        super().__init__(f"{__name__}-{name}", "aws:stepfunctions:StateMachine", opts)
+        super().__init__(
+            f"{__name__}-{name}", "aws:stepfunctions:StateMachine", opts
+        )
 
         # Define IAM role for Lambda
         submit_lambda_role = Role(
@@ -234,7 +236,8 @@ class WordLabelStepFunctions(ComponentResource):
             f"{name}-lambda-basic-execution",
             role=submit_lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
         )
 
@@ -259,7 +262,8 @@ class WordLabelStepFunctions(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": (
-                                    "arn:aws:dynamodb:*:*:table/" f"{table_name}*"
+                                    "arn:aws:dynamodb:*:*:table/"
+                                    f"{table_name}*"
                                 ),
                             }
                         ],

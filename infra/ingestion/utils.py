@@ -10,6 +10,7 @@ import boto3
 import pulumi
 import pulumi.automation as auto
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import (
     DynamoClient,
     Image,
@@ -268,7 +269,9 @@ def backup_dynamo_items(
                         }
                         for rw in receipt_words
                     ],
-                    "receipt_word_tags": [dict(rwt) for rwt in receipt_word_tags],
+                    "receipt_word_tags": [
+                        dict(rwt) for rwt in receipt_word_tags
+                    ],
                     "receipt_letters": [dict(rl) for rl in receipt_letters],
                 },
                 indent=2,
@@ -310,7 +313,9 @@ def parse_dynamo_json(backup_path: str) -> Dict[str, Dict[str, Any]]:
     receipts = [Receipt(**rc) for rc in data["receipts"]]
     receipt_lines = [ReceiptLine(**ln) for ln in data["receipt_lines"]]
     receipt_words = [ReceiptWord(**wd) for wd in data["receipt_words"]]
-    receipt_word_tags = [ReceiptWordTag(**tg) for tg in data["receipt_word_tags"]]
+    receipt_word_tags = [
+        ReceiptWordTag(**tg) for tg in data["receipt_word_tags"]
+    ]
     receipt_letters = [ReceiptLetter(**lt) for lt in data["receipt_letters"]]
 
     dynamo_grouped: Dict[str, Dict[str, Any]] = {}
@@ -320,8 +325,12 @@ def parse_dynamo_json(backup_path: str) -> Dict[str, Dict[str, Any]]:
             dynamo_grouped[uuid] = {}
 
         dynamo_grouped[uuid]["image"] = image
-        dynamo_grouped[uuid]["lines"] = [ln for ln in lines if ln.image_id == image.id]
-        dynamo_grouped[uuid]["words"] = [wd for wd in words if wd.image_id == image.id]
+        dynamo_grouped[uuid]["lines"] = [
+            ln for ln in lines if ln.image_id == image.id
+        ]
+        dynamo_grouped[uuid]["words"] = [
+            wd for wd in words if wd.image_id == image.id
+        ]
         dynamo_grouped[uuid]["word_tags"] = [
             tg for tg in word_tags if tg.image_id == image.id
         ]
@@ -332,10 +341,16 @@ def parse_dynamo_json(backup_path: str) -> Dict[str, Dict[str, Any]]:
         relevant_receipts = [rc for rc in receipts if rc.image_id == image.id]
         dynamo_grouped[uuid]["receipts"] = {
             receipt.id: {
-                "lines": [ln for ln in receipt_lines if ln.receipt_id == receipt.id],
-                "words": [wd for wd in receipt_words if wd.receipt_id == receipt.id],
+                "lines": [
+                    ln for ln in receipt_lines if ln.receipt_id == receipt.id
+                ],
+                "words": [
+                    wd for wd in receipt_words if wd.receipt_id == receipt.id
+                ],
                 "word_tags": [
-                    tg for tg in receipt_word_tags if tg.receipt_id == receipt.id
+                    tg
+                    for tg in receipt_word_tags
+                    if tg.receipt_id == receipt.id
                 ],
                 "letters": [
                     lt for lt in receipt_letters if lt.receipt_id == receipt.id
@@ -363,13 +378,19 @@ def group_images(
     dynamo_grouped = parse_dynamo_json(dynamo_backup_path)
 
     all_uuids = (
-        set(raw_grouped.keys()) | set(cdn_grouped.keys()) | set(dynamo_grouped.keys())
+        set(raw_grouped.keys())
+        | set(cdn_grouped.keys())
+        | set(dynamo_grouped.keys())
     )
-    all_images = [grp["image"] for grp in dynamo_grouped.values() if "image" in grp]
+    all_images = [
+        grp["image"] for grp in dynamo_grouped.values() if "image" in grp
+    ]
 
     combined: Dict[str, Dict[str, Any]] = {}
     for uuid in all_uuids:
-        images_with_uuid = [img for img in all_images if uuid in img.raw_s3_key]
+        images_with_uuid = [
+            img for img in all_images if uuid in img.raw_s3_key
+        ]
         if len(images_with_uuid) > 1:
             raise ValueError(f"Multiple images found for UUID: {uuid}")
         if not images_with_uuid:
@@ -445,7 +466,9 @@ def delete_in_batches(delete_func, items, chunk_size=1000):
         batch = items[start : start + chunk_size]
         delete_func(batch)
         remaining = total - (start + len(batch))
-        pulumi.log.info(f"   Deleted {len(batch)} items. {remaining} remaining...")
+        pulumi.log.info(
+            f"   Deleted {len(batch)} items. {remaining} remaining..."
+        )
 
 
 def delete_dynamo_items(dynamo_name: str) -> None:
@@ -487,7 +510,9 @@ def delete_dynamo_items(dynamo_name: str) -> None:
     delete_in_batches(dynamo_client.deleteReceiptWords, receipt_words)
 
     receipt_word_tags = dynamo_client.list_receipt_word_tags()
-    pulumi.log.info(f" - Deleting {len(receipt_word_tags)} receipt word tag items")
+    pulumi.log.info(
+        f" - Deleting {len(receipt_word_tags)} receipt word tag items"
+    )
     delete_in_batches(dynamo_client.deleteReceiptWordTags, receipt_word_tags)
 
     receipt_letters = dynamo_client.list_receipt_letters()
@@ -549,12 +574,20 @@ def restore_dynamo_items(dynamo_name: str, backup_path: str) -> None:
     pulumi.log.info(f" - Restoring {len(receipt_words)} receipt word items")
     dynamo_client.add_receipt_words(receipt_words)
 
-    receipt_word_tags = [ReceiptWordTag(**tag) for tag in backup["receipt_word_tags"]]
-    pulumi.log.info(f" - Restoring {len(receipt_word_tags)} receipt word tag items")
+    receipt_word_tags = [
+        ReceiptWordTag(**tag) for tag in backup["receipt_word_tags"]
+    ]
+    pulumi.log.info(
+        f" - Restoring {len(receipt_word_tags)} receipt word tag items"
+    )
     dynamo_client.add_receipt_word_tags(receipt_word_tags)
 
-    receipt_letters = [ReceiptLetter(**letter) for letter in backup["receipt_letters"]]
-    pulumi.log.info(f" - Restoring {len(receipt_letters)} receipt letter items")
+    receipt_letters = [
+        ReceiptLetter(**letter) for letter in backup["receipt_letters"]
+    ]
+    pulumi.log.info(
+        f" - Restoring {len(receipt_letters)} receipt letter items"
+    )
     dynamo_client.add_receipt_letters(receipt_letters)
 
     os.remove(backup_path)
@@ -606,7 +639,9 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]) -> None:
         if png_key not in local_lookup:
             raise AssertionError(f"Local backup missing PNG for: {png_key}")
         if ocr_json_key not in local_lookup:
-            raise AssertionError(f"Local backup missing OCR JSON for: {ocr_json_key}")
+            raise AssertionError(
+                f"Local backup missing OCR JSON for: {ocr_json_key}"
+            )
         if results_json_key not in local_lookup:
             raise AssertionError(
                 f"Local backup missing results JSON for: {results_json_key}"
@@ -631,7 +666,9 @@ def assert_s3_raw(bucket_name: str, raw_backup: List[Tuple[str, str]]) -> None:
         )
 
 
-def compare_png_file(s3, bucket_name: str, s3_key: str, local_path: str) -> None:
+def compare_png_file(
+    s3, bucket_name: str, s3_key: str, local_path: str
+) -> None:
     """
     Compare a PNG file by direct byte equality. If there's a mismatch,
     save both files under test_failures for debugging.
@@ -656,7 +693,9 @@ def compare_png_file(s3, bucket_name: str, s3_key: str, local_path: str) -> None
             f.write(s3_data)
 
         length_to_show = 200
-        local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
+        local_hex = binascii.hexlify(local_data[:length_to_show]).decode(
+            "ascii"
+        )
         s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
 
         raise AssertionError(
@@ -698,7 +737,9 @@ def compare_json_file(
         s3_text = s3_data.decode("utf-8")
     except UnicodeDecodeError:
         length_to_show = 200
-        local_hex = binascii.hexlify(local_data[:length_to_show]).decode("ascii")
+        local_hex = binascii.hexlify(local_data[:length_to_show]).decode(
+            "ascii"
+        )
         s3_hex = binascii.hexlify(s3_data[:length_to_show]).decode("ascii")
         raise AssertionError(
             f"File mismatch (binary) at {s3_key}.\n"
@@ -743,7 +784,9 @@ def _raise_text_diff(s3_key: str, local_text: str, s3_text: str) -> None:
         tofile="s3",
     )
     diff_text = "".join(diff)
-    raise AssertionError(f"File mismatch (text): {s3_key}\nUnified diff:\n{diff_text}")
+    raise AssertionError(
+        f"File mismatch (text): {s3_key}\nUnified diff:\n{diff_text}"
+    )
 
 
 def assert_dynamo(dynamo_name: str, dynamo_backup_path: str) -> None:
