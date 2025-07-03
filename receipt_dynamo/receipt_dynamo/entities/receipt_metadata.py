@@ -3,13 +3,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
-    assert_valid_point,
-    assert_valid_uuid,
-    normalize_enum,
-)
+from receipt_dynamo.entities.util import (_format_float, _repr_str,
+                                          assert_valid_point,
+                                          assert_valid_uuid, normalize_enum)
 
 # Validation thresholds
 MIN_PHONE_DIGITS = (
