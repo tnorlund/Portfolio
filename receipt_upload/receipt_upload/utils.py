@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 from boto3 import client
 from PIL import Image as PIL_Image
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
     Letter,

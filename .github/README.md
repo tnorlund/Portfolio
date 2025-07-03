@@ -58,7 +58,7 @@ This directory contains GitHub-specific configuration files and workflows that a
 
 #### 🤖 `claude.yml` - Interactive Claude Assistant
 - **Purpose**: Interactive AI assistance via mentions
-- **Triggers**: 
+- **Triggers**:
   - Issue comments containing `@claude`
   - PR review comments containing `@claude`
   - New issues with `@claude` mention
@@ -69,7 +69,7 @@ This directory contains GitHub-specific configuration files and workflows that a
 
 #### 🔍 `claude-review.yml` - Automated PR Code Review
 - **Purpose**: Automated code review for pull requests
-- **Triggers**: 
+- **Triggers**:
   - PR ready for review
   - PR labeled with `claude-review-requested`
   - Manual trigger via `/claude review` comment
@@ -130,7 +130,7 @@ Standard template for pull requests including:
 1. **Workflow Naming**: Use clear, descriptive names that indicate purpose
 2. **Concurrency**: Use concurrency groups to prevent duplicate runs
 3. **Permissions**: Follow principle of least privilege
-4. **Cost Optimization**: 
+4. **Cost Optimization**:
    - Use path filters to avoid unnecessary runs
    - Implement size checks for AI reviews
    - Cache dependencies effectively

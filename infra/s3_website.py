@@ -120,7 +120,7 @@ function handler(event) {
     var request = event.request;
     var uri = request.uri;
     var headers = request.headers;
-    
+
     // Handle clean URLs and trailing slashes (existing logic)
     if (uri !== '/' && uri.endsWith('/')) {
         return {
@@ -129,42 +129,42 @@ function handler(event) {
             headers: { location: { value: uri.slice(0, -1) } }
         };
     }
-    
+
     // Handle image requests - ensure proper headers for AVIF/WebP
     if (uri.startsWith('/assets/') && (uri.endsWith('.avif') || uri.endsWith('.webp') || uri.endsWith('.jpg'))) {
         // Ensure Accept header is preserved for content negotiation
         if (!headers.accept) {
             headers.accept = { value: 'image/avif,image/webp,image/jpeg,image/*,*/*;q=0.8' };
         }
-        
+
         // Add cache-control hint for images
         headers['x-image-request'] = { value: 'true' };
-        
+
         // Log AVIF requests for debugging (will appear in CloudWatch)
         if (uri.endsWith('.avif')) {
             console.log('AVIF request: ' + uri);
         }
     }
-    
+
     // Add preload hints for critical JavaScript chunks based on route
     if (uri === '/' || uri === '/receipt' || uri === '/receipt.html') {
         if (!headers['cloudfront-viewer-country']) {
             headers['cloudfront-viewer-country'] = { value: 'US' };
         }
-        
+
         // Add early hints for critical resources
-        headers['x-preload-hint'] = { 
+        headers['x-preload-hint'] = {
             value: 'vendor.js,main.js,common.js'
         };
     }
-    
+
     // Optimize caching for Next.js static chunks
     if (uri.includes('/_next/static/chunks/') && uri.endsWith('.js')) {
-        headers['x-cache-control-override'] = { 
+        headers['x-cache-control-override'] = {
             value: 'public,max-age=31536000,immutable'
         };
     }
-    
+
     // Handle static pages and SPA fallback
     if (!uri.includes('.') && uri !== '/' && !uri.startsWith('/assets/')) {
         var staticPages = ['/receipt', '/resume'];
@@ -174,7 +174,7 @@ function handler(event) {
             request.uri = '/index.html';
         }
     }
-    
+
     return request;
 }
 """,

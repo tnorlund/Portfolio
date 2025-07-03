@@ -32,20 +32,20 @@ sudo yum install -y amazon-efs-utils git python3-pip
 if lspci | grep -i nvidia > /dev/null; then
     echo "NVIDIA GPU detected, installing NVIDIA drivers and CUDA..."
     sudo yum install -y gcc kernel-devel-$(uname -r)
-    
+
     # Get the latest NVIDIA driver installer
     curl -O https://us.download.nvidia.com/tesla/470.82.01/NVIDIA-Linux-x86_64-470.82.01.run
     sudo sh NVIDIA-Linux-x86_64-470.82.01.run --silent
-    
+
     # Install CUDA
     curl -O https://developer.download.nvidia.com/compute/cuda/11.4.3/local_installers/cuda_11.4.3_470.82.01_linux.run
     sudo sh cuda_11.4.3_470.82.01_linux.run --silent --toolkit
-    
+
     # Set up CUDA environment
     echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
     echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
     source ~/.bashrc
-    
+
     # Test NVIDIA installation
     nvidia-smi
 fi
@@ -56,7 +56,7 @@ if [ ! -d "/home/ec2-user/receipt-trainer" ]; then
     cd /home/ec2-user
     git clone https://github.com/your-username/receipt-trainer.git
     cd receipt-trainer
-    
+
     # Install package
     pip3 install -e .
     pip3 install -r requirements.txt
@@ -101,4 +101,4 @@ nohup python3 -m receipt_trainer.jobs.cli start-worker \
 echo $! > /home/ec2-user/worker.pid
 
 echo "Worker started successfully"
-echo "User data script completed at $(date)" 
+echo "User data script completed at $(date)"

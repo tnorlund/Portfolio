@@ -43,7 +43,7 @@ jobs:
         run: |
           # Format all Python files
           black receipt_dynamo receipt_label infra
-          
+
           # Check if files were modified
           if [[ -n $(git status --porcelain) ]]; then
             echo "formatted=true" >> $GITHUB_OUTPUT
@@ -304,10 +304,10 @@ jobs:
         run: |
           BUCKET=$(pulumi stack output cdn_bucket_name)
           DISTRIBUTION=$(pulumi stack output cdn_distribution_id)
-          
+
           # Sync files
           aws s3 sync ../portfolio/out "s3://$BUCKET" --delete
-          
+
           # Invalidate cache
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/*"
         env:

@@ -1,6 +1,6 @@
 [run]
 source = receipt_label
-omit = 
+omit =
     */tests/*
     */__pycache__/*
     */site-packages/*
@@ -32,4 +32,4 @@ show_missing = True
 precision = 2
 
 [html]
-directory = htmlcov 
+directory = htmlcov

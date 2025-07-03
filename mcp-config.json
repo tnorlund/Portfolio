@@ -2,7 +2,9 @@
   "mcpServers": {
     "nextjs-project-state": {
       "command": "node",
-      "args": ["mcp-server.js"],
+      "args": [
+        "mcp-server.js"
+      ],
       "cwd": "portfolio",
       "env": {
         "NODE_ENV": "development"
@@ -10,7 +12,9 @@
     },
     "python-receipts": {
       "command": "python",
-      "args": ["mcp_server.py"],
+      "args": [
+        "mcp_server.py"
+      ],
       "cwd": ".",
       "env": {
         "OPENAI_API_KEY": "",

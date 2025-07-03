@@ -6,10 +6,10 @@ from pathlib import Path
 
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
+
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
-
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_final_receipt_tilt,

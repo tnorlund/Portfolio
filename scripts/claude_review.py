@@ -52,19 +52,19 @@ def run_claude_review(pr_number: str):
     # Claude review prompt
     review_prompt = f"""
     Analyze this PR with focus on:
-    
+
     1. **Cursor Bot Findings**: Review and validate Cursor's identified issues
     2. **Architecture Impact**: How do changes affect overall system design?
     3. **Performance Implications**: Any optimization opportunities?
     4. **Test Strategy**: Are test changes following best practices?
     5. **Documentation**: Is adequate documentation provided?
-    
+
     Cursor Bot Comments:
     {cursor_comments}
-    
+
     PR Diff:
     {pr_diff}
-    
+
     Provide actionable recommendations that complement Cursor's findings.
     """
 

@@ -29,7 +29,7 @@ INSTANCE_COUNT=$(echo $INSTANCES | jq '. | flatten | length')
 if [ "$INSTANCE_COUNT" -gt 0 ]; then
     echo -e "${RED}Found $INSTANCE_COUNT instances still running:${NC}"
     echo "$INSTANCES" | jq -r '.[][]? | "  - " + .InstanceId + " (" + .Type + "): " + .State'
-    
+
     # Ask if user wants to terminate them
     read -p "Do you want to terminate these instances? (y/n) " -n 1 -r
     echo
@@ -55,7 +55,7 @@ SPOT_REQUEST_COUNT=$(echo $SPOT_REQUESTS | jq '. | length')
 if [ "$SPOT_REQUEST_COUNT" -gt 0 ]; then
     echo -e "${RED}Found $SPOT_REQUEST_COUNT active spot requests:${NC}"
     echo "$SPOT_REQUESTS" | jq -r '.[] | "  - " + .SpotInstanceRequestId + ": " + .State.Name + (if .InstanceId then " (Instance: " + .InstanceId + ")" else "" end)'
-    
+
     # Ask if user wants to cancel them
     read -p "Do you want to cancel these spot requests? (y/n) " -n 1 -r
     echo
@@ -77,4 +77,4 @@ if [ "$INSTANCE_COUNT" -gt 0 ] || [ "$SPOT_REQUEST_COUNT" -gt 0 ]; then
     echo "Always verify in the AWS Console if unsure."
 else
     echo -e "${GREEN}All test resources have been properly cleaned up!${NC}"
-fi 
+fi
