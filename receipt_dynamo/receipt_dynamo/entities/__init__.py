@@ -110,10 +110,6 @@ from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
-from receipt_dynamo.entities.receipt_word_tag import (  # noqa: F401
-    ReceiptWordTag,
-    item_to_receipt_word_tag,
-)
 from receipt_dynamo.entities.rwl_queue import (  # noqa: F401
     Queue,
     item_to_queue,
@@ -122,5 +118,3 @@ from receipt_dynamo.entities.rwl_queue import (  # noqa: F401
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
 from receipt_dynamo.entities.word import Word, item_to_word  # noqa: F401
-from receipt_dynamo.entities.word_tag import WordTag  # noqa: F401
-from receipt_dynamo.entities.word_tag import item_to_word_tag

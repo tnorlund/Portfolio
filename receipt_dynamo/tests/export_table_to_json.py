@@ -23,12 +23,10 @@ if __name__ == "__main__":
         images,
         lines,
         words,
-        word_tags,
         letters,
         receipts,
         receipt_lines,
         receipt_words,
-        receipt_word_tags,
         receipt_letters,
         _receipt_metadatas,
         _ocr_jobs,
@@ -127,7 +125,6 @@ if __name__ == "__main__":
                     }
                     for word in words
                 ],
-                "word_tags": [dict(word_tag) for word_tag in word_tags],
                 "letters": [dict(letter) for letter in letters],
                 "receipts": [
                     {
@@ -153,9 +150,6 @@ if __name__ == "__main__":
                         if key not in ("num_chars", "histogram")
                     }
                     for word in receipt_words
-                ],
-                "receipt_word_tags": [
-                    dict(word_tag) for word_tag in receipt_word_tags
                 ],
                 "receipt_letters": [
                     dict(letter) for letter in receipt_letters
