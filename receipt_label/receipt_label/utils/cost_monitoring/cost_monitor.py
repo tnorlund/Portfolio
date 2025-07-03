@@ -251,7 +251,10 @@ class CostMonitor:
         alert_key = f"{scope}:{period}:{threshold_percent}"
         last_alert = self._sent_alerts.get(alert_key)
 
-        if last_alert and datetime.now(timezone.utc) - last_alert < self.alert_cooldown:
+        if (
+            last_alert
+            and datetime.now(timezone.utc) - last_alert < self.alert_cooldown
+        ):
             return None
 
         # Create alert
@@ -315,7 +318,9 @@ class CostMonitor:
             start = now - timedelta(days=days_since_monday)
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == "monthly":
-            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            start = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
         else:
             raise ValueError(f"Invalid period: {period}")
 
@@ -359,7 +364,9 @@ class CostMonitor:
             )
         elif scope_type == "user":
             # Use enhanced GSI3 for user queries (eliminates scans)
-            return self._query_by_user_gsi3(scope_value, start_date, end_date, service)
+            return self._query_by_user_gsi3(
+                scope_value, start_date, end_date, service
+            )
         elif scope_type == "global":
             # Query all services and aggregate
             all_metrics = []
@@ -375,7 +382,9 @@ class CostMonitor:
             return all_metrics
         elif scope_type == "job":
             # Use GSI3 for job queries (more efficient than scan)
-            return self._query_by_job_gsi3(scope_value, start_date, end_date, service)
+            return self._query_by_job_gsi3(
+                scope_value, start_date, end_date, service
+            )
         elif scope_type == "environment":
             # Use enhanced GSI3 for environment queries (eliminates scans)
             return self._query_by_environment_gsi3(
@@ -425,7 +434,9 @@ class CostMonitor:
 
             if filter_expression:
                 query_params["FilterExpression"] = filter_expression
-                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+                query_params["ExpressionAttributeNames"] = {
+                    "#service": "service"
+                }
 
             # Perform GSI3 query
             response = self.dynamo_client._client.query(**query_params)
@@ -443,7 +454,9 @@ class CostMonitor:
                     ):
                         metrics.append(metric)
                 except Exception as e:
-                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    logger.warning(
+                        f"Failed to convert DynamoDB item to metric: {e}"
+                    )
                     continue
 
             logger.info(
@@ -454,7 +467,9 @@ class CostMonitor:
             return metrics
 
         except Exception as e:
-            logger.error(f"Failed to query metrics for job:{job_id} using GSI3: {e}")
+            logger.error(
+                f"Failed to query metrics for job:{job_id} using GSI3: {e}"
+            )
             # Fallback to scan if GSI3 query fails
             logger.info(f"Falling back to scan for job:{job_id}")
             return self._scan_metrics_with_filters(
@@ -495,7 +510,9 @@ class CostMonitor:
 
             if filter_expression:
                 query_params["FilterExpression"] = filter_expression
-                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+                query_params["ExpressionAttributeNames"] = {
+                    "#service": "service"
+                }
 
             # Perform GSI3 query
             response = self.dynamo_client._client.query(**query_params)
@@ -513,7 +530,9 @@ class CostMonitor:
                     ):
                         metrics.append(metric)
                 except Exception as e:
-                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    logger.warning(
+                        f"Failed to convert DynamoDB item to metric: {e}"
+                    )
                     continue
 
             logger.info(
@@ -567,7 +586,9 @@ class CostMonitor:
 
             if filter_expression:
                 query_params["FilterExpression"] = filter_expression
-                query_params["ExpressionAttributeNames"] = {"#service": "service"}
+                query_params["ExpressionAttributeNames"] = {
+                    "#service": "service"
+                }
 
             # Perform GSI3 query
             response = self.dynamo_client._client.query(**query_params)
@@ -585,7 +606,9 @@ class CostMonitor:
                     ):
                         metrics.append(metric)
                 except Exception as e:
-                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    logger.warning(
+                        f"Failed to convert DynamoDB item to metric: {e}"
+                    )
                     continue
 
             logger.info(
@@ -641,7 +664,9 @@ class CostMonitor:
             elif scope_type == "environment":
                 expression_attribute_names["#scope_attr"] = "environment"
             else:
-                logger.warning(f"Unsupported scope type for scan: {scope_type}")
+                logger.warning(
+                    f"Unsupported scope type for scan: {scope_type}"
+                )
                 return []
 
             # Add service filter if specified
@@ -667,7 +692,9 @@ class CostMonitor:
                     if metric:
                         metrics.append(metric)
                 except Exception as e:
-                    logger.warning(f"Failed to convert DynamoDB item to metric: {e}")
+                    logger.warning(
+                        f"Failed to convert DynamoDB item to metric: {e}"
+                    )
                     continue
 
             logger.info(
@@ -678,7 +705,9 @@ class CostMonitor:
             return metrics
 
         except Exception as e:
-            logger.error(f"Failed to scan metrics for {scope_type}:{scope_value}: {e}")
+            logger.error(
+                f"Failed to scan metrics for {scope_type}:{scope_value}: {e}"
+            )
             return []
 
     def _dynamodb_item_to_metric(self, item: Dict) -> Optional[AIUsageMetric]:
@@ -696,7 +725,9 @@ class CostMonitor:
             # Parse timestamp
             from datetime import datetime
 
-            timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            timestamp = datetime.fromisoformat(
+                timestamp_str.replace("Z", "+00:00")
+            )
 
             # Extract optional fields with proper type conversion
             def get_decimal_value(field_name: str) -> Optional[Decimal]:
