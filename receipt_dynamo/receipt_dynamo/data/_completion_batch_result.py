@@ -38,7 +38,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _CompletionBatchResult(DynamoClientProtocol):
-    def add_completion_batch_result(self, result: CompletionBatchResult):
+    def add_completion_batch_result(self, result: CompletionBatchResult) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
@@ -79,7 +79,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
 
-    def update_completion_batch_result(self, result: CompletionBatchResult):
+    def update_completion_batch_result(self, result: CompletionBatchResult) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:
@@ -93,7 +93,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not update completion batch result: {e}"
             ) from e
 
-    def delete_completion_batch_result(self, result: CompletionBatchResult):
+    def delete_completion_batch_result(self, result: CompletionBatchResult) -> None:
         if result is None or not isinstance(result, CompletionBatchResult):
             raise ValueError("Must provide a CompletionBatchResult instance.")
         try:

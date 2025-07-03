@@ -35,7 +35,7 @@ class ReceiptField:
         field_type: str,
         image_id: str,
         receipt_id: int,
-        words: List[dict],
+        words: List[Dict[str, Any]],
         reasoning: str,
         timestamp_added: datetime,
     ):
