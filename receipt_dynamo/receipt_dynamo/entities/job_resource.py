@@ -178,7 +178,7 @@ class JobResource:
 
         return item
 
-    def _dict_to_dynamodb_map(self, d: Dict) -> Dict:
+    def _dict_to_dynamodb_map(self, d: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a Python dictionary to a DynamoDB map.
 
         Args:
@@ -207,7 +207,7 @@ class JobResource:
                 result[k] = {"S": str(v)}
         return result
 
-    def _to_dynamodb_value(self, v: Any) -> Dict:
+    def _to_dynamodb_value(self, v: Any) -> Dict[str, Any]:
         """Converts a Python value to a DynamoDB value.
 
         Args:
@@ -410,7 +410,7 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
         raise ValueError(f"Unknown DynamoDB value format: {dynamodb_value}")
 
 
-def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:
+def _parse_dynamodb_map(dynamodb_map: Dict[str, Any]) -> Dict[str, Any]:
     """Parse a DynamoDB-formatted map back to a Python dictionary.
 
     Args:

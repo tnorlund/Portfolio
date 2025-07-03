@@ -4,18 +4,10 @@ import os
 from typing import Any, Dict, List
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (
-    Image,
-    Letter,
-    Line,
-    OCRJob,
-    OCRRoutingDecision,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-)
+from receipt_dynamo.entities import (Image, Letter, Line, OCRJob,
+                                     OCRRoutingDecision, Receipt,
+                                     ReceiptLetter, ReceiptLine, ReceiptWord,
+                                     Word)
 
 
 def import_image(table_name: str, json_path: str) -> None:
