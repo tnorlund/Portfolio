@@ -12,7 +12,7 @@
   "file_patterns": {
     "security": [
       "**/auth*.py",
-      "**/security*.py", 
+      "**/security*.py",
       "**/crypto*.py",
       "**/login*.py",
       "**/password*.py",
@@ -20,14 +20,14 @@
     ],
     "architecture": [
       "**/models/*.py",
-      "**/core/*.py", 
+      "**/core/*.py",
       "**/base*.py",
       "**/abstract*.py",
       "**/interface*.py"
     ],
     "tests": [
       "**/test_*.py",
-      "**/*_test.py", 
+      "**/*_test.py",
       "**/tests/*.py"
     ]
   },

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image as PIL_Image
+
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities import Letter, Line, ReceiptLine, Word
 

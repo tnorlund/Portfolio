@@ -58,16 +58,16 @@ from step_function_utils import wrap_step_function_definition
 # In your step function module:
 def create_my_step_function(notification_system: NotificationSystem):
     # ... existing code ...
-    
+
     # Wrap your definition with error handling
     enhanced_definition = wrap_step_function_definition(
         original_definition,
         notification_system.step_function_topic_arn
     )
-    
+
     # Update IAM role to include SNS permissions
     # ... add SNS publish permissions ...
-    
+
     # Create the step function with logging
     my_step_function = aws.sfn.StateMachine(
         "my-step-function",
@@ -81,7 +81,7 @@ def create_my_step_function(notification_system: NotificationSystem):
             enabled=True
         )
     )
-    
+
     # Add CloudWatch alarm
     alarm = notification_system.create_step_function_alarm(
         "my-step-function",

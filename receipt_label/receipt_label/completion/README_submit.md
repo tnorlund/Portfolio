@@ -86,42 +86,42 @@ Queries the words from a batch completion request NDJSON file.
 
 1. **SubmitCompletionList** state
 
-   1. Retrieve all `ReceiptWordLabel`s with `validation_status = NONE` using  
+   1. Retrieve all `ReceiptWordLabel`s with `validation_status = NONE` using
       `list_labels_that_need_validation()`.
-   2. Group them by `(image_id, receipt_id)` via  
+   2. Group them by `(image_id, receipt_id)` via
       `chunk_into_completion_batches()`.
-   3. Serialize each group to a local NDJSON file with  
+   3. Serialize each group to a local NDJSON file with
       `serialize_labels()`.
-   4. Upload every NDJSON file to S3 using  
-       `upload_serialized_labels()`.  
-      _Output:_ an array of dictionaries—one per file—containing the `image_id`,  
+   4. Upload every NDJSON file to S3 using
+       `upload_serialized_labels()`.
+      _Output:_ an array of dictionaries—one per file—containing the `image_id`,
       `receipt_id`, local `ndjson_path`, and its `s3_key`.
 
 2. **FormatNDJSONs** state _(Map – runs once per label file)_
 
-   1. Download the serialized label file from S3 →  
+   1. Download the serialized label file from S3 →
       `download_serialized_labels()`.
-   2. Deserialize it back into `ReceiptWordLabel` objects →  
+   2. Deserialize it back into `ReceiptWordLabel` objects →
       `deserialize_labels()`.
-   3. Fetch the receipt’s lines, words & metadata →  
+   3. Fetch the receipt’s lines, words & metadata →
       `get_receipt_details()`.
-   4. Convert the labels into an OpenAI‑ready NDJSON prompt file →  
+   4. Convert the labels into an OpenAI‑ready NDJSON prompt file →
       `format_batch_completion_file()`.
-   5. Upload that NDJSON back to S3 →  
-       `upload_completion_batch_file()`.  
+   5. Upload that NDJSON back to S3 →
+       `upload_completion_batch_file()`.
       _Output:_ S3 keys for the receipt‑level NDJSON files.
 
 3. **BatchAndSubmitToOpenAI** state
-   1. Merge all receipt‑level NDJSONs into ≤ 50 k‑line / 100 MB bundles  
+   1. Merge all receipt‑level NDJSONs into ≤ 50 k‑line / 100 MB bundles
       with `merge_ndjsons()`.
-   2. Upload each merged file to the OpenAI _Files_ endpoint →  
+   2. Upload each merged file to the OpenAI _Files_ endpoint →
       `upload_to_openai()`.
-   3. Submit an OpenAI **Chat‑Completions Batch** job for every file →  
+   3. Submit an OpenAI **Chat‑Completions Batch** job for every file →
       `submit_openai_batch()`.
-   4. Immediately mark every label present in the merged file as  
+   4. Immediately mark every label present in the merged file as
       `PENDING` → `update_label_validation_status()`.
-   5. Build a `BatchSummary` from the merged file and job ID →  
-      `create_batch_summary()`, then persist it via  
+   5. Build a `BatchSummary` from the merged file and job ID →
+      `create_batch_summary()`, then persist it via
       `add_batch_summary()`.
 
 > **Tip:** In production you almost never call these functions directly—kick off

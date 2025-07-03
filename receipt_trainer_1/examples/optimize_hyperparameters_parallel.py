@@ -35,7 +35,9 @@ def main():
         save_steps=50,
         # Parallel sweep settings
         parallel_sweep_workers=num_gpus,  # Use all available GPUs
-        parallel_sweep_gpu_ids=list(range(num_gpus)),  # Assign one worker per GPU
+        parallel_sweep_gpu_ids=list(
+            range(num_gpus)
+        ),  # Assign one worker per GPU
         parallel_sweep_per_worker_trials=5,  # Each worker runs 5 trials
     )
 
@@ -93,7 +95,9 @@ def main():
         trainer.initialize_model()
 
         # Run parallel hyperparameter sweep
-        total_trials = num_gpus * training_config.parallel_sweep_per_worker_trials
+        total_trials = (
+            num_gpus * training_config.parallel_sweep_per_worker_trials
+        )
         best_run_id = trainer.run_hyperparameter_sweep(
             sweep_config=sweep_config,
             num_trials=total_trials,  # Total number of trials across all workers

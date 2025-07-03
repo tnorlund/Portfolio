@@ -31,7 +31,7 @@ graph TD
     WS3[test/ai-usage-tracker<br/>Workstream 3]
     WS4[test/ai-usage-integration<br/>Workstream 4]
     WS5[test/ai-usage-e2e<br/>Workstream 5]
-    
+
     Base --> WS1
     Base --> WS2
     WS1 --> WS3
@@ -126,7 +126,7 @@ Create in base branch for all workstreams to use:
 # receipt_label/tests/utils/ai_usage_helpers.py
 def create_mock_usage_metric(**kwargs):
     """Factory for test AIUsageMetric objects"""
-    
+
 def create_mock_openai_response(tokens_used):
     """Factory for mock OpenAI responses"""
 ```

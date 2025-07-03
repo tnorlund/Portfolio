@@ -7,8 +7,14 @@ from uuid import uuid4
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (DynamoClient, Image, Receipt, ReceiptLetter,
-                            ReceiptWord, ReceiptWordLabel)
+from receipt_dynamo import (
+    DynamoClient,
+    Image,
+    Receipt,
+    ReceiptLetter,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES

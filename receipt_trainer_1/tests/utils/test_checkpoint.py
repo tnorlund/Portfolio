@@ -33,9 +33,13 @@ class TestCheckpointManager(unittest.TestCase):
         # Create test checkpoint content
         self.test_checkpoint_dir = os.path.join(self.temp_dir, "test_model")
         os.makedirs(self.test_checkpoint_dir, exist_ok=True)
-        with open(os.path.join(self.test_checkpoint_dir, "model.bin"), "w") as f:
+        with open(
+            os.path.join(self.test_checkpoint_dir, "model.bin"), "w"
+        ) as f:
             f.write("test model data")
-        with open(os.path.join(self.test_checkpoint_dir, "config.json"), "w") as f:
+        with open(
+            os.path.join(self.test_checkpoint_dir, "config.json"), "w"
+        ) as f:
             f.write('{"model_type": "test"}')
 
     def tearDown(self):
@@ -94,14 +98,22 @@ class TestCheckpointManager(unittest.TestCase):
         self.assertEqual(result, checkpoint_path)
 
         # Check that files were copied
-        self.assertTrue(os.path.exists(os.path.join(checkpoint_path, "model.bin")))
-        self.assertTrue(os.path.exists(os.path.join(checkpoint_path, "config.json")))
         self.assertTrue(
-            os.path.exists(os.path.join(checkpoint_path, "checkpoint_info.json"))
+            os.path.exists(os.path.join(checkpoint_path, "model.bin"))
+        )
+        self.assertTrue(
+            os.path.exists(os.path.join(checkpoint_path, "config.json"))
+        )
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(checkpoint_path, "checkpoint_info.json")
+            )
         )
 
         # Check checkpoint info file
-        with open(os.path.join(checkpoint_path, "checkpoint_info.json"), "r") as f:
+        with open(
+            os.path.join(checkpoint_path, "checkpoint_info.json"), "r"
+        ) as f:
             checkpoint_info = json.load(f)
         self.assertEqual(checkpoint_info["name"], checkpoint_name)
         self.assertEqual(checkpoint_info["step"], 100)

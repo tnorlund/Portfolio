@@ -45,7 +45,9 @@ class JobProcessor(abc.ABC):
             mode: Processing mode
         """
         self.mode = mode
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger(
+            f"{__name__}.{self.__class__.__name__}"
+        )
         self._stop_event = threading.Event()
 
         # Configure debug logging if in debug mode
@@ -189,7 +191,9 @@ class SQSJobProcessor(JobProcessor):
         )
 
         # Initialize DynamoDB client
-        self.dynamo_client = DynamoClient(table_name=dynamo_table, region=region)
+        self.dynamo_client = DynamoClient(
+            table_name=dynamo_table, region=region
+        )
 
         # Initialize job service
         self.job_service = JobService(dynamo_table, region=region)
@@ -197,7 +201,9 @@ class SQSJobProcessor(JobProcessor):
         # Set up processing thread
         self._processing_thread = None
 
-        self.logger.info(f"Initialized SQS job processor for queue {queue_url}")
+        self.logger.info(
+            f"Initialized SQS job processor for queue {queue_url}"
+        )
         if mode == ProcessingMode.TEST:
             self.logger.info(f"Running in TEST mode with prefix {test_prefix}")
         elif mode == ProcessingMode.DEBUG:
@@ -222,7 +228,10 @@ class SQSJobProcessor(JobProcessor):
 
     def stop(self) -> None:
         """Stop processing jobs."""
-        if not self._processing_thread or not self._processing_thread.is_alive():
+        if (
+            not self._processing_thread
+            or not self._processing_thread.is_alive()
+        ):
             self.logger.warning("Job processor is not running")
             return
 
@@ -256,7 +265,9 @@ class SQSJobProcessor(JobProcessor):
 
                 for job, receipt_handle in jobs:
                     if self.mode == ProcessingMode.DEBUG:
-                        self.debug_log(f"Processing job {job.job_id}: {job.name}")
+                        self.debug_log(
+                            f"Processing job {job.job_id}: {job.name}"
+                        )
 
                     # For tracking the current job (used by spot termination handler)
                     self._current_job = job
@@ -273,7 +284,9 @@ class SQSJobProcessor(JobProcessor):
                                     f"Job {job.job_id} processed successfully"
                                 )
                             except Exception as e:
-                                self.logger.error(f"Error deleting job from queue: {e}")
+                                self.logger.error(
+                                    f"Error deleting job from queue: {e}"
+                                )
 
                             if self.mode == ProcessingMode.DEBUG:
                                 self.debug_log(
@@ -290,7 +303,9 @@ class SQSJobProcessor(JobProcessor):
                                         f"Job {job.job_id} failed, scheduled for retry"
                                     )
                                 except Exception as e:
-                                    self.logger.error(f"Error retrying job: {e}")
+                                    self.logger.error(
+                                        f"Error retrying job: {e}"
+                                    )
 
                                 if self.mode == ProcessingMode.DEBUG:
                                     self.debug_log(
@@ -313,7 +328,9 @@ class SQSJobProcessor(JobProcessor):
                                         f"Job {job.job_id} failed permanently after {job.attempt_count} attempts"
                                     )
                     except Exception as e:
-                        self.logger.error(f"Error processing job {job.job_id}: {e}")
+                        self.logger.error(
+                            f"Error processing job {job.job_id}: {e}"
+                        )
 
                         if self.mode == ProcessingMode.DEBUG:
                             import traceback
@@ -324,7 +341,9 @@ class SQSJobProcessor(JobProcessor):
 
                         # Extend visibility timeout to prevent other consumers from picking up this job
                         try:
-                            self.job_queue.extend_visibility_timeout(receipt_handle, 60)
+                            self.job_queue.extend_visibility_timeout(
+                                receipt_handle, 60
+                            )
                         except Exception as extend_error:
                             self.logger.error(
                                 f"Error extending visibility timeout: {extend_error}"
@@ -349,7 +368,9 @@ class SQSJobProcessor(JobProcessor):
 
         self.logger.info("Job processing loop terminated")
 
-    def process_job(self, job: Job, receipt_handle: Optional[str] = None) -> bool:
+    def process_job(
+        self, job: Job, receipt_handle: Optional[str] = None
+    ) -> bool:
         """
         Process a single job.
 
@@ -403,7 +424,9 @@ class SQSJobProcessor(JobProcessor):
 
             return result
         except Exception as e:
-            self.logger.error(f"Error in job handler for job {job.job_id}: {e}")
+            self.logger.error(
+                f"Error in job handler for job {job.job_id}: {e}"
+            )
 
             if self.mode == ProcessingMode.DEBUG:
                 import traceback
@@ -442,7 +465,9 @@ class SQSJobProcessor(JobProcessor):
             job.tags["test"] = "true"
 
         if self.mode == ProcessingMode.DEBUG:
-            self.debug_log(f"Submitting job {job.job_id} ({job.name}, type={job.type})")
+            self.debug_log(
+                f"Submitting job {job.job_id} ({job.name}, type={job.type})"
+            )
 
         # Store job in DynamoDB first
         self._store_job(job)
@@ -473,7 +498,9 @@ class SQSJobProcessor(JobProcessor):
 
                 # Get status string from job data
                 status_str = (
-                    job_data.status if hasattr(job_data, "status") else "pending"
+                    job_data.status
+                    if hasattr(job_data, "status")
+                    else "pending"
                 )
 
                 try:
@@ -525,7 +552,9 @@ class SQSJobProcessor(JobProcessor):
                 )
 
         except Exception as e:
-            self.logger.error(f"Error storing job {job.job_id} in DynamoDB: {e}")
+            self.logger.error(
+                f"Error storing job {job.job_id} in DynamoDB: {e}"
+            )
 
             if self.mode == ProcessingMode.DEBUG:
                 import traceback
@@ -548,7 +577,9 @@ class SQSJobProcessor(JobProcessor):
         try:
             # Update job status using JobService
             try:
-                message = error_message or f"Job status updated to {status.value}"
+                message = (
+                    error_message or f"Job status updated to {status.value}"
+                )
                 self.job_service.add_job_status(
                     job_id=job.job_id, status=status.value, message=message
                 )
@@ -562,7 +593,9 @@ class SQSJobProcessor(JobProcessor):
                     )
 
                 if self.mode == ProcessingMode.DEBUG:
-                    self.debug_log(f"Updated job {job.job_id} status to {status.value}")
+                    self.debug_log(
+                        f"Updated job {job.job_id} status to {status.value}"
+                    )
 
             except Exception as e:
                 self.logger.warning(
@@ -653,8 +686,9 @@ class EC2JobProcessor(SQSJobProcessor):
         """Start the EC2 job processor."""
         # Import here to avoid circular imports
         try:
-            from receipt_trainer.utils.infrastructure import \
-                TrainingEnvironment
+            from receipt_trainer.utils.infrastructure import (
+                TrainingEnvironment,
+            )
 
             # Set up training environment
             self.logger.info("Setting up training environment")
@@ -672,7 +706,9 @@ class EC2JobProcessor(SQSJobProcessor):
             self.logger.error(f"Error starting EC2 job processor: {e}")
             raise
 
-    def process_job(self, job: Job, receipt_handle: Optional[str] = None) -> bool:
+    def process_job(
+        self, job: Job, receipt_handle: Optional[str] = None
+    ) -> bool:
         """
         Process a job on EC2.
 

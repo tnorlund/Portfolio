@@ -6,8 +6,13 @@ __version__ = "0.2.0"
 
 # Import all entities
 from receipt_dynamo.entities import *  # noqa: F401, F403
-from receipt_dynamo.entities import (  # Additional exports that might not be in entities.__all__
-    ContentPattern, ReceiptSection, SpatialPattern)
+
+# Additional exports that might not be in entities.__all__
+from receipt_dynamo.entities import (
+    ContentPattern,
+    ReceiptSection,
+    SpatialPattern,
+)
 
 # Import services - requires boto3
 try:
@@ -25,8 +30,9 @@ except ModuleNotFoundError:
 # Import DynamoDB clients - requires boto3
 try:
     from receipt_dynamo.data.dynamo_client import DynamoClient
-    from receipt_dynamo.data.resilient_dynamo_client import \
-        ResilientDynamoClient
+    from receipt_dynamo.data.resilient_dynamo_client import (
+        ResilientDynamoClient,
+    )
 except ModuleNotFoundError:
     # Placeholders when boto3 is unavailable
     class DynamoClient:  # type: ignore

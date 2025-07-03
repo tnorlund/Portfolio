@@ -191,7 +191,9 @@ def create_checkpoint_manager(args):
         )
 
         if not mount_success:
-            logger.error("Failed to mount EFS. Please check your configuration.")
+            logger.error(
+                "Failed to mount EFS. Please check your configuration."
+            )
             sys.exit(1)
         else:
             logger.info(f"Successfully mounted EFS at {args.efs_mount_point}")
@@ -379,7 +381,9 @@ def delete_checkpoint(args):
         logger.warning(
             f"Checkpoint '{args.checkpoint}' is marked as the best checkpoint"
         )
-        confirm = input("Are you sure you want to delete the best checkpoint? (y/N): ")
+        confirm = input(
+            "Are you sure you want to delete the best checkpoint? (y/N): "
+        )
         if confirm.lower() != "y":
             logger.info("Deletion cancelled")
             return
@@ -450,7 +454,9 @@ def delete_older_than(args):
         else:
             logger.error(f"Failed to delete checkpoint '{name}'")
 
-    logger.info(f"Deleted {deleted_count} of {len(checkpoints_to_delete)} checkpoints")
+    logger.info(
+        f"Deleted {deleted_count} of {len(checkpoints_to_delete)} checkpoints"
+    )
 
 
 def mark_best_checkpoint(args):
@@ -469,7 +475,9 @@ def mark_best_checkpoint(args):
     result = cm.mark_as_best(args.checkpoint)
 
     if result:
-        logger.info(f"Successfully marked checkpoint '{args.checkpoint}' as best")
+        logger.info(
+            f"Successfully marked checkpoint '{args.checkpoint}' as best"
+        )
 
         # Update DynamoDB if table is provided
         if args.dynamo_table:
@@ -488,7 +496,9 @@ def download_checkpoint(args):
     if args.checkpoint:
         # First check if the named checkpoint exists
         checkpoints = cm.list_checkpoints()
-        checkpoint_dir_path = os.path.join(cm.job_checkpoint_dir, args.checkpoint)
+        checkpoint_dir_path = os.path.join(
+            cm.job_checkpoint_dir, args.checkpoint
+        )
         if os.path.exists(checkpoint_dir_path):
             checkpoint_path = checkpoint_dir_path
         else:
@@ -516,7 +526,9 @@ def download_checkpoint(args):
                 logger.error("No checkpoints found")
                 return
             else:
-                logger.info("No best checkpoint found, using latest checkpoint")
+                logger.info(
+                    "No best checkpoint found, using latest checkpoint"
+                )
         else:
             logger.info("Using best checkpoint")
 
@@ -524,8 +536,12 @@ def download_checkpoint(args):
     os.makedirs(args.output, exist_ok=True)
 
     # Download checkpoint
-    logger.info(f"Downloading checkpoint from {checkpoint_path} to {args.output}")
-    result = cm.load_checkpoint(dest_dir=args.output, checkpoint_path=checkpoint_path)
+    logger.info(
+        f"Downloading checkpoint from {checkpoint_path} to {args.output}"
+    )
+    result = cm.load_checkpoint(
+        dest_dir=args.output, checkpoint_path=checkpoint_path
+    )
 
     if result:
         logger.info(f"Successfully downloaded checkpoint to {args.output}")

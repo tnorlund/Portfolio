@@ -13,7 +13,9 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
-      "purpose": ["debug-test"]
+      "purpose": [
+        "debug-test"
+      ]
     },
     {
       "name": "Python: Unit Tests",
@@ -27,7 +29,9 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
-      "purpose": ["debug-test"]
+      "purpose": [
+        "debug-test"
+      ]
     },
     {
       "name": "Python: Integration Tests",
@@ -41,7 +45,9 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
-      "purpose": ["debug-test"]
+      "purpose": [
+        "debug-test"
+      ]
     },
     {
       "name": "Python: Receipt Trainer Tests",
@@ -55,7 +61,9 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
-      "purpose": ["debug-test"]
+      "purpose": [
+        "debug-test"
+      ]
     },
     {
       "name": "Python: Receipt Label Tests",
@@ -69,7 +77,9 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
-      "purpose": ["debug-test"]
+      "purpose": [
+        "debug-test"
+      ]
     }
   ]
 }

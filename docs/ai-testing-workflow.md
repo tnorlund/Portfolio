@@ -6,7 +6,7 @@
 ```bash
 /Users/tnorlund/GitHub/example-service-api-exploration  # Base branch
 /Users/tnorlund/GitHub/example-test-core-utils          # Workstream 1
-/Users/tnorlund/GitHub/example-test-entity              # Workstream 2  
+/Users/tnorlund/GitHub/example-test-entity              # Workstream 2
 /Users/tnorlund/GitHub/example-test-tracker             # Workstream 3
 /Users/tnorlund/GitHub/example-test-integration         # Workstream 4
 /Users/tnorlund/GitHub/example-test-e2e                 # Workstream 5
@@ -130,19 +130,19 @@ Use this checklist to track progress:
 - [ ] **WS1**: Core Utils Tests
   - [ ] test_cost_calculator.py
   - [ ] Pricing data fixtures
-  
-- [ ] **WS2**: Entity Tests  
+
+- [ ] **WS2**: Entity Tests
   - [ ] test_ai_usage_metric.py
   - [ ] test_ai_usage_queries.py
-  
+
 - [ ] **WS3**: Tracker Tests
   - [ ] test_ai_usage_tracker.py
   - [ ] test_openai_wrapper.py
-  
+
 - [ ] **WS4**: Integration Tests
   - [ ] test_client_manager_integration.py
   - [ ] test_handler.py (Lambda)
-  
+
 - [ ] **WS5**: E2E Tests
   - [ ] test_ai_usage_e2e.py
   - [ ] Documentation for running

@@ -6,8 +6,17 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from receipt_dynamo import (Image, Letter, Line, Receipt, ReceiptLetter,
-                            ReceiptLine, ReceiptWord, ReceiptWordLabel, Word)
+from receipt_dynamo import (
+    Image,
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+    Word,
+)
 
 
 @pytest.fixture
