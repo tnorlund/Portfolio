@@ -551,7 +551,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(
-                "version must be a string or None, got {type(version).__name__}"
+                f"version must be a string or None, got {type(version).__name__}"
             )
 
         try:
@@ -600,7 +600,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
 
                 if not items:
                     raise ValueError(
-                        "Receipt Structure Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
+                        f"Receipt Structure Analysis for Image ID {image_id} and Receipt ID {receipt_id} does not exist"
                     )
 
                 return item_to_receipt_structure_analysis(items[0])
