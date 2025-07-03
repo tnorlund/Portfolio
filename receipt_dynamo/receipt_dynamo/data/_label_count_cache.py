@@ -11,7 +11,9 @@ if TYPE_CHECKING:
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
-    LabelCountCache, item_to_label_count_cache)
+    LabelCountCache,
+    item_to_label_count_cache,
+)
 
 
 class _LabelCountCache(DynamoClientProtocol):
