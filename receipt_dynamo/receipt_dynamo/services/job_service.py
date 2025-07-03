@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 
-from receipt_dynamo import Job, JobStatus, item_to_job
+from receipt_dynamo import Job, JobStatus
 from receipt_dynamo.data._job import _Job
 from receipt_dynamo.services.job_operations import (JobCheckpointOperations,
                                                     JobDependencyOperations,
@@ -77,14 +77,13 @@ class JobService(
         self.add_job(job)
 
         # Add initial status
-        self.add_job_status(job.job_id, "pending", "Job created")
+        self.add_job_status_with_params(job.job_id, "pending", "Job created")
 
         return job
 
     def get_job(self, job_id: str) -> Job:
         """Get a job by ID."""
-        item = super().get_job(job_id)
-        return item_to_job(item)
+        return super().get_job(job_id)
 
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
         """Get a job with its status history."""
@@ -101,38 +100,30 @@ class JobService(
         super().delete_job(job)
 
     def list_jobs(
-        self, limit: int = 100, last_evaluated_key: Dict[str, Any] = None
+        self,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List all jobs."""
-        items, lek = super().list_jobs(limit, last_evaluated_key)
-        jobs = [item_to_job(item) for item in items]
-        return jobs, lek
+        return super().list_jobs(limit, lastEvaluatedKey)
 
     def list_jobs_by_status(
         self,
         status: str,
-        limit: int = 100,
-        last_evaluated_key: Dict[str, Any] = None,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List jobs by status."""
-        items, lek = super().list_jobs_by_status(
-            status, limit, last_evaluated_key
-        )
-        jobs = [item_to_job(item) for item in items]
-        return jobs, lek
+        return super().list_jobs_by_status(status, limit, lastEvaluatedKey)
 
     def list_jobs_by_user(
         self,
         user_id: str,
-        limit: int = 100,
-        last_evaluated_key: Dict[str, Any] = None,
+        limit: Optional[int] = None,
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List jobs by user."""
-        items, lek = super().list_jobs_by_user(
-            user_id, limit, last_evaluated_key
-        )
-        jobs = [item_to_job(item) for item in items]
-        return jobs, lek
+        return super().list_jobs_by_user(user_id, limit, lastEvaluatedKey)
 
     def check_job_dependencies(
         self, job_id: str
