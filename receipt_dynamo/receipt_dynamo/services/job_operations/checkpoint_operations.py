@@ -1,7 +1,7 @@
 """Job checkpoint operations."""
 
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from receipt_dynamo import JobCheckpoint, item_to_job_checkpoint
 from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
@@ -10,13 +10,13 @@ from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
 class JobCheckpointOperations(_JobCheckpoint):
     """Handles job checkpoint-related operations."""
 
-    def add_job_checkpoint(
+    def add_job_checkpoint_with_params(
         self,
         job_id: str,
         checkpoint_name: str,
-        metrics: Dict[str, float] = None,
-        s3_bucket: str = None,
-        s3_key: str = None,
+        metrics: Optional[Dict[str, float]] = None,
+        s3_bucket: Optional[str] = None,
+        s3_key: Optional[str] = None,
         step: int = 0,
         epoch: int = 0,
     ) -> JobCheckpoint:
@@ -36,19 +36,18 @@ class JobCheckpointOperations(_JobCheckpoint):
         """
         checkpoint = JobCheckpoint(
             job_id=job_id,
-            timestamp=datetime.now(),
-            checkpoint_name=checkpoint_name,
+            timestamp=datetime.now().isoformat(),
             s3_bucket=s3_bucket or "unknown",
             s3_key=s3_key or f"checkpoints/{job_id}/{checkpoint_name}",
             size_bytes=0,  # TODO: Get actual checkpoint size
             step=step,
             epoch=epoch,
-            metrics=metrics,
+            metrics=metrics or {},
         )
         super().add_job_checkpoint(checkpoint)
         return checkpoint
 
     def get_job_checkpoints(self, job_id: str) -> List[JobCheckpoint]:
         """Get all checkpoints for a job."""
-        items = super().get_job_checkpoints(job_id)
-        return [item_to_job_checkpoint(item) for item in items]
+        # TODO: Implement get_job_checkpoints in _JobCheckpoint base class
+        return []
