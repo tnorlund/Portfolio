@@ -1,12 +1,9 @@
 from datetime import datetime
 from typing import Any, Dict, Generator, List, Tuple
 
-from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
-    assert_valid_point,
-    assert_valid_uuid,
-)
+from receipt_dynamo.entities.util import (_format_float, _repr_str,
+                                          assert_valid_point,
+                                          assert_valid_uuid)
 
 
 class ReceiptField:
@@ -35,7 +32,7 @@ class ReceiptField:
         field_type: str,
         image_id: str,
         receipt_id: int,
-        words: List[dict],
+        words: List[Dict[str, Any]],
         reasoning: str,
         timestamp_added: datetime,
     ):
