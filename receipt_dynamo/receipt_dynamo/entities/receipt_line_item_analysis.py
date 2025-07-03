@@ -50,7 +50,7 @@ class ReceiptLineItemAnalysis:
         total_found: Optional[int] = None,
         discrepancies: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        word_labels: Optional[Dict[str, Any]] = None,
+        word_labels: Optional[Dict[Tuple[int, int], Any]] = None,
         timestamp_updated: Optional[str] = None,
     ):
         """Initializes a new ReceiptLineItemAnalysis object for DynamoDB.
@@ -161,7 +161,7 @@ class ReceiptLineItemAnalysis:
         if word_labels is not None:
             if not isinstance(word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
-            self.word_labels: Dict[Tuple[int, int], Any] = word_labels
+            self.word_labels = word_labels
         else:
             self.word_labels = {}
 
