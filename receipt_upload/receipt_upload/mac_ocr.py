@@ -5,10 +5,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import boto3
-
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import OCRRoutingDecision
+
 from receipt_upload.ocr import apple_vision_ocr_job
 from receipt_upload.pulumi import load_env
 from receipt_upload.utils import download_image_from_s3, upload_file_to_s3
@@ -61,7 +61,9 @@ def main():
             image_s3_bucket = ocr_job.s3_bucket
 
             # Download the image from the S3 bucket
-            image_path = download_image_from_s3(image_s3_bucket, image_s3_key, image_id)
+            image_path = download_image_from_s3(
+                image_s3_bucket, image_s3_key, image_id
+            )
             image_details.append((image_id, image_path))
 
         # Run the OCR
