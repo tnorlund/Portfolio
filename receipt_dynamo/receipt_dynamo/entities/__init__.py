@@ -4,7 +4,10 @@ Entity classes for the receipt_dynamo package.
 TODO: Make this import work with intellisense
 """
 
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric  # noqa: F401
+from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
+    AIUsageMetric,
+    item_to_ai_usage_metric,
+)
 from receipt_dynamo.entities.batch_summary import BatchSummary  # noqa: F401
 from receipt_dynamo.entities.batch_summary import item_to_batch_summary
 from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
@@ -120,6 +123,10 @@ from receipt_dynamo.entities.rwl_queue import (
     Queue,  # noqa: F401
     item_to_queue,
 )
+from receipt_dynamo.entities.places_cache import (  # noqa: F401
+    PlacesCache,
+    item_to_places_cache,
+)
 
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
@@ -217,3 +224,9 @@ __all__ = [
     "ContentPattern",
     "SpatialPattern",
 ]
+
+# Import additional types after defining __all__ to avoid circular imports
+from receipt_dynamo.entities.receipt_structure_analysis import (
+    ContentPattern,  # noqa: F401
+    SpatialPattern,  # noqa: F401
+)
