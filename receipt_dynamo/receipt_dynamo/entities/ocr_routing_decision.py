@@ -2,8 +2,11 @@ from datetime import datetime
 from typing import Any, Dict
 
 from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.entities.util import (_repr_str, assert_valid_uuid,
-                                          normalize_enum)
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 
 class OCRRoutingDecision:
