@@ -158,7 +158,7 @@ if [ $TEST_RESULT -eq 0 ]; then
     echo -e "${GREEN}✅ All tests passed!${NC}"
     echo ""
     echo -e "${GREEN}🎉 This should pass the corresponding CI job.${NC}"
-    
+
     # Provide next steps
     echo ""
     echo "Next steps:"

@@ -71,7 +71,9 @@ def main():
     """Run the example."""
     args = parse_args()
 
-    logger.info(f"Starting auto-scaling example with Pulumi stack: {args.stack}")
+    logger.info(
+        f"Starting auto-scaling example with Pulumi stack: {args.stack}"
+    )
 
     try:
         # Set up GPU instance types if requested
@@ -89,7 +91,9 @@ def main():
         )
 
         # Start monitoring
-        logger.info(f"Starting auto-scaling monitoring with {args.interval}s interval")
+        logger.info(
+            f"Starting auto-scaling monitoring with {args.interval}s interval"
+        )
         manager.start_monitoring(interval_seconds=args.interval)
 
         # Run for specified duration

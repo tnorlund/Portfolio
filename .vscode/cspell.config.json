@@ -1,7 +1,7 @@
 {
-    "ignorePaths": [
-      "**/node_modules/**",
-      "**/dist/**",
-      "receipt_dynamo/tests/integration/_fixtures.py"
-    ]
-  }
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "receipt_dynamo/tests/integration/_fixtures.py"
+  ]
+}

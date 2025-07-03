@@ -57,4 +57,4 @@ echo -e "${YELLOW}Test process complete.${NC}"
 echo "Double-check your AWS Console to make sure no resources were left running."
 
 # Exit with the original test status
-exit $TEST_STATUS 
+exit $TEST_STATUS

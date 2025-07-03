@@ -93,7 +93,7 @@ def call_openai_api(prompt: str) -> dict:
             "OpenAI API did not return valid JSON. Response content: "
             + content
         ) from e
-    return mapping
+    return mapping  # type: ignore[no-any-return]
 
 
 # ─── STEP 3: APPLYING THE RENAMING ───────────────────────────────────

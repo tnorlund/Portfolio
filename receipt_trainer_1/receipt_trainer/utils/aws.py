@@ -30,7 +30,9 @@ def load_env(env: str = "dev") -> Dict[str, Any]:
     try:
         return _load_pulumi_env(env)
     except Exception as e:
-        logger.error(f"Failed to load Pulumi stack outputs for environment {env}: {e}")
+        logger.error(
+            f"Failed to load Pulumi stack outputs for environment {env}: {e}"
+        )
         raise
 
 
@@ -67,7 +69,9 @@ def get_dynamo_table(env: str = "dev") -> str:
         # Fallback to environment variable
         table_name = os.environ.get("DYNAMO_TABLE")
         if table_name:
-            logger.info(f"Using DynamoDB table from environment variable: {table_name}")
+            logger.info(
+                f"Using DynamoDB table from environment variable: {table_name}"
+            )
             return table_name
         raise
 
@@ -112,7 +116,9 @@ def get_instance_metadata() -> Dict[str, Any]:
         metadata["instance_id"] = instance_id
 
         # Get instance type
-        instance_type_url = "http://169.254.169.254/latest/meta-data/instance-type"
+        instance_type_url = (
+            "http://169.254.169.254/latest/meta-data/instance-type"
+        )
         instance_type = subprocess.check_output(
             ["curl", "-s", instance_type_url], text=True
         )
@@ -126,7 +132,9 @@ def get_instance_metadata() -> Dict[str, Any]:
 
         # Get spot instance information if available
         try:
-            spot_url = "http://169.254.169.254/latest/meta-data/spot/instance-action"
+            spot_url = (
+                "http://169.254.169.254/latest/meta-data/spot/instance-action"
+            )
             spot_info = subprocess.check_output(
                 ["curl", "-s", "-f", spot_url], text=True
             )
@@ -302,7 +310,9 @@ def update_instance_status(
         return False
 
 
-def deregister_instance(registry_table: str, instance_id: Optional[str] = None) -> bool:
+def deregister_instance(
+    registry_table: str, instance_id: Optional[str] = None
+) -> bool:
     """Deregister this instance from the registry.
 
     Args:
@@ -338,7 +348,9 @@ def deregister_instance(registry_table: str, instance_id: Optional[str] = None) 
         return False
 
 
-def elect_leader(registry_table: str, instance_id: Optional[str] = None) -> bool:
+def elect_leader(
+    registry_table: str, instance_id: Optional[str] = None
+) -> bool:
     """Try to elect this instance as the leader.
 
     Args:
@@ -388,14 +400,19 @@ def elect_leader(registry_table: str, instance_id: Optional[str] = None) -> bool
                 logger.info(f"Instance {instance_id} elected as leader")
                 return True
             except ClientError as e:
-                if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                if (
+                    e.response["Error"]["Code"]
+                    == "ConditionalCheckFailedException"
+                ):
                     logger.info(
                         f"Leader election failed, instance {instance_id} not registered or leader already elected"
                     )
                     return False
                 raise
         else:
-            logger.info(f"Leader already exists, instance {instance_id} not elected")
+            logger.info(
+                f"Leader already exists, instance {instance_id} not elected"
+            )
             return False
     except Exception as e:
         logger.error(f"Error during leader election: {e}")
@@ -528,7 +545,9 @@ def check_spot_interruption() -> Tuple[bool, Optional[Dict[str, Any]]]:
         # Try to get spot instance action from metadata service
         url = "http://169.254.169.254/latest/meta-data/spot/instance-action"
         try:
-            output = subprocess.check_output(["curl", "-s", "-f", url], text=True)
+            output = subprocess.check_output(
+                ["curl", "-s", "-f", url], text=True
+            )
             interruption = json.loads(output)
             return True, interruption
         except subprocess.CalledProcessError:
@@ -605,7 +624,9 @@ def notify_spot_interruption(
 
         # Create message
         if not message:
-            interruption_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+            interruption_time = time.strftime(
+                "%Y-%m-%d %H:%M:%S UTC", time.gmtime()
+            )
             message = f"Spot instance {instance_id} is scheduled for interruption at {interruption_time}"
 
         # Publish to SNS

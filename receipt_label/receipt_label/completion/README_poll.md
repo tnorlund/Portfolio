@@ -50,27 +50,27 @@ Marks the batch as `COMPLETED` in DynamoDB.
 
 1. **PollList** state
 
-   1. Retrieve all pending completion batches using  
+   1. Retrieve all pending completion batches using
       `list_pending_completion_batches()`.
-   2. Filter for batches with `status = PENDING` and `batch_type = COMPLETION`.  
+   2. Filter for batches with `status = PENDING` and `batch_type = COMPLETION`.
       _Output:_ an array of `BatchSummary` objects to process.
 
 2. **PollDownload** state _(Map – runs once per pending batch)_
 
-   1. Check the OpenAI batch status →  
+   1. Check the OpenAI batch status →
       `get_openai_batch_status()`.
    2. If status is `"completed"`:
-      - Download and parse results →  
+      - Download and parse results →
         `download_openai_batch_result()`.
-      - Update pending labels back to `NONE` →  
+      - Update pending labels back to `NONE` →
         `update_pending_labels()`.
-      - Process valid labels →  
+      - Process valid labels →
         `update_valid_labels()`.
-      - Handle invalid labels and create corrections →  
+      - Handle invalid labels and create corrections →
         `update_invalid_labels()`.
-      - Write results for audit →  
+      - Write results for audit →
         `write_completion_batch_results()`.
-      - Mark batch as completed →  
+      - Mark batch as completed →
         `update_batch_summary()`.
    3. If status is `"failed"`:
       - Handle error and update batch status accordingly.
@@ -78,14 +78,14 @@ Marks the batch as `COMPLETED` in DynamoDB.
       - Exit and retry in the next polling cycle.
 
 3. **Integration with Step Functions**
-   
+
    The polling pipeline typically runs on a schedule (e.g., every 5-10 minutes) to:
    - Check all pending batches
    - Process completed batches in parallel
    - Update DynamoDB and Pinecone with validation results
    - Create new labels for OpenAI's suggested corrections
 
-> **Note:** The polling system includes timeout protection (default 300s) to prevent 
+> **Note:** The polling system includes timeout protection (default 300s) to prevent
 > infinite waiting when OpenAI batches are stuck in "validating" status.
 
 ---
@@ -103,19 +103,19 @@ flowchart TB
         get_openai_batch_status -->|not completed| SkipBatch["Skip (wait for next poll)"]
         get_openai_batch_status -->|completed| download_openai_batch_result["Download Results"]
         download_openai_batch_result --> ProcessResults["Process Results"]
-        
+
         ProcessResults --> update_pending_labels["Reset unprocessed labels to NONE"]
         ProcessResults --> update_valid_labels["Update Valid Labels"]
         ProcessResults --> update_invalid_labels["Update Invalid Labels"]
-        
+
         update_valid_labels --> UpdatePineconeValid["Update Pinecone metadata<br/>(valid_labels)"]
         update_invalid_labels --> UpdatePineconeInvalid["Update Pinecone metadata<br/>(invalid_labels, proposed_label)"]
         update_invalid_labels --> CreateProposed["Create new ReceiptWordLabel<br/>for suggested corrections"]
-        
+
         UpdatePineconeValid --> write_completion_batch_results["Write CompletionBatchResult<br/>for audit"]
         UpdatePineconeInvalid --> write_completion_batch_results
         CreateProposed --> write_completion_batch_results
-        
+
         write_completion_batch_results --> update_batch_summary["Mark Batch as COMPLETED"]
     end
 
