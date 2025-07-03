@@ -6,10 +6,12 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import ReceiptValidationCategory
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBValidationError)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBValidationError,
+)
 
 
 @pytest.fixture

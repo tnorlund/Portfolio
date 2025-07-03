@@ -4,8 +4,10 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from receipt_dynamo import (ReceiptValidationSummary,
-                            item_to_receipt_validation_summary)
+from receipt_dynamo import (
+    ReceiptValidationSummary,
+    item_to_receipt_validation_summary,
+)
 
 
 @pytest.fixture

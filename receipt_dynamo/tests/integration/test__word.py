@@ -5,10 +5,12 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Word
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+)
 
 correct_word_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
