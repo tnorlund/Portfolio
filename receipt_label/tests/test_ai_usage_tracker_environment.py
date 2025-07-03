@@ -9,6 +9,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import (
@@ -28,7 +29,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 table_name="AIUsageMetrics", validate_table_environment=False
             )
 
-            assert tracker.environment_config.environment == Environment.STAGING
+            assert (
+                tracker.environment_config.environment == Environment.STAGING
+            )
             assert tracker.table_name == "AIUsageMetrics"  # Used as-is
             assert not tracker.environment_config.require_context
 
@@ -38,8 +41,12 @@ class TestAIUsageTrackerEnvironmentIntegration:
             # When table_name is None, auto-generate with environment suffix
             tracker = AIUsageTracker.create_for_environment()
 
-            assert tracker.environment_config.environment == Environment.STAGING
-            assert tracker.table_name == "AIUsageMetrics-staging"  # Auto-generated
+            assert (
+                tracker.environment_config.environment == Environment.STAGING
+            )
+            assert (
+                tracker.table_name == "AIUsageMetrics-staging"
+            )  # Auto-generated
             assert not tracker.environment_config.require_context
 
     def test_tracker_creation_with_explicit_environment(self):
@@ -197,7 +204,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
         import json
         import tempfile
 
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".jsonl") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w+", delete=False, suffix=".jsonl"
+        ) as f:
             log_file = f.name
 
         try:
@@ -381,10 +390,17 @@ class TestTrackerFactoryMethods:
 
     def test_create_for_environment_with_auto_detection(self):
         """Test create_for_environment with auto-detection."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}, clear=False):
-            tracker = AIUsageTracker.create_for_environment(table_name="AIUsageMetrics")
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "production"}, clear=False
+        ):
+            tracker = AIUsageTracker.create_for_environment(
+                table_name="AIUsageMetrics"
+            )
 
-            assert tracker.environment_config.environment == Environment.PRODUCTION
+            assert (
+                tracker.environment_config.environment
+                == Environment.PRODUCTION
+            )
             assert tracker.table_name == "AIUsageMetrics"
 
     def test_create_for_environment_with_explicit_environment(self):
