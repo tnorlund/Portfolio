@@ -267,13 +267,12 @@ def test_list_receipts_for_merchant_validation(mock_dynamo):
 
 
 def test_get_receipt_details(mock_dynamo):
-    dummy = ("r", ["l"], ["w"], ["let"], ["tag"], ["lbl"])
+    dummy = ("r", ["l"], ["w"], ["let"], ["lbl"])
     mock_dynamo.getReceipt.return_value = dummy[0]
     mock_dynamo.getReceiptLines.return_value = dummy[1]
     mock_dynamo.getReceiptWords.return_value = dummy[2]
     mock_dynamo.getReceiptLetters.return_value = dummy[3]
-    mock_dynamo.getReceiptWordTags.return_value = dummy[4]
-    mock_dynamo.getReceiptWordLabels.return_value = dummy[5]
+    mock_dynamo.getReceiptWordLabels.return_value = dummy[4]
     assert mv.get_receipt_details("img", 1) == dummy
 
 

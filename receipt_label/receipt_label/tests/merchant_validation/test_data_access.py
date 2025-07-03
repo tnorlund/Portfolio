@@ -85,7 +85,6 @@ class TestGetReceiptDetails:
         mock_lines = [Mock()]
         mock_words = [Mock(spec=ReceiptWord)]
         mock_letters = [Mock()]
-        mock_tags = [Mock()]
         mock_labels = [Mock()]
 
         mock_client_manager = Mock()
@@ -94,7 +93,6 @@ class TestGetReceiptDetails:
         mock_dynamo.getReceiptLines.return_value = mock_lines
         mock_dynamo.getReceiptWords.return_value = mock_words
         mock_dynamo.getReceiptLetters.return_value = mock_letters
-        mock_dynamo.getReceiptWordTags.return_value = mock_tags
         mock_dynamo.getReceiptWordLabels.return_value = mock_labels
         mock_get_client_manager.return_value = mock_client_manager
 
@@ -107,14 +105,12 @@ class TestGetReceiptDetails:
             mock_lines,
             mock_words,
             mock_letters,
-            mock_tags,
             mock_labels,
         )
         mock_dynamo.getReceipt.assert_called_once_with(image_id, receipt_id)
         mock_dynamo.getReceiptLines.assert_called_once_with(image_id, receipt_id)
         mock_dynamo.getReceiptWords.assert_called_once_with(image_id, receipt_id)
         mock_dynamo.getReceiptLetters.assert_called_once_with(image_id, receipt_id)
-        mock_dynamo.getReceiptWordTags.assert_called_once_with(image_id, receipt_id)
         mock_dynamo.getReceiptWordLabels.assert_called_once_with(image_id, receipt_id)
 
     def test_get_receipt_details_invalid_image_id(self):
