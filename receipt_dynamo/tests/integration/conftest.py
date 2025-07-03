@@ -5,6 +5,7 @@ from os.path import dirname, join
 import boto3
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo import (
     Image,
     Letter,
@@ -14,9 +15,7 @@ from receipt_dynamo import (
     ReceiptLine,
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptWordTag,
     Word,
-    WordTag,
 )
 
 
@@ -93,7 +92,9 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
+                    "KeySchema": [
+                        {"AttributeName": "TYPE", "KeyType": "HASH"}
+                    ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -104,7 +105,9 @@ def dynamodb_table():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
+        dynamodb.meta.client.get_waiter("table_exists").wait(
+            TableName=table_name
+        )
 
         # Yield the table name so your tests can reference it
         yield table_name
@@ -160,9 +163,8 @@ def expected_results(request):
 
     The fixture returns a tuple containing:
         (
-            list[Image], list[Line], list[Word], list[WordTag], list[Letter],
+            list[Image], list[Line], list[Word], list[Letter],
             list[Receipt], list[ReceiptLine], list[ReceiptWord],
-            list[ReceiptWordTag],
             list[ReceiptLetter],
         )
     """
@@ -175,13 +177,13 @@ def expected_results(request):
     images = [Image(**img) for img in results.get("images", [])]
     lines = [Line(**line) for line in results.get("lines", [])]
     words = [Word(**word) for word in results.get("words", [])]
-    word_tags = [WordTag(**wt) for wt in results.get("word_tags", [])]
     letters = [Letter(**letter) for letter in results.get("letters", [])]
     receipts = [Receipt(**rcpt) for rcpt in results.get("receipts", [])]
-    receipt_lines = [ReceiptLine(**rl) for rl in results.get("receipt_lines", [])]
-    receipt_words = [ReceiptWord(**rw) for rw in results.get("receipt_words", [])]
-    receipt_word_tags = [
-        ReceiptWordTag(**rwt) for rwt in results.get("receipt_word_tags", [])
+    receipt_lines = [
+        ReceiptLine(**rl) for rl in results.get("receipt_lines", [])
+    ]
+    receipt_words = [
+        ReceiptWord(**rw) for rw in results.get("receipt_words", [])
     ]
     receipt_letters = [
         ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])
@@ -191,12 +193,10 @@ def expected_results(request):
         images,
         lines,
         words,
-        word_tags,
         letters,
         receipts,
         receipt_lines,
         receipt_words,
-        receipt_word_tags,
         receipt_letters,
     )
 

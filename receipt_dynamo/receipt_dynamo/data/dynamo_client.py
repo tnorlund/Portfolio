@@ -55,9 +55,7 @@ from receipt_dynamo.data._receipt_validation_summary import (
 )
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
-from receipt_dynamo.data._receipt_word_tag import _ReceiptWordTag
 from receipt_dynamo.data._word import _Word
-from receipt_dynamo.data._word_tag import _WordTag
 
 
 class DynamoClient(
@@ -69,8 +67,6 @@ class DynamoClient(
     _ReceiptLine,
     _ReceiptWord,
     _ReceiptLetter,
-    _WordTag,
-    _ReceiptWordTag,
     _Job,
     _JobStatus,
     _JobResource,

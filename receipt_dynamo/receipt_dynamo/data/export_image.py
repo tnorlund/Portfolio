@@ -31,21 +31,17 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     # Get all data from DynamoDB
     details = dynamo_client.get_image_details(image_id)
 
-    (
-        images,
-        lines,
-        words,
-        word_tags,
-        letters,
-        receipts,
-        receipt_lines,
-        receipt_words,
-        receipt_word_tags,
-        receipt_letters,
-        receipt_metadatas,
-        ocr_jobs,
-        ocr_routing_decisions,
-    ) = details
+    images = details.images
+    lines = details.lines
+    words = details.words
+    letters = details.letters
+    receipts = details.receipts
+    receipt_lines = details.receipt_lines
+    receipt_words = details.receipt_words
+    receipt_letters = details.receipt_letters
+    receipt_metadatas = details.receipt_metadatas
+    ocr_jobs = details.ocr_jobs
+    ocr_routing_decisions = details.ocr_routing_decisions
 
     if not images:
         raise ValueError(f"No image found for image_id {image_id}")
@@ -55,16 +51,32 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "images": [dict(image) for image in images],
         "lines": [dict(line) for line in lines],
         "words": [dict(word) for word in words],
-        "word_tags": [dict(word_tag) for word_tag in word_tags],
         "letters": [dict(letter) for letter in letters],
         "receipts": [dict(receipt) for receipt in receipts],
         "receipt_lines": [dict(line) for line in receipt_lines],
         "receipt_words": [dict(word) for word in receipt_words],
-        "receipt_word_tags": [dict(word_tag) for word_tag in receipt_word_tags],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "receipt_metadatas": [dict(metadata) for metadata in receipt_metadatas],
+        "receipt_metadatas": [
+            dict(metadata) for metadata in receipt_metadatas
+        ],
         "ocr_jobs": [dict(job) for job in ocr_jobs],
-        "ocr_routing_decisions": [dict(decision) for decision in ocr_routing_decisions],
+        "ocr_routing_decisions": [
+            {
+                "image_id": decision.image_id,
+                "job_id": decision.job_id,
+                "s3_bucket": decision.s3_bucket,
+                "s3_key": decision.s3_key,
+                "created_at": decision.created_at.isoformat(),
+                "updated_at": (
+                    decision.updated_at.isoformat()
+                    if decision.updated_at
+                    else None
+                ),
+                "receipt_count": decision.receipt_count,
+                "status": decision.status,
+            }
+            for decision in ocr_routing_decisions
+        ],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:

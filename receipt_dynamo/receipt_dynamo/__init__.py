@@ -22,8 +22,6 @@ __all__ = [
     "item_to_receipt_line",
     "item_to_receipt_word",
     "item_to_word",
-    "ReceiptWordTag",
-    "item_to_receipt_word_tag",
     "ReceiptWordLabel",
     "item_to_receipt_word_label",
     "ReceiptField",
@@ -35,8 +33,6 @@ __all__ = [
     "ReceiptLineItemAnalysis",
     "item_to_receipt_line_item_analysis",
     "ReceiptAnalysis",
-    "WordTag",
-    "item_to_word_tag",
     "Job",
     "item_to_job",
     "JobMetric",
@@ -132,11 +128,6 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptSection,
     SpatialPattern,
 )
-from receipt_dynamo.entities.receipt_word_tag import (
-    ReceiptWordTag,
-    item_to_receipt_word_tag,
-)
-from receipt_dynamo.entities.word_tag import WordTag, item_to_word_tag
 
 # Only import what's actually used elsewhere in the package
 try:  # Optional dependency
