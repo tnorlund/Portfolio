@@ -1,550 +1,136 @@
-"""
-Job Service layer for receipt_dynamo operations.
+"""Refactored Job Service with modular operations."""
 
-This module provides a service class that encapsulates all DynamoDB operations
-related to jobs and provides a clean API for client applications to use.
-"""
-
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.job import Job, item_to_job
-from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
-from receipt_dynamo.entities.job_dependency import JobDependency
-from receipt_dynamo.entities.job_log import JobLog
-from receipt_dynamo.entities.job_metric import JobMetric
-from receipt_dynamo.entities.job_resource import JobResource
-from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
+import boto3
+
+from receipt_dynamo import Job, JobStatus
+from receipt_dynamo.data._job import _Job
+from receipt_dynamo.services.job_operations import (JobCheckpointOperations,
+                                                    JobDependencyOperations,
+                                                    JobMetricOperations,
+                                                    JobResourceOperations,
+                                                    JobStatusOperations)
 
 
-class JobService:
-    """
-    Service layer for job-related operations.
-
-    This class encapsulates all interactions with DynamoDB for job entities
-    and provides a clean API for client applications.
-    """
+class JobService(
+    _Job,
+    JobStatusOperations,
+    JobMetricOperations,
+    JobResourceOperations,
+    JobDependencyOperations,
+    JobCheckpointOperations,
+):
+    """Service for managing ML training jobs with modular operations."""
 
     def __init__(self, table_name: str, region: str = "us-east-1"):
-        """
-        Initialize the JobService.
+        """Initialize the JobService.
 
         Args:
-            table_name: The name of the DynamoDB table
-            region: AWS region (defaults to us-east-1)
+            table_name: Name of the DynamoDB table
+            region: AWS region
         """
-        self.dynamo_client = DynamoClient(table_name=table_name, region=region)
         self.table_name = table_name
         self.region = region
+        self._client = boto3.client("dynamodb", region_name=region)
 
-    # Job CRUD operations
     def create_job(
         self,
-        job_id: str,
-        name: str,
-        description: str,
-        created_by: str,
-        status: str,
-        priority: str,
+        job_name: str,
+        job_description: str,
+        user_id: str,
         job_config: Dict[str, Any],
+        priority: str = "medium",
         estimated_duration: Optional[int] = None,
         tags: Optional[Dict[str, str]] = None,
     ) -> Job:
-        """
-        Create a new job in DynamoDB.
+        """Create a new job.
 
         Args:
-            job_id: UUID identifying the job
-            name: The name of the job
-            description: A description of the job
-            created_by: The user who created the job
-            status: The initial status of the job
-            priority: The priority level of the job
-            job_config: The configuration for the job
-            estimated_duration: The estimated duration of the job in seconds
-            tags: Tags associated with the job
+            job_name: Name of the job
+            job_description: Description of the job
+            user_id: ID of the user creating the job
+            job_config: Configuration for the job
+            priority: Job priority (low, medium, high)
+            estimated_duration: Estimated duration in seconds
+            tags: Optional tags for the job
 
         Returns:
-            The created Job object
-
-        Raises:
-            ValueError: When a job with the same ID already exists
+            The created Job
         """
         job = Job(
-            job_id=job_id,
-            name=name,
-            description=description,
+            job_id=str(uuid.uuid4()),
+            name=job_name,
+            description=job_description,
             created_at=datetime.now(),
-            created_by=created_by,
-            status=status,
+            created_by=user_id,
+            status="pending",
             priority=priority,
             job_config=job_config,
             estimated_duration=estimated_duration,
-            tags=tags,
+            tags=tags or {},
         )
 
-        self.dynamo_client.add_job(job)
+        # Add the job to DynamoDB
+        self.add_job(job)
+
+        # Add initial status
+        self.add_job_status_with_params(job.job_id, "pending", "Job created")
+
         return job
 
     def get_job(self, job_id: str) -> Job:
-        """
-        Get a job by its ID.
-
-        Args:
-            job_id: The ID of the job to retrieve
-
-        Returns:
-            The Job object
-
-        Raises:
-            Exception: When the job is not found
-        """
-        return self.dynamo_client.get_job(job_id)
+        """Get a job by ID."""
+        return super().get_job(job_id)
 
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
-        """
-        Get a job and its associated status records.
-
-        Args:
-            job_id: The ID of the job to retrieve
-
-        Returns:
-            A tuple containing the Job object and a list of JobStatus objects
-
-        Raises:
-            Exception: When the job is not found
-        """
-        return self.dynamo_client.get_job_with_status(job_id)
+        """Get a job with its status history."""
+        job = self.get_job(job_id)
+        status_history = self.get_job_status_history(job_id)
+        return job, status_history
 
     def update_job(self, job: Job) -> None:
-        """
-        Update an existing job.
-
-        Args:
-            job: The job object to update
-
-        Raises:
-            Exception: When the job does not exist
-        """
-        self.dynamo_client.update_job(job)
+        """Update a job."""
+        super().update_job(job)
 
     def delete_job(self, job: Job) -> None:
-        """
-        Delete a job.
-
-        Args:
-            job: The job to delete
-
-        Raises:
-            Exception: When the job does not exist
-        """
-        self.dynamo_client.delete_job(job)
+        """Delete a job."""
+        super().delete_job(job)
 
     def list_jobs(
         self,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Job], Optional[Dict]]:
-        """
-        List jobs with pagination support.
-
-        Args:
-            limit: Maximum number of jobs to return
-            last_evaluated_key: The key to continue from (for pagination)
-
-        Returns:
-            A tuple containing a list of Job objects and the last evaluated key
-        """
-        return self.dynamo_client.list_jobs(limit, last_evaluated_key)
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
+        """List all jobs."""
+        return super().list_jobs(limit, lastEvaluatedKey)
 
     def list_jobs_by_status(
         self,
         status: str,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Job], Optional[Dict]]:
-        """
-        List jobs with a specific status.
-
-        Args:
-            status: The status to filter by
-            limit: Maximum number of jobs to return
-            last_evaluated_key: The key to continue from (for pagination)
-
-        Returns:
-            A tuple containing a list of Job objects and the last evaluated key
-        """
-        return self.dynamo_client.list_jobs_by_status(
-            status, limit, last_evaluated_key
-        )
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
+        """List jobs by status."""
+        return super().list_jobs_by_status(status, limit, lastEvaluatedKey)
 
     def list_jobs_by_user(
         self,
         user_id: str,
         limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Job], Optional[Dict]]:
-        """
-        List jobs created by a specific user.
+        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
+        """List jobs by user."""
+        return super().list_jobs_by_user(user_id, limit, lastEvaluatedKey)
 
-        Args:
-            user_id: The user ID to filter by
-            limit: Maximum number of jobs to return
-            last_evaluated_key: The key to continue from (for pagination)
-
-        Returns:
-            A tuple containing a list of Job objects and the last evaluated key
-        """
-        return self.dynamo_client.list_jobs_by_user(
-            user_id, limit, last_evaluated_key
-        )
-
-    # Job status operations
-    def add_job_status(
-        self, job_id: str, status: str, message: str
-    ) -> JobStatus:
-        """
-        Add a new status record for a job.
-
-        Args:
-            job_id: The ID of the job
-            status: The status value
-            message: Message describing the status change
-
-        Returns:
-            The created JobStatus object
-        """
-        job_status = JobStatus(
-            job_id=job_id,
-            updated_at=datetime.now(),
-            status=status,
-            message=message,
-        )
-        self.dynamo_client.add_job_status(job_status)
-        return job_status
-
-    def get_job_status_history(self, job_id: str) -> List[JobStatus]:
-        """
-        Get the status history for a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobStatus objects
-        """
-        statuses, _ = self.dynamo_client.list_job_statuses(job_id)
-        return statuses
-
-    # Job log operations
-    def add_job_log(self, job_id: str, log_level: str, message: str) -> JobLog:
-        """
-        Add a log entry for a job.
-
-        Args:
-            job_id: The ID of the job
-            log_level: Log level (INFO, WARNING, ERROR, etc.)
-            message: The log message
-
-        Returns:
-            The created JobLog object
-        """
-        job_log = JobLog(
-            job_id=job_id,
-            timestamp=datetime.now(),
-            log_level=log_level,
-            message=message,
-        )
-        self.dynamo_client.add_job_log(job_log)
-        return job_log
-
-    def get_job_logs(self, job_id: str) -> List[JobLog]:
-        """
-        Get log entries for a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobLog objects
-        """
-        logs, _ = self.dynamo_client.list_job_logs(job_id)
-        return logs
-
-    # Job metric operations
-    def add_job_metric(
-        self,
-        job_id: str,
-        metric_name: str,
-        metric_value: float,
-        metadata: Optional[Dict] = None,
-    ) -> JobMetric:
-        """
-        Add a metric for a job.
-
-        Args:
-            job_id: The ID of the job
-            metric_name: The name of the metric
-            metric_value: The value of the metric
-            metadata: Additional metadata for the metric
-
-        Returns:
-            The created JobMetric object
-        """
-        job_metric = JobMetric(
-            job_id=job_id,
-            timestamp=datetime.now(),
-            metric_name=metric_name,
-            value=metric_value,  # Changed from metric_value to value
-            # unit, step, and epoch are optional
-        )
-        self.dynamo_client.add_job_metric(job_metric)
-        return job_metric
-
-    def get_job_metrics(self, job_id: str) -> List[JobMetric]:
-        """
-        Get metrics for a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobMetric objects
-        """
-        metrics, _ = self.dynamo_client.list_job_metrics(job_id)
-        return metrics
-
-    # Job resource operations
-    def add_job_resource(
-        self,
-        job_id: str,
-        resource_type: str,
-        resource_id: str,
-        metadata: Optional[Dict] = None,
-    ) -> JobResource:
-        """
-        Add a resource association to a job.
-
-        Args:
-            job_id: The ID of the job
-            resource_type: The type of resource
-            resource_id: The ID of the resource
-            metadata: Additional metadata for the resource
-
-        Returns:
-            The created JobResource object
-        """
-        job_resource = JobResource(
-            job_id=job_id,
-            resource_id=resource_id,
-            instance_id="unknown",  # TODO: Get actual instance ID
-            instance_type="unknown",  # TODO: Get actual instance type
-            resource_type=resource_type,
-            allocated_at=datetime.now(),
-            status="allocated",  # TODO: Set appropriate status
-            # gpu_count, released_at, and resource_config are optional
-        )
-        self.dynamo_client.add_job_resource(job_resource)
-        return job_resource
-
-    def get_job_resources(self, job_id: str) -> List[JobResource]:
-        """
-        Get resources associated with a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobResource objects
-        """
-        resources, _ = self.dynamo_client.list_job_resources(job_id)
-        return resources
-
-    # Job dependency operations
-    def add_job_dependency(
-        self, job_id: str, depends_on_job_id: str
-    ) -> JobDependency:
-        """
-        Add a dependency between jobs.
-
-        Args:
-            job_id: The ID of the dependent job
-            depends_on_job_id: The ID of the job it depends on
-
-        Returns:
-            The created JobDependency object
-        """
-        job_dependency = JobDependency(
-            dependent_job_id=job_id,  # Changed from job_id
-            dependency_job_id=depends_on_job_id,  # Changed from depends_on_job_id
-            type="COMPLETION",  # TODO: Allow specifying dependency type
-            created_at=datetime.now(),
-            # condition is optional
-        )
-        self.dynamo_client.add_job_dependency(job_dependency)
-        return job_dependency
-
-    def get_job_dependencies(self, job_id: str) -> List[JobDependency]:
-        """
-        Get dependencies for a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobDependency objects representing what this job depends on
-        """
-        dependencies, _ = self.dynamo_client.list_dependencies(job_id)
-        return dependencies
-
-    def get_dependent_jobs(self, job_id: str) -> List[JobDependency]:
-        """
-        Get jobs that depend on a specific job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobDependency objects representing jobs that depend on this job
-        """
-        dependents, _ = self.dynamo_client.list_dependents(job_id)
-        return dependents
-
-    def check_dependencies_satisfied(
+    def check_job_dependencies(
         self, job_id: str
-    ) -> Tuple[bool, List[Dict]]:
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """Check if all dependencies for a job are satisfied.
+
+        This is a convenience method that uses the dependency operations
+        with the current service's get_job method.
         """
-        Check if all dependencies for a job are satisfied.
-
-        Args:
-            job_id: The ID of the job to check dependencies for
-
-        Returns:
-            A tuple containing:
-            - boolean indicating if all dependencies are satisfied
-            - list of unsatisfied dependencies with details
-        """
-        # Get all dependencies for this job
-        dependencies = self.get_job_dependencies(job_id)
-
-        if not dependencies:
-            # No dependencies means all are satisfied
-            return True, []
-
-        unsatisfied = []
-        all_satisfied = True
-
-        for dependency in dependencies:
-            is_satisfied = False
-            dependency_details: Dict[str, Any] = {
-                "dependency_job_id": dependency.dependency_job_id,
-                "type": dependency.type,
-                "condition": dependency.condition,
-            }
-
-            try:
-                # Get the dependency job status
-                dependency_job = self.get_job(dependency.dependency_job_id)
-                dependency_details["current_status"] = dependency_job.status
-
-                # Check if the dependency is satisfied based on type
-                if dependency.type == "COMPLETION":
-                    # Job completed with any status
-                    is_satisfied = dependency_job.status in [
-                        "succeeded",
-                        "failed",
-                        "cancelled",
-                    ]
-                elif dependency.type == "SUCCESS":
-                    # Job completed successfully
-                    is_satisfied = dependency_job.status == "succeeded"
-                elif dependency.type == "FAILURE":
-                    # Job failed
-                    is_satisfied = dependency_job.status == "failed"
-                elif dependency.type == "ARTIFACT":
-                    # Special condition for artifact dependency
-                    if dependency.condition and hasattr(
-                        dependency_job, "job_config"
-                    ):
-                        # Check if the artifact exists based on condition
-                        # This would need to be implemented based on your artifact storage system
-                        is_satisfied = self._check_artifact_exists(
-                            dependency_job, dependency.condition
-                        )
-                    else:
-                        is_satisfied = False
-
-            except ValueError:
-                # Dependency job not found
-                dependency_details["error"] = "Job not found"
-
-            dependency_details["is_satisfied"] = is_satisfied
-
-            if not is_satisfied:
-                all_satisfied = False
-                unsatisfied.append(dependency_details)
-
-        return all_satisfied, unsatisfied
-
-    def _check_artifact_exists(
-        self, job: Job, artifact_condition: str
-    ) -> bool:
-        """
-        Check if an artifact exists for a job based on a condition.
-
-        Args:
-            job: The job that should have produced the artifact
-            artifact_condition: The condition specifying the artifact
-
-        Returns:
-            True if the artifact exists, False otherwise
-        """
-        # This is a placeholder implementation
-        # You would need to implement this based on your artifact storage system
-        # For example, checking in S3 for a specific file
-        return False
-
-    # Job checkpoint operations
-    def add_job_checkpoint(
-        self,
-        job_id: str,
-        checkpoint_name: str,
-        metadata: Optional[Dict] = None,
-    ) -> JobCheckpoint:
-        """
-        Add a checkpoint for a job.
-
-        Args:
-            job_id: The ID of the job
-            checkpoint_name: The name of the checkpoint
-            metadata: Additional metadata for the checkpoint
-
-        Returns:
-            The created JobCheckpoint object
-        """
-        job_checkpoint = JobCheckpoint(
-            job_id=job_id,
-            timestamp=datetime.now().isoformat(),
-            s3_bucket="unknown",  # TODO: Get actual S3 bucket
-            s3_key=f"checkpoints/{job_id}/{checkpoint_name}",  # TODO: Set appropriate S3 key
-            size_bytes=0,  # TODO: Get actual checkpoint size
-            step=0,  # TODO: Get actual step
-            epoch=0,  # TODO: Get actual epoch
-            # model_state, optimizer_state, metrics, and is_best have defaults
-        )
-        self.dynamo_client.add_job_checkpoint(job_checkpoint)
-        return job_checkpoint
-
-    def get_job_checkpoints(self, job_id: str) -> List[JobCheckpoint]:
-        """
-        Get checkpoints for a job.
-
-        Args:
-            job_id: The ID of the job
-
-        Returns:
-            A list of JobCheckpoint objects
-        """
-        checkpoints, _ = self.dynamo_client.list_job_checkpoints(job_id)
-        return checkpoints
+        return self.check_dependencies_satisfied(job_id, self.get_job)

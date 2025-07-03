@@ -1084,7 +1084,7 @@ def item_to_receipt_structure_analysis(
                 sections.append(ReceiptSection.from_dict(section_dict))
         except (TypeError, ValueError) as e:
             # Log the error and continue with other sections
-            print(f"Error converting section: {e}. Skipping this section.")
+            # TODO: Use proper logging instead of print
             continue
 
     # Extract overall reasoning
