@@ -5,40 +5,64 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
-                                           PutTypeDef, QueryInputTypeDef,
-                                           TransactWriteItemTypeDef,
-                                           WriteRequestTypeDef)
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
 
 # These are used at runtime, not just for type checking
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from receipt_dynamo.data._base import (DeleteRequestTypeDef, DeleteTypeDef,
-                                       PutRequestTypeDef, PutTypeDef,
-                                       TransactWriteItemTypeDef,
-                                       WriteRequestTypeDef)
-from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
-                                                   DynamoDBError,
-                                                   DynamoDBServerError,
-                                                   DynamoDBThroughputError,
-                                                   DynamoDBValidationError,
-                                                   OperationError,
-                                                   ReceiptDynamoError)
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+    ReceiptDynamoError,
+)
 from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation, item_to_receipt_chat_gpt_validation)
+    ReceiptChatGPTValidation,
+    item_to_receipt_chat_gpt_validation,
+)
 from receipt_dynamo.entities.receipt_label_analysis import (
-    ReceiptLabelAnalysis, item_to_receipt_label_analysis)
+    ReceiptLabelAnalysis,
+    item_to_receipt_label_analysis,
+)
 from receipt_dynamo.entities.receipt_line_item_analysis import (
-    ReceiptLineItemAnalysis, item_to_receipt_line_item_analysis)
+    ReceiptLineItemAnalysis,
+    item_to_receipt_line_item_analysis,
+)
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptStructureAnalysis, item_to_receipt_structure_analysis)
+    ReceiptStructureAnalysis,
+    item_to_receipt_structure_analysis,
+)
 from receipt_dynamo.entities.receipt_validation_category import (
-    ReceiptValidationCategory, item_to_receipt_validation_category)
+    ReceiptValidationCategory,
+    item_to_receipt_validation_category,
+)
 from receipt_dynamo.entities.receipt_validation_result import (
-    ReceiptValidationResult, item_to_receipt_validation_result)
+    ReceiptValidationResult,
+    item_to_receipt_validation_result,
+)
 from receipt_dynamo.entities.receipt_validation_summary import (
-    ReceiptValidationSummary, item_to_receipt_validation_summary)
+    ReceiptValidationSummary,
+    item_to_receipt_validation_summary,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

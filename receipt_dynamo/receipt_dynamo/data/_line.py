@@ -6,17 +6,24 @@ from receipt_dynamo import Line, item_to_line
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (DeleteRequestTypeDef,
-                                           PutRequestTypeDef,
-                                           QueryInputTypeDef,
-                                           TransactWriteItemTypeDef,
-                                           WriteRequestTypeDef)
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (DeleteRequestTypeDef, PutRequestTypeDef,
-                                       WriteRequestTypeDef)
-from receipt_dynamo.data.shared_exceptions import (DynamoDBThroughputError,
-                                                   OperationError)
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
+    OperationError,
+)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
