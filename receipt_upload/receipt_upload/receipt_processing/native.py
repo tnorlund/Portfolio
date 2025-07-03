@@ -2,15 +2,25 @@ from datetime import datetime, timezone
 from typing import List
 
 from PIL import Image as PIL_Image
-
 from receipt_dynamo.constants import ImageType, OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (Image, Letter, Line, OCRJob,
-                                     OCRRoutingDecision, Receipt, Word)
-from receipt_upload.utils import (calculate_sha256_from_bytes,
-                                  image_ocr_to_receipt_ocr,
-                                  upload_all_cdn_formats, upload_jpeg_to_s3,
-                                  upload_png_to_s3)
+from receipt_dynamo.entities import (
+    Image,
+    Letter,
+    Line,
+    OCRJob,
+    OCRRoutingDecision,
+    Receipt,
+    Word,
+)
+
+from receipt_upload.utils import (
+    calculate_sha256_from_bytes,
+    image_ocr_to_receipt_ocr,
+    upload_all_cdn_formats,
+    upload_jpeg_to_s3,
+    upload_png_to_s3,
+)
 
 
 def process_native(
@@ -55,7 +65,9 @@ def process_native(
 
     # Upload images to S3
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
-    cdn_keys = upload_all_cdn_formats(image, site_bucket, f"assets/{ocr_job.image_id}")
+    cdn_keys = upload_all_cdn_formats(
+        image, site_bucket, f"assets/{ocr_job.image_id}"
+    )
 
     # Calculate image hash once
     image_hash = calculate_sha256_from_bytes(image.tobytes())

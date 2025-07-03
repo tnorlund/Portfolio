@@ -15,7 +15,6 @@ from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-
 from tests.utils.ai_usage_helpers import create_mock_openai_response
 
 
@@ -119,7 +118,9 @@ class TestPerformanceBaseline:
         duration = time.time() - start
 
         # Should complete in reasonable time
-        assert duration < 1.0, f"Duration: {duration}s for {iterations} metrics"
+        assert (
+            duration < 1.0
+        ), f"Duration: {duration}s for {iterations} metrics"
         assert get_dynamo_call_count(mock_dynamo) == iterations
 
     def test_file_logging_performance(self):
@@ -214,7 +215,9 @@ class TestHighVolumeTracking:
         duration = time.time() - start
 
         # Should handle burst efficiently
-        assert duration < 10.0, f"Burst duration: {duration}s for 1000 requests"
+        assert (
+            duration < 10.0
+        ), f"Burst duration: {duration}s for 1000 requests"
         assert get_dynamo_call_count(mock_dynamo) == 1000
 
     def test_sustained_load(self):
@@ -310,7 +313,9 @@ class TestConcurrentPerformance:
             futures = []
             for thread_id in range(num_threads):
                 for call_id in range(calls_per_thread):
-                    future = executor.submit(concurrent_call, thread_id, call_id)
+                    future = executor.submit(
+                        concurrent_call, thread_id, call_id
+                    )
                     futures.append(future)
 
             # Wait for all to complete
@@ -321,7 +326,9 @@ class TestConcurrentPerformance:
         total_calls = num_threads * calls_per_thread
         throughput = total_calls / duration
 
-        assert throughput > 200, f"Concurrent throughput: {throughput} calls/sec"
+        assert (
+            throughput > 200
+        ), f"Concurrent throughput: {throughput} calls/sec"
         assert get_dynamo_call_count(mock_dynamo) == total_calls
 
     def test_wrapped_client_concurrent_performance(self):
@@ -378,7 +385,9 @@ class TestConcurrentPerformance:
         throughput = len(results) / duration
 
         assert len(results) == num_threads * calls_per_thread
-        assert throughput > 100, f"Wrapped client throughput: {throughput} calls/sec"
+        assert (
+            throughput > 100
+        ), f"Wrapped client throughput: {throughput} calls/sec"
 
     def test_mixed_service_concurrent_tracking(self):
         """Test concurrent tracking across different services."""
@@ -423,7 +432,9 @@ class TestConcurrentPerformance:
         total_calls = 5 * 20  # 5 workers * 20 calls each
         throughput = total_calls / duration
 
-        assert throughput > 50, f"Mixed service throughput: {throughput} calls/sec"
+        assert (
+            throughput > 50
+        ), f"Mixed service throughput: {throughput} calls/sec"
         assert get_dynamo_call_count(mock_dynamo) == total_calls
 
 
@@ -572,7 +583,9 @@ class TestScalabilityLimits:
 
         # Should maintain reasonable performance even under extreme load
         throughput = 10000 / duration
-        assert throughput > 1000, f"Extreme burst throughput: {throughput} calls/sec"
+        assert (
+            throughput > 1000
+        ), f"Extreme burst throughput: {throughput} calls/sec"
 
     def test_large_token_count_handling(self):
         """Test handling of very large token counts."""
@@ -642,4 +655,6 @@ class TestScalabilityLimits:
                 pass  # Some failures expected
 
         # Should complete most calls despite stress
-        assert successful_calls >= 60, f"Only {successful_calls}/100 calls succeeded"
+        assert (
+            successful_calls >= 60
+        ), f"Only {successful_calls}/100 calls succeeded"
