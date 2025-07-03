@@ -77,7 +77,9 @@ class TaskCoordinator:
                 if "black" in cmd:
                     issues_fixed += self._parse_black_output(result.stdout)
                 elif "pylint" in cmd:
-                    issues_remaining += self._parse_pylint_output(result.stdout)
+                    issues_remaining += self._parse_pylint_output(
+                        result.stdout
+                    )
                 elif "mypy" in cmd:
                     issues_remaining += self._parse_mypy_output(result.stdout)
 
@@ -111,7 +113,9 @@ class TaskCoordinator:
         """Run multiple tasks in parallel"""
         print(f"Starting {len(task_configs)} tasks with {max_workers} workers")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers
+        ) as executor:
             # Submit all tasks
             futures = {
                 executor.submit(self.run_task, config): config["id"]
@@ -264,7 +268,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Coordinate linting tasks")
-    parser.add_argument("phase", choices=["1", "2", "3", "4"], help="Phase to execute")
+    parser.add_argument(
+        "phase", choices=["1", "2", "3", "4"], help="Phase to execute"
+    )
     parser.add_argument(
         "--working-dir", default="receipt_dynamo", help="Working directory"
     )

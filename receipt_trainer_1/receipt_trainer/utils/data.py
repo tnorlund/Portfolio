@@ -100,7 +100,9 @@ def process_receipt_details(
                 ):
                     is_continuation = True
 
-            iob_label = f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            iob_label = (
+                f"I-{base_label}" if is_continuation else f"B-{base_label}"
+            )
 
         processed_words.append(
             {
@@ -216,7 +218,9 @@ def balance_dataset(
         while i < len(labels):
             if labels[i].startswith("B-"):
                 # Found start of entity
-                entity_type = labels[i].split("-")[1].split("_")[0]  # Get base type
+                entity_type = (
+                    labels[i].split("-")[1].split("_")[0]
+                )  # Get base type
 
                 # Find entity end
                 j = i + 1
@@ -231,7 +235,8 @@ def balance_dataset(
                     "words": words[start:end],
                     "bboxes": bboxes[start:end],
                     "labels": labels[start:end],
-                    "entity_start": i - start,  # Track where entity starts in window
+                    "entity_start": i
+                    - start,  # Track where entity starts in window
                     "entity_end": j - start,
                     "image_id": image_id,
                 }

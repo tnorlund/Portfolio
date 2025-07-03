@@ -20,21 +20,21 @@ show_missing = True
 exclude_lines =
     # Skip any pragmas
     pragma: no cover
-    
+
     # Skip defensive assertion code
     raise NotImplementedError
-    
+
     # Skip abstract methods
     @abstractmethod
-    
+
     # Skip main execution blocks
     if __name__ == .__main__.:
-    
+
     # Skip type checking blocks
     if TYPE_CHECKING:
-    
+
     # Skip debug-only code
     def __repr__
-    
+
     # Skip exception handling that can't be easily tested
     except ImportError:

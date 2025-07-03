@@ -4,7 +4,7 @@ Essential scripts for analyzing, optimizing, and running tests with maximum perf
 
 ## Quick Start
 ```bash
-# Run tests locally 
+# Run tests locally
 ./test_runner.sh receipt_dynamo
 
 # Smart test selection (run only affected tests)

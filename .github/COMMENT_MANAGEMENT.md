@@ -23,8 +23,8 @@
 ### **1. Comment Deduplication**
 ```javascript
 // Find existing comment by specific criteria (FIXED: proper operator precedence)
-const botComment = comments.find(comment => 
-  comment.user.login === 'github-actions[bot]' && 
+const botComment = comments.find(comment =>
+  comment.user.login === 'github-actions[bot]' &&
   (comment.body.includes('## ✅ PR Status') || comment.body.includes('## 🎨 PR Status'))
 );
 
@@ -95,9 +95,9 @@ ${originalBody}
 ### **Comment Identification Strategy:**
 ```javascript
 // Robust comment finding
-const botComment = comments.find(comment => 
-  comment.user.login === 'github-actions[bot]' && 
-  (comment.body.includes('## ✅ PR Status') || 
+const botComment = comments.find(comment =>
+  comment.user.login === 'github-actions[bot]' &&
+  (comment.body.includes('## ✅ PR Status') ||
    comment.body.includes('## 🎨 PR Status'))
 );
 ```
@@ -109,7 +109,7 @@ const botComment = comments.find(comment =>
 All PR checks passed!
 
 📝 **Auto-formatting**: Applied black and isort formatting
-✅ **Format check**: Passed  
+✅ **Format check**: Passed
 ✅ **Quick tests**: Passed
 
 <sub>Last updated: 2025-06-25T18:07:58.123Z | Run: 12345</sub>

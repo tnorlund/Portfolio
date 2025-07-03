@@ -71,24 +71,24 @@ struct Line: Codable {
 struct ImageResult: Codable {
     let imagePath: String
     let lines: [Line]
-    
+
     private enum CodingKeys: String, CodingKey {
         case lines
     }
-    
+
     // Use a custom initializer for decoding that ignores imagePath.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.lines = try container.decode([Line].self, forKey: .lines)
         self.imagePath = "" // Set to an empty string or a default value.
     }
-    
+
     // Use the default initializer for creating an instance.
     init(imagePath: String, lines: [Line]) {
         self.imagePath = imagePath
         self.lines = lines
     }
-    
+
     // Custom encoding: only encode the "lines" property.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -125,7 +125,7 @@ func angles(for rect: CGRect) -> (degrees: CGFloat, radians: CGFloat) {
 
 func performOCRSync(from imageURL: URL) throws -> [Line] {
     log("Loading image from \(imageURL.path)")
-    
+
     // Load the image as NSImage.
     guard let nsImage = NSImage(contentsOf: imageURL) else {
         log("❌ Could not load image")
@@ -135,7 +135,7 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         log("❌ Could not get CGImage")
         return []
     }
-    
+
     // Set up the Vision request.
     let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     let request = VNRecognizeTextRequest()
@@ -148,13 +148,13 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         log("❌ No text observations found.")
         return []
     }
-    
+
     var lines: [Line] = []
-    
+
     for obs in observations {
         guard let candidate = obs.topCandidates(1).first else { continue }
         let lineText = candidate.string
-        
+
         // Split the line by whitespace.
         let wordStrings = lineText.split(separator: " ").map { String($0) }
         var words: [Word] = []
@@ -187,7 +187,7 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
             )
             words.append(word)
         }
-        
+
         let line = Line(
             text: lineText,
             boundingBox: normalizedRect(from: obs.boundingBox),
@@ -202,7 +202,7 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         )
         lines.append(line)
     }
-    
+
     log("✅ OCR processing complete. Found \(lines.count) lines.")
     return lines
 }
@@ -215,10 +215,10 @@ func performNLExtraction(on aggregatedText: String, mutableLines: inout [Line], 
         log("❌ Could not create NSDataDetector")
         return
     }
-    
+
     let nsAggregatedText = aggregatedText as NSString
     let matches = detector.matches(in: aggregatedText, options: [], range: NSRange(location: 0, length: nsAggregatedText.length))
-    
+
     for match in matches {
         var extracted: ExtractedData?
         switch match.resultType {
@@ -243,7 +243,7 @@ func performNLExtraction(on aggregatedText: String, mutableLines: inout [Line], 
             break
         }
         guard let extractedData = extracted else { continue }
-        
+
         // Map the extracted data back to words whose ranges overlap with the match's range.
         for mapping in wordMappings {
             let intersection = NSIntersectionRange(match.range, mapping.range)
@@ -264,25 +264,25 @@ if CommandLine.arguments.count > 2 {
     // First argument is the directory where JSON files will be dumped.
     let outputDirectoryPath = CommandLine.arguments[1]
     let outputDirURL = URL(fileURLWithPath: outputDirectoryPath, isDirectory: true)
-    
+
     // Ensure the output directory exists.
     try? FileManager.default.createDirectory(at: outputDirURL, withIntermediateDirectories: true, attributes: nil)
-    
+
     // Process each image (starting from argument index 2).
     for i in 2..<CommandLine.arguments.count {
         let imagePath = CommandLine.arguments[i]
         let imageURL = URL(fileURLWithPath: imagePath)
-        
+
         do {
             // Perform OCR for the image.
             let ocrLines = try performOCRSync(from: imageURL)
             var mutableLines = ocrLines  // Create a mutable copy.
-            
+
             // Build aggregated text and record the global ranges of each word.
             var aggregatedText = ""
             var wordMappings: [WordMapping] = []
             var currentLocation = 0
-            
+
             for (lineIndex, line) in mutableLines.enumerated() {
                 for (wordIndex, word) in line.words.enumerated() {
                     let nsWord = word.text as NSString
@@ -293,24 +293,24 @@ if CommandLine.arguments.count > 2 {
                     currentLocation += nsWord.length + 1  // Account for the space.
                 }
             }
-            
+
             // Run natural language extraction on the aggregated text.
             performNLExtraction(on: aggregatedText, mutableLines: &mutableLines, wordMappings: wordMappings)
-            
+
             // Prepare the result for this image.
             let result = ImageResult(imagePath: imagePath, lines: mutableLines)
-            
+
             // Encode the result to JSON.
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
             encoder.keyEncodingStrategy = .convertToSnakeCase
             let jsonData = try encoder.encode(result)
-            
+
             // Derive an output file name from the image's name.
             let imageFileName = imageURL.deletingPathExtension().lastPathComponent
             let outputFileName = imageFileName + ".json"
             let outputFileURL = outputDirURL.appendingPathComponent(outputFileName)
-            
+
             try jsonData.write(to: outputFileURL)
             print("Results for \(imagePath) written to \(outputFileURL.path)")
         } catch {

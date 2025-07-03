@@ -89,8 +89,9 @@ def test_missing_both_variables():
             config = ClientConfig.from_env()
             assert False, "Should have raised KeyError"
         except KeyError as e:
-            assert "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set" in str(
-                e
+            assert (
+                "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"
+                in str(e)
             )
             print("✅ Missing both variables raises clear error")
 
@@ -103,4 +104,6 @@ if __name__ == "__main__":
     test_new_variable_takes_precedence()
     test_missing_both_variables()
 
-    print("\n🎉 All tests passed! Environment variable migration is working correctly.")
+    print(
+        "\n🎉 All tests passed! Environment variable migration is working correctly."
+    )

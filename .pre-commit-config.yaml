@@ -9,13 +9,14 @@ repos:
       - id: black
         language_version: python3.12
         files: '\.(py|pyi)$'
+        args: ["--line-length=79"]
 
   # Python import sorting
   - repo: https://github.com/pycqa/isort
     rev: 6.0.1
     hooks:
       - id: isort
-        args: ["--profile", "black"]
+        args: ["--profile", "black", "--line-length=79"]
         files: '\.(py|pyi)$'
 
   # Python type checking

@@ -4,12 +4,16 @@ from math import atan2, cos, degrees, pi, radians, sin
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.util import (_format_float, _repr_str,
-                                          assert_type,
-                                          assert_valid_bounding_box,
-                                          assert_valid_point,
-                                          assert_valid_uuid, format_type_error,
-                                          shear_point)
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_type,
+    assert_valid_bounding_box,
+    assert_valid_point,
+    assert_valid_uuid,
+    format_type_error,
+    shear_point,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
