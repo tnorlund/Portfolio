@@ -4,8 +4,14 @@ from pathlib import Path
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import (OCRJob, OCRRoutingDecision, ReceiptLetter,
-                                     ReceiptLine, ReceiptWord)
+from receipt_dynamo.entities import (
+    OCRJob,
+    OCRRoutingDecision,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+)
+
 from receipt_upload.ocr import process_ocr_dict_as_receipt
 from receipt_upload.utils import download_file_from_s3
 

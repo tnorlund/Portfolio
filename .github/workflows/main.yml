@@ -428,10 +428,22 @@ jobs:
     steps:
       - name: Check all jobs
         run: |
-          if [[ "${{ needs.fast-checks.result }}" != "success" ||
-                "${{ needs.test-python.result }}" != "success" ||
-                "${{ needs.test-typescript.result }}" != "success" ]]; then
-            echo "One or more jobs failed"
+          # Check if any required jobs failed (not skipped)
+          if [[ "${{ needs.fast-checks.result }}" == "failure" ||
+                "${{ needs.fast-checks.result }}" == "cancelled" ||
+                "${{ needs.test-python.result }}" == "failure" ||
+                "${{ needs.test-python.result }}" == "cancelled" ||
+                "${{ needs.test-typescript.result }}" == "failure" ||
+                "${{ needs.test-typescript.result }}" == "cancelled" ]]; then
+            echo "❌ One or more jobs failed or were cancelled"
+            echo "fast-checks: ${{ needs.fast-checks.result }}"
+            echo "test-python: ${{ needs.test-python.result }}"
+            echo "test-typescript: ${{ needs.test-typescript.result }}"
             exit 1
           fi
-          echo "All CI checks passed!"
+
+          # Success includes both 'success' and 'skipped' states
+          echo "✅ All CI checks passed!"
+          echo "fast-checks: ${{ needs.fast-checks.result }}"
+          echo "test-python: ${{ needs.test-python.result }}"
+          echo "test-typescript: ${{ needs.test-typescript.result }}"

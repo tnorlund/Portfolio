@@ -10,6 +10,7 @@ import pytest
 from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
+
 from receipt_label.utils import (
     ClientConfig,
     ClientManager,
@@ -102,7 +103,9 @@ class TestContextIntegration:
                     )
 
                     # Verify response
-                    assert response.choices[0].message.content == "Test response"
+                    assert (
+                        response.choices[0].message.content == "Test response"
+                    )
 
                 # Check that metadata was removed before calling OpenAI
                 # The wrapped client should NOT pass metadata to the actual API
@@ -142,7 +145,9 @@ class TestContextIntegration:
             ):
                 manager = ClientManager(config)
 
-                @ai_usage_tracked(operation_type="decorated_op", project="test_project")
+                @ai_usage_tracked(
+                    operation_type="decorated_op", project="test_project"
+                )
                 def process_with_ai(text: str):
                     openai_client = manager.openai
                     return openai_client.chat.completions.create(
@@ -157,7 +162,9 @@ class TestContextIntegration:
                 call_args = mock_openai.chat.completions.create.call_args
                 assert "metadata" not in call_args[1]
 
-    def test_nested_contexts_propagate(self, mock_openai_response, mock_dynamo_client):
+    def test_nested_contexts_propagate(
+        self, mock_openai_response, mock_dynamo_client
+    ):
         """Test that nested contexts properly propagate through wrapped client."""
         # Create mock OpenAI client
         mock_openai = MagicMock(spec=OpenAI)
@@ -219,7 +226,9 @@ class TestContextIntegration:
                 # Metadata should have been removed, so captured_metadata is empty
                 assert len(captured_metadata) == 0
 
-    def test_runtime_context_extraction(self, mock_openai_response, mock_dynamo_client):
+    def test_runtime_context_extraction(
+        self, mock_openai_response, mock_dynamo_client
+    ):
         """Test runtime context (job_id, batch_id) extraction from kwargs."""
         # Create mock OpenAI client
         mock_openai = MagicMock(spec=OpenAI)
