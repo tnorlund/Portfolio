@@ -4,13 +4,10 @@ from typing import Any, Dict, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.receipt_word import EmbeddingStatus
-from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
-    assert_valid_bounding_box,
-    assert_valid_point,
-    assert_valid_uuid,
-)
+from receipt_dynamo.entities.util import (_format_float, _repr_str,
+                                          assert_valid_bounding_box,
+                                          assert_valid_point,
+                                          assert_valid_uuid)
 
 
 @dataclass(eq=True, unsafe_hash=False)

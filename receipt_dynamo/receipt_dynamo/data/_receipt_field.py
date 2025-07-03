@@ -8,25 +8,17 @@ if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
-from receipt_dynamo.entities.receipt_field import (
-    ReceiptField,
-    item_to_receipt_field,
-)
+from receipt_dynamo.data._base import (DeleteTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
+from receipt_dynamo.entities.receipt_field import (ReceiptField,
+                                                   item_to_receipt_field)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 

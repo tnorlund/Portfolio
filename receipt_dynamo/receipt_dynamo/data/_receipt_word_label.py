@@ -6,39 +6,27 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        BatchGetItemInputTypeDef,
-        DeleteTypeDef,
-        GetItemInputTypeDef,
-        KeysAndAttributesTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (BatchGetItemInputTypeDef,
+                                           DeleteTypeDef, GetItemInputTypeDef,
+                                           KeysAndAttributesTypeDef,
+                                           PutRequestTypeDef, PutTypeDef,
+                                           QueryInputTypeDef,
+                                           TransactWriteItemTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
+from receipt_dynamo.data._base import (DeleteRequestTypeDef, DeleteTypeDef,
+                                       PutRequestTypeDef, PutTypeDef,
+                                       TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
 from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
-    item_to_receipt_word_label,
-)
+    ReceiptWordLabel, item_to_receipt_word_label)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
