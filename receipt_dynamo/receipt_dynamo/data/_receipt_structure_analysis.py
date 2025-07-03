@@ -2,36 +2,26 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    ReceiptStructureAnalysis,
-    item_to_receipt_structure_analysis,
-)
+from receipt_dynamo import (ReceiptStructureAnalysis,
+                            item_to_receipt_structure_analysis)
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (DeleteRequestTypeDef,
+                                           PutRequestTypeDef,
+                                           QueryInputTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
+from receipt_dynamo.data._base import (DeleteRequestTypeDef, PutRequestTypeDef,
+                                       PutTypeDef, TransactWriteItemTypeDef,
+                                       WriteRequestTypeDef)
+from receipt_dynamo.data.shared_exceptions import (DynamoDBAccessError,
+                                                   DynamoDBError,
+                                                   DynamoDBServerError,
+                                                   DynamoDBThroughputError,
+                                                   DynamoDBValidationError,
+                                                   OperationError)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -342,9 +332,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 else:
                     detailed_error = f"Validation error: {error_message}"
 
-                print(
-                    f"Error in update_receipt_structure_analyses: {detailed_error}"
-                )
+                # TODO: Use proper logging instead of print
+                pass
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {detailed_error}"
                 )

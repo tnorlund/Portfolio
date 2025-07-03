@@ -7,16 +7,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
-    )
+    from receipt_dynamo.data._base import (PutRequestTypeDef,
+                                           WriteRequestTypeDef)
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
+from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 

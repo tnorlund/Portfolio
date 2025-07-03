@@ -331,7 +331,7 @@ class ReceiptValidationSummary:
         self.metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
-        self, event_type: str, details: Optional[Dict] = None
+        self, event_type: str, details: Optional[Dict[str, Any]] = None
     ) -> None:
         """Adds a history event to the metadata.
 
