@@ -332,9 +332,8 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                 else:
                     detailed_error = f"Validation error: {error_message}"
 
-                print(
-                    f"Error in update_receipt_structure_analyses: {detailed_error}"
-                )
+                # TODO: Use proper logging instead of print
+                pass
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {detailed_error}"
                 )
