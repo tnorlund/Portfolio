@@ -105,12 +105,18 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # Special handling for ReceiptValidationCategory to maintain exact test expectations
             if "ReceiptValidationCategory with field" in entity_context:
                 raise ValueError(f"{entity_context} already exists") from error
+            # Special handling for ReceiptValidationResult to maintain exact test expectations
+            if "ReceiptValidationResult with field" in entity_context:
+                raise ValueError(f"{entity_context} already exists") from error
             raise ValueError(
                 f"Entity already exists: {entity_context}"
             ) from error
         else:
             # Special handling for ReceiptValidationCategory to maintain exact test expectations
             if "ReceiptValidationCategory with field" in entity_context:
+                raise ValueError(f"{entity_context} does not exist") from error
+            # Special handling for ReceiptValidationResult to maintain exact test expectations
+            if "ReceiptValidationResult with field" in entity_context:
                 raise ValueError(f"{entity_context} does not exist") from error
             raise ValueError(
                 f"Entity does not exist: {entity_context}"
@@ -201,6 +207,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 ):
                     return f"{entity_name} with field {entity.field_name}"
 
+                # Special handling for ReceiptValidationResult
+                if (
+                    entity_name == "ReceiptValidationResult"
+                    and hasattr(entity, "field_name")
+                    and hasattr(entity, "result_index")
+                ):
+                    return f"{entity_name} with field {entity.field_name} and index {entity.result_index}"
+
                 # Try to get ID or other identifying information
                 for id_attr in [
                     "id",
@@ -239,8 +253,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             if (
                 param_name == "category"
                 and entity_class.__name__ == "ReceiptValidationCategory"
+            ) or (
+                param_name == "result"
+                and entity_class.__name__ == "ReceiptValidationResult"
             ):
-                param_display = param_name  # Keep lowercase for receipt validation category
+                param_display = (
+                    param_name  # Keep lowercase for specific entity types
+                )
             else:
                 param_display = (
                     param_name[0].upper() + param_name[1:]
