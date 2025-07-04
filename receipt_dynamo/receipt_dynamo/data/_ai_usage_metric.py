@@ -54,32 +54,59 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
 
         self._validate_entity_list(metrics, AIUsageMetric, "metrics")
 
-        # Convert metrics to write requests
-        request_items = []
-        metric_map = {}  # Map request to original metric for tracking failures
+        # Convert metrics to DynamoDB items and create mapping for failure tracking
+        items = [metric.to_dynamodb_item() for metric in metrics]
+        failed_metrics = []
 
-        for metric in metrics:
-            item = metric.to_dynamodb_item()
-            request = WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=item)
+        # Process in batches of 25 (DynamoDB limit)
+        for i in range(0, len(items), 25):
+            batch_items = items[i : i + 25]
+            batch_metrics = metrics[i : i + 25]
+
+            request_items = {
+                self.table_name: [
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item)
+                    )
+                    for item in batch_items
+                ]
+            }
+
+            response = self._client.batch_write_item(
+                RequestItems=request_items
             )
-            request_items.append(request)
-            # Store mapping for failure tracking
-            metric_map[metric.request_id] = metric
 
-        # Use base batch write with retry
-        try:
-            self._batch_write_with_retry(request_items)
-            return []  # All successful
-        except Exception as e:
-            # If batch write fails completely, return all metrics as failed
-            # In practice, _batch_write_with_retry handles partial failures
-            # This is a safety net for complete failures
-            if "Failed to process all items" in str(e):
-                # Extract unprocessed count from error message
-                # This is a simplified approach - real implementation might parse better
-                return metrics[-25:]  # Assume last batch failed
-            raise
+            # Handle unprocessed items
+            unprocessed = response.get("UnprocessedItems", {})
+            retry_count = 0
+            max_retries = 3
+
+            while (
+                unprocessed.get(self.table_name) and retry_count < max_retries
+            ):
+                response = self._client.batch_write_item(
+                    RequestItems=unprocessed
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                retry_count += 1
+
+            # Map unprocessed items back to original metrics
+            if unprocessed.get(self.table_name):
+                unprocessed_requests = unprocessed[self.table_name]
+                for request in unprocessed_requests:
+                    if "PutRequest" in request:
+                        # Find the corresponding metric by matching the item
+                        unprocessed_item = request["PutRequest"]["Item"]
+                        # Match by requestId (camelCase as per DynamoDB item format)
+                        request_id = unprocessed_item.get("requestId", {}).get(
+                            "S"
+                        )
+                        for metric in batch_metrics:
+                            if metric.request_id == request_id:
+                                failed_metrics.append(metric)
+                                break
+
+        return failed_metrics
 
     @handle_dynamodb_errors("query_ai_usage_metrics_by_date")
     def query_ai_usage_metrics_by_date(
