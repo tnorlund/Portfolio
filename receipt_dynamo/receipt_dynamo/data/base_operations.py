@@ -380,6 +380,7 @@ class TransactionalOperationsMixin:
 
 
 # Example usage - this shows how the refactored classes would look
+# NOTE: This is just an example - real implementations should pass specific entity classes!
 class ExampleEntityOperations(
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -390,18 +391,21 @@ class ExampleEntityOperations(
     Example of how a refactored entity class would look.
 
     This demonstrates the dramatic code reduction possible with the base classes.
+
+    IMPORTANT: Real implementations should pass specific entity classes to validation
+    methods, not type(entity) which bypasses validation!
     """
 
     @handle_dynamodb_errors("add_entity")
-    def add_entity(self, entity) -> None:
+    def add_entity(self, entity, entity_class: Type) -> None:
         """Add a single entity - all error handling is automatic."""
-        self._validate_entity(entity, type(entity), "entity")
+        self._validate_entity(entity, entity_class, "entity")
         self._add_entity(entity)
 
     @handle_dynamodb_errors("add_entities")
-    def add_entities(self, entities: List[Any]) -> None:
+    def add_entities(self, entities: List[Any], entity_class: Type) -> None:
         """Add multiple entities - chunking and retry is automatic."""
-        self._validate_entity_list(entities, type(entities[0]), "entities")
+        self._validate_entity_list(entities, entity_class, "entities")
 
         request_items = [
             {"PutRequest": {"Item": entity.to_item()}} for entity in entities
@@ -409,7 +413,7 @@ class ExampleEntityOperations(
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_entity")
-    def update_entity(self, entity) -> None:
+    def update_entity(self, entity, entity_class: Type) -> None:
         """Update a single entity - all error handling is automatic."""
-        self._validate_entity(entity, type(entity), "entity")
+        self._validate_entity(entity, entity_class, "entity")
         self._update_entity(entity)
