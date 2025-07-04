@@ -188,6 +188,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif hasattr(args[0], "__class__"):
                 entity = args[0]
                 entity_name = entity.__class__.__name__
+
+                # Special handling for ReceiptValidationCategory
+                if entity_name == "ReceiptValidationCategory" and hasattr(
+                    entity, "field_name"
+                ):
+                    return f"{entity_name} with field {entity.field_name}"
+
                 # Try to get ID or other identifying information
                 for id_attr in [
                     "id",
@@ -195,6 +202,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     "image_id",
                     "word_id",
                     "line_id",
+                    "field_name",
                 ]:
                     if hasattr(entity, id_attr):
                         # Format for backward compatibility with original error messages
@@ -342,7 +350,7 @@ class BatchOperationsMixin:
     table_name: str
 
     def _batch_write_with_retry(
-        self, request_items: List[Dict[Any, Any]], max_retries: int = 3
+        self, request_items: List[Any], max_retries: int = 3
     ) -> None:
         """
         Generic batch write with automatic retry for unprocessed items.
