@@ -479,13 +479,13 @@ def test_updateReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in update_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", "Access denied for update_receipt_field"),
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt field",
+            "Unknown error in update_receipt_field",
         ),
     ],
 )
@@ -615,14 +615,14 @@ def test_updateReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "Receipt_fields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "Receipt_fields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receipt_fields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -669,7 +669,7 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
             DynamoDBValidationError,
         ),
         (
@@ -859,7 +859,7 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -972,14 +972,14 @@ def test_deleteReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "Receipt_fields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "Receipt_fields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receipt_fields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -1023,7 +1023,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1455,7 +1455,7 @@ def test_listReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
         ),
         (
             "InternalServerError",
@@ -1778,7 +1778,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
             DynamoDBValidationError,
         ),
         (
@@ -2143,7 +2143,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in",
             DynamoDBValidationError,
         ),
         (
