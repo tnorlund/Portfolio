@@ -344,7 +344,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="One or more words do not exist"):
+    with pytest.raises(ValueError, match="Entity does not exist"):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -484,6 +484,8 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="Error updating words"):
+    from receipt_dynamo.data.shared_exceptions import DynamoDBError
+
+    with pytest.raises(DynamoDBError, match="Table not found"):
         client.update_words([word])
     mock_transact.assert_called_once()
