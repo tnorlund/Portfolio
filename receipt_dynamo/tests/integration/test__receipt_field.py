@@ -433,7 +433,7 @@ def test_updateReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "Receipt_field parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
             "receipt_field must be an instance of the ReceiptField class.",
@@ -606,7 +606,7 @@ def test_updateReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="One or more receipt fields do not exist",
+        match="One or more entities do not exist or conditions failed",
     ):
         client.update_receipt_fields(fields)
 
@@ -651,7 +651,7 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt fields do not exist",
+            "Entity does not exist: list",
             ValueError,
         ),
         (
@@ -1008,7 +1008,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt fields do not exist",
+            "Entity does not exist: list",
         ),
         (
             "ProvisionedThroughputExceededException",
