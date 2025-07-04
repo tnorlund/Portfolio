@@ -249,11 +249,11 @@ def test_addReceiptFields_success(
         (None, "Receipt_fields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "Receipt_fields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receipt_fields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -292,13 +292,13 @@ def test_addReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", "Access denied for add_receipt_fields"),
         (
             "UnknownError",
             "Unknown error",
-            "Error adding receipt fields",
+            "Unknown error in add_receipt_fields",
         ),
     ],
 )
