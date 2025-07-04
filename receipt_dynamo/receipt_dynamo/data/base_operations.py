@@ -342,7 +342,7 @@ class BatchOperationsMixin:
     table_name: str
 
     def _batch_write_with_retry(
-        self, request_items: List[dict], max_retries: int = 3
+        self, request_items: List[Dict[Any, Any]], max_retries: int = 3
     ) -> None:
         """
         Generic batch write with automatic retry for unprocessed items.
@@ -393,7 +393,7 @@ class TransactionalOperationsMixin:
     table_name: str
 
     def _transact_write_with_chunking(
-        self, transact_items: List[dict]
+        self, transact_items: List[Dict[Any, Any]]
     ) -> None:
         """
         Execute transactional writes with automatic chunking.
