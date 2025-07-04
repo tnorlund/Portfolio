@@ -107,7 +107,7 @@ def test_addReceiptWord_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptWords to DynamoDB: ",
+            "Table not found for operation add_receipt_word",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -122,13 +122,17 @@ def test_addReceiptWord_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_word",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_word",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not add ReceiptWords to DynamoDB: ",
+            "Unknown error in add_receipt_word",
         ),
     ],
 )
@@ -311,7 +315,7 @@ def test_addReceiptWords_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt word to DynamoDB",
+            "Table not found for operation add_receipt_words",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -326,13 +330,17 @@ def test_addReceiptWords_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_words",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_words",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt word to DynamoDB",
+            "Unknown error in add_receipt_words",
         ),
     ],
 )
