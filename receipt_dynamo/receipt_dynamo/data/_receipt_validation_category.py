@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
 
@@ -29,7 +30,10 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class _ReceiptValidationCategory(
-    DynamoDBBaseOperations, SingleEntityCRUDMixin, BatchOperationsMixin
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
 ):
     """
     A class used to access receipt validation categories in DynamoDB.
@@ -168,14 +172,18 @@ class _ReceiptValidationCategory(
             categories, ReceiptValidationCategory, "categories"
         )
 
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=category.to_item())
-            )
+        transact_items = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": category.to_item(),
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                }
+            }
             for category in categories
         ]
 
-        self._batch_write_with_retry(request_items)
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_validation_category")
     def delete_receipt_validation_category(

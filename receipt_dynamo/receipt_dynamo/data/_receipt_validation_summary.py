@@ -160,7 +160,7 @@ class _ReceiptValidationSummary(
             Key={
                 "PK": {"S": f"IMAGE#{summary.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{summary.receipt_id:05d}#VALIDATION#SUMMARY"
+                    "S": f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
                 },
             },
         )
@@ -201,7 +201,7 @@ class _ReceiptValidationSummary(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#VALIDATION#SUMMARY"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"},
             },
         )
 

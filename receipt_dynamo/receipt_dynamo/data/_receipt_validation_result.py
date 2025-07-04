@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
 
@@ -30,7 +31,10 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class _ReceiptValidationResult(
-    DynamoDBBaseOperations, SingleEntityCRUDMixin, BatchOperationsMixin
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
 ):
     """
     A class used to access receipt validation results in DynamoDB.
@@ -163,14 +167,18 @@ class _ReceiptValidationResult(
         """
         self._validate_entity_list(results, ReceiptValidationResult, "results")
 
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=result.to_item())
-            )
+        transact_items = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": result.to_item(),
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                }
+            }
             for result in results
         ]
 
-        self._batch_write_with_retry(request_items)
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_validation_result")
     def delete_receipt_validation_result(
