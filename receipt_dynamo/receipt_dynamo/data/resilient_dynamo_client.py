@@ -129,7 +129,7 @@ class ResilientDynamoClient(DynamoClient):
 
             # Execute batch write outside of lock
             if metrics_to_flush:
-                self._batch_write_with_retry(metrics_to_flush)
+                self._batch_write_metrics_with_retry(metrics_to_flush)
         else:
             # Direct write with retry
             self._put_metric_with_retry(metric)
@@ -171,7 +171,7 @@ class ResilientDynamoClient(DynamoClient):
 
             # Execute batch write outside of lock
             if metrics_to_flush:
-                self._batch_write_with_retry(metrics_to_flush)
+                self._batch_write_metrics_with_retry(metrics_to_flush)
 
     def _prepare_flush(self) -> Optional[List[AIUsageMetric]]:
         """Prepare metrics for flushing (must be called with lock held).
@@ -188,7 +188,9 @@ class ResilientDynamoClient(DynamoClient):
         self.last_flush_time = time.time()
         return metrics_to_flush
 
-    def _batch_write_with_retry(self, metrics: List[AIUsageMetric]) -> None:
+    def _batch_write_metrics_with_retry(
+        self, metrics: List[AIUsageMetric]
+    ) -> None:
         """Batch write metrics with retry logic."""
         remaining_metrics = metrics.copy()
         last_exception = None
