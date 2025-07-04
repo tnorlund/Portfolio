@@ -669,13 +669,13 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in update_receipt_fields",
             DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied",
+            "Access denied for update_receipt_fields",
             DynamoDBAccessError,
         ),
         (
@@ -859,9 +859,9 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in delete_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", "Access denied for delete_receipt_field"),
         (
             "UnknownError",
             "Unknown error",
@@ -1023,9 +1023,9 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in delete_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        ("AccessDeniedException", "Access denied", "Access denied for delete_receipt_fields"),
         (
             "UnknownError",
             "Unknown error",
