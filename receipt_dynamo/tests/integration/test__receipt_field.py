@@ -79,7 +79,7 @@ def test_addReceiptField_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "Receipt_field parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
             "receipt_field must be an instance of the ReceiptField class.",
@@ -115,7 +115,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt field to DynamoDB",
+            "Table not found for operation add_receipt_field",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -130,14 +130,18 @@ def test_addReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt field to DynamoDB",
+            "Unknown error in add_receipt_field",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "Validation error in add_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_field",
+        ),
     ],
 )
 def test_addReceiptField_client_errors(
@@ -242,7 +246,7 @@ def test_addReceiptFields_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "Receipt_fields parameter is required and cannot be None."),
         (
             "not-a-list",
             "receipt_fields must be a list of ReceiptField instances.",
