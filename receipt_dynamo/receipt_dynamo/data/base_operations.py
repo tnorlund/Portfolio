@@ -93,7 +93,15 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     ):
         """Handle conditional check failures - usually means entity exists/doesn't exist"""
         entity_context = self._extract_entity_context(context)
+
+        # Special handling for update_images to maintain backward compatibility
+        if operation == "update_images":
+            raise ValueError("One or more images do not exist") from error
+
         if "add" in operation.lower():
+            # Extract just the entity ID for backward compatibility
+            if "Image with ID" in entity_context:
+                raise ValueError(f"{entity_context} already exists") from error
             raise ValueError(
                 f"Entity already exists: {entity_context}"
             ) from error
@@ -106,6 +114,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle resource not found errors - usually table doesn't exist"""
+        # Maintain backward compatibility with error messages
+        if operation == "update_images":
+            raise DynamoDBError(f"Resource not found: {error}") from error
         raise DynamoDBError(
             f"Table not found for operation {operation}"
         ) from error
@@ -157,6 +168,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle any other unknown errors"""
+        # Check if it's an add operation to maintain backward compatibility
+        if "add_image" in operation.lower():
+            raise OperationError(f"Error putting image: {error}") from error
         raise DynamoDBError(
             f"Unknown error in {operation}: {error}"
         ) from error
@@ -167,20 +181,28 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             return "unknown entity"
 
         args = context["args"]
-        if args and hasattr(args[0], "__class__"):
-            entity = args[0]
-            entity_name = entity.__class__.__name__
-            # Try to get ID or other identifying information
-            for id_attr in [
-                "id",
-                "receipt_id",
-                "image_id",
-                "word_id",
-                "line_id",
-            ]:
-                if hasattr(entity, id_attr):
-                    return f"{entity_name} with {id_attr}={getattr(entity, id_attr)}"
-            return entity_name
+        if args:
+            # Check if it's a list (for batch operations)
+            if isinstance(args[0], list):
+                return "list"
+            elif hasattr(args[0], "__class__"):
+                entity = args[0]
+                entity_name = entity.__class__.__name__
+                # Try to get ID or other identifying information
+                for id_attr in [
+                    "id",
+                    "receipt_id",
+                    "image_id",
+                    "word_id",
+                    "line_id",
+                ]:
+                    if hasattr(entity, id_attr):
+                        # Format for backward compatibility with original error messages
+                        id_value = getattr(entity, id_attr)
+                        if entity_name == "Image" and id_attr == "image_id":
+                            return f"Image with ID {id_value}"
+                        return f"{entity_name} with {id_attr}={id_value}"
+                return entity_name
 
         return "unknown entity"
 
@@ -199,8 +221,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entity is None:
+            # Capitalize first letter for backward compatibility
+            param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
-                f"{param_name} parameter is required and cannot be None."
+                f"{param_display} parameter is required and cannot be None."
             )
 
         if not isinstance(entity, entity_class):
@@ -223,18 +247,20 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entities is None:
+            # Capitalize first letter for backward compatibility
+            param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
-                f"{param_name} parameter is required and cannot be None."
+                f"{param_display} parameter is required and cannot be None."
             )
 
         if not isinstance(entities, list):
-            raise ValueError(
-                f"{param_name} must be a list of {entity_class.__name__} instances."
-            )
+            # Capitalize first letter for backward compatibility
+            param_display = param_name[0].upper() + param_name[1:]
+            raise ValueError(f"{param_display} must be provided as a list.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             raise ValueError(
-                f"All {param_name} must be instances of the {entity_class.__name__} class."
+                f"All items in the {param_name} list must be instances of the {entity_class.__name__} class."
             )
 
 
@@ -316,7 +342,7 @@ class BatchOperationsMixin:
     table_name: str
 
     def _batch_write_with_retry(
-        self, request_items: List[dict], max_retries: int = 3
+        self, request_items: List[Dict[Any, Any]], max_retries: int = 3
     ) -> None:
         """
         Generic batch write with automatic retry for unprocessed items.
@@ -367,7 +393,7 @@ class TransactionalOperationsMixin:
     table_name: str
 
     def _transact_write_with_chunking(
-        self, transact_items: List[dict]
+        self, transact_items: List[Dict[Any, Any]]
     ) -> None:
         """
         Execute transactional writes with automatic chunking.
