@@ -131,13 +131,13 @@ class _Word(
         self._validate_entity_list(words, Word, "words")
 
         transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=word.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": word.to_item(),
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            }
             for word in words
         ]
 
