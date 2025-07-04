@@ -310,11 +310,27 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             )
 
         if not isinstance(entities, list):
+            # Special legacy format for ReceiptValidationResult
+            if (
+                param_name == "results"
+                and entity_class.__name__ == "ReceiptValidationResult"
+            ):
+                raise ValueError(
+                    f"{param_name} must be a list of {entity_class.__name__} instances."
+                )
             # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(f"{param_display} must be provided as a list.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
+            # Special legacy format for ReceiptValidationResult
+            if (
+                param_name == "results"
+                and entity_class.__name__ == "ReceiptValidationResult"
+            ):
+                raise ValueError(
+                    f"All {param_name} must be instances of the {entity_class.__name__} class."
+                )
             raise ValueError(
                 f"All items in the {param_name} list must be instances of the {entity_class.__name__} class."
             )
