@@ -1,21 +1,11 @@
-# infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
         DeleteTypeDef,
         KeysAndAttributesTypeDef,
         PutRequestTypeDef,
@@ -27,11 +17,9 @@ if TYPE_CHECKING:
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
     DeleteTypeDef,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
@@ -42,189 +30,257 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
+from receipt_dynamo.entities.util import (
+    _format_float,
+    _repr_str,
+    assert_valid_point,
+    assert_valid_uuid,
+)
 
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
 
+class _ReceiptMetadata(DynamoClientProtocol):
 
-class _ReceiptMetadata(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
-    """
-    A class providing methods to interact with "ReceiptMetadata" entities in DynamoDB.
-    This class is typically used within a DynamoClient to access and manage
-    receipt metadata records.
-
-    Attributes
-    ----------
-    _client : boto3.client
-        The Boto3 DynamoDB client (must be set externally).
-    table_name : str
-        The name of the DynamoDB table (must be set externally).
-
-    Methods
-    -------
-    add_receipt_metadata(receipt_metadata: ReceiptMetadata):
-        Adds a single ReceiptMetadata item to the database, ensuring unique ID.
-    add_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
-        Adds multiple ReceiptMetadata items to the database in chunks of up to 25 items.
-    update_receipt_metadata(receipt_metadata: ReceiptMetadata):
-        Updates an existing ReceiptMetadata item in the database.
-    update_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
-        Updates multiple ReceiptMetadata items using transactions.
-    delete_receipt_metadata(receipt_metadata: ReceiptMetadata):
-        Deletes a single ReceiptMetadata item from the database.
-    delete_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
-        Deletes multiple ReceiptMetadata items using transactions.
-    get_receipt_metadata(image_id: str, receipt_id: int) -> ReceiptMetadata:
-        Retrieves a single ReceiptMetadata item by image and receipt IDs.
-    get_receipt_metadatas_by_indices(indices: list[tuple[str, int]]) -> list[ReceiptMetadata]:
-        Retrieves multiple ReceiptMetadata items by their indices.
-    get_receipt_metadatas(keys: list[dict]) -> list[ReceiptMetadata]:
-        Retrieves multiple ReceiptMetadata items using batch get.
-    list_receipt_metadatas(...) -> Tuple[List[ReceiptMetadata], dict | None]:
-        Lists ReceiptMetadata records with optional pagination.
-    get_receipt_metadatas_by_merchant(...) -> Tuple[List[ReceiptMetadata], dict | None]:
-        Retrieves ReceiptMetadata records by merchant name.
-    list_receipt_metadatas_with_place_id(...) -> Tuple[List[ReceiptMetadata], dict | None]:
-        Retrieves ReceiptMetadata records that have a specific place_id.
-    get_receipt_metadatas_by_confidence(...) -> Tuple[List[ReceiptMetadata], dict | None]:
-        Retrieves ReceiptMetadata records by confidence score.
-    """
-
-    @handle_dynamodb_errors("add_receipt_metadata")
-    def add_receipt_metadata(self, receipt_metadata: ReceiptMetadata) -> None:
+    def add_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
         Adds a single ReceiptMetadata record to DynamoDB.
 
-        Parameters
-        ----------
-        receipt_metadata : ReceiptMetadata
-            The ReceiptMetadata instance to add.
+        Args:
+            receipt_metadata (ReceiptMetadata): The ReceiptMetadata instance
+                to add.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadata is None, not a ReceiptMetadata, or if the record already exists.
+        Raises:
+            ValueError: If receipt_metadata is None, not a ReceiptMetadata,
+                or if DynamoDB conditions fail.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
-        self._add_entity(
-            receipt_metadata,
-            condition_expression="attribute_not_exists(PK) and attribute_not_exists(SK)",
-        )
+        if receipt_metadata is None:
+            raise ValueError("receipt_metadata cannot be None")
+        if not isinstance(receipt_metadata, ReceiptMetadata):
+            raise ValueError("receipt_metadata must be a ReceiptMetadata")
 
-    @handle_dynamodb_errors("add_receipt_metadatas")
-    def add_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
-    ) -> None:
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=receipt_metadata.to_item(),
+                ConditionExpression=(
+                    "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                ),
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("receipt_metadata already exists") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"receipt_metadata contains invalid attributes or "
+                    f"values: {e}"
+                )
+            elif error_code == "InternalServerError":
+                raise ValueError("internal server error") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise ValueError("provisioned throughput exceeded") from e
+            elif error_code == "ResourceNotFoundException":
+                raise ValueError("table not found") from e
+            else:
+                raise ValueError(f"Error adding receipt metadata: {e}") from e
+
+    def add_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]):
         """
         Adds multiple ReceiptMetadata records to DynamoDB in batches.
 
-        Parameters
-        ----------
-        receipt_metadatas : List[ReceiptMetadata]
-            A list of ReceiptMetadata instances to add.
+        Args:
+            receipt_metadatas (List[ReceiptMetadata]): A list of
+                ReceiptMetadata instances to add.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadatas is invalid or if an error occurs during batch write.
+        Raises:
+            ValueError: If receipt_metadatas is None, not a list, or contains
+                None or non-ReceiptMetadata items.
         """
-        self._validate_entity_list(
-            receipt_metadatas, ReceiptMetadata, "receipt_metadatas"
-        )
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=item.to_item())
+        if receipt_metadatas is None:
+            raise ValueError("receipt_metadatas cannot be None")
+        if not isinstance(receipt_metadatas, list):
+            raise ValueError("receipt_metadatas must be a list")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
             )
-            for item in receipt_metadatas
-        ]
-        self._batch_write_with_retry(request_items)
 
-    @handle_dynamodb_errors("update_receipt_metadata")
-    def update_receipt_metadata(
-        self, receipt_metadata: ReceiptMetadata
-    ) -> None:
+        try:
+            for i in range(0, len(receipt_metadatas), 25):
+                chunk = receipt_metadatas[i : i + 25]
+                request_items = [
+                    WriteRequestTypeDef(
+                        PutRequest=PutRequestTypeDef(Item=item.to_item())
+                    )
+                    for item in chunk
+                ]
+                response = self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+                unprocessed = response.get("UnprocessedItems", {})
+                while unprocessed.get(self.table_name):
+                    response = self._client.batch_write_item(
+                        RequestItems=unprocessed
+                    )
+                    unprocessed = response.get("UnprocessedItems", {})
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("receipt_metadata already exists") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"receipt_metadata contains invalid attributes or "
+                    f"values: {e}"
+                )
+            elif error_code == "InternalServerError":
+                raise ValueError("internal server error") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise ValueError("provisioned throughput exceeded") from e
+            elif error_code == "ResourceNotFoundException":
+                raise ValueError("table not found") from e
+            else:
+                raise ValueError(f"Error adding receipt metadata: {e}") from e
+
+    def update_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
         Updates an existing ReceiptMetadata record in DynamoDB.
 
-        Parameters
-        ----------
-        receipt_metadata : ReceiptMetadata
-            The ReceiptMetadata instance to update.
+        Args:
+            receipt_metadata (ReceiptMetadata): The ReceiptMetadata instance
+                to update.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadata is invalid or if the record does not exist.
+        Raises:
+            ValueError: If receipt_metadata is None, not a ReceiptMetadata,
+                or if the record does not exist.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
-        self._update_entity(
-            receipt_metadata,
-            condition_expression="attribute_exists(PK) and attribute_exists(SK)",
-        )
+        if receipt_metadata is None:
+            raise ValueError("receipt_metadata cannot be None")
+        if not isinstance(receipt_metadata, ReceiptMetadata):
+            raise ValueError("receipt_metadata must be a ReceiptMetadata")
 
-    @handle_dynamodb_errors("update_receipt_metadatas")
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=receipt_metadata.to_item(),
+                ConditionExpression=(
+                    "attribute_exists(PK) and attribute_exists(SK)"
+                ),
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError("receipt_metadata does not exist") from e
+            elif error_code == "ValidationException":
+                raise ValueError(
+                    f"receipt_metadata contains invalid attributes or "
+                    f"values: {e}"
+                )
+            elif error_code == "InternalServerError":
+                raise ValueError("internal server error") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise ValueError("provisioned throughput exceeded") from e
+            elif error_code == "ResourceNotFoundException":
+                raise ValueError("table not found") from e
+            else:
+                raise ValueError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
+
     def update_receipt_metadatas(
         self, receipt_metadatas: List[ReceiptMetadata]
-    ) -> None:
+    ):
         """
         Updates multiple ReceiptMetadata records in DynamoDB using transactions.
 
-        Parameters
-        ----------
-        receipt_metadatas : List[ReceiptMetadata]
-            A list of ReceiptMetadata instances to update.
+        Args:
+            receipt_metadatas (List[ReceiptMetadata]): A list of
+                ReceiptMetadata instances to update.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadatas is invalid or if any record does not exist.
+        Raises:
+            ValueError: If receipt_metadatas is None, not a list, or contains
+                None or non-ReceiptMetadata items.
         """
-        self._validate_entity_list(
-            receipt_metadatas, ReceiptMetadata, "receipt_metadatas"
-        )
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=item.to_item(),
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
-                )
+        if receipt_metadatas is None:
+            raise ValueError("receipt_metadatas cannot be None")
+        if not isinstance(receipt_metadatas, list):
+            raise ValueError("receipt_metadatas must be a list")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
             )
-            for item in receipt_metadatas
-        ]
-        self._transact_write_with_chunking(transact_items)
 
-    def delete_receipt_metadata(
-        self, receipt_metadata: ReceiptMetadata
-    ) -> None:
+        try:
+            for i in range(0, len(receipt_metadatas), 25):
+                chunk = receipt_metadatas[i : i + 25]
+                transact_items = [
+                    TransactWriteItemTypeDef(
+                        Put=PutTypeDef(
+                            TableName=self.table_name,
+                            Item=item.to_item(),
+                            ConditionExpression=(
+                                "attribute_exists(PK) and attribute_exists(SK)"
+                            ),
+                        )
+                    )
+                    for item in chunk
+                ]
+                response = self._client.transact_write_items(
+                    TransactItems=transact_items
+                )
+                # Note: transact_write_items doesn't have UnprocessedItems -
+                # it either succeeds or fails entirely
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    "One or more receipt metadata items do not exist"
+                ) from e
+            elif error_code == "TransactionCanceledException":
+                if "ConditionalCheckFailed" in str(e):
+                    raise ValueError(
+                        "One or more receipt metadata items do not exist"
+                    ) from e
+                else:
+                    raise DynamoDBError(f"Transaction canceled: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
+            elif error_code == "ResourceNotFoundException":
+                raise DynamoDBError(f"Resource not found: {e}") from e
+            else:
+                raise DynamoDBError(
+                    f"Error updating receipt metadata: {e}"
+                ) from e
+
+    def delete_receipt_metadata(self, receipt_metadata: ReceiptMetadata):
         """
         Deletes a single ReceiptMetadata record from DynamoDB.
 
-        Parameters
-        ----------
-        receipt_metadata : ReceiptMetadata
-            The ReceiptMetadata instance to delete.
+        Args:
+            receipt_metadata (ReceiptMetadata): The ReceiptMetadata instance
+                to delete.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadata is invalid.
+        Raises:
+            ValueError: If receipt_metadata is None, not a ReceiptMetadata,
+                or if the record does not exist.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
+        if receipt_metadata is None:
+            raise ValueError("receipt_metadata cannot be None")
+        if not isinstance(receipt_metadata, ReceiptMetadata):
+            raise ValueError("receipt_metadata must be a ReceiptMetadata")
 
         try:
             self._client.delete_item(
@@ -237,7 +293,8 @@ class _ReceiptMetadata(
                 raise ValueError("receipt_metadata does not exist") from e
             elif error_code == "ValidationException":
                 raise ValueError(
-                    f"receipt_metadata contains invalid attributes or values: {e}"
+                    f"receipt_metadata contains invalid attributes or "
+                    f"values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
@@ -250,61 +307,102 @@ class _ReceiptMetadata(
                     f"Error deleting receipt metadata: {e}"
                 ) from e
 
-    @handle_dynamodb_errors("delete_receipt_metadatas")
     def delete_receipt_metadatas(
         self, receipt_metadatas: List[ReceiptMetadata]
-    ) -> None:
+    ):
         """
         Deletes multiple ReceiptMetadata records from DynamoDB.
 
-        Parameters
-        ----------
-        receipt_metadatas : List[ReceiptMetadata]
-            A list of ReceiptMetadata instances to delete.
+        Args:
+            receipt_metadatas (List[ReceiptMetadata]): A list of
+                ReceiptMetadata instances to delete.
 
-        Raises
-        ------
-        ValueError
-            If receipt_metadatas is invalid or if any record does not exist.
+        Raises:
+            ValueError: If receipt_metadatas is None, not a list, or contains
+                None or non-ReceiptMetadata items.
         """
-        self._validate_entity_list(
-            receipt_metadatas, ReceiptMetadata, "receipt_metadatas"
-        )
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Delete=DeleteTypeDef(
-                    TableName=self.table_name,
-                    Key=item.key(),
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
-                )
+        if receipt_metadatas is None:
+            raise ValueError("receipt_metadatas cannot be None")
+        if not isinstance(receipt_metadatas, list):
+            raise ValueError("receipt_metadatas must be a list")
+        if not all(
+            isinstance(item, ReceiptMetadata) for item in receipt_metadatas
+        ):
+            raise ValueError(
+                "receipt_metadatas must be a list of ReceiptMetadata"
             )
-            for item in receipt_metadatas
-        ]
-        self._transact_write_with_chunking(transact_items)
+
+        try:
+            for i in range(0, len(receipt_metadatas), 25):
+                chunk = receipt_metadatas[i : i + 25]
+                transact_items = [
+                    TransactWriteItemTypeDef(
+                        Delete=DeleteTypeDef(
+                            TableName=self.table_name,
+                            Key=item.key(),
+                            ConditionExpression=(
+                                "attribute_exists(PK) and attribute_exists(SK)"
+                            ),
+                        )
+                    )
+                    for item in chunk
+                ]
+                response = self._client.transact_write_items(
+                    TransactItems=transact_items
+                )
+                # Note: transact_write_items doesn't have UnprocessedItems -
+                # it either succeeds or fails entirely
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ConditionalCheckFailedException":
+                raise ValueError(
+                    "One or more receipt metadata items do not exist"
+                ) from e
+            elif error_code == "TransactionCanceledException":
+                if "ConditionalCheckFailed" in str(e):
+                    raise ValueError(
+                        "One or more receipt metadata items do not exist"
+                    ) from e
+                else:
+                    raise DynamoDBError(f"Transaction canceled: {e}") from e
+            elif error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            elif error_code == "InternalServerError":
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
+            elif error_code == "ResourceNotFoundException":
+                raise DynamoDBError(f"Resource not found: {e}") from e
+            else:
+                raise DynamoDBError(
+                    f"Error deleting receipt metadata: {e}"
+                ) from e
 
     def get_receipt_metadata(
         self, image_id: str, receipt_id: int
     ) -> ReceiptMetadata:
         """
-        Retrieves a single ReceiptMetadata record from DynamoDB.
+        Retrieves a single ReceiptMetadata record from DynamoDB by image_id
+        and receipt_id.
 
-        Parameters
-        ----------
-        image_id : str
-            The image_id of the ReceiptMetadata record to retrieve.
-        receipt_id : int
-            The receipt_id of the ReceiptMetadata record to retrieve.
+        Args:
+            image_id (str): The image_id of the ReceiptMetadata record to
+                retrieve.
+            receipt_id (int): The receipt_id of the ReceiptMetadata record to
+                retrieve.
 
-        Returns
-        -------
-        ReceiptMetadata
-            The corresponding ReceiptMetadata instance.
+        Returns:
+            ReceiptMetadata: The corresponding ReceiptMetadata instance.
 
-        Raises
-        ------
-        ValueError
-            If parameters are invalid or if the record does not exist.
+        Raises:
+            ValueError: If image_id is None, not a string, or receipt_id is
+                None, not an integer.
         """
         if image_id is None:
             raise ValueError("image_id cannot be None")
@@ -349,22 +447,8 @@ class _ReceiptMetadata(
         self, indices: list[tuple[str, int]]
     ) -> list[ReceiptMetadata]:
         """
-        Retrieves a list of ReceiptMetadata records from DynamoDB by indices.
-
-        Parameters
-        ----------
-        indices : list[tuple[str, int]]
-            A list of tuples of (image_id, receipt_id).
-
-        Returns
-        -------
-        list[ReceiptMetadata]
-            A list of ReceiptMetadata records.
-
-        Raises
-        ------
-        ValueError
-            If indices is invalid.
+        Retrieves a list of ReceiptMetadata records from DynamoDB by image_id
+        and receipt_id.
         """
         if indices is None:
             raise ValueError("indices cannot be None")
@@ -393,22 +477,19 @@ class _ReceiptMetadata(
 
     def get_receipt_metadatas(self, keys: list[dict]) -> list[ReceiptMetadata]:
         """
-        Retrieves a list of ReceiptMetadata records from DynamoDB using keys.
+        Retrieves a list of ReceiptMetadata records from DynamoDB using a list
+        of keys.
 
-        Parameters
-        ----------
-        keys : list[dict]
-            A list of keys to retrieve the ReceiptMetadata records by.
+        Args:
+            keys (list[dict]): A list of keys to retrieve the ReceiptMetadata
+                records by.
 
-        Returns
-        -------
-        list[ReceiptMetadata]
-            A list of ReceiptMetadata records.
+        Returns:
+            list[ReceiptMetadata]: A list of ReceiptMetadata records.
 
-        Raises
-        ------
-        ValueError
-            If keys is invalid.
+        Raises:
+            ValueError: If keys is None, not a list, or contains None or
+                non-dict items.
         """
         if keys is None:
             raise ValueError("keys cannot be None")
@@ -425,10 +506,9 @@ class _ReceiptMetadata(
                 raise ValueError("SK must start with 'RECEIPT#'")
             if not key["SK"]["S"].split("#")[-1] == "METADATA":
                 raise ValueError("SK must contain 'METADATA'")
-
         results = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
+        for i in range(0, len(keys), 25):
+            chunk = keys[i : i + 25]
             response = self._client.batch_get_item(
                 RequestItems={self.table_name: {"Keys": chunk}}
             )
@@ -450,22 +530,13 @@ class _ReceiptMetadata(
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
 
-        Parameters
-        ----------
-        limit : int, optional
-            Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
-            The key to start pagination from.
+        Args:
+            limit (int, optional): Maximum number of records to retrieve.
+            lastEvaluatedKey (dict, optional): The key to start pagination from.
 
-        Returns
-        -------
-        Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
-
-        Raises
-        ------
-        ValueError
-            If parameters are invalid.
+        Returns:
+            Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the
+                list of ReceiptMetadata records and the last evaluated key.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer")
@@ -522,26 +593,17 @@ class _ReceiptMetadata(
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
-        Retrieves ReceiptMetadata records from DynamoDB by merchant name.
+        Retrieves ReceiptMetadata records from DynamoDB by merchant name with
+        optional pagination.
 
-        Parameters
-        ----------
-        merchant_name : str
-            The merchant name to filter by.
-        limit : int, optional
-            Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
-            The key to start pagination from.
+        Args:
+            merchant_name (str): The merchant name to filter by.
+            limit (int, optional): Maximum number of records to retrieve.
+            lastEvaluatedKey (dict, optional): The key to start pagination from.
 
-        Returns
-        -------
-        Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
-
-        Raises
-        ------
-        ValueError
-            If merchant_name is invalid.
+        Returns:
+            Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the
+                list of ReceiptMetadata records and the last evaluated key.
         """
         if merchant_name is None:
             raise ValueError("merchant_name cannot be None")
@@ -593,28 +655,19 @@ class _ReceiptMetadata(
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
-        Retrieves ReceiptMetadata records that have a specific place_id.
+        Retrieves ReceiptMetadata records from DynamoDB that have a specific
+        place_id.
 
         Uses GSI2 for efficient direct querying by place_id.
 
-        Parameters
-        ----------
-        place_id : str
-            The place_id to query for.
-        limit : int, optional
-            Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
-            The key to start pagination from.
+        Args:
+            place_id (str): The place_id to query for.
+            limit (int, optional): Maximum number of records to retrieve.
+            lastEvaluatedKey (dict, optional): The key to start pagination from.
 
-        Returns
-        -------
-        Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
-
-        Raises
-        ------
-        ValueError
-            If place_id is invalid.
+        Returns:
+            Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the
+                list of ReceiptMetadata records and the last evaluated key.
         """
         if not place_id:
             raise ValueError("place_id cannot be empty")
@@ -674,28 +727,19 @@ class _ReceiptMetadata(
         lastEvaluatedKey: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
-        Retrieves ReceiptMetadata records by confidence score.
+        Retrieves ReceiptMetadata records from DynamoDB by confidence score
+        with optional pagination.
 
-        Parameters
-        ----------
-        confidence : float
-            The confidence score to filter by.
-        above : bool, optional
-            Whether to filter above or below the confidence score.
-        limit : int, optional
-            Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
-            The key to start pagination from.
+        Args:
+            confidence (float): The confidence score to filter by.
+            above (bool, optional): Whether to filter above or below the
+                confidence score.
+            limit (int, optional): Maximum number of records to retrieve.
+            lastEvaluatedKey (dict, optional): The key to start pagination from.
 
-        Returns
-        -------
-        Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
-
-        Raises
-        ------
-        ValueError
-            If confidence is invalid.
+        Returns:
+            Tuple[List[ReceiptMetadata], dict | None]: A tuple containing the
+                list of ReceiptMetadata records and the last evaluated key.
         """
         if confidence is None:
             raise ValueError("confidence cannot be None")
@@ -740,7 +784,8 @@ class _ReceiptMetadata(
             error_code = e.response["Error"]["Code"]
             if error_code == "ValidationException":
                 raise ValueError(
-                    f"receipt_metadata contains invalid attributes or values: {e}"
+                    f"receipt_metadata contains invalid attributes or "
+                    f"values: {e}"
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
