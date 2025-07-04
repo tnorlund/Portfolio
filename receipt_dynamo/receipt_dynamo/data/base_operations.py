@@ -41,6 +41,8 @@ def handle_dynamodb_errors(operation_name: str):
                 self._handle_client_error(
                     e, operation_name, context={"args": args, "kwargs": kwargs}
                 )
+                # Safety net: if _handle_client_error doesn't raise, re-raise original
+                raise  # This line should never be reached if handlers work correctly
 
         return wrapper
 
