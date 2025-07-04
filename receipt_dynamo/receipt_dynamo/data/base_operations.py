@@ -129,6 +129,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Maintain backward compatibility with error messages
         if operation == "update_images":
             raise DynamoDBError(f"Resource not found: {error}") from error
+        # Special legacy format for ReceiptValidationResult operations
+        if "receipt_validation_result" in operation:
+            raise DynamoDBError(
+                "Could not add receipt validation result to DynamoDB"
+            ) from error
         raise DynamoDBError(
             f"Table not found for operation {operation}"
         ) from error
@@ -151,6 +156,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle validation errors"""
+        # Special legacy format for ReceiptValidationResult operations
+        if "receipt_validation_result" in operation:
+            raise DynamoDBValidationError(
+                "One or more parameters given were invalid"
+            ) from error
         raise DynamoDBValidationError(
             f"Validation error in {operation}: {error}"
         ) from error
@@ -183,6 +193,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Check if it's an add operation to maintain backward compatibility
         if "add_image" in operation.lower():
             raise OperationError(f"Error putting image: {error}") from error
+        # Special legacy format for ReceiptValidationResult operations
+        if "receipt_validation_result" in operation:
+            raise DynamoDBError(
+                "Could not add receipt validation result to DynamoDB"
+            ) from error
         raise DynamoDBError(
             f"Unknown error in {operation}: {error}"
         ) from error
