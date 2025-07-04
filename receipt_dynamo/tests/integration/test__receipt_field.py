@@ -669,7 +669,7 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -859,7 +859,7 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -962,8 +962,8 @@ def test_deleteReceiptFields_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(
-        Exception,
-        match=r"Error deleting receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        ValueError,
+        match="One or more entities do not exist or conditions failed",
     ):
         client.delete_receipt_fields([sample_receipt_field])
 
@@ -1023,7 +1023,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1455,7 +1455,7 @@ def test_listReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1778,7 +1778,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -2143,7 +2143,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
