@@ -121,25 +121,16 @@ class _ReceiptLine(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> None:
         """Deletes a single ReceiptLine by IDs."""
-        # For this method, we need to construct a ReceiptLine to validate and use _delete_entity
-        # Create minimal ReceiptLine with all required fields
-        from receipt_dynamo.entities.receipt_line import ReceiptLine
-
-        temp_line = ReceiptLine(
-            receipt_id=receipt_id,
-            image_id=image_id,
-            line_id=line_id,
-            text="",  # Minimal required fields
-            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
-            top_right={"x": 0, "y": 0},
-            top_left={"x": 0, "y": 0},
-            bottom_right={"x": 0, "y": 0},
-            bottom_left={"x": 0, "y": 0},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
+        # Direct key-based deletion is more efficient than creating dummy objects
+        key = {
+            "PK": {"S": f"RECEIPT#{receipt_id}#IMAGE#{image_id}"},
+            "SK": {"S": f"LINE#{line_id}"},
+        }
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key=key,
+            ConditionExpression="attribute_exists(PK)",
         )
-        self._delete_entity(temp_line)
 
     @handle_dynamodb_errors("delete_receipt_lines")
     def delete_receipt_lines(self, lines: list[ReceiptLine]) -> None:

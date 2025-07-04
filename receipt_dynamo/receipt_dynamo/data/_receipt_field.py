@@ -112,7 +112,7 @@ class _ReceiptField(
         ValueError
             When a receipt field with the same ID already exists.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
+        self._validate_entity(receipt_field, ReceiptField, "receiptField")
         self._add_entity(receipt_field)
 
     @handle_dynamodb_errors("add_receipt_fields")
@@ -131,7 +131,7 @@ class _ReceiptField(
             If receipt_fields is invalid or if an error occurs during batch write.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receipt_fields"
+            receipt_fields, ReceiptField, "receiptFields"
         )
 
         request_items = [
@@ -157,7 +157,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
+        self._validate_entity(receipt_field, ReceiptField, "receiptField")
         self._update_entity(receipt_field)
 
     @handle_dynamodb_errors("update_receipt_fields")
@@ -178,7 +178,7 @@ class _ReceiptField(
             When given a bad parameter or if a field doesn't exist.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receipt_fields"
+            receipt_fields, ReceiptField, "receiptFields"
         )
 
         transact_items = [
@@ -208,7 +208,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
+        self._validate_entity(receipt_field, ReceiptField, "receiptField")
         self._delete_entity(receipt_field)
 
     @handle_dynamodb_errors("delete_receipt_fields")
@@ -229,7 +229,7 @@ class _ReceiptField(
             When a receipt field does not exist or if another error occurs.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receipt_fields"
+            receipt_fields, ReceiptField, "receiptFields"
         )
 
         transact_items = [

@@ -79,7 +79,7 @@ def test_addReceiptField_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_field parameter is required and cannot be None."),
+        (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
             "receipt_field must be an instance of the ReceiptField class.",
@@ -246,14 +246,14 @@ def test_addReceiptFields_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_fields parameter is required and cannot be None."),
+        (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "Receipt_fields must be provided as a list.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receipt_fields list must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -433,7 +433,7 @@ def test_updateReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_field parameter is required and cannot be None."),
+        (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
             "receipt_field must be an instance of the ReceiptField class.",
@@ -615,14 +615,14 @@ def test_updateReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_fields parameter is required and cannot be None."),
+        (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "Receipt_fields must be provided as a list.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receipt_fields list must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -813,7 +813,7 @@ def test_deleteReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_field parameter is required and cannot be None."),
+        (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
             "receipt_field must be an instance of the ReceiptField class.",
@@ -972,14 +972,14 @@ def test_deleteReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Receipt_fields parameter is required and cannot be None."),
+        (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "Receipt_fields must be provided as a list.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receipt_fields list must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )

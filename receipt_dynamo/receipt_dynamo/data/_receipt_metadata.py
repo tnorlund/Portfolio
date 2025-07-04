@@ -206,6 +206,7 @@ class _ReceiptMetadata(
         ]
         self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("delete_receipt_metadata")
     def delete_receipt_metadata(
         self, receipt_metadata: ReceiptMetadata
     ) -> None:
@@ -225,30 +226,7 @@ class _ReceiptMetadata(
         self._validate_entity(
             receipt_metadata, ReceiptMetadata, "receipt_metadata"
         )
-
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=receipt_metadata.key(),
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("receipt_metadata does not exist") from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"receipt_metadata contains invalid attributes or values: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(
-                    f"Error deleting receipt metadata: {e}"
-                ) from e
+        self._delete_entity(receipt_metadata)
 
     @handle_dynamodb_errors("delete_receipt_metadatas")
     def delete_receipt_metadatas(
