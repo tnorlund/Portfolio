@@ -298,7 +298,7 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
         ("not-a-list", "Letters must be provided as a list."),
         (
             ["not-a-receipt-letter"],
-            "All letters must be instances of the ReceiptLetter class.",
+            "All items in the letters list must be instances of the ReceiptLetter class.",
         ),
     ],
 )
@@ -625,7 +625,7 @@ def test_updateReceiptLetters_with_large_batch(
         ("not-a-list", "Letters must be provided as a list"),
         (
             [123, "not-a-receipt-letter"],
-            "All letters must be instances of the ReceiptLetter class",
+            "All items in the letters list must be instances of the ReceiptLetter class",
         ),
     ],
 )
@@ -1052,7 +1052,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
         ("not a list", "Letters must be provided as a list."),
         (
             [1, 2, 3],
-            "All letters must be instances of the ReceiptLetter class.",
+            "All items in the letters list must be instances of the ReceiptLetter class.",
         ),
     ],
 )
