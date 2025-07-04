@@ -38,7 +38,7 @@ def handle_dynamodb_errors(operation_name: str):
             try:
                 return func(self, *args, **kwargs)
             except ClientError as e:
-                return self._handle_client_error(
+                self._handle_client_error(
                     e, operation_name, context={"args": args, "kwargs": kwargs}
                 )
 
