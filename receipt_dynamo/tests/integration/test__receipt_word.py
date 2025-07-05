@@ -282,7 +282,7 @@ def test_addReceiptWords_with_unprocessed_items_retries(
         ),
         (
             ["not-a-receipt-word"],
-            "All words must be instances of the ReceiptWord class.",
+            "All items in the words list must be instances of the ReceiptWord class.",
         ),
     ],
 )
