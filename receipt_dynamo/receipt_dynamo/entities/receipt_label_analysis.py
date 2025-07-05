@@ -112,7 +112,7 @@ class ReceiptLabelAnalysis:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LABELS"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LABEL#{self.version}"},
         }
 
     def gsi1_key(self) -> Dict[str, Dict[str, str]]:
@@ -123,7 +123,7 @@ class ReceiptLabelAnalysis:
         """
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"LABELS#{self.timestamp_added}"},
+            "GSI1SK": {"S": f"LABEL#{self.timestamp_added}"},
         }
 
     def gsi2_key(self) -> Dict[str, Dict[str, str]]:
@@ -295,10 +295,10 @@ def item_to_receipt_label_analysis(
     sk_parts = item["SK"]["S"].split("#")
 
     if (
-        len(sk_parts) < 4
+        len(sk_parts) < 5
         or sk_parts[0] != "RECEIPT"
         or sk_parts[2] != "ANALYSIS"
-        or sk_parts[3] != "LABELS"
+        or sk_parts[3] != "LABEL"
     ):
         raise ValueError("Invalid SK format for ReceiptLabelAnalysis")
 

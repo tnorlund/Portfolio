@@ -185,13 +185,13 @@ class _ReceiptLabelAnalysis(
 
     @handle_dynamodb_errors("get_receipt_label_analysis")
     def get_receipt_label_analysis(
-        self, receipt_id: int, image_id: str, version: Optional[str] = None
+        self, image_id: str, receipt_id: int, version: Optional[str] = None
     ) -> ReceiptLabelAnalysis:
         """Retrieves a receipt label analysis from the database
 
         Args:
-            receipt_id (int): The receipt ID
             image_id (str): The image ID
+            receipt_id (int): The receipt ID
             version (Optional[str]): The version of the analysis
 
         Returns:
@@ -200,13 +200,13 @@ class _ReceiptLabelAnalysis(
         Raises:
             ValueError: When the receipt label analysis does not exist
         """
-        if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
         if not isinstance(image_id, str):
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
+            )
+        if not isinstance(receipt_id, int):
+            raise ValueError(
+                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(

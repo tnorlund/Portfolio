@@ -188,7 +188,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEM"},
         }
 
     def gsi1_key(self) -> Dict[str, Any]:
@@ -199,7 +199,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"LINE_ITEMS#{self.timestamp_added}"},
+            "GSI1SK": {"S": f"LINE_ITEM#{self.timestamp_added}"},
         }
 
     def gsi2_key(self) -> Dict[str, Any]:
