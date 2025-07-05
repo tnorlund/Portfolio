@@ -82,7 +82,7 @@ def test_addReceiptField_duplicate_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -115,7 +115,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt field to DynamoDB",
+            "Table not found for operation add_receipt_field",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -130,14 +130,18 @@ def test_addReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt field to DynamoDB",
+            "Unknown error in add_receipt_field",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "Validation error in add_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_field",
+        ),
     ],
 )
 def test_addReceiptField_client_errors(
@@ -245,11 +249,11 @@ def test_addReceiptFields_success(
         (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -288,13 +292,17 @@ def test_addReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_fields",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Error adding receipt fields",
+            "Unknown error in add_receipt_fields",
         ),
     ],
 )
@@ -432,7 +440,7 @@ def test_updateReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -475,13 +483,17 @@ def test_updateReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in update_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for update_receipt_field",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt field",
+            "Unknown error in update_receipt_field",
         ),
     ],
 )
@@ -602,7 +614,7 @@ def test_updateReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="One or more receipt fields do not exist",
+        match="One or more entities do not exist or conditions failed",
     ):
         client.update_receipt_fields(fields)
 
@@ -614,11 +626,11 @@ def test_updateReceiptFields_nonexistent_raises(
         (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -647,7 +659,7 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt fields do not exist",
+            "Entity does not exist: list",
             ValueError,
         ),
         (
@@ -665,19 +677,19 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in update_receipt_fields",
             DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied",
+            "Access denied for update_receipt_fields",
             DynamoDBAccessError,
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt fields",
+            "Unknown error in update_receipt_fields",
             DynamoDBError,
         ),
     ],
@@ -812,7 +824,7 @@ def test_deleteReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -855,13 +867,17 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in delete_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for delete_receipt_field",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt field",
+            "Unknown error in delete_receipt_field",
         ),
     ],
 )
@@ -958,8 +974,8 @@ def test_deleteReceiptFields_nonexistent_raises(
 
     # Act & Assert
     with pytest.raises(
-        Exception,
-        match=r"Error deleting receipt fields: An error occurred \(TransactionCanceledException\) when calling the TransactWriteItems operation: Transaction cancelled, please refer cancellation reasons for specific reasons \[ConditionalCheckFailed\]",
+        ValueError,
+        match="One or more entities do not exist or conditions failed",
     ):
         client.delete_receipt_fields([sample_receipt_field])
 
@@ -971,11 +987,11 @@ def test_deleteReceiptFields_nonexistent_raises(
         (None, "ReceiptFields parameter is required and cannot be None."),
         (
             "not-a-list",
-            "receipt_fields must be a list of ReceiptField instances.",
+            "ReceiptFields must be provided as a list.",
         ),
         (
             [1, 2, 3],
-            "All receipt fields must be instances of the ReceiptField class.",
+            "All items in the receiptFields list must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -1004,7 +1020,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt fields do not exist",
+            "Entity does not exist: list",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1019,13 +1035,17 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in delete_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for delete_receipt_fields",
+        ),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt fields",
+            "Unknown error in delete_receipt_fields",
         ),
     ],
 )
