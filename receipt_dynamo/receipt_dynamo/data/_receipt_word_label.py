@@ -111,27 +111,68 @@ class _ReceiptWordLabel(
                 f"Could not add receipt word label to DynamoDB: {error}"
             ) from error
 
-    @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
         self, receipt_word_labels: List[ReceiptWordLabel]
     ):
-        """Adds multiple receipt word labels to the database
+        """Adds a list of receipt word labels to the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word labels to add
+            receipt_word_labels (List[ReceiptWordLabel]): The receipt word labels to add to the database
 
         Raises:
-            ValueError: When any receipt word label validation fails
+            ValueError: When a receipt word label with the same ID already exists
         """
-        self._validate_entity_list(
-            receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
+        if receipt_word_labels is None:
+            raise ValueError(
+                "ReceiptWordLabels parameter is required and cannot be None."
+            )
+        if not isinstance(receipt_word_labels, list):
+            raise ValueError(
+                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+            )
+        if not all(
+            isinstance(label, ReceiptWordLabel)
+            for label in receipt_word_labels
+        ):
+            raise ValueError(
+                "All receipt word labels must be instances of the ReceiptWordLabel class."
+            )
+        
+        try:
+            from receipt_dynamo.data._base import WriteRequestTypeDef
+            for i in range(0, len(receipt_word_labels), 25):
+                chunk = receipt_word_labels[i : i + 25]
+                request_items = [
+                    WriteRequestTypeDef(
+                        PutRequest={"Item": label.to_item()}
+                    )
+                    for label in chunk
+                ]
+                self._client.batch_write_item(
+                    RequestItems={self.table_name: request_items}
+                )
+        except ClientError as e:
+            self._handle_add_receipt_word_labels_error(e)
+    
+    def _handle_add_receipt_word_labels_error(self, error: ClientError):
+        """Handle errors specific to add_receipt_word_labels"""
+        from receipt_dynamo.data.shared_exceptions import (
+            DynamoDBError,
+            DynamoDBServerError, 
+            DynamoDBThroughputError,
         )
         
-        request_items = [
-            {"PutRequest": {"Item": label.to_item()}} 
-            for label in receipt_word_labels
-        ]
-        self._batch_write_with_retry(request_items)
+        error_code = error.response.get("Error", {}).get("Code", "")
+        if error_code == "ProvisionedThroughputExceededException":
+            raise DynamoDBThroughputError(
+                f"Provisioned throughput exceeded: {error}"
+            ) from error
+        elif error_code == "InternalServerError":
+            raise DynamoDBServerError(f"Internal server error: {error}") from error
+        else:
+            raise DynamoDBError(
+                f"Could not add receipt word labels to DynamoDB: {error}"
+            ) from error
 
     @handle_dynamodb_errors("update_receipt_word_label")
     def update_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
