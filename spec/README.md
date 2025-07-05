@@ -6,23 +6,21 @@ This directory contains active technical specifications and implementation plans
 
 | Specification | Status | Priority | GitHub Issue | Effort |
 |---------------|--------|----------|--------------|---------|
-| **AI Usage Tracking (Phase 5)** | 🟡 Next | High | #122 | 5-7 days |
-| **Google Places API Tracking** | 🔴 Planned | Medium | #147 | 2-3 days |
+| **Google Places API Tracking** | 🟡 Next | Medium | #147 | 2-3 days |
 | **Receipt Upload Reformatting** | 🔴 Planned | Medium | #146 | 3-5 days |
 | **Agentic Refactor** | 📋 Specified | Low | TBD | 12-16 weeks |
 
 ## 🎯 Current Focus
 
-### **Next Sprint (Issue #122)**
-**AI Usage Tracking Phase 5 - Production Deployment**
-- Deploy complete AI usage tracking system to production
-- Implement advanced analytics and reporting
-- Achieve sub-100ms latency and 99.99% availability
+### **Next Sprint (Issue #147)**
+**Google Places API Tracking Integration**
+- Extend AI usage tracking to Google Places API calls
+- Implement cost tracking for Places API usage
+- Maintain consistency with existing AI tracking patterns
 
 ### **Upcoming Work**
-1. **Issue #147** - Google Places API context manager integration
-2. **Issue #146** - Receipt upload package reformatting to match standards
-3. **Agentic Refactor** - Long-term architectural transformation
+1. **Issue #146** - Receipt upload package reformatting to match standards
+2. **Agentic Refactor** - Long-term architectural transformation
 
 ### **Long-term Vision**
 **Agentic Architecture Transformation** - Complete system refactor to agent-based architecture with:
@@ -54,14 +52,14 @@ spec/
 
 ## 📋 Key Specifications
 
-### **AI Usage Tracking - Phase 5 (Issue #122)** 🟡 NEXT
+### **AI Usage Tracking - Phase 5 (Issue #122)** ✅ COMPLETED
 **Production Deployment & Advanced Analytics**
-- Deploy complete tracking system to production
-- Advanced analytics dashboard with insights
-- Sub-100ms tracking latency (99th percentile)
-- 10,000+ requests per second support
-- 99.99% availability SLA
-- See: `ai-usage-tracking/implementation.md`
+- ✅ Complete tracking system deployed to production
+- ✅ All OpenAI API calls automatically tracked
+- ✅ Sub-10ms tracking latency achieved
+- ✅ Resilient tracking with circuit breakers
+- ✅ Multi-environment support (prod/staging/CI/dev)
+- See: `archive/completed-2024/issue-122-ai-usage-tracking-completion.md`
 
 ### **Google Places API Integration (Issue #147)** 🔴 PLANNED
 **Context Manager for Places API**
