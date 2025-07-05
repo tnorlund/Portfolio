@@ -877,7 +877,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationCategories in the database",
+            "Table not found for operation update_receipt_validation_categories",
             None,
             DynamoDBError,
         ),
@@ -905,7 +905,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_validation_categories",
+            "Validation error in update_receipt_validation_categories",
             None,
             DynamoDBValidationError,
         ),
@@ -919,7 +919,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationCategories in the database",
+            "Unknown error in update_receipt_validation_categories",
             None,
             DynamoDBError,
         ),
@@ -1056,12 +1056,12 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationCategory with field",
+            "Entity does not exist: ReceiptValidationCategory with receipt_id=1",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationCategory from the database",
+            "Table not found for operation delete_receipt_validation_category",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1076,13 +1076,13 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_validation_categories",
+            "Validation error in delete_receipt_validation_category",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationCategory from the database",
+            "Unknown error in delete_receipt_validation_category",
         ),
     ],
 )
@@ -1232,7 +1232,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationCategories from the database",
+            "Table not found for operation delete_receipt_validation_categories",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1247,7 +1247,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_validation_categories",
+            "Validation error in delete_receipt_validation_categories",
         ),
         (
             "AccessDeniedException",
@@ -1257,7 +1257,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationCategories from the database",
+            "Unknown error in delete_receipt_validation_categories",
         ),
     ],
 )
@@ -1547,7 +1547,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt validation categories from DynamoDB",
+            "Table not found for operation list_receipt_validation_categories_for_receipt",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1562,7 +1562,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_validation_categories",
+            "Validation error in list_receipt_validation_categories_for_receipt",
         ),
         (
             "AccessDeniedException",
@@ -1572,7 +1572,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list ReceiptValidationCategories from the database",
+            "Unknown error in list_receipt_validation_categories_for_receipt",
         ),
     ],
 )
