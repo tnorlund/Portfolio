@@ -139,6 +139,28 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise DynamoDBError(
                 "Could not add receipt validation result to DynamoDB"
             ) from error
+        # Special legacy format for ReceiptValidationCategory operations
+        if (
+            "receipt_validation_categor" in operation
+        ):  # matches both category and categories
+            # Handle update operations
+            if "update" in operation:
+                if "categories" in operation:
+                    raise DynamoDBError(
+                        "Could not update ReceiptValidationCategories in the database"
+                    ) from error
+                else:
+                    raise DynamoDBError(
+                        "Could not update ReceiptValidationCategory in the database"
+                    ) from error
+            # Handle plural form for batch operations
+            if "categories" in operation:
+                raise DynamoDBError(
+                    "Could not add ReceiptValidationCategories to the database"
+                ) from error
+            raise DynamoDBError(
+                "Could not add receipt validation category to DynamoDB"
+            ) from error
         raise DynamoDBError(
             f"Table not found for operation {operation}"
         ) from error
@@ -163,6 +185,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """Handle validation errors"""
         # Special legacy format for ReceiptValidationResult operations
         if "receipt_validation_result" in operation:
+            raise DynamoDBValidationError(
+                "One or more parameters given were invalid"
+            ) from error
+        # Special legacy format for ReceiptValidationCategory operations
+        if (
+            "receipt_validation_categor" in operation
+        ):  # matches both category and categories
             raise DynamoDBValidationError(
                 "One or more parameters given were invalid"
             ) from error
@@ -207,6 +236,28 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 ) from error
             raise DynamoDBError(
                 "Could not add receipt validation result to DynamoDB"
+            ) from error
+        # Special legacy format for ReceiptValidationCategory operations
+        if (
+            "receipt_validation_categor" in operation
+        ):  # matches both category and categories
+            # Handle update operations
+            if "update" in operation:
+                if "categories" in operation:
+                    raise DynamoDBError(
+                        "Could not update ReceiptValidationCategories in the database"
+                    ) from error
+                else:
+                    raise DynamoDBError(
+                        "Could not update ReceiptValidationCategory in the database"
+                    ) from error
+            # Handle plural form for batch operations
+            if "categories" in operation:
+                raise DynamoDBError(
+                    "Could not add ReceiptValidationCategories to the database"
+                ) from error
+            raise DynamoDBError(
+                "Could not add receipt validation category to DynamoDB"
             ) from error
         raise DynamoDBError(
             f"Unknown error in {operation}: {error}"
@@ -321,6 +372,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     f"{param_name} parameter is required and cannot be None."
                 )
+            # Special legacy format for ReceiptValidationCategory
+            if (
+                param_name == "categories"
+                and entity_class.__name__ == "ReceiptValidationCategory"
+            ):
+                raise ValueError(
+                    f"{param_name} parameter is required and cannot be None."
+                )
             # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
@@ -336,6 +395,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     f"{param_name} must be a list of {entity_class.__name__} instances."
                 )
+            # Special legacy format for ReceiptValidationCategory
+            if (
+                param_name == "categories"
+                and entity_class.__name__ == "ReceiptValidationCategory"
+            ):
+                raise ValueError(
+                    f"{param_name} must be a list of {entity_class.__name__} instances."
+                )
             # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(f"{param_display} must be provided as a list.")
@@ -345,6 +412,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             if (
                 param_name == "results"
                 and entity_class.__name__ == "ReceiptValidationResult"
+            ):
+                raise ValueError(
+                    f"All {param_name} must be instances of the {entity_class.__name__} class."
+                )
+            # Special legacy format for ReceiptValidationCategory
+            if (
+                param_name == "categories"
+                and entity_class.__name__ == "ReceiptValidationCategory"
             ):
                 raise ValueError(
                     f"All {param_name} must be instances of the {entity_class.__name__} class."
