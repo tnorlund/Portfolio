@@ -72,7 +72,7 @@ def test_add_receipt_word_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "word parameter is required and cannot be None."),
+        (None, "Word parameter is required and cannot be None."),
         (
             "not-a-receipt-word",
             "word must be an instance of the ReceiptWord class.",
@@ -275,10 +275,10 @@ def test_addReceiptWords_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "words parameter is required and cannot be None."),
+        (None, "Words parameter is required and cannot be None."),
         (
             "not-a-receipt-word",
-            "words must be a list of ReceiptWord instances.",
+            "Words must be provided as a list.",
         ),
         (
             ["not-a-receipt-word"],

@@ -123,8 +123,8 @@ class _ReceiptLine(
         """Deletes a single ReceiptLine by IDs."""
         # Direct key-based deletion is more efficient than creating dummy objects
         key = {
-            "PK": {"S": f"RECEIPT#{receipt_id}#IMAGE#{image_id}"},
-            "SK": {"S": f"LINE#{line_id}"},
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
         }
         self._client.delete_item(
             TableName=self.table_name,
