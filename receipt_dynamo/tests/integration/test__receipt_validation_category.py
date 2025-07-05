@@ -595,7 +595,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationCategory with field",
+            "Entity does not exist: ReceiptValidationCategory with receipt_id=1",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -610,12 +610,12 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationCategory in the database",
+            "Table not found for operation update_receipt_validation_category",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_validation_categories",
+            "Validation error in update_receipt_validation_category",
         ),
         (
             "AccessDeniedException",
@@ -625,7 +625,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationCategory in the database",
+            "Unknown error in update_receipt_validation_category",
         ),
     ],
 )
