@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -32,7 +36,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobMetric(DynamoClientProtocol):
+class _JobMetric(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_metric")
     def add_job_metric(self, job_metric: JobMetric):
         """Adds a job metric to the database
 
@@ -77,6 +85,7 @@ class _JobMetric(DynamoClientProtocol):
                     f"Could not add job metric to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_job_metric")
     def get_job_metric(
         self, job_id: str, metric_name: str, timestamp: str
     ) -> JobMetric:
@@ -135,6 +144,7 @@ class _JobMetric(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error getting job metric: {e}") from e
 
+    @handle_dynamodb_errors("list_job_metrics")
     def list_job_metrics(
         self,
         job_id: str,
@@ -242,6 +252,7 @@ class _JobMetric(DynamoClientProtocol):
                     f"Could not list job metrics from the database: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
         self,
         metric_name: str,

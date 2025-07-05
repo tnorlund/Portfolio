@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -35,7 +39,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobResource(DynamoClientProtocol):
+class _JobResource(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_resource")
     def add_job_resource(self, job_resource: JobResource):
         """Adds a job resource to the database
 
@@ -80,6 +88,7 @@ class _JobResource(DynamoClientProtocol):
                     f"Could not add job resource to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_job_resource")
     def get_job_resource(self, job_id: str, resource_id: str) -> JobResource:
         """Gets a specific job resource by job ID and resource ID
 

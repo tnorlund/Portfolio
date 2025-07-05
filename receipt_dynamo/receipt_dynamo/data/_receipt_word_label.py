@@ -5,6 +5,8 @@ while maintaining full backward compatibility and all functionality.
 """
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
@@ -54,7 +56,6 @@ class _ReceiptWordLabel(
     while maintaining full backward compatibility.
     """
 
-    @handle_dynamodb_errors("add_receipt_word_label")
     def add_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
         """Adds a receipt word label to the database
 
@@ -64,10 +65,51 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When a receipt word label with the same ID already exists
         """
-        self._validate_entity(
-            receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
+        if receipt_word_label is None:
+            raise ValueError(
+                "ReceiptWordLabel parameter is required and cannot be None."
+            )
+        if not isinstance(receipt_word_label, ReceiptWordLabel):
+            raise ValueError(
+                "receipt_word_label must be an instance of the ReceiptWordLabel class."
+            )
+        
+        try:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=receipt_word_label.to_item(),
+                ConditionExpression="attribute_not_exists(PK)",
+            )
+        except ClientError as e:
+            self._handle_add_receipt_word_label_error(e, receipt_word_label)
+    
+    def _handle_add_receipt_word_label_error(self, error: ClientError, receipt_word_label: ReceiptWordLabel):
+        """Handle errors specific to add_receipt_word_label"""
+        from receipt_dynamo.data.shared_exceptions import (
+            DynamoDBError,
+            DynamoDBServerError, 
+            DynamoDBThroughputError,
         )
-        self._add_entity(receipt_word_label)
+        
+        error_code = error.response.get("Error", {}).get("Code", "")
+        if error_code == "ConditionalCheckFailedException":
+            raise ValueError(
+                f"Receipt word label for Image ID '{receipt_word_label.image_id}' already exists"
+            ) from error
+        elif error_code == "ResourceNotFoundException":
+            raise DynamoDBError(
+                f"Could not add receipt word label to DynamoDB: {error}"
+            ) from error
+        elif error_code == "ProvisionedThroughputExceededException":
+            raise DynamoDBThroughputError(
+                f"Provisioned throughput exceeded: {error}"
+            ) from error
+        elif error_code == "InternalServerError":
+            raise DynamoDBServerError(f"Internal server error: {error}") from error
+        else:
+            raise DynamoDBError(
+                f"Could not add receipt word label to DynamoDB: {error}"
+            ) from error
 
     @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
@@ -178,14 +220,21 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("get_receipt_word_label")
     def get_receipt_word_label(
-        self, receipt_id: int, word_id: int, image_id: str
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
+        label: str,
     ) -> ReceiptWordLabel:
         """Retrieves a receipt word label from the database
 
         Args:
-            receipt_id (int): The receipt ID
-            word_id (int): The word ID
             image_id (str): The image ID
+            receipt_id (int): The receipt ID
+            line_id (int): The line ID
+            word_id (int): The word ID  
+            label (str): The label
 
         Returns:
             ReceiptWordLabel: The receipt word label from the database
@@ -197,6 +246,10 @@ class _ReceiptWordLabel(
             raise ValueError(
                 f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
+        if not isinstance(line_id, int):
+            raise ValueError(
+                f"line_id must be an integer, got {type(line_id).__name__}"
+            )
         if not isinstance(word_id, int):
             raise ValueError(
                 f"word_id must be an integer, got {type(word_id).__name__}"
@@ -205,20 +258,24 @@ class _ReceiptWordLabel(
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
+        if not isinstance(label, str):
+            raise ValueError(
+                f"label must be a string, got {type(label).__name__}"
+            )
         assert_valid_uuid(image_id)
 
         response = self._client.get_item(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"},
             },
         )
         item = response.get("Item")
         if not item:
             raise ValueError(
-                f"Receipt Word Label for Receipt ID {receipt_id}, Word ID {word_id}, "
-                f"and Image ID {image_id} does not exist"
+                f"Receipt Word Label for Receipt ID {receipt_id}, Line ID {line_id}, "
+                f"Word ID {word_id}, Label '{label}', and Image ID {image_id} does not exist"
             )
         return item_to_receipt_word_label(item)
 

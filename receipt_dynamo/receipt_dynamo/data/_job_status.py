@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -31,7 +35,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobStatus(DynamoClientProtocol):
+class _JobStatus(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_status")
     def add_job_status(self, job_status: JobStatus):
         """Adds a job status update to the database
 
@@ -76,6 +84,7 @@ class _JobStatus(DynamoClientProtocol):
                     f"Could not add job status to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_latest_job_status")
     def get_latest_job_status(self, job_id: str) -> JobStatus:
         """Gets the latest status for a job
 
