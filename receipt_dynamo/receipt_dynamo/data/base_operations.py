@@ -131,6 +131,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise DynamoDBError(f"Resource not found: {error}") from error
         # Special legacy format for ReceiptValidationResult operations
         if "receipt_validation_result" in operation:
+            # Handle plural form for batch operations
+            if "results" in operation:
+                raise DynamoDBError(
+                    "Could not add ReceiptValidationResults to the database"
+                ) from error
             raise DynamoDBError(
                 "Could not add receipt validation result to DynamoDB"
             ) from error
@@ -195,6 +200,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise OperationError(f"Error putting image: {error}") from error
         # Special legacy format for ReceiptValidationResult operations
         if "receipt_validation_result" in operation:
+            # Handle plural form for batch operations
+            if "results" in operation:
+                raise DynamoDBError(
+                    "Could not add ReceiptValidationResults to the database"
+                ) from error
             raise DynamoDBError(
                 "Could not add receipt validation result to DynamoDB"
             ) from error
@@ -303,6 +313,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entities is None:
+            # Special legacy format for ReceiptValidationResult
+            if (
+                param_name == "results"
+                and entity_class.__name__ == "ReceiptValidationResult"
+            ):
+                raise ValueError(
+                    f"{param_name} parameter is required and cannot be None."
+                )
             # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
