@@ -208,7 +208,7 @@ class _ReceiptValidationCategory(
             Key={
                 "PK": {"S": f"IMAGE#{category.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{category.receipt_id:05d}#VALIDATION#CATEGORY#{category.field_name}"
+                    "S": f"RECEIPT#{category.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{category.field_name}"
                 },
             },
         )
@@ -237,7 +237,7 @@ class _ReceiptValidationCategory(
                     Key={
                         "PK": {"S": f"IMAGE#{category.image_id}"},
                         "SK": {
-                            "S": f"RECEIPT#{category.receipt_id:05d}#VALIDATION#CATEGORY#{category.field_name}"
+                            "S": f"RECEIPT#{category.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{category.field_name}"
                         },
                     }
                 )
@@ -289,7 +289,7 @@ class _ReceiptValidationCategory(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#VALIDATION#CATEGORY#{field_name}"
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
                 },
             },
         )
@@ -515,7 +515,7 @@ class _ReceiptValidationCategory(
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#VALIDATION#CATEGORY#"
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#"
                 },
             },
         }

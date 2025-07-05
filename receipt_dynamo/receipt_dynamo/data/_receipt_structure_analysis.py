@@ -351,7 +351,7 @@ class _ReceiptStructureAnalysis(DynamoClientProtocol):
                         key_str = f"PK: IMAGE#{a.image_id}, SK: RECEIPT#{a.receipt_id:05d}#ANALYSIS#STRUCTURE#{a.version}"
                         if key_str in keys_seen:
                             duplicate_keys.append(
-                                "Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
+                                f"Duplicate at indexes {keys_seen[key_str]} and {i}: {key_str}"
                             )
                         else:
                             keys_seen[key_str] = i
