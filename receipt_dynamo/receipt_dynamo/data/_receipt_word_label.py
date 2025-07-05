@@ -160,6 +160,8 @@ class _ReceiptWordLabel(
             DynamoDBError,
             DynamoDBServerError, 
             DynamoDBThroughputError,
+            DynamoDBValidationError,
+            DynamoDBAccessError,
         )
         
         error_code = error.response.get("Error", {}).get("Code", "")
@@ -169,10 +171,14 @@ class _ReceiptWordLabel(
             ) from error
         elif error_code == "InternalServerError":
             raise DynamoDBServerError(f"Internal server error: {error}") from error
-        else:
-            raise DynamoDBError(
-                f"Could not add receipt word labels to DynamoDB: {error}"
+        elif error_code == "ValidationException":
+            raise DynamoDBValidationError(
+                "One or more parameters given were invalid"
             ) from error
+        elif error_code == "AccessDeniedException":
+            raise DynamoDBAccessError("Access denied") from error
+        else:
+            raise DynamoDBError("Error adding receipt word labels") from error
 
     @handle_dynamodb_errors("update_receipt_word_label")
     def update_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
