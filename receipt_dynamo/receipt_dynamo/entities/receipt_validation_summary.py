@@ -130,6 +130,15 @@ class ReceiptValidationSummary:
             "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}"},
         }
 
+    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
+        """Return the GSI2 key for this item."""
+        return {
+            "GSI2PK": {
+                "S": f"VALIDATION_SUMMARY_STATUS#{self.overall_status}"
+            },
+            "GSI2SK": {"S": f"TIMESTAMP#{self.validation_timestamp}"},
+        }
+
     def gsi3_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
@@ -184,6 +193,7 @@ class ReceiptValidationSummary:
         item = {
             **self.key(),
             **self.gsi1_key(),
+            **self.gsi2_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_VALIDATION_SUMMARY"},
             "overall_status": {"S": self.overall_status},
