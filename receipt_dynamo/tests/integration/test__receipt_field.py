@@ -82,7 +82,7 @@ def test_addReceiptField_duplicate_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -294,7 +294,11 @@ def test_addReceiptFields_invalid_parameters(
             "One or more parameters were invalid",
             "Validation error in add_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied for add_receipt_fields"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for add_receipt_fields",
+        ),
         (
             "UnknownError",
             "Unknown error",
@@ -436,7 +440,7 @@ def test_updateReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -481,7 +485,11 @@ def test_updateReceiptField_invalid_parameters(
             "One or more parameters were invalid",
             "Validation error in update_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied for update_receipt_field"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for update_receipt_field",
+        ),
         (
             "UnknownError",
             "Unknown error",
@@ -816,7 +824,7 @@ def test_deleteReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "receiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -861,7 +869,11 @@ def test_deleteReceiptField_invalid_parameters(
             "One or more parameters were invalid",
             "Validation error in delete_receipt_field",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied for delete_receipt_field"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for delete_receipt_field",
+        ),
         (
             "UnknownError",
             "Unknown error",
@@ -1025,7 +1037,11 @@ def test_deleteReceiptFields_invalid_parameters(
             "One or more parameters were invalid",
             "Validation error in delete_receipt_fields",
         ),
-        ("AccessDeniedException", "Access denied", "Access denied for delete_receipt_fields"),
+        (
+            "AccessDeniedException",
+            "Access denied",
+            "Access denied for delete_receipt_fields",
+        ),
         (
             "UnknownError",
             "Unknown error",
