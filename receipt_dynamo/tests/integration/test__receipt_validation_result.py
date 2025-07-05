@@ -363,7 +363,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptValidationResults to the database",
+            "Table not found for operation add_receipt_validation_results",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -388,7 +388,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add ReceiptValidationResults to the database",
+            "Unknown error in add_receipt_validation_results",
         ),
     ],
 )

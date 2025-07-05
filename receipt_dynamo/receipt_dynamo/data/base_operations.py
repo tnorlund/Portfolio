@@ -99,25 +99,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise ValueError("One or more images do not exist") from error
 
         if "add" in operation.lower():
-            # Extract just the entity ID for backward compatibility
-            if "Image with ID" in entity_context:
-                raise ValueError(f"{entity_context} already exists") from error
-            # Special handling for ReceiptValidationCategory to maintain exact test expectations
-            if "ReceiptValidationCategory with field" in entity_context:
-                raise ValueError(f"{entity_context} already exists") from error
-            # Special handling for ReceiptValidationResult to maintain exact test expectations
-            if "ReceiptValidationResult with field" in entity_context:
-                raise ValueError(f"{entity_context} already exists") from error
             raise ValueError(
                 f"Entity already exists: {entity_context}"
             ) from error
         else:
-            # Special handling for ReceiptValidationCategory to maintain exact test expectations
-            if "ReceiptValidationCategory with field" in entity_context:
-                raise ValueError(f"{entity_context} does not exist") from error
-            # Special handling for ReceiptValidationResult to maintain exact test expectations
-            if "ReceiptValidationResult with field" in entity_context:
-                raise ValueError(f"{entity_context} does not exist") from error
             raise ValueError(
                 f"Entity does not exist: {entity_context}"
             ) from error
@@ -126,41 +111,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle resource not found errors - usually table doesn't exist"""
-        # Maintain backward compatibility with error messages
-        if operation == "update_images":
-            raise DynamoDBError(f"Resource not found: {error}") from error
-        # Special legacy format for ReceiptValidationResult operations
-        if "receipt_validation_result" in operation:
-            # Handle plural form for batch operations
-            if "results" in operation:
-                raise DynamoDBError(
-                    "Could not add ReceiptValidationResults to the database"
-                ) from error
-            raise DynamoDBError(
-                "Could not add receipt validation result to DynamoDB"
-            ) from error
-        # Special legacy format for ReceiptValidationCategory operations
-        if (
-            "receipt_validation_categor" in operation
-        ):  # matches both category and categories
-            # Handle update operations
-            if "update" in operation:
-                if "categories" in operation:
-                    raise DynamoDBError(
-                        "Could not update ReceiptValidationCategories in the database"
-                    ) from error
-                else:
-                    raise DynamoDBError(
-                        "Could not update ReceiptValidationCategory in the database"
-                    ) from error
-            # Handle plural form for batch operations
-            if "categories" in operation:
-                raise DynamoDBError(
-                    "Could not add ReceiptValidationCategories to the database"
-                ) from error
-            raise DynamoDBError(
-                "Could not add receipt validation category to DynamoDB"
-            ) from error
         raise DynamoDBError(
             f"Table not found for operation {operation}"
         ) from error
@@ -183,18 +133,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle validation errors"""
-        # Special legacy format for ReceiptValidationResult operations
-        if "receipt_validation_result" in operation:
-            raise DynamoDBValidationError(
-                "One or more parameters given were invalid"
-            ) from error
-        # Special legacy format for ReceiptValidationCategory operations
-        if (
-            "receipt_validation_categor" in operation
-        ):  # matches both category and categories
-            raise DynamoDBValidationError(
-                "One or more parameters given were invalid"
-            ) from error
         raise DynamoDBValidationError(
             f"Validation error in {operation}: {error}"
         ) from error
@@ -224,41 +162,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle any other unknown errors"""
-        # Check if it's an add operation to maintain backward compatibility
-        if "add_image" in operation.lower():
-            raise OperationError(f"Error putting image: {error}") from error
-        # Special legacy format for ReceiptValidationResult operations
-        if "receipt_validation_result" in operation:
-            # Handle plural form for batch operations
-            if "results" in operation:
-                raise DynamoDBError(
-                    "Could not add ReceiptValidationResults to the database"
-                ) from error
-            raise DynamoDBError(
-                "Could not add receipt validation result to DynamoDB"
-            ) from error
-        # Special legacy format for ReceiptValidationCategory operations
-        if (
-            "receipt_validation_categor" in operation
-        ):  # matches both category and categories
-            # Handle update operations
-            if "update" in operation:
-                if "categories" in operation:
-                    raise DynamoDBError(
-                        "Could not update ReceiptValidationCategories in the database"
-                    ) from error
-                else:
-                    raise DynamoDBError(
-                        "Could not update ReceiptValidationCategory in the database"
-                    ) from error
-            # Handle plural form for batch operations
-            if "categories" in operation:
-                raise DynamoDBError(
-                    "Could not add ReceiptValidationCategories to the database"
-                ) from error
-            raise DynamoDBError(
-                "Could not add receipt validation category to DynamoDB"
-            ) from error
         raise DynamoDBError(
             f"Unknown error in {operation}: {error}"
         ) from error
@@ -277,20 +180,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 entity = args[0]
                 entity_name = entity.__class__.__name__
 
-                # Special handling for ReceiptValidationCategory
-                if entity_name == "ReceiptValidationCategory" and hasattr(
-                    entity, "field_name"
-                ):
-                    return f"{entity_name} with field {entity.field_name}"
-
-                # Special handling for ReceiptValidationResult
-                if (
-                    entity_name == "ReceiptValidationResult"
-                    and hasattr(entity, "field_name")
-                    and hasattr(entity, "result_index")
-                ):
-                    return f"{entity_name} with field {entity.field_name} and index {entity.result_index}"
-
                 # Try to get ID or other identifying information
                 for id_attr in [
                     "id",
@@ -299,12 +188,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     "word_id",
                     "line_id",
                     "field_name",
+                    "result_index",
                 ]:
                     if hasattr(entity, id_attr):
-                        # Format for backward compatibility with original error messages
                         id_value = getattr(entity, id_attr)
-                        if entity_name == "Image" and id_attr == "image_id":
-                            return f"Image with ID {id_value}"
                         return f"{entity_name} with {id_attr}={id_value}"
                 return entity_name
 
@@ -325,21 +212,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entity is None:
-            # Special handling for backward compatibility with existing tests
-            if (
-                param_name == "category"
-                and entity_class.__name__ == "ReceiptValidationCategory"
-            ) or (
-                param_name == "result"
-                and entity_class.__name__ == "ReceiptValidationResult"
-            ):
-                param_display = (
-                    param_name  # Keep lowercase for specific entity types
-                )
-            else:
-                param_display = (
-                    param_name[0].upper() + param_name[1:]
-                )  # Capitalize first letter
+            param_display = (
+                param_name[0].upper() + param_name[1:]
+            )  # Capitalize first letter
             raise ValueError(
                 f"{param_display} parameter is required and cannot be None."
             )
@@ -364,66 +239,16 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entities is None:
-            # Special legacy format for ReceiptValidationResult
-            if (
-                param_name == "results"
-                and entity_class.__name__ == "ReceiptValidationResult"
-            ):
-                raise ValueError(
-                    f"{param_name} parameter is required and cannot be None."
-                )
-            # Special legacy format for ReceiptValidationCategory
-            if (
-                param_name == "categories"
-                and entity_class.__name__ == "ReceiptValidationCategory"
-            ):
-                raise ValueError(
-                    f"{param_name} parameter is required and cannot be None."
-                )
-            # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
                 f"{param_display} parameter is required and cannot be None."
             )
 
         if not isinstance(entities, list):
-            # Special legacy format for ReceiptValidationResult
-            if (
-                param_name == "results"
-                and entity_class.__name__ == "ReceiptValidationResult"
-            ):
-                raise ValueError(
-                    f"{param_name} must be a list of {entity_class.__name__} instances."
-                )
-            # Special legacy format for ReceiptValidationCategory
-            if (
-                param_name == "categories"
-                and entity_class.__name__ == "ReceiptValidationCategory"
-            ):
-                raise ValueError(
-                    f"{param_name} must be a list of {entity_class.__name__} instances."
-                )
-            # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(f"{param_display} must be provided as a list.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
-            # Special legacy format for ReceiptValidationResult
-            if (
-                param_name == "results"
-                and entity_class.__name__ == "ReceiptValidationResult"
-            ):
-                raise ValueError(
-                    f"All {param_name} must be instances of the {entity_class.__name__} class."
-                )
-            # Special legacy format for ReceiptValidationCategory
-            if (
-                param_name == "categories"
-                and entity_class.__name__ == "ReceiptValidationCategory"
-            ):
-                raise ValueError(
-                    f"All {param_name} must be instances of the {entity_class.__name__} class."
-                )
             raise ValueError(
                 f"All items in the {param_name} list must be instances of the {entity_class.__name__} class."
             )

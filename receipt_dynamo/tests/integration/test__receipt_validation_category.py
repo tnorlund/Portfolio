@@ -77,7 +77,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
     # Attempt to add the same category again and expect an error
     with pytest.raises(
         ValueError,
-        match=f"ReceiptValidationCategory with field {sample_receipt_validation_category.field_name} already exists",
+        match=f"Entity already exists: ReceiptValidationCategory with receipt_id={sample_receipt_validation_category.receipt_id}",
     ):
         client.add_receipt_validation_category(
             sample_receipt_validation_category
@@ -94,7 +94,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "category parameter is required and cannot be None."),
+        (None, "Category parameter is required and cannot be None."),
         (
             "not-a-validation-category",
             "category must be an instance of the ReceiptValidationCategory class.",
@@ -137,12 +137,12 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptValidationCategory with field .* already exists",
+            "Entity already exists: ReceiptValidationCategory with receipt_id=1",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt validation category to DynamoDB",
+            "Table not found for operation add_receipt_validation_category",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -157,12 +157,12 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt validation category to DynamoDB",
+            "Unknown error in add_receipt_validation_category",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_category",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
@@ -381,14 +381,14 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "categories parameter is required and cannot be None."),
+        (None, "Categories parameter is required and cannot be None."),
         (
             "not-a-list",
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "Categories must be provided as a list.",
         ),
         (
             ["not-a-validation-category"],
-            "All categories must be instances of the ReceiptValidationCategory class.",
+            "All items in the categories list must be instances of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -428,7 +428,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptValidationCategories to the database",
+            "Table not found for operation add_receipt_validation_categories",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -443,7 +443,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
         ),
         (
             "AccessDeniedException",
@@ -453,7 +453,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add ReceiptValidationCategories to the database",
+            "Unknown error in add_receipt_validation_categories",
         ),
     ],
 )
@@ -552,7 +552,7 @@ def test_updateReceiptValidationCategory_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "category parameter is required and cannot be None."),
+        (None, "Category parameter is required and cannot be None."),
         (
             "not a ReceiptValidationCategory",
             "category must be an instance of the ReceiptValidationCategory class.",
@@ -615,7 +615,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
         ),
         (
             "AccessDeniedException",
@@ -905,7 +905,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
             None,
             DynamoDBValidationError,
         ),
@@ -1076,7 +1076,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1247,7 +1247,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
         ),
         (
             "AccessDeniedException",
@@ -1562,7 +1562,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "Validation error in add_receipt_validation_categories",
         ),
         (
             "AccessDeniedException",
