@@ -198,10 +198,10 @@ jobs:
       - name: Install package with optimizations
         run: |
           # Upgrade pip for faster installs
-          python -m python3 -m pip install --upgrade pip wheel --disable-pip-version-check
+          python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
           # Check if packages are already cached
-          if pip list | grep -q "pytest-xdist"; then
+          if python3 -m pip list | grep -q "pytest-xdist"; then
             echo "✓ Test dependencies already cached"
           else
             echo "Installing test dependencies..."
@@ -212,7 +212,7 @@ jobs:
 
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            if pip list | grep -q "receipt-dynamo"; then
+            if python3 -m pip list | grep -q "receipt-dynamo"; then
               echo "✓ receipt_dynamo already cached"
             else
               python3 -m pip install -e "receipt_dynamo[dev]" --no-deps
@@ -226,7 +226,7 @@ jobs:
           else
             # Check if already installed
             PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
-            if pip list | grep -q "${PACKAGE_NAME}"; then
+            if python3 -m pip list | grep -q "${PACKAGE_NAME}"; then
               echo "✓ ${{ matrix.package }} already cached"
             else
               # Install with minimum dependencies first, then test extras
