@@ -718,14 +718,14 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResults in the database",
+            "Table not found for operation update_receipt_validation_results",
             None,
             DynamoDBError,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more ReceiptValidationResults do not exist",
+            "One or more entities do not exist or conditions failed",
             [{"Code": "ConditionalCheckFailed"}],
             ValueError,
         ),
@@ -760,7 +760,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResults in the database",
+            "Unknown error in update_receipt_validation_results",
             None,
             DynamoDBError,
         ),
@@ -895,7 +895,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationResult from the database",
+            "Could not delete receipt validation result from the database",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -916,7 +916,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationResult from the database",
+            "Could not delete receipt validation result from the database",
         ),
     ],
 )
@@ -1052,7 +1052,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationResults from the database",
+            "Table not found for operation delete_receipt_validation_results",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1077,7 +1077,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationResults from the database",
+            "Unknown error in delete_receipt_validation_results",
         ),
     ],
 )
