@@ -82,7 +82,7 @@ jobs:
 
       - name: Install minimal dependencies
         run: |
-          pip install black isort
+          python3 -m pip install black isort
 
       - name: Check Python formatting
         run: |
@@ -194,7 +194,7 @@ jobs:
       - name: Install package with optimizations
         run: |
           # Upgrade pip for faster installs
-          python -m pip install --upgrade pip wheel --disable-pip-version-check
+          python -m python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
           # Check if packages are already cached
           if pip list | grep -q "pytest-xdist"; then
@@ -202,8 +202,8 @@ jobs:
           else
             echo "Installing test dependencies..."
             # Use parallel installs and disable version checks for speed
-            pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
-            pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
+            python3 -m pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
+            python3 -m pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
           fi
 
           # Install receipt_dynamo first as it's a dependency for other packages
@@ -211,14 +211,14 @@ jobs:
             if pip list | grep -q "receipt-dynamo"; then
               echo "✓ receipt_dynamo already cached"
             else
-              pip install -e "receipt_dynamo[dev]" --no-deps
-              pip install -e "receipt_dynamo[dev]"
+              python3 -m pip install -e "receipt_dynamo[dev]" --no-deps
+              python3 -m pip install -e "receipt_dynamo[dev]"
             fi
           fi
 
           # Install the target package with minimal dependencies first
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-            pip install -e "${{ matrix.package }}[dev]"
+            python3 -m pip install -e "${{ matrix.package }}[dev]"
           else
             # Check if already installed
             PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
@@ -226,8 +226,8 @@ jobs:
               echo "✓ ${{ matrix.package }} already cached"
             else
               # Install with minimum dependencies first, then test extras
-              pip install -e "${{ matrix.package }}" --no-deps
-              pip install -e "${{ matrix.package }}[test]"
+              python3 -m pip install -e "${{ matrix.package }}" --no-deps
+              python3 -m pip install -e "${{ matrix.package }}[test]"
             fi
           fi
 
@@ -386,7 +386,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r infra/requirements.txt
+          python3 -m pip install -r infra/requirements.txt
 
       - name: Deploy with Pulumi
         run: |
@@ -439,7 +439,7 @@ jobs:
 
       - name: Install package
         run: |
-          pip install -e "receipt_dynamo[test]"
+          python3 -m pip install -e "receipt_dynamo[test]"
 
       - name: Run E2E tests
         working-directory: receipt_dynamo

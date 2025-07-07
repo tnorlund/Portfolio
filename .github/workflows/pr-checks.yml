@@ -32,7 +32,7 @@ jobs:
         id: check
         run: |
           # Install formatters
-          pip install isort black
+          python3 -m pip install isort black
 
           # Check if code is formatted
           if isort --check-only --profile=black --line-length=79 . && black --check --line-length=79 .; then
@@ -76,22 +76,22 @@ jobs:
           # Install package with test dependencies
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
             echo "Installing package with test dependencies"
-            pip install -e ".[test]"
+            python3 -m pip install -e ".[test]"
           else
             echo "Installing minimal test dependencies"
-            pip install pytest pytest-xdist pytest-cov
-            pip install -e .
+            python3 -m pip install pytest pytest-xdist pytest-cov
+            python3 -m pip install -e .
           fi
 
           # Handle cross-package dependencies
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_dynamo dependency for receipt_label"
-            pip install -e "../receipt_dynamo"
+            python3 -m pip install -e "../receipt_dynamo"
           fi
 
           # Verify installation
           echo "=== Installed packages ==="
-          pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
+          python3 -m pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
 
           # Run only fast unit tests
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
