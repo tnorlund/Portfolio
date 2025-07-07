@@ -68,7 +68,9 @@ jobs:
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
-          echo "Using system Python on self-hosted runner"
+          echo "Using Python 3.12 on self-hosted runner"
+          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
           python3 --version
           which python3
 
@@ -162,7 +164,9 @@ jobs:
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
-          echo "Using system Python on self-hosted runner"
+          echo "Using Python 3.12 on self-hosted runner"
+          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
           python3 --version
           which python3
 
@@ -360,7 +364,9 @@ jobs:
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
-          echo "Using system Python on self-hosted runner"
+          echo "Using Python 3.12 on self-hosted runner"
+          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
           python3 --version
           which python3
 
@@ -433,7 +439,9 @@ jobs:
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
-          echo "Using system Python on self-hosted runner"
+          echo "Using Python 3.12 on self-hosted runner"
+          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
           python3 --version
           which python3
 
