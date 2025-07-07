@@ -179,13 +179,13 @@ class _ReceiptLineItemAnalysis(
 
     @handle_dynamodb_errors("get_receipt_line_item_analysis")
     def get_receipt_line_item_analysis(
-        self, receipt_id: int, image_id: str
+        self, image_id: str, receipt_id: int
     ) -> ReceiptLineItemAnalysis:
         """Retrieves a single ReceiptLineItemAnalysis by IDs.
 
         Args:
-            receipt_id (int): The Receipt ID to query.
             image_id (str): The Image ID to query.
+            receipt_id (int): The Receipt ID to query.
 
         Returns:
             ReceiptLineItemAnalysis: The retrieved ReceiptLineItemAnalysis.
@@ -194,13 +194,13 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the receipt_id or image_id are invalid.
             Exception: If the ReceiptLineItemAnalysis cannot be retrieved from DynamoDB.
         """
-        if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
         if not isinstance(image_id, str):
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
+            )
+        if not isinstance(receipt_id, int):
+            raise ValueError(
+                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         assert_valid_uuid(image_id)
 
