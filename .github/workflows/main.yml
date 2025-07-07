@@ -146,11 +146,11 @@ jobs:
           # receipt_label tests (marker-based, not directory-based)
           - package: receipt_label
             test_type: unit
-            test_path: receipt_label/tests
+            test_path: tests
             test_markers: "-m unit"
           - package: receipt_label
             test_type: integration
-            test_path: receipt_label/tests
+            test_path: tests
             test_markers: "-m integration"
     steps:
       - uses: actions/checkout@v4
