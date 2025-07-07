@@ -844,8 +844,8 @@ def test_updateReceiptLineItemAnalyses_client_errors(
             "Error": {"Code": error_code, "Message": error_message}
         }
 
-    mock_client.transact_write_items.side_effect = ClientError(
-        error_response, "TransactWriteItems"
+    mock_client.batch_write_item.side_effect = ClientError(
+        error_response, "BatchWriteItem"
     )
 
     # Act & Assert
@@ -882,7 +882,8 @@ def test_deleteReceiptLineItemAnalysis_success(
 
     # Act
     client.delete_receipt_line_item_analysis(
-        analysis=sample_receipt_line_item_analysis
+        sample_receipt_line_item_analysis.image_id,
+        sample_receipt_line_item_analysis.receipt_id
     )
 
     # Assert
@@ -983,7 +984,8 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
         client.delete_receipt_line_item_analysis(
-            analysis=sample_receipt_line_item_analysis
+            sample_receipt_line_item_analysis.image_id,
+            sample_receipt_line_item_analysis.receipt_id
         )
     assert expected_error in str(excinfo.value)
 
@@ -1024,7 +1026,8 @@ def test_deleteReceiptLineItemAnalyses_not_found(
     ]
 
     # Act - should not raise an error
-    client.delete_receipt_line_item_analyses(non_existent_analyses)
+    keys = [(analysis.image_id, analysis.receipt_id) for analysis in non_existent_analyses]
+    client.delete_receipt_line_item_analyses(keys)
 
     # Assert - The items weren't there to begin with, so no assertions are needed
 
@@ -1237,9 +1240,8 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analyses(
-            [sample_receipt_line_item_analysis]
-        )
+        keys = [(sample_receipt_line_item_analysis.image_id, sample_receipt_line_item_analysis.receipt_id)]
+        client.delete_receipt_line_item_analyses(keys)
     assert expected_error in str(excinfo.value)
 
 
