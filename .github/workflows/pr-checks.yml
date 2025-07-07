@@ -16,13 +16,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ !contains(github.event.repository.name, 'self-hosted') && !contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.os == 'macOS' }}
         run: |
           echo "Using system Python on self-hosted runner"
           python3 --version
@@ -56,13 +56,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ !contains(github.event.repository.name, 'self-hosted') && !contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.os == 'macOS' }}
         run: |
           echo "Using system Python on self-hosted runner"
           python3 --version
