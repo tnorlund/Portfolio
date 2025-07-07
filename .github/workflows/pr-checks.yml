@@ -37,8 +37,7 @@ jobs:
     name: Quick Tests (${{ matrix.package }})
     needs: format-check
     if: always()
-    # TODO: Revert to self-hosted runner after landing (airplane mode workaround)
-    runs-on: ubuntu-latest  # Temporarily using GitHub-hosted runners
+    runs-on: [self-hosted, macOS, ARM64]
     strategy:
       matrix:
         package: [receipt_dynamo, receipt_label]

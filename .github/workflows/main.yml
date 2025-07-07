@@ -16,7 +16,7 @@ jobs:
   # Stage 1: Fast checks (fail fast)
   fast-checks:
     name: Format & Lint Checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: write
       pull-requests: read
@@ -103,8 +103,7 @@ jobs:
   test-python:
     name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
-    # TODO: Revert to self-hosted runner after landing (airplane mode workaround)
-    runs-on: ubuntu-latest  # Temporarily using GitHub-hosted runners
+    runs-on: [self-hosted, macOS, ARM64]
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
@@ -266,7 +265,7 @@ jobs:
   test-typescript:
     name: TypeScript Tests
     needs: fast-checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v4
 
@@ -423,7 +422,7 @@ jobs:
   ci-success:
     name: CI Success
     needs: [fast-checks, test-python, test-typescript]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     if: always()
     steps:
       - name: Check all jobs
