@@ -98,6 +98,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if operation == "update_images":
             raise ValueError("One or more images do not exist") from error
 
+        # Special handling for ReceiptValidationResult to maintain backward compatibility
+        if "ReceiptValidationResult with field" in entity_context:
+            if "add" in operation.lower():
+                raise ValueError(f"{entity_context} already exists") from error
+            else:
+                raise ValueError(f"{entity_context} does not exist") from error
+
         if "add" in operation.lower():
             raise ValueError(
                 f"Entity already exists: {entity_context}"
@@ -180,6 +187,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 entity = args[0]
                 entity_name = entity.__class__.__name__
 
+                # Special handling for ReceiptValidationResult - needs both field and index
+                if entity_name == "ReceiptValidationResult":
+                    if hasattr(entity, "field_name") and hasattr(
+                        entity, "result_index"
+                    ):
+                        return f"{entity_name} with field {entity.field_name} and index {entity.result_index}"
+
                 # Try to get ID or other identifying information
                 for id_attr in [
                     "id",
@@ -212,11 +226,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entity is None:
-            param_display = (
-                param_name[0].upper() + param_name[1:]
-            )  # Capitalize first letter
             raise ValueError(
-                f"{param_display} parameter is required and cannot be None."
+                f"{param_name} parameter is required and cannot be None."
             )
 
         if not isinstance(entity, entity_class):
@@ -239,18 +250,18 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ValueError: If validation fails
         """
         if entities is None:
-            param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
-                f"{param_display} parameter is required and cannot be None."
+                f"{param_name} parameter is required and cannot be None."
             )
 
         if not isinstance(entities, list):
-            param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(f"{param_display} must be provided as a list.")
+            raise ValueError(
+                f"{param_name} must be a list of {entity_class.__name__} instances."
+            )
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             raise ValueError(
-                f"All items in the {param_name} list must be instances of the {entity_class.__name__} class."
+                f"All {param_name} must be instances of the {entity_class.__name__} class."
             )
 
 
