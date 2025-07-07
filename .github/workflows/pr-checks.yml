@@ -15,9 +15,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: actions/setup-python@v4
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ !contains(github.event.repository.name, 'self-hosted') && !contains(runner.labels, 'self-hosted') }}
+        uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "Using system Python on self-hosted runner"
+          python3 --version
+          which python3
 
       - name: Check Python formatting
         id: check
@@ -46,10 +55,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ !contains(github.event.repository.name, 'self-hosted') && !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "Using system Python on self-hosted runner"
+          python3 --version
+          which python3
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
