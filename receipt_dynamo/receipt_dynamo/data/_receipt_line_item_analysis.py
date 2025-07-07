@@ -240,9 +240,9 @@ class _ReceiptLineItemAnalysis(
             Exception: If the analyses cannot be retrieved from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise ValueError("limit must be an integer or None.")
         if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None")
+            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
 
         line_item_analyses = []
         query_params: QueryInputTypeDef = {

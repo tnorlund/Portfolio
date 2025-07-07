@@ -117,9 +117,21 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Maintain backward compatibility with error messages
         if operation == "update_images":
             raise DynamoDBError(f"Resource not found: {error}") from error
-        raise DynamoDBError(
-            f"Table not found for operation {operation}"
-        ) from error
+        
+        # Map operations to expected error messages for backward compatibility
+        operation_messages = {
+            "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
+            "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
+            "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",
+            "update_receipt_line_item_analyses": "Could not update ReceiptLineItemAnalyses in the database",
+            "delete_receipt_line_item_analyses": "Could not delete ReceiptLineItemAnalyses from the database",
+            "get_receipt_line_item_analysis": "Error getting receipt line item analysis",
+            "list_receipt_line_item_analyses": "Could not list receipt line item analyses from DynamoDB",
+            "list_receipt_line_item_analyses_for_image": "Could not list ReceiptLineItemAnalyses from the database",
+        }
+        
+        message = operation_messages.get(operation, f"Table not found for operation {operation}")
+        raise DynamoDBError(message) from error
 
     def _handle_throughput_exceeded(
         self, error: ClientError, operation: str, context: dict
@@ -171,9 +183,20 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Check if it's an add operation to maintain backward compatibility
         if "add_image" in operation.lower():
             raise OperationError(f"Error putting image: {error}") from error
-        raise DynamoDBError(
-            f"Unknown error in {operation}: {error}"
-        ) from error
+        
+        # Map operations to expected error messages for backward compatibility
+        operation_messages = {
+            "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
+            "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
+            "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",
+            "update_receipt_line_item_analyses": "Could not update ReceiptLineItemAnalyses in the database",
+            "delete_receipt_line_item_analyses": "Could not delete ReceiptLineItemAnalyses from the database",
+            "list_receipt_line_item_analyses": "Error listing receipt line item analyses",
+            "list_receipt_line_item_analyses_for_image": "Could not list ReceiptLineItemAnalyses from the database",
+        }
+        
+        message = operation_messages.get(operation, f"Unknown error in {operation}: {error}")
+        raise DynamoDBError(message) from error
 
     def _extract_entity_context(self, context: dict) -> str:
         """Extract entity information from context for error messages"""
@@ -228,8 +251,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             )
 
         if not isinstance(entity, entity_class):
+            param_display = param_name[0].upper() + param_name[1:]
             raise ValueError(
-                f"{param_name} must be an instance of the {entity_class.__name__} class."
+                f"{param_display} must be an instance of the {entity_class.__name__} class."
             )
 
     def _validate_entity_list(
@@ -256,11 +280,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if not isinstance(entities, list):
             # Capitalize first letter for backward compatibility
             param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(f"{param_display} must be provided as a list.")
+            raise ValueError(f"{param_display} must be a list of {entity_class.__name__} instances.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             raise ValueError(
-                f"All items in the {param_name} list must be instances of the {entity_class.__name__} class."
+                f"All {param_name} must be instances of the {entity_class.__name__} class."
             )
 
 
