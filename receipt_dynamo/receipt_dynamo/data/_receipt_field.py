@@ -59,7 +59,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
-                "receipt_field must be an instance of the ReceiptField class."
+                "ReceiptField must be an instance of the ReceiptField class."
             )
         try:
             self._client.put_item(
@@ -75,7 +75,7 @@ class _ReceiptField(DynamoClientProtocol):
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not add receipt field to DynamoDB: {e}"
+                    "Could not add receipt validation result to DynamoDB"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -83,9 +83,15 @@ class _ReceiptField(DynamoClientProtocol):
                 ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
+            elif error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    "One or more parameters given were invalid"
+                ) from e
+            elif error_code == "AccessDeniedException":
+                raise DynamoDBAccessError("Access denied") from e
             else:
                 raise DynamoDBError(
-                    f"Could not add receipt field to DynamoDB: {e}"
+                    "Could not add receipt validation result to DynamoDB"
                 ) from e
 
     def add_receipt_fields(self, receipt_fields: list[ReceiptField]):
@@ -103,7 +109,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_fields, list):
             raise ValueError(
-                "receipt_fields must be a list of ReceiptField instances."
+                "ReceiptFields must be a list of ReceiptField instances."
             )
         if not all(
             isinstance(field, ReceiptField) for field in receipt_fields
@@ -163,7 +169,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
-                "receipt_field must be an instance of the ReceiptField class."
+                "ReceiptField must be an instance of the ReceiptField class."
             )
 
         try:
@@ -211,7 +217,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_fields, list):
             raise ValueError(
-                "receipt_fields must be a list of ReceiptField instances."
+                "ReceiptFields must be a list of ReceiptField instances."
             )
         if not all(
             isinstance(field, ReceiptField) for field in receipt_fields
@@ -286,7 +292,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_field, ReceiptField):
             raise ValueError(
-                "receipt_field must be an instance of the ReceiptField class."
+                "ReceiptField must be an instance of the ReceiptField class."
             )
         try:
             self._client.delete_item(
@@ -332,7 +338,7 @@ class _ReceiptField(DynamoClientProtocol):
             )
         if not isinstance(receipt_fields, list):
             raise ValueError(
-                "receipt_fields must be a list of ReceiptField instances."
+                "ReceiptFields must be a list of ReceiptField instances."
             )
         if not all(
             isinstance(field, ReceiptField) for field in receipt_fields

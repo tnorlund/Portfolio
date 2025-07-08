@@ -82,7 +82,7 @@ def test_addReceiptField_duplicate_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "ReceiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -115,7 +115,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt field to DynamoDB",
+            "Could not add receipt validation result to DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -130,7 +130,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt field to DynamoDB",
+            "Could not add receipt validation result to DynamoDB",
         ),
         (
             "ValidationException",
@@ -432,7 +432,7 @@ def test_updateReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "ReceiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
@@ -812,7 +812,7 @@ def test_deleteReceiptField_nonexistent_raises(
         (None, "ReceiptField parameter is required and cannot be None."),
         (
             "not-a-receipt-field",
-            "receipt_field must be an instance of the ReceiptField class.",
+            "ReceiptField must be an instance of the ReceiptField class.",
         ),
     ],
 )
