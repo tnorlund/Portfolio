@@ -202,6 +202,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "list_receipt_fields": "Could not list receipt fields from the database",
             "get_receipt_fields_by_image": "Could not list receipt fields by image ID",
             "get_receipt_fields_by_receipt": "Could not list receipt fields by receipt ID",
+            # Receipt validation result operations
+            "add_receipt_validation_result": "Could not add receipt validation result to DynamoDB",
+            "update_receipt_validation_result": "Could not update ReceiptValidationResult in the database",
+            "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
+            "get_receipt_validation_result": "Error getting receipt validation result",
+            "list_receipt_validation_results": "Could not list receipt validation results from DynamoDB",
+            "list_receipt_validation_results_by_type": "Could not list receipt validation results from DynamoDB", 
+            "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
             # Job operations
             "add_job": "Table not found",
             "add_jobs": "Table not found",
@@ -254,12 +262,42 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "add_receipt_sections", "update_receipt_sections", "delete_receipt_sections",
             "add_receipt_metadata", "update_receipt_metadata", "delete_receipt_metadata",
             "add_receipt_metadata_batch", "update_receipt_metadata_batch", "delete_receipt_metadata_batch",
+            "add_receipt_letter", "update_receipt_letter", "delete_receipt_letter",
+            "add_receipt_letters", "update_receipt_letters", "delete_receipt_letters",
+        }
+        
+        # Operations that expect just "Validation error"
+        simple_validation_operations = {
+            "get_receipt_validation_result"
+        }
+        
+        # Operations that expect raw error message (with "given were" handling)
+        raw_message_operations = {
+            "add_receipt_validation_result", "update_receipt_validation_result", 
+            "delete_receipt_validation_result", "add_receipt_validation_results",
+            "update_receipt_validation_results", "delete_receipt_validation_results",
+            "list_receipt_validation_results", "list_receipt_validation_results_by_type",
+            "list_receipt_validation_results_for_field",
+            "add_receipt_line_item_analyses", "update_receipt_line_item_analyses",
+            "delete_receipt_line_item_analyses"
         }
         
         if operation in validation_error_operations:
             raise DynamoDBValidationError(
                 f"Validation error in {operation}: {error}"
             ) from error
+        elif operation in simple_validation_operations:
+            raise DynamoDBValidationError("Validation error") from error
+        elif operation in raw_message_operations:
+            # Extract original error message and apply standard message processing
+            error_message = error.response.get("Error", {}).get("Message", str(error))
+            # Apply "given were" transformation for these operations
+            if "One or more parameters were invalid" in error_message:
+                error_message = error_message.replace(
+                    "One or more parameters were invalid", 
+                    "One or more parameters given were invalid"
+                )
+            raise DynamoDBValidationError(error_message) from error
         
         # Extract original error message for backward compatibility
         error_message = error.response.get("Error", {}).get("Message", str(error))
@@ -279,6 +317,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     "One or more parameters were invalid", 
                     "One or more parameters given were invalid"
                 )
+        # For receipt_validation_result operations - don't modify the message
+        elif operation in simple_validation_operations or operation in raw_message_operations:
+            pass  # Keep original message
         
         raise DynamoDBValidationError(error_message) from error
 
@@ -294,6 +335,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "add_receipt_sections", "update_receipt_sections", "delete_receipt_sections",
             "add_receipt_metadata", "update_receipt_metadata", "delete_receipt_metadata",
             "add_receipt_metadata_batch", "update_receipt_metadata_batch", "delete_receipt_metadata_batch",
+            "add_receipt_letter", "update_receipt_letter", "delete_receipt_letter",
+            "add_receipt_letters", "update_receipt_letters", "delete_receipt_letters",
         }
         
         if operation in access_denied_operations:
@@ -360,6 +403,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "list_receipt_fields": "Could not list receipt fields from the database",
             "get_receipt_fields_by_image": "Could not list receipt fields by image ID",
             "get_receipt_fields_by_receipt": "Could not list receipt fields by receipt ID",
+            # Receipt validation result operations
+            "add_receipt_validation_result": "Could not add receipt validation result to DynamoDB",
+            "update_receipt_validation_result": "Could not update ReceiptValidationResult in the database",
+            "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
+            "get_receipt_validation_result": "Error getting receipt validation result",
+            "list_receipt_validation_results": "Error listing receipt validation results",
+            "list_receipt_validation_results_by_type": "Error listing receipt validation results", 
+            "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
             # Job operations
             "add_job": "Something unexpected",
             "add_jobs": "Something unexpected",
@@ -447,10 +498,16 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("ReceiptField parameter is required and cannot be None.")
             elif param_name == "image":
                 raise ValueError("image parameter is required and cannot be None.")
+            elif param_name == "letter":
+                raise ValueError("Letter parameter is required and cannot be None.")
             elif param_name == "job":
                 raise ValueError("Job parameter is required and cannot be None.")
             elif param_name == "result":
                 raise ValueError("result parameter is required and cannot be None.")
+            elif param_name == "job_dependency":
+                raise ValueError("job_dependency cannot be None.")
+            elif param_name == "job_log":
+                raise ValueError("job_log cannot be None.")
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -485,15 +542,28 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     f"image must be an instance of the {entity_class.__name__} class."
                 )
+            elif param_name == "letter":
+                raise ValueError(
+                    f"letter must be an instance of the {entity_class.__name__} class."
+                )
             elif param_name == "job":
                 raise ValueError(
                     f"job must be an instance of the {entity_class.__name__} class."
                 )
-            # Default capitalization for other parameters
-            param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(
-                f"{param_display} must be an instance of the {entity_class.__name__} class."
-            )
+            elif param_name == "job_dependency":
+                raise ValueError(
+                    f"job_dependency must be a {entity_class.__name__} instance"
+                )
+            elif param_name == "job_log":
+                raise ValueError(
+                    f"job_log must be a {entity_class.__name__} instance"
+                )
+            else:
+                # Default capitalization for other parameters
+                param_display = param_name[0].upper() + param_name[1:]
+                raise ValueError(
+                    f"{param_display} must be an instance of the {entity_class.__name__} class."
+                )
 
     def _validate_entity_list(
         self, entities: List[Any], entity_class: Type, param_name: str
@@ -542,6 +612,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("images must be a list of Image instances.")
             elif param_name == "results":
                 raise ValueError("results must be a list of ReceiptValidationResult instances.")
+            elif param_name == "letters":
+                raise ValueError("Letters must be provided as a list.")
             else:
                 # Default handling for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -564,6 +636,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif param_name == "jobs":
                 raise ValueError(
                     f"All jobs must be instances of the {entity_class.__name__} class."
+                )
+            elif param_name == "letters":
+                raise ValueError(
+                    f"All items in the letters list must be instances of the {entity_class.__name__} class."
                 )
             # Default handling for other parameters
             raise ValueError(

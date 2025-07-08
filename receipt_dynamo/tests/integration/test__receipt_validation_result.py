@@ -1551,7 +1551,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get second page
     page2_results, pagination_key2 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key1
+        limit=3, last_evaluated_key=pagination_key1
     )
 
     # Check pagination info from second page
@@ -1560,7 +1560,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get third page
     page3_results, pagination_key3 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key2
+        limit=3, last_evaluated_key=pagination_key2
     )
 
     # Check pagination info from third page
@@ -1569,7 +1569,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key3
+        limit=3, last_evaluated_key=pagination_key3
     )
 
     # Check pagination info from fourth page
@@ -1882,7 +1882,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get second page
     page2_results, pagination_key2 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key1
+            result_type="error", limit=3, last_evaluated_key=pagination_key1
         )
     )
 
@@ -1893,7 +1893,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get third page
     page3_results, pagination_key3 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key2
+            result_type="error", limit=3, last_evaluated_key=pagination_key2
         )
     )
 
@@ -1904,7 +1904,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key3
+            result_type="error", limit=3, last_evaluated_key=pagination_key3
         )
     )
 
@@ -2115,7 +2115,7 @@ def test_listReceiptValidationResultsForField_success(
     }
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2131,12 +2131,16 @@ def test_listReceiptValidationResultsForField_success(
     # Verify query parameters
     mock_query.assert_called_once_with(
         TableName=dynamodb_table,
-        KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+        KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+        ExpressionAttributeNames={
+            "#pk": "PK",
+            "#sk": "SK",
+        },
         ExpressionAttributeValues={
-            ":pkVal": {
+            ":pk": {
                 "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
             },
-            ":skPrefix": {
+            ":sk_prefix": {
                 "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
             },
         },
@@ -2249,7 +2253,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     mock_query.side_effect = [first_response, second_response]
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2270,7 +2274,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     assert first_call_args["TableName"] == dynamodb_table
     assert (
         first_call_args["KeyConditionExpression"]
-        == "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
     )
 
     # Second call with ExclusiveStartKey
@@ -2278,7 +2282,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     assert second_call_args["TableName"] == dynamodb_table
     assert (
         second_call_args["KeyConditionExpression"]
-        == "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
     )
     assert (
         second_call_args["ExclusiveStartKey"]
