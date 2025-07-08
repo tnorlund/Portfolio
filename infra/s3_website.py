@@ -180,6 +180,36 @@ function handler(event) {
 """,
 )
 
+# CloudFront function for setting proper Content-Type headers on image responses
+content_type_function = aws.cloudfront.Function(
+    "contentTypeFunction",
+    name=f"content-type-{stack}",
+    runtime="cloudfront-js-1.0",
+    comment="Set proper Content-Type headers for image files",
+    code="""
+function handler(event) {
+    var response = event.response;
+    var request = event.request;
+    var uri = request.uri;
+
+    // Set proper Content-Type for image files in /assets/ directory
+    if (uri.startsWith('/assets/')) {
+        if (uri.endsWith('.avif')) {
+            response.headers['content-type'] = { value: 'image/avif' };
+        } else if (uri.endsWith('.webp')) {
+            response.headers['content-type'] = { value: 'image/webp' };
+        } else if (uri.endsWith('.jpg') || uri.endsWith('.jpeg')) {
+            response.headers['content-type'] = { value: 'image/jpeg' };
+        } else if (uri.endsWith('.png')) {
+            response.headers['content-type'] = { value: 'image/png' };
+        }
+    }
+
+    return response;
+}
+""",
+)
+
 # 7) Create CloudFront Distribution (Optimized for Performance)
 ########################
 # If prod, we set 'aliases' = [tylernorlund.com, www.tylernorlund.com]
@@ -264,6 +294,12 @@ cdn = aws.cloudfront.Distribution(
             "defaultTtl": 2592000,  # 30 days for images
             "maxTtl": 31536000,  # 1 year max
             "compress": False,  # Don't compress images (they're already compressed)
+            "functionAssociations": [
+                {
+                    "eventType": "viewer-response",
+                    "functionArn": content_type_function.arn,
+                }
+            ],
         },
         {
             # Cache behavior for Next.js JavaScript chunks - Maximum caching
