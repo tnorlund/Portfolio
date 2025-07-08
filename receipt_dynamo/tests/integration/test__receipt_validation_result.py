@@ -2310,7 +2310,7 @@ def test_listReceiptValidationResultsForField_empty_results(
     }
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         field_name="total_amount",
