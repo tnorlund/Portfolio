@@ -10,8 +10,8 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import Image
-from receipt_dynamo.data._image import _Image as OriginalImage
-from receipt_dynamo.data._image_refactored import _Image as RefactoredImage
+from receipt_dynamo.data._image import _Image as RefactoredImage
+from receipt_dynamo.data._image_original import _Image as OriginalImage
 
 
 class TestImageRefactoredCompatibility:

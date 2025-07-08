@@ -315,8 +315,7 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
     word = Word(**correct_word_params)
     with pytest.raises(
         ValueError,
-        match="All items in the words list must be instances of the Word "
-        "class.",
+        match="All words must be instances of the Word class.",
     ):
         client.update_words([word, "not-a-word"])  # type: ignore
 

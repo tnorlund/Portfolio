@@ -751,7 +751,7 @@ def test_getReceiptValidationSummary_not_exists_returns_none(
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id must be an integer.",
+            "receipt_id must be an integer",
         ),
         (12345, None, "image_id parameter is required and cannot be None."),
         (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),
