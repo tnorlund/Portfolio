@@ -129,12 +129,18 @@ class _ReceiptLabelAnalysis(
             receipt_label_analyses, ReceiptLabelAnalysis, "receipt_label_analyses"
         )
         
-        # Use batch writes for updates
-        request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+        # Use transactional writes for updates to ensure items exist
+        transact_items = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": analysis.to_item(),
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
+                }
+            }
             for analysis in receipt_label_analyses
         ]
-        self._batch_write_with_retry(request_items)
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_label_analysis")
     def delete_receipt_label_analysis(
@@ -173,15 +179,18 @@ class _ReceiptLabelAnalysis(
             receipt_label_analyses, ReceiptLabelAnalysis, "receipt_label_analyses"
         )
         
-        request_items = [
+        # Use transactional writes for deletes to ensure items exist
+        transact_items = [
             {
-                "DeleteRequest": {
-                    "Key": analysis.key()
+                "Delete": {
+                    "TableName": self.table_name,
+                    "Key": analysis.key(),
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
                 }
             }
             for analysis in receipt_label_analyses
         ]
-        self._batch_write_with_retry(request_items)
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt_label_analysis")
     def get_receipt_label_analysis(
