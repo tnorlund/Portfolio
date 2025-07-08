@@ -8,6 +8,20 @@ const nextConfig = {
   trailingSlash: false,
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'dev.tylernorlund.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.tylernorlund.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'tylernorlund.com',
+      },
+    ],
   },
   compress: true,
   poweredByHeader: false,
