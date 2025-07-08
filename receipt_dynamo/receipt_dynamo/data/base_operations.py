@@ -174,6 +174,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
+            # Image operations (excluding update_images which has special handling above)
+            "add_image": "Could not add image to DynamoDB",
+            "add_images": "Could not add images to the database",
+            "update_image": "Could not update image in the database",
+            "delete_image": "Could not delete image from the database",
+            "delete_images": "Could not delete images from the database",
+            "get_image": "Error getting image",
+            "list_images": "Could not list images from the database",
             "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
             "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
             "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",
@@ -372,10 +380,19 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # Check if this is actually a receipt validation result operation (legacy test)
             if "receipt validation result" in str(error).lower():
                 raise Exception("Could not add receipt validation result to DynamoDB") from error
-            raise Exception("Could not add receipt validation result to DynamoDB") from error
+            raise Exception("Could not add image to DynamoDB") from error
         
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
+            # Image operations
+            "add_image": "Could not add image to DynamoDB",
+            "add_images": "Could not add images to DynamoDB",
+            "update_image": "Could not update image in the database",
+            "update_images": "Could not update images in the database",
+            "delete_image": "Could not delete image from the database",
+            "delete_images": "Could not delete images from the database",
+            "get_image": "Error getting image",
+            "list_images": "Could not list images from the database",
             "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
             "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
             "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",

@@ -230,7 +230,7 @@ class _ReceiptLabelAnalysis(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABEL#{version}"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"},
                 },
             )
             item = response.get("Item")
@@ -251,7 +251,7 @@ class _ReceiptLabelAnalysis(
                 },
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABEL"},
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
                 },
                 "Limit": 1,
             }
@@ -363,7 +363,7 @@ class _ReceiptLabelAnalysis(
             "FilterExpression": "contains(#sk, :analysis_type)",
         }
         query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LABEL#"
+            "S": "#ANALYSIS#LABELS#"
         }
 
         response = self._client.query(**query_params)

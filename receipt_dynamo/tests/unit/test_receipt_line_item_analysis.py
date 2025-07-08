@@ -299,7 +299,7 @@ def test_receipt_line_item_analysis_key(example_receipt_line_item_analysis):
     """Test ReceiptLineItemAnalysis.key() method."""
     expected = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEM"},
+        "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
     }
     assert example_receipt_line_item_analysis.key() == expected
 
@@ -339,7 +339,7 @@ def test_receipt_line_item_analysis_to_item(
 
     # Check basic attributes
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#LINE_ITEM"
+    assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#LINE_ITEMS"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
     assert item["GSI1SK"]["S"] == "LINE_ITEM#2021-01-01T00:00:00"
     assert item["GSI2PK"]["S"] == "RECEIPT"
@@ -381,7 +381,7 @@ def test_receipt_line_item_analysis_to_item_minimal(
 
     # Check basic attributes
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#LINE_ITEM"
+    assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#LINE_ITEMS"
     assert item["version"]["S"] == "1.0"
     assert item["reasoning"]["S"] == "This is a test analysis"
     assert item["total_found"]["N"] == "1"
@@ -622,7 +622,7 @@ def test_itemToReceiptLineItemAnalysis_invalid():
         item_to_receipt_line_item_analysis(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
             }
         )
 
@@ -633,7 +633,7 @@ def test_itemToReceiptLineItemAnalysis_invalid():
         item_to_receipt_line_item_analysis(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
                 "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
                 "items": {"S": "not a list"},  # Wrong format
                 "reasoning": {"S": "Test reasoning"},

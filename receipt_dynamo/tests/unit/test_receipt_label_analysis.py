@@ -189,7 +189,7 @@ def test_receipt_label_analysis_key_generation(example_receipt_label_analysis):
     key = example_receipt_label_analysis.key()
 
     assert key["PK"]["S"] == "IMAGE#test_image_123"
-    assert key["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABEL#1.2"
+    assert key["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS#1.2"
 
 
 @pytest.mark.unit
@@ -200,7 +200,7 @@ def test_receipt_label_analysis_gsi1_key_generation(
     gsi1_key = example_receipt_label_analysis.gsi1_key()
 
     assert gsi1_key["GSI1PK"]["S"] == "ANALYSIS_TYPE"
-    assert gsi1_key["GSI1SK"]["S"].startswith("LABEL#")
+    assert gsi1_key["GSI1SK"]["S"].startswith("LABELS#")
 
 
 @pytest.mark.unit
@@ -221,9 +221,9 @@ def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
 
     # Check keys
     assert item["PK"]["S"] == "IMAGE#test_image_123"
-    assert item["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABEL#1.2"
+    assert item["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS#1.2"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
-    assert item["GSI1SK"]["S"].startswith("LABEL#")
+    assert item["GSI1SK"]["S"].startswith("LABELS#")
     assert item["GSI2PK"]["S"] == "RECEIPT"
     assert item["GSI2SK"]["S"] == "IMAGE#test_image_123#RECEIPT#00456"
 
@@ -383,7 +383,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABEL#1.0"},
+        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
         "labels": {
             "L": [
                 {
@@ -467,7 +467,7 @@ def test_itemToReceiptLabelAnalysis_with_defaults():
     """Test that item_to_receipt_label_analysis provides default values."""
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABEL#1.0"},
+        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
     }
 
     result = item_to_receipt_label_analysis(item)

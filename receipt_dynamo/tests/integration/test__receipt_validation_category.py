@@ -51,7 +51,7 @@ def test_addReceiptValidationCategory_success(
     # Verify
     response = client._client.get_item(
         TableName=dynamodb_table,
-        Key=sample_receipt_validation_category.key,
+        Key=sample_receipt_validation_category.key(),
     )
     assert "Item" in response, "Item was not added to the table."
 
@@ -86,7 +86,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
     # Clean up
     client._client.delete_item(
         TableName=dynamodb_table,
-        Key=sample_receipt_validation_category.key,
+        Key=sample_receipt_validation_category.key(),
     )
 
 
@@ -251,7 +251,7 @@ def test_addReceiptValidationCategories_success(
     for category in categories:
         response = client._client.get_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
         assert (
             "Item" in response
@@ -261,7 +261,7 @@ def test_addReceiptValidationCategories_success(
     for category in categories:
         client._client.delete_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
 
 
@@ -303,7 +303,7 @@ def test_addReceiptValidationCategories_with_large_batch(
     for category in categories:
         response = client._client.get_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
         assert (
             "Item" in response
@@ -313,7 +313,7 @@ def test_addReceiptValidationCategories_with_large_batch(
     for category in categories:
         client._client.delete_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
 
 
@@ -732,7 +732,7 @@ def test_updateReceiptValidationCategories_success(
     for category in updated_categories:
         response = client._client.get_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
         assert (
             "Item" in response
@@ -746,7 +746,7 @@ def test_updateReceiptValidationCategories_success(
     for category in updated_categories:
         client._client.delete_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
 
 
@@ -806,7 +806,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
     for category in updated_categories:
         response = client._client.get_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
         assert (
             "Item" in response
@@ -820,7 +820,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
     for category in updated_categories:
         client._client.delete_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
 
 
@@ -992,7 +992,7 @@ def test_deleteReceiptValidationCategory_success(
     # Verify it was added
     response = client._client.get_item(
         TableName=dynamodb_table,
-        Key=sample_receipt_validation_category.key,
+        Key=sample_receipt_validation_category.key(),
     )
     assert "Item" in response, "Item was not added to the table."
 
@@ -1004,7 +1004,7 @@ def test_deleteReceiptValidationCategory_success(
     # Verify it was deleted
     response = client._client.get_item(
         TableName=dynamodb_table,
-        Key=sample_receipt_validation_category.key,
+        Key=sample_receipt_validation_category.key(),
     )
     assert "Item" not in response, "Item was not deleted from the table."
 
@@ -1174,7 +1174,7 @@ def test_deleteReceiptValidationCategories_success(
     for category in categories:
         response = client._client.get_item(
             TableName=dynamodb_table,
-            Key=category.key,
+            Key=category.key(),
         )
         assert (
             "Item" not in response

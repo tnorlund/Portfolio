@@ -203,17 +203,7 @@ class _ReceiptValidationResult(
             Exception: If the result cannot be deleted from DynamoDB.
         """
         self._validate_entity(result, ReceiptValidationResult, "result")
-
-        # Need to use direct delete since results don't have key() method
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{result.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
-                },
-            },
-        )
+        self._delete_entity(result)
 
     @handle_dynamodb_errors("delete_receipt_validation_results")
     def delete_receipt_validation_results(
@@ -233,14 +223,7 @@ class _ReceiptValidationResult(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(
-                    Key={
-                        "PK": {"S": f"IMAGE#{result.image_id}"},
-                        "SK": {
-                            "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
-                        },
-                    }
-                )
+                DeleteRequest=DeleteRequestTypeDef(Key=result.key())
             )
             for result in results
         ]

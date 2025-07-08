@@ -19,7 +19,18 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+else:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 class _ReceiptStructureAnalysis(
@@ -72,7 +83,9 @@ class _ReceiptStructureAnalysis(
         self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
         
         request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -113,7 +126,9 @@ class _ReceiptStructureAnalysis(
         self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
         
         request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -159,16 +174,16 @@ class _ReceiptStructureAnalysis(
         self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
         
         request_items = [
-            {
-                "DeleteRequest": {
-                    "Key": {
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(
+                    Key={
                         "PK": {"S": f"IMAGE#{analysis.image_id}"},
                         "SK": {
                             "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
                         },
                     }
-                }
-            }
+                )
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)

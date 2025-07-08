@@ -188,7 +188,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
         }
 
     def gsi1_key(self) -> Dict[str, Any]:

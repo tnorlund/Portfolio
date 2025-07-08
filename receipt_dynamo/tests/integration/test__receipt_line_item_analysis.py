@@ -75,7 +75,7 @@ def test_addReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -86,7 +86,7 @@ def test_addReceiptLineItemAnalysis_success(
     )
     assert (
         response["Item"]["SK"]["S"]
-        == f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+        == f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
     )
     assert response["Item"]["TYPE"]["S"] == "RECEIPT_LINE_ITEM_ANALYSIS"
     assert (
@@ -248,7 +248,7 @@ def test_addReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -291,7 +291,7 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -316,7 +316,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
                     "PutRequest": {
                         "Item": {
                             "PK": {"S": "IMAGE#test"},
-                            "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEM"},
+                            "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
                         }
                     }
                 }
@@ -474,7 +474,7 @@ def test_updateReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{updated_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{updated_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                "S": f"RECEIPT#{updated_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -652,7 +652,7 @@ def test_updateReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -715,7 +715,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -874,7 +874,7 @@ def test_deleteReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -893,7 +893,7 @@ def test_deleteReceiptLineItemAnalysis_success(
         Key={
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEM"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
             },
         },
     )
@@ -1070,7 +1070,7 @@ def test_deleteReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEM"
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -1088,7 +1088,7 @@ def test_deleteReceiptLineItemAnalyses_success(
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEM"
+                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
                 },
             },
         )
@@ -1130,7 +1130,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" in response
@@ -1147,7 +1147,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
                 "PK": {
                     "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
                 },
-                "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
             },
         )
         assert "Item" not in response
@@ -1275,7 +1275,7 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
     # First call returns unprocessed items
     unprocessed_item = {
         "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
-        "SK": {"S": "RECEIPT#3#ANALYSIS#LINE_ITEM"},
+        "SK": {"S": "RECEIPT#3#ANALYSIS#LINE_ITEMS"},
     }
 
     mock_client.batch_write_item.side_effect = [
@@ -1475,7 +1475,7 @@ def test_getReceiptLineItemAnalysis_malformed_item(
             # Missing required attributes
             "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEM"
+                "S": f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
             },
         }
     }
@@ -1665,7 +1665,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         uuid_suffix = format(i, "x").zfill(2)
         item = {
             "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEM"},
+            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
             "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
             "receipt_id": {"N": str(i)},
             "timestamp_added": {
@@ -1693,7 +1693,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
 
     last_evaluated_key = {
         "PK": {"S": f"IMAGE#{uuid_base}05"},
-        "SK": {"S": "RECEIPT#5#ANALYSIS#LINE_ITEM"},
+        "SK": {"S": "RECEIPT#5#ANALYSIS#LINE_ITEMS"},
     }
 
     # Second page has 5 items and no LastEvaluatedKey
@@ -1702,7 +1702,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         uuid_suffix = format(i, "x").zfill(2)
         item = {
             "PK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}"},
-            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEM"},
+            "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
             "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
             "receipt_id": {"N": str(i)},
             "timestamp_added": {

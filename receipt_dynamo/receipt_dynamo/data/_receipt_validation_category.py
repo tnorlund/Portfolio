@@ -201,17 +201,7 @@ class _ReceiptValidationCategory(
             Exception: If the category cannot be deleted from DynamoDB.
         """
         self._validate_entity(category, ReceiptValidationCategory, "category")
-
-        # Need to use direct delete since categories don't have key() method
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{category.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{category.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{category.field_name}"
-                },
-            },
-        )
+        self._delete_entity(category)
 
     @handle_dynamodb_errors("delete_receipt_validation_categories")
     def delete_receipt_validation_categories(
@@ -233,14 +223,7 @@ class _ReceiptValidationCategory(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(
-                    Key={
-                        "PK": {"S": f"IMAGE#{category.image_id}"},
-                        "SK": {
-                            "S": f"RECEIPT#{category.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{category.field_name}"
-                        },
-                    }
-                )
+                DeleteRequest=DeleteRequestTypeDef(Key=category.key())
             )
             for category in categories
         ]

@@ -142,7 +142,7 @@ class _ReceiptLineItemAnalysis(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
 
@@ -169,7 +169,7 @@ class _ReceiptLineItemAnalysis(
                 "DeleteRequest": {
                     "Key": {
                         "PK": {"S": f"IMAGE#{image_id}"},
-                        "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                        "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
                     }
                 }
             }
@@ -208,7 +208,7 @@ class _ReceiptLineItemAnalysis(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEM"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
         item = response.get("Item")
@@ -321,7 +321,7 @@ class _ReceiptLineItemAnalysis(
             "FilterExpression": "contains(#sk, :analysis_type)",
         }
         query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LINE_ITEM"
+            "S": "#ANALYSIS#LINE_ITEMS"
         }
 
         response = self._client.query(**query_params)
