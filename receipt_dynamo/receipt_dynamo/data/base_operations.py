@@ -287,7 +287,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "list_receipt_validation_results", "list_receipt_validation_results_by_type",
             "list_receipt_validation_results_for_field",
             "add_receipt_line_item_analyses", "update_receipt_line_item_analyses",
-            "delete_receipt_line_item_analyses"
+            "delete_receipt_line_item_analyses",
+            "update_receipt_word_label", "update_receipt_word_labels"
         }
         
         if operation in validation_error_operations:
@@ -428,6 +429,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "list_receipt_validation_results": "Error listing receipt validation results",
             "list_receipt_validation_results_by_type": "Error listing receipt validation results", 
             "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
+            # Receipt word label operations
+            "update_receipt_word_label": "Error updating receipt word labels",
+            "update_receipt_word_labels": "Error updating receipt word labels",
             # Job operations
             "add_job": "Something unexpected",
             "add_jobs": "Something unexpected",
@@ -554,6 +558,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 # Special case: the implementation passes ReceiptLabelAnalysis but test expects lowercase
                 raise ValueError(
                     f"receipt_label_analysis must be an instance of the {entity_class.__name__} class."
+                )
+            elif param_name == "ReceiptWordLabel":
+                # Special case: the implementation passes ReceiptWordLabel but test expects lowercase
+                raise ValueError(
+                    f"receipt_word_label must be an instance of the {entity_class.__name__} class."
                 )
             elif param_name == "image":
                 raise ValueError(
