@@ -449,6 +449,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("image parameter is required and cannot be None.")
             elif param_name == "job":
                 raise ValueError("Job parameter is required and cannot be None.")
+            elif param_name == "result":
+                raise ValueError("result parameter is required and cannot be None.")
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -461,6 +463,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             if param_name == "receiptField":
                 raise ValueError(
                     f"receiptField must be an instance of the {entity_class.__name__} class."
+                )
+            elif param_name == "result":
+                raise ValueError(
+                    f"result must be an instance of the {entity_class.__name__} class."
                 )
             elif param_name == "job_checkpoint":
                 raise ValueError(
@@ -511,6 +517,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("ReceiptFields parameter is required and cannot be None.")
             elif param_name == "images":
                 raise ValueError("images parameter is required and cannot be None.")
+            elif param_name == "results":
+                raise ValueError("results parameter is required and cannot be None.")
             else:
                 # Capitalize first letter for backward compatibility
                 param_display = param_name[0].upper() + param_name[1:]
@@ -532,6 +540,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("jobs must be a list of Job instances.")
             elif param_name == "images":
                 raise ValueError("images must be a list of Image instances.")
+            elif param_name == "results":
+                raise ValueError("results must be a list of ReceiptValidationResult instances.")
             else:
                 # Default handling for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
