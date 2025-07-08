@@ -139,18 +139,15 @@ class _ReceiptWordLabel(
             )
         
         try:
-            from receipt_dynamo.data._base import WriteRequestTypeDef
-            for i in range(0, len(receipt_word_labels), 25):
-                chunk = receipt_word_labels[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest={"Item": label.to_item()}
-                    )
-                    for label in chunk
-                ]
-                self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
+            request_items = [
+                {
+                    "PutRequest": {
+                        "Item": label.to_item()
+                    }
+                }
+                for label in receipt_word_labels
+            ]
+            self._batch_write_with_retry(request_items)
         except ClientError as e:
             self._handle_add_receipt_word_labels_error(e)
     
