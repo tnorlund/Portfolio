@@ -184,8 +184,9 @@ function handler(event) {
 content_type_function = aws.cloudfront.Function(
     "contentTypeFunction",
     name=f"content-type-{stack}",
-    runtime="cloudfront-js-1.0",
+    runtime="cloudfront-js-2.0",
     comment="Set proper Content-Type headers for image files",
+    publish=True,
     code="""
 function handler(event) {
     var response = event.response;
