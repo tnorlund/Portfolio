@@ -48,7 +48,19 @@ from receipt_dynamo.entities import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+
+# These are used at runtime, not just for type checking
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 
 
 class _Image(
@@ -95,7 +107,10 @@ class _Image(
         self._validate_entity_list(images, Image, "images")
 
         request_items = [
-            {"PutRequest": {"Item": image.to_item()}} for image in images
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=image.to_item())
+            )
+            for image in images
         ]
         self._batch_write_with_retry(request_items)
 
@@ -290,7 +305,10 @@ class _Image(
         self._validate_entity_list(images, Image, "images")
 
         request_items = [
-            {"DeleteRequest": {"Key": image.key()}} for image in images
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=image.key())
+            )
+            for image in images
         ]
         self._batch_write_with_retry(request_items)
 

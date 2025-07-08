@@ -119,13 +119,13 @@ class _Line(
         self._validate_entity_list(lines, Line, "lines")
 
         transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=line.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": line.to_item(),
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            }
             for line in lines
         ]
 

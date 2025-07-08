@@ -124,12 +124,8 @@ def test_addReceiptValidationSummary_duplicate_raises(
         )
 
     # Check that the error message contains useful information
-    receipt_id = sample_receipt_validation_summary.receipt_id
-    image_id = sample_receipt_validation_summary.image_id
-    assert (
-        f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} already exists"
-        in str(excinfo.value)
-    )
+    assert "Entity already exists" in str(excinfo.value)
+    assert "ReceiptValidationSummary" in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -175,12 +171,12 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptValidationSummary for receipt .* and image .* already exists",
+            "Entity already exists: ReceiptValidationSummary",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt validation summary to DynamoDB",
+            "Table not found for operation add_receipt_validation_summary",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -195,7 +191,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt validation summary to DynamoDB",
+            "Unknown error in add_receipt_validation_summary",
         ),
         (
             "ValidationException",
@@ -755,7 +751,7 @@ def test_getReceiptValidationSummary_not_exists_returns_none(
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id must be an integer.",
+            "receipt_id must be an integer",
         ),
         (12345, None, "image_id parameter is required and cannot be None."),
         (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),

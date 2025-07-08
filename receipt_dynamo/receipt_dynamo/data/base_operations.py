@@ -129,10 +129,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     f"JobCheckpoint with timestamp {checkpoint.timestamp} for job {checkpoint.job_id} already exists"
                 ) from error
 
-        if "add" in operation.lower():
-            # Extract just the entity ID for backward compatibility
-            if "Image with ID" in entity_context:
+        # Special handling for ReceiptValidationResult to maintain backward compatibility
+        if "ReceiptValidationResult with field" in entity_context:
+            if "add" in operation.lower():
                 raise ValueError(f"{entity_context} already exists") from error
+            else:
+                raise ValueError(f"{entity_context} does not exist") from error
+
+        if "add" in operation.lower():
             raise ValueError(
                 f"Entity already exists: {entity_context}"
             ) from error
@@ -305,6 +309,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif hasattr(args[0], "__class__"):
                 entity = args[0]
                 entity_name = entity.__class__.__name__
+
+                # Special handling for ReceiptValidationResult - needs both field and index
+                if entity_name == "ReceiptValidationResult":
+                    if hasattr(entity, "field_name") and hasattr(
+                        entity, "result_index"
+                    ):
+                        return f"{entity_name} with field {entity.field_name} and index {entity.result_index}"
+
                 # Try to get ID or other identifying information
                 for id_attr in [
                     "id",
@@ -312,12 +324,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     "image_id",
                     "word_id",
                     "line_id",
+                    "field_name",
+                    "result_index",
                 ]:
                     if hasattr(entity, id_attr):
-                        # Format for backward compatibility with original error messages
                         id_value = getattr(entity, id_attr)
-                        if entity_name == "Image" and id_attr == "image_id":
-                            return f"Image with ID {id_value}"
                         return f"{entity_name} with {id_attr}={id_value}"
                 return entity_name
 
@@ -343,11 +354,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("JobCheckpoint parameter is required and cannot be None.")
             elif param_name == "ReceiptLabelAnalysis":
                 raise ValueError("ReceiptLabelAnalysis parameter is required and cannot be None.")
-            # Default capitalization for other parameters
-            param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(
-                f"{param_display} parameter is required and cannot be None."
-            )
+            elif param_name == "ReceiptField":
+                raise ValueError("ReceiptField parameter is required and cannot be None.")
+            else:
+                # Default capitalization for other parameters
+                param_display = param_name[0].upper() + param_name[1:]
+                raise ValueError(
+                    f"{param_display} parameter is required and cannot be None."
+                )
 
         if not isinstance(entity, entity_class):
             # Special handling for specific parameters
@@ -392,11 +406,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # Special handling for specific parameters
             if param_name == "receipt_label_analyses":
                 raise ValueError("ReceiptLabelAnalyses parameter is required and cannot be None.")
-            # Capitalize first letter for backward compatibility
-            param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(
-                f"{param_display} parameter is required and cannot be None."
-            )
+            elif param_name == "ReceiptFields":
+                raise ValueError("ReceiptFields parameter is required and cannot be None.")
+            else:
+                # Capitalize first letter for backward compatibility
+                param_display = param_name[0].upper() + param_name[1:]
+                raise ValueError(
+                    f"{param_display} parameter is required and cannot be None."
+                )
 
         if not isinstance(entities, list):
             # Special handling for specific parameters
@@ -406,9 +423,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("Words must be provided as a list.")
             elif param_name == "receipt_label_analyses":
                 raise ValueError("receipt_label_analyses must be a list of ReceiptLabelAnalysis instances.")
-            # Default handling for other parameters
-            param_display = param_name[0].upper() + param_name[1:]
-            raise ValueError(f"{param_display} must be a list of {entity_class.__name__} instances.")
+            elif param_name == "ReceiptFields":
+                raise ValueError("ReceiptFields must be a list of ReceiptField instances.")
+            else:
+                # Default handling for other parameters
+                param_display = param_name[0].upper() + param_name[1:]
+                raise ValueError(f"{param_display} must be a list of {entity_class.__name__} instances.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             # Special handling for specific parameters
@@ -508,7 +528,7 @@ class BatchOperationsMixin:
     table_name: str
 
     def _batch_write_with_retry(
-        self, request_items: List[Dict[Any, Any]], max_retries: int = 3
+        self, request_items: List[Any], max_retries: int = 3
     ) -> None:
         """
         Generic batch write with automatic retry for unprocessed items.
