@@ -264,9 +264,16 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Extract original error message for backward compatibility
         error_message = error.response.get("Error", {}).get("Message", str(error))
         
-        # Replace "were" with "given were" for operations that expect it
-        # For receipt_line_item_analysis and receipt_label_analysis operations
-        if "receipt_line_item_analysis" in operation or "receipt_label_analysis" in operation:
+        # Replace "given were" with "were" for operations that expect it
+        # For receipt_label_analysis operations - they expect just "were"
+        if "receipt_label_analysis" in operation:
+            if "One or more parameters given were invalid" in error_message:
+                error_message = error_message.replace(
+                    "One or more parameters given were invalid", 
+                    "One or more parameters were invalid"
+                )
+        # For receipt_line_item_analysis operations - they expect "given were"
+        elif "receipt_line_item_analysis" in operation:
             if "One or more parameters were invalid" in error_message:
                 error_message = error_message.replace(
                     "One or more parameters were invalid", 
