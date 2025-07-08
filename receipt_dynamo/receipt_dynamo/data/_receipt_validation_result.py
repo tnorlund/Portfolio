@@ -605,6 +605,12 @@ class _ReceiptValidationResult(
         self, error: ClientError, operation: str, context: dict = None
     ) -> None:
         """Override to provide ReceiptValidationResult-specific error messages"""
+        # Only handle operations that are specifically for receipt validation results
+        if "receipt_validation" not in operation:
+            # Let the base class handle operations for other entities
+            super()._handle_client_error(error, operation, context)
+            return
+            
         error_code = error.response.get("Error", {}).get("Code", "")
 
         # For backward compatibility with tests
