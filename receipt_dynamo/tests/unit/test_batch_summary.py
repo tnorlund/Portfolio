@@ -152,7 +152,7 @@ def test_batch_summary_status_not_string():
             batch_type=BatchType.EMBEDDING.value,
             openai_batch_id="openai-xyz",
             submitted_at=datetime.now(),
-            status=123,
+            status=123,  # type: ignore
             result_file_id="file-456",
             receipt_refs=[("img", 1)],
         )
@@ -168,7 +168,7 @@ def test_batch_summary_invalid_receipt_refs_type():
             submitted_at=datetime.now(),
             status=BatchStatus.COMPLETED.value,
             result_file_id="f",
-            receipt_refs="not-a-list",
+            receipt_refs="not-a-list",  # type: ignore
         )
 
 

@@ -238,7 +238,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     TransactWriteItemTypeDef(
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
-                            Key=item.key(),
+                            Key=item.key,
                             ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
                         )
                     )

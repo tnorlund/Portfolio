@@ -100,6 +100,7 @@ class JobCheckpoint:
             raise ValueError("is_best must be a boolean")
         self.is_best: bool = is_best
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job checkpoint.
 
@@ -129,7 +130,7 @@ class JobCheckpoint:
             dict: A dictionary representing the JobCheckpoint object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_CHECKPOINT"},
             "job_id": {"S": self.job_id},

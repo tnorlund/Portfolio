@@ -84,7 +84,7 @@ class ReceiptValidationCategory:
     def gsi1_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
-            "GSI1PK": {"S": "ANALYSIS_TYPE"},
+            "GSI1PK": {"S": f"VALIDATION_STATUS#{self.status}"},
             "GSI1SK": {
                 "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}"
             },

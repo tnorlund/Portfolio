@@ -148,6 +148,7 @@ class PlacesCache:
         else:
             raise ValueError(f"Invalid search type: {self.search_type}")
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """
         Generate the primary key for DynamoDB.
@@ -183,7 +184,7 @@ class PlacesCache:
         Returns:
             Dict: The DynamoDB item representation with all required attributes
         """
-        key = self.key()
+        key = self.key
         item = {
             **key,  # Base table keys (PK, SK)
             **self.gsi1_key(),  # GSI1 keys

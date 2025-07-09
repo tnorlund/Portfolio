@@ -378,7 +378,7 @@ def test_listJobMetrics_with_pagination(
 
     # List the second page
     metrics_page2, last_evaluated_key2 = job_metric_dynamo.list_job_metrics(
-        sample_job.job_id, limit=1, lastEvaluatedKey=last_evaluated_key
+        sample_job.job_id, limit=1, last_evaluated_key=last_evaluated_key
     )
 
     # Verify second page

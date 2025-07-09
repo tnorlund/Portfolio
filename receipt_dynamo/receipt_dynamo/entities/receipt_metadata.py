@@ -225,6 +225,7 @@ class ReceiptMetadata:
 
         return high_quality_fields
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
@@ -293,7 +294,7 @@ class ReceiptMetadata:
         Includes primary key and GSI keys, as well as all merchant-related metadata.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_METADATA"},

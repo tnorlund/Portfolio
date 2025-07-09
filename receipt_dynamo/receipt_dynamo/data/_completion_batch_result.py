@@ -131,7 +131,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=result.key(),
+                Key=result.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -168,12 +168,12 @@ class _CompletionBatchResult(DynamoClientProtocol):
     def list_completion_batch_results(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("limit must be a positive integer.")
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[CompletionBatchResult] = []
         try:
@@ -186,8 +186,8 @@ class _CompletionBatchResult(DynamoClientProtocol):
                     ":val": {"S": "COMPLETION_BATCH_RESULT"}
                 },
             }
-            if lastEvaluatedKey:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -216,12 +216,12 @@ class _CompletionBatchResult(DynamoClientProtocol):
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if status not in [s.value for s in ValidationStatus]:
             raise ValueError("Invalid status.")
-        if lastEvaluatedKey:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key:
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[CompletionBatchResult] = []
         query_params: QueryInputTypeDef = {
@@ -230,8 +230,8 @@ class _CompletionBatchResult(DynamoClientProtocol):
             "KeyConditionExpression": "GSI2SK = :val",
             "ExpressionAttributeValues": {":val": {"S": f"STATUS#{status}"}},
         }
-        if lastEvaluatedKey:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             if limit:
@@ -256,12 +256,12 @@ class _CompletionBatchResult(DynamoClientProtocol):
         self,
         label_target: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(label_target, str):
             raise ValueError("label_target must be a string.")
-        if lastEvaluatedKey:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key:
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[CompletionBatchResult] = []
         query_params: QueryInputTypeDef = {
@@ -272,8 +272,8 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 ":pk": {"S": f"LABEL_TARGET#{label_target}"}
             },
         }
-        if lastEvaluatedKey:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             if limit:
@@ -296,12 +296,12 @@ class _CompletionBatchResult(DynamoClientProtocol):
         self,
         receipt_id: int,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise ValueError("receipt_id must be a positive integer")
-        if lastEvaluatedKey:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key:
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[CompletionBatchResult] = []
         query_params: QueryInputTypeDef = {
@@ -312,8 +312,8 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 ":pk": {"S": f"RECEIPT#{receipt_id}"}
             },
         }
-        if lastEvaluatedKey:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             if limit:

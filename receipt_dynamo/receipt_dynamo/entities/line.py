@@ -88,6 +88,7 @@ class Line(DynamoDBEntity):
         ):
             raise ValueError("confidence must be a float between 0 and 1")
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the line.
 
@@ -99,6 +100,7 @@ class Line(DynamoDBEntity):
             "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
+    @property
     def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the line.
 
@@ -117,8 +119,8 @@ class Line(DynamoDBEntity):
             dict: A dictionary representing the Line object as a DynamoDB item.
         """
         return {
-            **self.key(),
-            **self.gsi1_key(),
+            **self.key,
+            **self.gsi1_key,
             "TYPE": {"S": "LINE"},
             "text": {"S": self.text},
             "bounding_box": {
@@ -335,8 +337,10 @@ class Line(DynamoDBEntity):
         Args:
             shx (float): The horizontal shear factor.
             shy (float): The vertical shear factor.
-            pivot_x (float, optional): The x-coordinate of the pivot point. Defaults to 0.0.
-            pivot_y (float, optional): The y-coordinate of the pivot point. Defaults to 0.0.
+            pivot_x (float, optional): The x-coordinate of the pivot point.
+                Defaults to 0.0.
+            pivot_y (float, optional): The y-coordinate of the pivot point.
+                Defaults to 0.0.
         """
         corners = [
             self.top_right,
@@ -359,16 +363,19 @@ class Line(DynamoDBEntity):
         self.bounding_box["height"] = max(ys) - min(ys)
 
     def warp_affine(self, a, b, c, d, e, f) -> None:
-        """Applies an affine transformation to the line's corners and updates its properties.
+        """Applies an affine transformation to the line's corners and updates
+        its properties.
 
         The transformation is defined by the equations:
             x' = a * x + b * y + c
             y' = d * x + e * y + f
 
-        After transforming the corners, the bounding box and the line's angle are recalculated.
+        After transforming the corners, the bounding box and the line's angle
+        are recalculated.
 
         Args:
-            a, b, c, d, e, f (float): Parameters defining the 2x3 affine transformation.
+            a, b, c, d, e, f (float): Parameters defining the 2x3 affine
+                transformation.
         """
         corners = [
             self.top_left,
@@ -409,18 +416,21 @@ class Line(DynamoDBEntity):
         new_height,
         flip_y=False,
     ) -> None:
-        """Applies a normalized forward affine transformation to the line's corners.
+        """Applies a normalized forward affine transformation to the line's
+        corners.
 
-        The transformation converts normalized coordinates from the original image to new
-        normalized coordinates in the warped image.
+        The transformation converts normalized coordinates from the original
+        image to new normalized coordinates in the warped image.
 
         Args:
-            a_f, b_f, c_f, d_f, e_f, f_f (float): Parameters for the forward affine transform.
+            a_f, b_f, c_f, d_f, e_f, f_f (float): Parameters for the forward
+                affine transform.
             orig_width (int): The width of the original image in pixels.
             orig_height (int): The height of the original image in pixels.
             new_width (int): The width of the new warped image in pixels.
             new_height (int): The height of the new warped image in pixels.
-            flip_y (bool, optional): Whether to flip the y-coordinate. Defaults to False.
+            flip_y (bool, optional): Whether to flip the y-coordinate. Defaults
+                to False.
         """
         corners = [
             self.top_left,
@@ -504,21 +514,21 @@ class Line(DynamoDBEntity):
                     "Inverse warp denominator ~ 0 at corner: " + name
                 )
 
-            X_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
-            Y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
+            x_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
+            y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
 
             # 4) Convert to normalized coordinates in top-left of the
             # *original* image
-            X_old_norm_tl = X_old_px / src_width
-            Y_old_norm_tl = Y_old_px / src_height
+            x_old_norm_tl = x_old_px / src_width
+            y_old_norm_tl = y_old_px / src_height
 
             # 5) Flip Y back to bottom-left for Vision
-            X_old_vision = X_old_norm_tl
-            Y_old_vision = 1.0 - Y_old_norm_tl
+            x_old_vision = x_old_norm_tl
+            y_old_vision = 1.0 - y_old_norm_tl
 
             # Update the corner
-            corner["x"] = X_old_vision
-            corner["y"] = Y_old_vision
+            corner["x"] = x_old_vision
+            corner["y"] = y_old_vision
 
         xs = [pt["x"] for pt in corners]
         ys = [pt["y"] for pt in corners]
@@ -535,8 +545,8 @@ class Line(DynamoDBEntity):
     def rotate_90_ccw_in_place(self, old_w: int, old_h: int) -> None:
         """Rotates the line 90 degrees counter-clockwise in-place.
 
-        The rotation is performed about the origin (0, 0) in pixel space, and the
-        coordinates are re-normalized based on the new image dimensions.
+        The rotation is performed about the origin (0, 0) in pixel space, and
+        the coordinates are re-normalized based on the new image dimensions.
 
         Args:
             old_w (int): The width of the image before rotation.
@@ -693,4 +703,4 @@ def item_to_line(item: Dict[str, Any]) -> Line:
             confidence=float(item["confidence"]["N"]),
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to Line: {e}")
+        raise ValueError(f"Error converting item to Line: {e}") from e

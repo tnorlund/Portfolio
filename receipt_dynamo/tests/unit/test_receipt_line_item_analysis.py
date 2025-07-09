@@ -296,12 +296,12 @@ def test_receipt_line_item_analysis_init_invalid_tax():
 
 @pytest.mark.unit
 def test_receipt_line_item_analysis_key(example_receipt_line_item_analysis):
-    """Test ReceiptLineItemAnalysis.key() method."""
+    """Test ReceiptLineItemAnalysis.key method."""
     expected = {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#ANALYSIS#LINE_ITEMS"},
     }
-    assert example_receipt_line_item_analysis.key() == expected
+    assert example_receipt_line_item_analysis.key == expected
 
 
 @pytest.mark.unit

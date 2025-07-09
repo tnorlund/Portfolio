@@ -63,7 +63,7 @@ def test_letter_add(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=letter.key(),
+        Key=letter.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == letter.to_item()

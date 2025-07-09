@@ -118,6 +118,7 @@ class ReceiptWord(DynamoDBEntity):
                 "embedding_status must be a string or EmbeddingStatus enum"
             )
 
+    @property
     def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt word.
@@ -197,7 +198,7 @@ class ReceiptWord(DynamoDBEntity):
             dict: A dictionary representing the ReceiptWord object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),

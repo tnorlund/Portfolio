@@ -70,6 +70,7 @@ class QueueJob:
             raise ValueError("position must be a non-negative integer")
         self.position: int = position
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the queue-job association.
 
@@ -99,7 +100,7 @@ class QueueJob:
             dict: A dictionary representing the QueueJob object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "QUEUE_JOB"},
             "enqueued_at": {"S": self.enqueued_at},

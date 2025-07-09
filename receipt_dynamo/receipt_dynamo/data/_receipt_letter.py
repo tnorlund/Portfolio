@@ -212,7 +212,7 @@ class _ReceiptLetter(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=lt.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=lt.key)
             )
             for lt in letters
         ]
@@ -316,7 +316,7 @@ class _ReceiptLetter(
                 ) from e
 
     def list_receipt_letters(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptLetter], dict | None]:
         """
         Returns all ReceiptLetters from the table with pagination.
@@ -325,7 +325,7 @@ class _ReceiptLetter(
         ----------
         limit : int, optional
             Maximum number of items to return.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             Key to continue pagination from.
 
         Returns
@@ -340,10 +340,10 @@ class _ReceiptLetter(
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+            raise ValueError("last_evaluated_key must be a dictionary or None.")
 
         receipt_letters = []
         try:
@@ -354,8 +354,8 @@ class _ReceiptLetter(
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LETTER"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 

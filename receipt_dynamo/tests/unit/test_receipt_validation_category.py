@@ -327,7 +327,7 @@ def test_key(example_validation_category):
 def test_gsi1_key(example_validation_category):
     """Test the gsi1_key property"""
     assert example_validation_category.gsi1_key == {
-        "GSI1PK": {"S": "ANALYSIS_TYPE"},
+        "GSI1PK": {"S": "VALIDATION_STATUS#valid"},
         "GSI1SK": {
             "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#payment_info"
         },
@@ -355,7 +355,7 @@ def test_to_item(example_validation_category):
     assert item["SK"] == {
         "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#payment_info"
     }
-    assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
+    assert item["GSI1PK"] == {"S": "VALIDATION_STATUS#valid"}
     assert item["GSI1SK"] == {
         "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#payment_info"
     }

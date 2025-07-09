@@ -13,10 +13,10 @@ class Image(DynamoDBEntity):
     """
     Represents an image and its associated metadata stored in a DynamoDB table.
 
-    This class encapsulates image-related information such as its unique identifier,
-    dimensions, upload timestamp, and S3 storage details. It is designed to support
-    operations such as generating DynamoDB keys and converting image metadata to a
-    DynamoDB-compatible item.
+    This class encapsulates image-related information such as its unique
+    identifier, dimensions, upload timestamp, and S3 storage details. It is
+    designed to support operations such as generating DynamoDB keys and
+    converting image metadata to a DynamoDB-compatible item.
 
     Attributes:
         image_id (str): UUID identifying the image.
@@ -26,10 +26,14 @@ class Image(DynamoDBEntity):
         raw_s3_bucket (str): The S3 bucket where the image is initially stored.
         raw_s3_key (str): The S3 key where the image is initially stored.
         sha256 (str): The SHA256 hash of the image.
-        cdn_s3_bucket (str): The S3 bucket where the image is stored in the CDN.
+        cdn_s3_bucket (str): The S3 bucket where the image is stored in the
+            CDN.
         cdn_s3_key (str): The S3 key where the image is stored in the CDN.
-        cdn_webp_s3_key (str, optional): The S3 key for the WebP version in the CDN.
-        cdn_avif_s3_key (str, optional): The S3 key for the AVIF version in the CDN.
+        cdn_webp_s3_key (str, optional): The S3 key for the WebP version in
+            the CDN.
+        cdn_avif_s3_key (str, optional): The S3 key for the AVIF version in
+            the CDN.
+        image_type (ImageType): The type of image.
     """
 
     image_id: str
@@ -89,11 +93,14 @@ class Image(DynamoDBEntity):
         elif isinstance(self.image_type, str):
             if self.image_type not in [t.value for t in ImageType]:
                 raise ValueError(
-                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {self.image_type}"
+                    "image_type must be one of: "
+                    f"{', '.join(t.value for t in ImageType)}\n"
+                    f"Got: {self.image_type}"
                 )
         else:
             raise ValueError("image_type must be a ImageType or a string")
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the image.
 
@@ -102,6 +109,7 @@ class Image(DynamoDBEntity):
         """
         return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
+    @property
     def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the image.
 
@@ -110,9 +118,10 @@ class Image(DynamoDBEntity):
         """
         return {
             "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI1SK": {"S": f"IMAGE"},
+            "GSI1SK": {"S": "IMAGE"},
         }
 
+    @property
     def gsi2_key(self) -> Dict[str, Any]:
         """Generates the GSI2 key for the image.
 
@@ -124,6 +133,7 @@ class Image(DynamoDBEntity):
             "GSI2SK": {"S": "IMAGE"},
         }
 
+    @property
     def gsi3_key(self) -> Dict[str, Any]:
         """Generates the GSI3 key for the image.
 
@@ -139,13 +149,14 @@ class Image(DynamoDBEntity):
         """Converts the Image object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Image object as a DynamoDB item.
+            dict: A dictionary representing the Image object as a DynamoDB
+                item.
         """
         return {
-            **self.key(),
-            **self.gsi1_key(),
-            **self.gsi2_key(),
-            **self.gsi3_key(),
+            **self.key,
+            **self.gsi1_key,
+            **self.gsi2_key,
+            **self.gsi3_key,
             "TYPE": {"S": "IMAGE"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},
@@ -186,8 +197,8 @@ class Image(DynamoDBEntity):
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
             f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
-            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key) if self.cdn_webp_s3_key else None}, "
-            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key) if self.cdn_avif_s3_key else None}, "
+            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
+            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
             f"image_type={_repr_str(self.image_type)}"
             ")"
         )
@@ -220,7 +231,8 @@ def item_to_image(item: Dict[str, Any]) -> Image:
     if missing_keys:
         additional_keys = set(item.keys()) - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         sha256 = item.get("sha256", {}).get("S")
@@ -246,4 +258,4 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             image_type=image_type if image_type else ImageType.SCAN.value,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to Image: {e}")
+        raise ValueError(f"Error converting item to Image: {e}") from e

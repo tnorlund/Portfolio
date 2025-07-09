@@ -266,7 +266,7 @@ class _OCRJob(DynamoClientProtocol):
                     TransactWriteItemTypeDef(
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
-                            Key=item.key(),
+                            Key=item.key,
                             ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
                         )
                     )
@@ -291,13 +291,13 @@ class _OCRJob(DynamoClientProtocol):
     def list_ocr_jobs(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Lists all OCR jobs from the database
 
         Args:
             limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            lastEvaluatedKey (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
 
         Returns:
             tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
@@ -306,8 +306,8 @@ class _OCRJob(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
 
         jobs: List[OCRJob] = []
@@ -319,8 +319,8 @@ class _OCRJob(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "OCR_JOB"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -363,14 +363,14 @@ class _OCRJob(DynamoClientProtocol):
         self,
         status: OCRStatus,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Gets OCR jobs by status from the database
 
         Args:
             status (OCRStatus): The status of the OCR jobs to get
             limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            lastEvaluatedKey (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
 
         Returns:
             tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
@@ -383,8 +383,8 @@ class _OCRJob(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
 
         jobs: List[OCRJob] = []
@@ -398,8 +398,8 @@ class _OCRJob(DynamoClientProtocol):
                     ":val": {"S": f"OCR_JOB_STATUS#{status.value}"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
