@@ -104,6 +104,7 @@ class ReceiptLabelAnalysis:
         else:
             self.metadata = metadata
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """Returns the primary key for DynamoDB.
 
@@ -146,7 +147,7 @@ class ReceiptLabelAnalysis:
             dict: A dictionary representing the ReceiptLabelAnalysis object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_LABEL_ANALYSIS"},

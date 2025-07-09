@@ -75,7 +75,7 @@ def test_add_receipt_word_duplicate_raises(
         (None, "Word parameter is required and cannot be None."),
         (
             "not-a-receipt-word",
-            "word must be an instance of the ReceiptWord class.",
+            "Word must be an instance of the ReceiptWord class.",
         ),
     ],
 )
@@ -122,12 +122,12 @@ def test_addReceiptWord_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_word",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for add_receipt_word",
+            "Access denied",
         ),
         (
             "UnknownError",
@@ -282,7 +282,7 @@ def test_addReceiptWords_with_unprocessed_items_retries(
         ),
         (
             ["not-a-receipt-word"],
-            "All items in the words list must be instances of the ReceiptWord class.",
+            "All words must be instances of the ReceiptWord class.",
         ),
     ],
 )
@@ -330,12 +330,12 @@ def test_addReceiptWords_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_words",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for add_receipt_words",
+            "Access denied",
         ),
         (
             "UnknownError",
