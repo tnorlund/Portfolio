@@ -186,7 +186,7 @@ def test_receipt_label_analysis_default_metadata():
 @pytest.mark.unit
 def test_receipt_label_analysis_key_generation(example_receipt_label_analysis):
     """Test that key() generates the correct DynamoDB primary key."""
-    key = example_receipt_label_analysis.key()
+    key = example_receipt_label_analysis.key
 
     assert key["PK"]["S"] == "IMAGE#test_image_123"
     assert key["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS"
