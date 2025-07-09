@@ -4,6 +4,8 @@
 
 This document specifies the design for a new `ReceiptCurrencyAnalysis` entity that aligns with the existing DynamoDB schema and entity patterns in the `receipt_dynamo` package.
 
+**Status**: ✅ **Compatible with receipt_dynamo refactor** - The recent refactor of the receipt_dynamo package does not impact this entity design. The patterns used (PK/SK structure, GSI usage, metadata structure) remain consistent with the refactored codebase.
+
 ## Current Entity Pattern Analysis
 
 ### **Existing Analysis Entities**
@@ -215,13 +217,11 @@ Following the existing pattern from the README.md table design:
 | Field | Value |
 |-------|-------|
 | **PK** | `IMAGE#{image_id}` |
-| **SK** | `RECEIPT#{receipt_id:05d}#ANALYSIS#CURRENCY#{version}` |
+| **SK** | `RECEIPT#{receipt_id:05d}#ANALYSIS#CURRENCY` |
 | **GSI1 PK** | `ANALYSIS_TYPE` |
 | **GSI1 SK** | `CURRENCY#{timestamp}` |
 | **GSI2 PK** | `RECEIPT` |
-| **GSI2 SK** | `IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#ANALYSIS#CURRENCY` |
-| **GSI3 PK** | `CURRENCY_STATUS#{classification_accuracy}` |
-| **GSI3 SK** | `TIMESTAMP#{timestamp}` |
+| **GSI2 SK** | `IMAGE#{image_id}#RECEIPT#{receipt_id:05d}` |
 | **TYPE** | `RECEIPT_CURRENCY_ANALYSIS` |
 
 ### **Attributes**
@@ -254,13 +254,11 @@ def store_receipt_currency_analysis(
 
     item = {
         'PK': {'S': f'IMAGE#{analysis.image_id}'},
-        'SK': {'S': f'RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#CURRENCY#{analysis.version}'},
+        'SK': {'S': f'RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#CURRENCY'},
         'GSI1PK': {'S': 'ANALYSIS_TYPE'},
         'GSI1SK': {'S': f'CURRENCY#{analysis.timestamp_added.isoformat()}'},
         'GSI2PK': {'S': 'RECEIPT'},
-        'GSI2SK': {'S': f'IMAGE#{analysis.image_id}#RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#CURRENCY'},
-        'GSI3PK': {'S': f'CURRENCY_STATUS#{analysis.classification_accuracy}'},
-        'GSI3SK': {'S': f'TIMESTAMP#{analysis.timestamp_added.isoformat()}'},
+        'GSI2SK': {'S': f'IMAGE#{analysis.image_id}#RECEIPT#{analysis.receipt_id:05d}'},
         'TYPE': {'S': 'RECEIPT_CURRENCY_ANALYSIS'},
         **_convert_to_dynamodb_types(analysis.to_dict())
     }
@@ -280,7 +278,7 @@ def get_receipt_currency_analysis(
         TableName=table_name,
         Key={
             'PK': {'S': f'IMAGE#{image_id}'},
-            'SK': {'S': f'RECEIPT#{receipt_id:05d}#ANALYSIS#CURRENCY#{version}'}
+            'SK': {'S': f'RECEIPT#{receipt_id:05d}#ANALYSIS#CURRENCY'}
         }
     )
 
