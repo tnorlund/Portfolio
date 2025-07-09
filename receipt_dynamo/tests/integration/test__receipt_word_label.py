@@ -1527,7 +1527,8 @@ def test_listReceiptWordLabels_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Table not found for operation list_receipt_word_labels"
+        Exception,
+        match="Table not found for operation list_receipt_word_labels",
     ):
         client.list_receipt_word_labels()
     mock_query.assert_called_once()
@@ -1700,7 +1701,10 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
         (
             {
                 "label": "ITEM",
-                "last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
             "last_evaluated_key\\[PK\\] must be a dict containing a key 'S'",
         ),
@@ -1825,7 +1829,8 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Table not found for operation get_receipt_word_labels_by_label"
+        Exception,
+        match="Table not found for operation get_receipt_word_labels_by_label",
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
@@ -1927,7 +1932,10 @@ def test_getReceiptWordLabelsByValidationStatus_success(
         (
             {
                 "validation_status": "VALID",
-                "last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
             "last_evaluated_key\\[PK\\] must be a dict containing a key 'S'",
         ),

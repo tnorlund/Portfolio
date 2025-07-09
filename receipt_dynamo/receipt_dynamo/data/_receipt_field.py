@@ -315,7 +315,9 @@ class _ReceiptField(
                 ) from e
 
     def list_receipt_fields(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt field records from the database with support for precise pagination.

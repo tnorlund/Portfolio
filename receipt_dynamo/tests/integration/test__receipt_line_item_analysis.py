@@ -1004,7 +1004,9 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+        client.delete_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
     assert expected_error in str(excinfo.value)
 
 
@@ -1255,7 +1257,9 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analyses([sample_receipt_line_item_analysis])
+        client.delete_receipt_line_item_analyses(
+            [sample_receipt_line_item_analysis]
+        )
     assert expected_error in str(excinfo.value)
 
 

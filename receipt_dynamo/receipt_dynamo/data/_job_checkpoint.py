@@ -62,6 +62,7 @@ class _JobCheckpoint(
     list_all_job_checkpoints(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None)
         Lists all job checkpoints across all jobs.
     """
+
     @handle_dynamodb_errors("add_job_checkpoint")
     def add_job_checkpoint(self, job_checkpoint: JobCheckpoint):
         """Adds a job checkpoint to the database
@@ -75,7 +76,7 @@ class _JobCheckpoint(
         self._validate_entity(job_checkpoint, JobCheckpoint, "job_checkpoint")
         self._add_entity(
             job_checkpoint,
-            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("get_job_checkpoint")
@@ -156,9 +157,7 @@ class _JobCheckpoint(
                         "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},
                     },
                     UpdateExpression="SET is_best = :is_best",
-                    ExpressionAttributeValues={
-                        ":is_best": {"BOOL": False}
-                    },
+                    ExpressionAttributeValues={":is_best": {"BOOL": False}},
                 )
 
         # Then set the specified checkpoint to is_best=True
@@ -378,7 +377,9 @@ class _JobCheckpoint(
 
     @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve all checkpoints across all jobs from the database.
