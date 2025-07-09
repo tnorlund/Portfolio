@@ -105,6 +105,7 @@ class Receipt(DynamoDBEntity):
         if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
             raise ValueError("cdn_avif_s3_key must be a string")
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt.
 
@@ -158,7 +159,7 @@ class Receipt(DynamoDBEntity):
             dict: A dictionary representing the Receipt object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),

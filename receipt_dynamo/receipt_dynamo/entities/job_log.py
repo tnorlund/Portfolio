@@ -75,6 +75,7 @@ class JobLog:
             raise ValueError("exception must be a string")
         self.exception = exception
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job log.
 
@@ -104,7 +105,7 @@ class JobLog:
             dict: A dictionary representing the JobLog object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_LOG"},
             "log_level": {"S": self.log_level},

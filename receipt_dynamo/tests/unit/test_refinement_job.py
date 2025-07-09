@@ -72,7 +72,7 @@ def test_ocr_job_invalid_status_value():
 
 @pytest.mark.unit
 def test_ocr_job_key_generation(example_ocr_job):
-    assert example_ocr_job.key() == {
+    assert example_ocr_job.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "OCR_JOB#4f52804b-2fad-4e00-92c8-b593da3a8ed3"},
     }

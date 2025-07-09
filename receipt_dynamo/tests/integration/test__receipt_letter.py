@@ -1024,7 +1024,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
     first_response = {
         "UnprocessedItems": {
             dynamodb_table: [
-                {"DeleteRequest": {"Key": sample_receipt_letter.key()}}
+                {"DeleteRequest": {"Key": sample_receipt_letter.key}}
             ]
         }
     }
@@ -1453,7 +1453,7 @@ def test_listReceiptLetters_with_limit(
 
     # Act - Get next batch using last_key
     next_letters, next_last_key = client.list_receipt_letters(
-        limit=2, lastEvaluatedKey=last_key
+        limit=2, last_evaluated_key=last_key
     )
 
     # Assert
@@ -1614,24 +1614,24 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
     [
         ("limit", "invalid", "limit must be an integer or None", ValueError),
         (
-            "lastEvaluatedKey",
+            "last_evaluated_key",
             "invalid",
-            "lastEvaluatedKey must be a dictionary or None",
+            "last_evaluated_key must be a dictionary or None",
             ValueError,
         ),
         ("limit", -1, "Parameter validation failed", ParamValidationError),
         ("limit", 0, "Parameter validation failed", ParamValidationError),
         ("limit", 1.5, "limit must be an integer or None", ValueError),
         (
-            "lastEvaluatedKey",
+            "last_evaluated_key",
             [],
-            "lastEvaluatedKey must be a dictionary or None",
+            "last_evaluated_key must be a dictionary or None",
             ValueError,
         ),
         (
-            "lastEvaluatedKey",
+            "last_evaluated_key",
             123,
-            "lastEvaluatedKey must be a dictionary or None",
+            "last_evaluated_key must be a dictionary or None",
             ValueError,
         ),
     ],
@@ -1647,7 +1647,7 @@ def test_listReceiptLetters_invalid_parameters(
     parameters:
     - When limit is not an integer or None
     - When limit is negative or zero (AWS SDK validation)
-    - When lastEvaluatedKey is not a dictionary or None
+    - When last_evaluated_key is not a dictionary or None
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(expected_exception, match=expected_error):
@@ -1655,7 +1655,7 @@ def test_listReceiptLetters_invalid_parameters(
             client.list_receipt_letters(limit=invalid_value)  # type: ignore
         else:
             client.list_receipt_letters(
-                lastEvaluatedKey=invalid_value,  # type: ignore
+                last_evaluated_key=invalid_value,  # type: ignore
             )
 
 

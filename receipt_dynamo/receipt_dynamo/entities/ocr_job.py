@@ -56,6 +56,7 @@ class OCRJob:
             raise ValueError("receipt_id must be an integer or None")
         self.receipt_id: int | None = receipt_id
 
+    @property
     def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -76,7 +77,7 @@ class OCRJob:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "OCR_JOB"},

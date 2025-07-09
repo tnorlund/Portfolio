@@ -90,6 +90,7 @@ class JobMetric:
         # Epoch validation
         self.epoch = epoch
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job metric.
 
@@ -133,7 +134,7 @@ class JobMetric:
             dict: A dictionary representing the JobMetric object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "JOB_METRIC"},

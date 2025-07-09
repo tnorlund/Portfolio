@@ -439,7 +439,7 @@ def test_letter_init_invalid_angles():
 @pytest.mark.unit
 def test_letter_key(example_letter):
     """Test the Letter.key method"""
-    assert example_letter.key() == {
+    assert example_letter.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00001#WORD#00002#LETTER#00003"},
     }

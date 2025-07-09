@@ -444,7 +444,7 @@ def test_receipt_word_key():
         angle_radians=0.7853981634,
         confidence=0.95,
     )
-    assert word.key() == {
+    assert word.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
     }

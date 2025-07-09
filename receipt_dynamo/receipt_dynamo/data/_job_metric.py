@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -32,7 +36,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobMetric(DynamoClientProtocol):
+class _JobMetric(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_metric")
     def add_job_metric(self, job_metric: JobMetric):
         """Adds a job metric to the database
 
@@ -77,6 +85,7 @@ class _JobMetric(DynamoClientProtocol):
                     f"Could not add job metric to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_job_metric")
     def get_job_metric(
         self, job_id: str, metric_name: str, timestamp: str
     ) -> JobMetric:
@@ -135,12 +144,13 @@ class _JobMetric(DynamoClientProtocol):
             else:
                 raise OperationError(f"Error getting job metric: {e}") from e
 
+    @handle_dynamodb_errors("list_job_metrics")
     def list_job_metrics(
         self,
         job_id: str,
         metric_name: Optional[str] = None,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics for a job from the database.
@@ -149,7 +159,7 @@ class _JobMetric(DynamoClientProtocol):
             job_id (str): The ID of the job to get metrics for.
             metric_name (str, optional): Filter by specific metric name.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -168,10 +178,10 @@ class _JobMetric(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -194,8 +204,8 @@ class _JobMetric(DynamoClientProtocol):
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -242,11 +252,12 @@ class _JobMetric(DynamoClientProtocol):
                     f"Could not list job metrics from the database: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
         self,
         metric_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve all metrics with a specific name across all jobs.
@@ -254,7 +265,7 @@ class _JobMetric(DynamoClientProtocol):
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -274,10 +285,10 @@ class _JobMetric(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -291,8 +302,8 @@ class _JobMetric(DynamoClientProtocol):
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -343,7 +354,7 @@ class _JobMetric(DynamoClientProtocol):
         self,
         metric_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
@@ -354,7 +365,7 @@ class _JobMetric(DynamoClientProtocol):
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -374,10 +385,10 @@ class _JobMetric(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -391,8 +402,8 @@ class _JobMetric(DynamoClientProtocol):
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

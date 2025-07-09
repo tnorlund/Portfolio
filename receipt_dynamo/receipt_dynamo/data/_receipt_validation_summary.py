@@ -1,34 +1,37 @@
-from typing import TYPE_CHECKING, Dict, Optional
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo import (
     ReceiptValidationSummary,
     item_to_receipt_validation_summary,
 )
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        PutTypeDef,
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutTypeDef, TransactWriteItemTypeDef
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    QueryInputTypeDef,
+    WriteRequestTypeDef,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptValidationSummary(DynamoClientProtocol):
+class _ReceiptValidationSummary(
+    DynamoDBBaseOperations, SingleEntityCRUDMixin, BatchOperationsMixin
+):
     """
     A class used to access receipt validation summaries in DynamoDB.
 
@@ -38,488 +41,329 @@ class _ReceiptValidationSummary(DynamoClientProtocol):
         Adds a ReceiptValidationSummary to DynamoDB.
     update_receipt_validation_summary(summary: ReceiptValidationSummary)
         Updates an existing ReceiptValidationSummary in the database.
-    delete_receipt_validation_summary(receipt_id: int, image_id: str)
-        Deletes a ReceiptValidationSummary from DynamoDB.
-    get_receipt_validation_summary(receipt_id: int, image_id: str) -> ReceiptValidationSummary
-        Gets a ReceiptValidationSummary by receipt_id and image_id.
+    update_receipt_validation_summaries(summaries:
+            list[ReceiptValidationSummary])
+        Updates multiple ReceiptValidationSummaries in the database.
+    delete_receipt_validation_summary(summary: ReceiptValidationSummary)
+        Deletes a single ReceiptValidationSummary.
+    get_receipt_validation_summary(
+        receipt_id: int,
+        image_id: str
+    ) -> ReceiptValidationSummary:
+        Retrieves a single ReceiptValidationSummary by IDs.
     list_receipt_validation_summaries(
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[ReceiptValidationSummary], dict | None]
-        Lists all ReceiptValidationSummaries with pagination support.
+        last_evaluated_key: dict | None = None
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
+        Returns ReceiptValidationSummaries and the last evaluated key.
     list_receipt_validation_summaries_by_status(
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[ReceiptValidationSummary], dict | None]
-        Lists ReceiptValidationSummaries by status with pagination support.
-    listReceiptValidationSummariesByReceiptId(
-        receipt_id: int
-    ) -> list[ReceiptValidationSummary]
-        Lists all ReceiptValidationSummaries for a given receipt_id.
-    listReceiptValidationSummariesByImageId(
-        image_id: str
-    ) -> list[ReceiptValidationSummary]
-        Lists all ReceiptValidationSummaries for a given image_id.
+        last_evaluated_key: dict | None = None
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
+        Returns ReceiptValidationSummaries with a specific status.
     """
 
+    @handle_dynamodb_errors("add_receipt_validation_summary")
     def add_receipt_validation_summary(
         self, summary: ReceiptValidationSummary
     ):
         """Adds a ReceiptValidationSummary to DynamoDB.
 
         Args:
-            summary (ReceiptValidationSummary): The ReceiptValidationSummary to add.
+            summary (ReceiptValidationSummary): The ReceiptValidationSummary
+                to add.
 
         Raises:
-            ValueError: If the summary is None or not an instance of ReceiptValidationSummary.
+            ValueError: If the summary is None or not an instance of
+                ReceiptValidationSummary.
             Exception: If the summary cannot be added to DynamoDB.
         """
-        if summary is None:
-            raise ValueError(
-                "summary parameter is required and cannot be None."
-            )
-        if not isinstance(summary, ReceiptValidationSummary):
-            raise ValueError(
-                "summary must be an instance of the ReceiptValidationSummary class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=summary.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add receipt validation summary to DynamoDB: {e}"
-                )
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                )
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
-            else:
-                raise DynamoDBError(
-                    f"Could not add receipt validation summary to DynamoDB: {e}"
-                )
+        self._validate_entity(summary, ReceiptValidationSummary, "summary")
+        self._add_entity(
+            summary,
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
+        )
 
+    @handle_dynamodb_errors("update_receipt_validation_summary")
     def update_receipt_validation_summary(
         self, summary: ReceiptValidationSummary
     ):
         """Updates an existing ReceiptValidationSummary in the database.
 
         Args:
-            summary (ReceiptValidationSummary): The ReceiptValidationSummary to update.
+            summary (ReceiptValidationSummary): The ReceiptValidationSummary
+                to update.
 
         Raises:
-            ValueError: If the summary is None or not an instance of ReceiptValidationSummary.
+            ValueError: If the summary is None or not an instance of
+                ReceiptValidationSummary.
             Exception: If the summary cannot be updated in DynamoDB.
         """
-        if summary is None:
-            raise ValueError(
-                "summary parameter is required and cannot be None."
-            )
-        if not isinstance(summary, ReceiptValidationSummary):
-            raise ValueError(
-                "summary must be an instance of the ReceiptValidationSummary class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=summary.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                )
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
-            else:
-                raise DynamoDBError(
-                    f"Could not update ReceiptValidationSummary in the database: {e}"
-                )
+        self._validate_entity(summary, ReceiptValidationSummary, "summary")
+        self._update_entity(
+            summary,
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
+        )
 
+    @handle_dynamodb_errors("update_receipt_validation_summaries")
     def update_receipt_validation_summaries(
-        self, summaries: list[ReceiptValidationSummary]
+        self, summaries: List[ReceiptValidationSummary]
     ):
-        """Updates a list of ReceiptValidationSummaries in the database.
+        """Updates multiple ReceiptValidationSummaries in the database.
 
         Args:
-            summaries (list[ReceiptValidationSummary]): The ReceiptValidationSummaries to update.
+            summaries (list[ReceiptValidationSummary]): The
+                ReceiptValidationSummaries to update.
 
         Raises:
-            ValueError: If any parameters are invalid.
+            ValueError: If the summaries are None or not a list.
             Exception: If the summaries cannot be updated in DynamoDB.
         """
-        if summaries is None:
-            raise ValueError(
-                "summaries parameter is required and cannot be None."
-            )
-        if not isinstance(summaries, list):
-            raise ValueError("summaries must be a list.")
-        if not all(
-            isinstance(summary, ReceiptValidationSummary)
-            for summary in summaries
-        ):
-            raise ValueError(
-                "All summaries must be instances of the ReceiptValidationSummary class."
-            )
-        for i in range(0, len(summaries), 25):
-            chunk = summaries[i : i + 25]
-            transact_items = [
-                TransactWriteItemTypeDef(
-                    Put=PutTypeDef(
-                        TableName=self.table_name,
-                        Item=summary.to_item(),
-                        ConditionExpression="attribute_exists(PK)",
-                    )
-                )
-                for summary in chunk
-            ]
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "TransactionCanceledException":
-                    # Check if cancellation was due to conditional check failure
-                    if "ConditionalCheckFailed" in str(e):
-                        raise ValueError(
-                            "One or more ReceiptValidationSummaries do not exist"
-                        ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+        self._validate_entity_list(
+            summaries, ReceiptValidationSummary, "summaries"
+        )
 
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=summary.to_item())
+            )
+            for summary in summaries
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("delete_receipt_validation_summary")
     def delete_receipt_validation_summary(
         self, summary: ReceiptValidationSummary
     ):
-        """Deletes a ReceiptValidationSummary from DynamoDB.
+        """Deletes a single ReceiptValidationSummary.
 
         Args:
-            summary (ReceiptValidationSummary): The ReceiptValidationSummary to delete.
+            summary (ReceiptValidationSummary): The ReceiptValidationSummary
+                to delete.
 
         Raises:
-            ValueError: If any parameters are invalid.
+            ValueError: If the summary is None or not an instance of
+                ReceiptValidationSummary.
             Exception: If the summary cannot be deleted from DynamoDB.
         """
-        if summary is None:
-            raise ValueError(
-                "summary parameter is required and cannot be None."
-            )
-        if not isinstance(summary, ReceiptValidationSummary):
-            raise ValueError(
-                "summary must be an instance of the ReceiptValidationSummary class."
-            )
+        self._validate_entity(summary, ReceiptValidationSummary, "summary")
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=summary.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptValidationSummary for receipt {summary.receipt_id} and image {summary.image_id} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                )
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
-            else:
-                raise DynamoDBError(
-                    f"Could not delete ReceiptValidationSummary from the database: {e}"
-                )
+        # Need to use direct delete since summaries don't have key() method
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{summary.image_id}"},
+                "SK": {
+                    "S": f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
+                },
+            },
+        )
 
+    @handle_dynamodb_errors("get_receipt_validation_summary")
     def get_receipt_validation_summary(
         self, receipt_id: int, image_id: str
-    ) -> ReceiptValidationSummary | None:
-        """Gets a ReceiptValidationSummary by receipt_id and image_id.
+    ) -> ReceiptValidationSummary:
+        """Retrieves a single ReceiptValidationSummary by IDs.
 
         Args:
-            receipt_id (int): The receipt ID.
-            image_id (str): The image ID.
-
-        Raises:
-            ValueError: If any parameters are invalid.
-            Exception: If the summary cannot be retrieved from DynamoDB.
+            receipt_id (int): The Receipt ID to query.
+            image_id (str): The Image ID to query.
 
         Returns:
-            ReceiptValidationSummary | None: The retrieved receipt validation summary or None if not found.
+            ReceiptValidationSummary: The retrieved ReceiptValidationSummary.
+
+        Raises:
+            ValueError: If the IDs are invalid.
+            Exception: If the ReceiptValidationSummary cannot be retrieved
+                from DynamoDB.
         """
-        if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
-        if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
-        assert_valid_uuid(image_id)
+        if not isinstance(image_id, str):
+            raise ValueError(
+                f"image_id must be a string, got {type(image_id).__name__}"
+            )
 
         try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"
-                    },
-                },
-            )
-            if "Item" in response:
-                return item_to_receipt_validation_summary(response["Item"])
-            else:
-                return None
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                )
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    "One or more parameters given were invalid"
-                )
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error")
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied")
-            else:
-                raise DynamoDBError(
-                    f"Could not retrieve ReceiptValidationSummary from the database: {e}"
-                )
+            assert_valid_uuid(image_id)
+        except ValueError as e:
+            raise ValueError(f"Invalid image_id format: {e}") from e
 
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"},
+            },
+        )
+
+        item = response.get("Item")
+        if not item:
+            raise ValueError(
+                f"ReceiptValidationSummary for receipt {receipt_id} and "
+                f"image {image_id} does not exist"
+            )
+
+        return item_to_receipt_validation_summary(item)
+
+    @handle_dynamodb_errors("list_receipt_validation_summaries")
     def list_receipt_validation_summaries(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
-    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
-        """Lists all ReceiptValidationSummaries with pagination support.
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        """Returns ReceiptValidationSummaries and the last evaluated key.
 
         Args:
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-
-        Raises:
-            ValueError: If any parameters are invalid.
-            Exception: If the validation summaries cannot be retrieved from DynamoDB.
+            limit (Optional[int], optional): The maximum number of items to
+                return. Defaults to None.
+            last_evaluated_key (Optional[Dict], optional): The key to start
+                from for pagination. Defaults to None.
 
         Returns:
-            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptValidationSummary], dict | None]: A tuple
+                containing the list of ReceiptValidationSummaries and the
+                last evaluated key for pagination.
+
+        Raises:
+            ValueError: If the limit or last_evaluated_key are invalid.
+            Exception: If the ReceiptValidationSummaries cannot be retrieved
+                from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+            raise ValueError("limit must be an integer or None")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+            raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        validation_summaries = []
-        try:
-            # Use GSITYPE to query all validation summaries
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"},
-                },
-            }
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {
+                ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"}
+            },
+        }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
-            if limit is not None:
-                query_params["Limit"] = limit
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
 
-            response = self._client.query(**query_params)
-            validation_summaries.extend(
-                [
-                    item_to_receipt_validation_summary(item)
-                    for item in response["Items"]
-                    if not item["SK"]["S"].endswith("#CATEGORY")
-                    and not "#RESULT#" in item["SK"]["S"]
-                    and not "#CHATGPT#" in item["SK"]["S"]
+        summaries = []
+        response = self._client.query(**query_params)
+        summaries.extend(
+            [
+                item_to_receipt_validation_summary(item)
+                for item in response.get("Items", [])
+            ]
+        )
+
+        if limit is None:
+            # Paginate through all summaries
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
                 ]
-            )
-
-            if limit is None:
-                # Paginate through all the validation summaries
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
+                response = self._client.query(**query_params)
+                summaries.extend(
+                    [
+                        item_to_receipt_validation_summary(item)
+                        for item in response.get("Items", [])
                     ]
-                    response = self._client.query(**query_params)
-                    validation_summaries.extend(
-                        [
-                            item_to_receipt_validation_summary(item)
-                            for item in response["Items"]
-                            if not item["SK"]["S"].endswith("#CATEGORY")
-                            and not "#RESULT#" in item["SK"]["S"]
-                            and not "#CHATGPT#" in item["SK"]["S"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey")
 
-            return validation_summaries, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt validation summaries from DynamoDB: {e}"
-                )
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            else:
-                raise OperationError(
-                    f"Error listing receipt validation summaries: {e}"
-                )
+        return summaries, last_evaluated_key
 
+    @handle_dynamodb_errors("list_receipt_validation_summaries_by_status")
     def list_receipt_validation_summaries_by_status(
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
-    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
-        """Lists ReceiptValidationSummaries by status with pagination support.
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        """Returns ReceiptValidationSummaries with a specific status.
 
         Args:
-            status (str): The validation status to filter by.
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The last evaluated key from a previous request. Defaults to None.
-
-        Raises:
-            ValueError: If any parameters are invalid.
-            Exception: If the validation summaries cannot be retrieved from DynamoDB.
+            status (str): The status to filter by.
+            limit (Optional[int], optional): The maximum number of items to
+                return. Defaults to None.
+            last_evaluated_key (Optional[Dict], optional): The key to start
+                from for pagination. Defaults to None.
 
         Returns:
-            tuple[list[ReceiptValidationSummary], dict | None]: A tuple containing a list of validation summaries and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptValidationSummary], dict | None]: A tuple
+                containing the list of ReceiptValidationSummaries and the
+                last evaluated key for pagination.
+
+        Raises:
+            ValueError: If the parameters are invalid.
+            Exception: If the ReceiptValidationSummaries cannot be retrieved
+                from DynamoDB.
         """
-        if status is None:
-            raise ValueError(
-                "status parameter is required and cannot be None."
-            )
         if not isinstance(status, str):
-            raise ValueError("status must be a string.")
-        if not status:
-            raise ValueError("status must not be empty.")
-        if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
-        ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
-
-        validation_summaries = []
-        try:
-            # Use GSI3 to query validation summaries by status
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI3",
-                "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
-                },
-            }
-
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            validation_summaries.extend(
-                [
-                    item_to_receipt_validation_summary(item)
-                    for item in response["Items"]
-                ]
+            raise ValueError(
+                f"status must be a string, got {type(status).__name__}"
             )
+        if limit is not None and not isinstance(limit, int):
+            raise ValueError("limit must be an integer or None")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise ValueError("last_evaluated_key must be a dictionary or None")
 
-            if limit is None:
-                # Paginate through all the validation summaries
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI2",
+            "KeyConditionExpression": "#gsi2pk = :pk",
+            "ExpressionAttributeNames": {"#gsi2pk": "GSI2PK"},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"VALIDATION_SUMMARY_STATUS#{status}"}
+            },
+        }
+
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        summaries = []
+        response = self._client.query(**query_params)
+        summaries.extend(
+            [
+                item_to_receipt_validation_summary(item)
+                for item in response.get("Items", [])
+            ]
+        )
+
+        if limit is None:
+            # Paginate through all summaries
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+                response = self._client.query(**query_params)
+                summaries.extend(
+                    [
+                        item_to_receipt_validation_summary(item)
+                        for item in response.get("Items", [])
                     ]
-                    response = self._client.query(**query_params)
-                    validation_summaries.extend(
-                        [
-                            item_to_receipt_validation_summary(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey")
 
-            return validation_summaries, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt validation summaries from DynamoDB: {e}"
-                )
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            else:
-                raise OperationError(
-                    f"Error listing receipt validation summaries by status: {e}"
-                )
+        return summaries, last_evaluated_key

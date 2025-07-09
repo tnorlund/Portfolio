@@ -242,7 +242,7 @@ class _Queue(DynamoClientProtocol):
             # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=queue.key(),
+                Key=queue.key,
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
@@ -306,23 +306,23 @@ class _Queue(DynamoClientProtocol):
     def list_queues(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[Queue], Optional[Dict[str, Any]]]:
         """Lists all queues in the DynamoDB table.
 
         Args:
             limit (int, optional): The maximum number of queues to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The pagination token from a previous request. Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
 
         Returns:
             tuple[list[Queue], dict]: A tuple containing a list of Queue objects and the LastEvaluatedKey for pagination.
 
         Raises:
-            ValueError: If the lastEvaluatedKey is invalid.
+            ValueError: If the last_evaluated_key is invalid.
             ClientError: If there is a problem with the DynamoDB service.
         """
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         # Prepare the query parameters
         query_params: QueryInputTypeDef = {
@@ -336,8 +336,8 @@ class _Queue(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             # Execute the query
@@ -432,7 +432,7 @@ class _Queue(DynamoClientProtocol):
             # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=queue_job.key(),
+                Key=queue_job.key,
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
 
@@ -460,20 +460,20 @@ class _Queue(DynamoClientProtocol):
         self,
         queue_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
         """Lists all jobs in a queue in the DynamoDB table.
 
         Args:
             queue_name (str): The name of the queue to list jobs from.
             limit (int, optional): The maximum number of jobs to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The pagination token from a previous request. Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
 
         Returns:
             tuple[list[QueueJob], dict]: A tuple containing a list of QueueJob objects and the LastEvaluatedKey for pagination.
 
         Raises:
-            ValueError: If the queue_name is invalid or the lastEvaluatedKey is invalid.
+            ValueError: If the queue_name is invalid or the last_evaluated_key is invalid.
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
@@ -485,8 +485,8 @@ class _Queue(DynamoClientProtocol):
         except ValueError as e:
             raise e
 
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         # Prepare the query parameters
         query_params: QueryInputTypeDef = {
@@ -502,8 +502,8 @@ class _Queue(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             # Execute the query
@@ -535,27 +535,27 @@ class _Queue(DynamoClientProtocol):
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
         """Finds all queues that contain a specific job.
 
         Args:
             job_id (str): The ID of the job to find queues for.
             limit (int, optional): The maximum number of queues to return. Defaults to None.
-            lastEvaluatedKey (dict, optional): The pagination token from a previous request. Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
 
         Returns:
             tuple[list[QueueJob], dict]: A tuple containing a list of QueueJob objects and the LastEvaluatedKey for pagination.
 
         Raises:
-            ValueError: If the job_id is invalid or the lastEvaluatedKey is invalid.
+            ValueError: If the job_id is invalid or the last_evaluated_key is invalid.
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not job_id:
             raise ValueError("job_id cannot be empty")
 
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         # Prepare the query parameters
         query_params: QueryInputTypeDef = {
@@ -572,8 +572,8 @@ class _Queue(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             # Execute the query

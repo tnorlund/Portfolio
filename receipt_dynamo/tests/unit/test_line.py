@@ -485,8 +485,8 @@ def test_line_init_invalid_confidence():
 
 @pytest.mark.unit
 def test_line_key(example_line):
-    """Test the Line.key() method"""
-    assert example_line.key() == {
+    """Test the Line.key method"""
+    assert example_line.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00001"},
     }
@@ -494,8 +494,8 @@ def test_line_key(example_line):
 
 @pytest.mark.unit
 def test_line_gsi1_key(example_line):
-    """Test the Line.gsi1_key() method"""
-    assert example_line.gsi1_key() == {
+    """Test the Line.gsi1_key property"""
+    assert example_line.gsi1_key == {
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "LINE#00001"},
     }
