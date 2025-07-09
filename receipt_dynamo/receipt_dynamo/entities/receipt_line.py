@@ -95,14 +95,18 @@ class ReceiptLine(DynamoDBEntity):
             self.embedding_status = self.embedding_status.value
         elif isinstance(self.embedding_status, str):
             if self.embedding_status not in [s.value for s in EmbeddingStatus]:
-                raise ValueError(
-                    f"embedding_status must be one of: {', '.join(s.value for s in EmbeddingStatus)}\nGot: {self.embedding_status}"
+                error_message = (
+                    "embedding_status must be one of: "
+                    f"{', '.join(s.value for s in EmbeddingStatus)}\n"
+                    f"Got: {self.embedding_status}"
                 )
+                raise ValueError(error_message)
         else:
             raise ValueError(
                 "embedding_status must be an EmbeddingStatus or a string"
             )
 
+    @property
     def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt line.
@@ -137,10 +141,11 @@ class ReceiptLine(DynamoDBEntity):
         Converts the ReceiptLine object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptLine object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptLine object as a
+                DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_LINE"},
             "text": {"S": self.text},
@@ -253,7 +258,8 @@ class ReceiptLine(DynamoDBEntity):
             y (float): The y-coordinate of the point.
 
         Returns:
-            bool: True if the point is inside the bounding box, False otherwise.
+            bool: True if the point is inside the bounding box, False
+                otherwise.
         """
         return bool(
             self.bounding_box["x"]
@@ -385,7 +391,8 @@ def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
         ReceiptLine: The ReceiptLine object represented by the DynamoDB item.
 
     Raises:
-        ValueError: When the item format is invalid or required keys are missing.
+        ValueError: When the item format is invalid or required keys are
+            missing.
     """
     required_keys = {
         "PK",

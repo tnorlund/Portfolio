@@ -45,7 +45,7 @@ class _Letter(
         Deletes multiple letters from the database.
     get_letter(image_id: str, line_id: int, word_id: int, letter_id: int) -> Letter
         Gets a letter from the database.
-    list_letters(limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
+    list_letters(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
         Lists all letters from the database.
     list_letters_from_word(image_id: str, line_id: int, word_id: int) -> list[Letter]
         Lists all letters from a specific word.
@@ -132,7 +132,7 @@ class _Letter(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=letter.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=letter.key)
             )
             for letter in letters
         ]
@@ -189,13 +189,13 @@ class _Letter(
     def list_letters(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Letter], Optional[Dict]]:
         """Lists all letters in the database
 
         Args:
             limit: Maximum number of items to return
-            lastEvaluatedKey: Key to start from for pagination
+            last_evaluated_key: Key to start from for pagination
 
         Returns:
             Tuple of letters list and last evaluated key for pagination
@@ -210,8 +210,8 @@ class _Letter(
             "ScanIndexForward": True,
         }
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 

@@ -124,6 +124,7 @@ class JobResource:
             raise ValueError("resource_config must be a dictionary")
         self.resource_config: Dict[str, Any] = resource_config or {}
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job resource.
 
@@ -153,7 +154,7 @@ class JobResource:
             dict: A dictionary representing the JobResource object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_RESOURCE"},
             "job_id": {"S": self.job_id},
