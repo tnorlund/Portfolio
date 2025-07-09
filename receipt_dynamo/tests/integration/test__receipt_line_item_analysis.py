@@ -881,9 +881,7 @@ def test_deleteReceiptLineItemAnalysis_success(
     assert "Item" in response
 
     # Act
-    client.delete_receipt_line_item_analysis(
-        sample_receipt_line_item_analysis
-    )
+    client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Assert
     # Verify the analysis was deleted
@@ -904,8 +902,16 @@ def test_deleteReceiptLineItemAnalysis_success(
     "image_id,receipt_id,expected_error",
     [
         (None, 1, "uuid must be a string"),
-        ("test-id", None, "receipt_id must be an integer, got NoneType"),
-        ("test-id", "not-an-int", "receipt_id must be an integer, got str"),
+        (
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            None,
+            "receipt_id must be an integer",
+        ),
+        (
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "not-an-int",
+            "receipt_id must be an integer",
+        ),
         ("invalid-uuid", 1, "uuid must be a valid UUIDv4"),
     ],
 )
@@ -923,16 +929,19 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
     # Try to create an invalid analysis object
     with pytest.raises(ValueError) as excinfo:
         # This will raise ValueError when trying to create the object with invalid parameters
-        from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
         from datetime import datetime
-        
+
+        from receipt_dynamo.entities.receipt_line_item_analysis import (
+            ReceiptLineItemAnalysis,
+        )
+
         analysis = ReceiptLineItemAnalysis(
             image_id=image_id,
             receipt_id=receipt_id,
             timestamp_added=datetime.now(),
             items=[],
             reasoning="Test analysis",
-            version="v1"
+            version="v1",
         )
         client.delete_receipt_line_item_analysis(analysis)
     assert expected_error in str(excinfo.value)
@@ -997,7 +1006,7 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     with pytest.raises(Exception) as excinfo:
         client.delete_receipt_line_item_analysis(
             sample_receipt_line_item_analysis.image_id,
-            sample_receipt_line_item_analysis.receipt_id
+            sample_receipt_line_item_analysis.receipt_id,
         )
     assert expected_error in str(excinfo.value)
 
@@ -1038,7 +1047,10 @@ def test_deleteReceiptLineItemAnalyses_not_found(
     ]
 
     # Act - should not raise an error
-    keys = [(analysis.image_id, analysis.receipt_id) for analysis in non_existent_analyses]
+    keys = [
+        (analysis.image_id, analysis.receipt_id)
+        for analysis in non_existent_analyses
+    ]
     client.delete_receipt_line_item_analyses(keys)
 
     # Assert - The items weren't there to begin with, so no assertions are needed
@@ -1252,7 +1264,12 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        keys = [(sample_receipt_line_item_analysis.image_id, sample_receipt_line_item_analysis.receipt_id)]
+        keys = [
+            (
+                sample_receipt_line_item_analysis.image_id,
+                sample_receipt_line_item_analysis.receipt_id,
+            )
+        ]
         client.delete_receipt_line_item_analyses(keys)
     assert expected_error in str(excinfo.value)
 
