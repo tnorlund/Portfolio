@@ -58,7 +58,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     """
 
     def _handle_client_error(
-        self, error: ClientError, operation: str, context: dict = None
+        self,
+        error: ClientError,
+        operation: str,
+        context: Optional[dict] = None,
     ) -> None:
         """
         Centralized error handling for all DynamoDB operations.
@@ -89,7 +92,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         handler(error, operation, context)
 
     def _handle_conditional_check_failed(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle conditional check failures - usually means entity exists/doesn't exist"""
         entity_context = self._extract_entity_context(context)
@@ -97,60 +100,88 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Special handling for update_images to maintain backward compatibility
         if operation == "update_images":
             raise ValueError("One or more images do not exist") from error
-        
+
         # Special handling for batch update operations
-        if "update_receipt_word_labels" in operation and entity_context == "list":
-            raise ValueError("One or more receipt word labels do not exist") from error
+        if (
+            "update_receipt_word_labels" in operation
+            and entity_context == "list"
+        ):
+            raise ValueError(
+                "One or more receipt word labels do not exist"
+            ) from error
 
         # Special handling for receipt line item analysis operations for backward compatibility
         if "receipt_line_item_analysis" in operation:
             if "update" in operation:
                 # Extract receipt_id from context if available
-                args = context.get("args", [])
+                args = context.get("args", []) if context else []
                 if args and hasattr(args[0], "receipt_id"):
                     receipt_id = args[0].receipt_id
-                    raise ValueError(f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist") from error
-                raise ValueError("ReceiptLineItemAnalysis for receipt ID does not exist") from error
+                    raise ValueError(
+                        f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist"
+                    ) from error
+                raise ValueError(
+                    "ReceiptLineItemAnalysis for receipt ID does not exist"
+                ) from error
             elif "delete" in operation:
                 # Extract receipt_id from context if available
-                args = context.get("args", [])
+                args = context.get("args", []) if context else []
                 if len(args) >= 2 and isinstance(args[1], int):
                     receipt_id = args[1]
-                    raise ValueError(f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist") from error
-                raise ValueError("ReceiptLineItemAnalysis does not exist") from error
-        
+                    raise ValueError(
+                        f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist"
+                    ) from error
+                raise ValueError(
+                    "ReceiptLineItemAnalysis does not exist"
+                ) from error
+
         # Special handling for receipt label analysis batch operations
         if "receipt_label_analyses" in operation:
             if "update" in operation or "delete" in operation:
-                raise ValueError("One or more receipt label analyses do not exist") from error
-        
+                raise ValueError(
+                    "One or more receipt label analyses do not exist"
+                ) from error
+
         # Special handling for job checkpoint operations for backward compatibility
         if "job_checkpoint" in operation and "add" in operation:
-            args = context.get("args", [])
-            if args and hasattr(args[0], "timestamp") and hasattr(args[0], "job_id"):
+            args = context.get("args", []) if context else []
+            if (
+                args
+                and hasattr(args[0], "timestamp")
+                and hasattr(args[0], "job_id")
+            ):
                 checkpoint = args[0]
                 raise ValueError(
                     f"JobCheckpoint with timestamp {checkpoint.timestamp} for job {checkpoint.job_id} already exists"
                 ) from error
-        
+
         # Special handling for job operations for backward compatibility
         if operation == "add_job":
-            args = context.get("args", [])
+            args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
-                raise ValueError(f"Job with ID {job.job_id} already exists") from error
+                raise ValueError(
+                    f"Job with ID {job.job_id} already exists"
+                ) from error
         elif operation == "update_job":
-            from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-            args = context.get("args", [])
+            from receipt_dynamo.data.shared_exceptions import (
+                EntityNotFoundError,
+            )
+
+            args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
-                raise EntityNotFoundError(f"Job with ID {job.job_id} does not exist") from error
+                raise EntityNotFoundError(
+                    f"Job with ID {job.job_id} does not exist"
+                ) from error
             raise EntityNotFoundError("Job does not exist") from error
         elif operation == "delete_job":
-            args = context.get("args", [])
+            args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
-                raise ValueError(f"Job with ID {job.job_id} does not exist") from error
+                raise ValueError(
+                    f"Job with ID {job.job_id} does not exist"
+                ) from error
 
         # Special handling for ReceiptValidationResult to maintain backward compatibility
         if "ReceiptValidationResult with field" in entity_context:
@@ -169,13 +200,15 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ) from error
 
     def _handle_resource_not_found(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle resource not found errors - usually table doesn't exist"""
         # Maintain backward compatibility with error messages
         if operation == "update_images":
-            raise DynamoDBError("Could not update ReceiptValidationResult in the database") from error
-        
+            raise DynamoDBError(
+                "Could not update ReceiptValidationResult in the database"
+            ) from error
+
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
             # Image operations (excluding update_images which has special handling above)
@@ -220,7 +253,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
             "get_receipt_validation_result": "Error getting receipt validation result",
             "list_receipt_validation_results": "Could not list receipt validation results from DynamoDB",
-            "list_receipt_validation_results_by_type": "Could not list receipt validation results from DynamoDB", 
+            "list_receipt_validation_results_by_type": "Could not list receipt validation results from DynamoDB",
             "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
             # Job operations
             "add_job": "Table not found",
@@ -233,7 +266,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "list_jobs": "Could not list jobs from the database",
             "list_jobs_by_status": "Could not list jobs by status from the database",
             "list_jobs_by_user": "Could not list jobs by user from the database",
-            # Word operations  
+            # Word operations
             "add_word": "Table not found",
             "add_words": "Table not found",
             "update_word": "Table not found",
@@ -243,58 +276,84 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "get_word": "Table not found",
             "list_words": "Table not found",
         }
-        
-        message = operation_messages.get(operation, f"Table not found for operation {operation}")
+
+        message = operation_messages.get(
+            operation, f"Table not found for operation {operation}"
+        )
         raise DynamoDBError(message) from error
 
     def _handle_throughput_exceeded(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle throughput exceeded errors"""
         # Use simple error message for backward compatibility
-        raise DynamoDBThroughputError("Provisioned throughput exceeded") from error
+        raise DynamoDBThroughputError(
+            "Provisioned throughput exceeded"
+        ) from error
 
     def _handle_internal_server_error(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle internal server errors"""
-        # Use simple error message for backward compatibility  
+        # Use simple error message for backward compatibility
         raise DynamoDBServerError("Internal server error") from error
 
     def _handle_validation_exception(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle validation errors"""
         # Operations that expect "Validation error in <operation>" format
         validation_error_operations = {
             "get_receipt_line_item_analysis",
-            "add_receipt_field", "update_receipt_field", "delete_receipt_field",
-            "add_receipt_fields", "update_receipt_fields", "delete_receipt_fields",
-            "add_receipt_section", "update_receipt_section", "delete_receipt_section",
-            "add_receipt_sections", "update_receipt_sections", "delete_receipt_sections",
-            "add_receipt_metadata", "update_receipt_metadata", "delete_receipt_metadata",
-            "add_receipt_metadata_batch", "update_receipt_metadata_batch", "delete_receipt_metadata_batch",
-            "add_receipt_letter", "update_receipt_letter", "delete_receipt_letter",
-            "add_receipt_letters", "update_receipt_letters", "delete_receipt_letters",
+            "add_receipt_field",
+            "update_receipt_field",
+            "delete_receipt_field",
+            "add_receipt_fields",
+            "update_receipt_fields",
+            "delete_receipt_fields",
+            "add_receipt_section",
+            "update_receipt_section",
+            "delete_receipt_section",
+            "add_receipt_sections",
+            "update_receipt_sections",
+            "delete_receipt_sections",
+            "add_receipt_metadata",
+            "update_receipt_metadata",
+            "delete_receipt_metadata",
+            "add_receipt_metadata_batch",
+            "update_receipt_metadata_batch",
+            "delete_receipt_metadata_batch",
+            "add_receipt_letter",
+            "update_receipt_letter",
+            "delete_receipt_letter",
+            "add_receipt_letters",
+            "update_receipt_letters",
+            "delete_receipt_letters",
         }
-        
+
         # Operations that expect just "Validation error"
-        simple_validation_operations = {
-            "get_receipt_validation_result"
-        }
-        
+        simple_validation_operations = {"get_receipt_validation_result"}
+
         # Operations that expect raw error message (with "given were" handling)
         raw_message_operations = {
-            "add_receipt_validation_result", "update_receipt_validation_result", 
-            "delete_receipt_validation_result", "add_receipt_validation_results",
-            "update_receipt_validation_results", "delete_receipt_validation_results",
-            "list_receipt_validation_results", "list_receipt_validation_results_by_type",
+            "add_receipt_validation_result",
+            "update_receipt_validation_result",
+            "delete_receipt_validation_result",
+            "add_receipt_validation_results",
+            "update_receipt_validation_results",
+            "delete_receipt_validation_results",
+            "list_receipt_validation_results",
+            "list_receipt_validation_results_by_type",
             "list_receipt_validation_results_for_field",
-            "add_receipt_line_item_analyses", "update_receipt_line_item_analyses",
+            "add_receipt_line_item_analyses",
+            "update_receipt_line_item_analyses",
             "delete_receipt_line_item_analyses",
-            "update_receipt_word_label", "update_receipt_word_labels"
+            "update_receipt_word_label",
+            "update_receipt_word_labels",
+            "delete_receipt_word_label",
+            "delete_receipt_word_labels",
         }
-        
+
         if operation in validation_error_operations:
             raise DynamoDBValidationError(
                 f"Validation error in {operation}: {error}"
@@ -303,73 +362,107 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise DynamoDBValidationError("Validation error") from error
         elif operation in raw_message_operations:
             # Extract original error message and apply standard message processing
-            error_message = error.response.get("Error", {}).get("Message", str(error))
+            error_message = error.response.get("Error", {}).get(
+                "Message", str(error)
+            )
             # Apply "given were" transformation for these operations
             if "One or more parameters were invalid" in error_message:
                 error_message = error_message.replace(
-                    "One or more parameters were invalid", 
-                    "One or more parameters given were invalid"
+                    "One or more parameters were invalid",
+                    "One or more parameters given were invalid",
                 )
             raise DynamoDBValidationError(error_message) from error
-        
+
         # Extract original error message for backward compatibility
-        error_message = error.response.get("Error", {}).get("Message", str(error))
-        
+        error_message = error.response.get("Error", {}).get(
+            "Message", str(error)
+        )
+
         # Replace "given were" with "were" for operations that expect it
         # For receipt_label_analysis operations - they expect just "were"
-        if "receipt_label_analysis" in operation or "receipt_label_analyses" in operation:
+        if (
+            "receipt_label_analysis" in operation
+            or "receipt_label_analyses" in operation
+        ):
             if "One or more parameters given were invalid" in error_message:
                 error_message = error_message.replace(
-                    "One or more parameters given were invalid", 
-                    "One or more parameters were invalid"
+                    "One or more parameters given were invalid",
+                    "One or more parameters were invalid",
                 )
         # For receipt_line_item_analysis operations - they expect "given were"
         elif "receipt_line_item_analysis" in operation:
             if "One or more parameters were invalid" in error_message:
                 error_message = error_message.replace(
-                    "One or more parameters were invalid", 
-                    "One or more parameters given were invalid"
+                    "One or more parameters were invalid",
+                    "One or more parameters given were invalid",
                 )
         # For receipt_validation_result operations - don't modify the message
-        elif operation in simple_validation_operations or operation in raw_message_operations:
+        elif (
+            operation in simple_validation_operations
+            or operation in raw_message_operations
+        ):
             pass  # Keep original message
-        
+
         raise DynamoDBValidationError(error_message) from error
 
     def _handle_access_denied(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle access denied errors"""
         # Operations that expect "Access denied for <operation>" format
         access_denied_operations = {
-            "add_receipt_field", "update_receipt_field", "delete_receipt_field",
-            "add_receipt_fields", "update_receipt_fields", "delete_receipt_fields",
-            "add_receipt_section", "update_receipt_section", "delete_receipt_section", 
-            "add_receipt_sections", "update_receipt_sections", "delete_receipt_sections",
-            "add_receipt_metadata", "update_receipt_metadata", "delete_receipt_metadata",
-            "add_receipt_metadata_batch", "update_receipt_metadata_batch", "delete_receipt_metadata_batch",
-            "add_receipt_letter", "update_receipt_letter", "delete_receipt_letter",
-            "add_receipt_letters", "update_receipt_letters", "delete_receipt_letters",
+            "add_receipt_field",
+            "update_receipt_field",
+            "delete_receipt_field",
+            "add_receipt_fields",
+            "update_receipt_fields",
+            "delete_receipt_fields",
+            "add_receipt_section",
+            "update_receipt_section",
+            "delete_receipt_section",
+            "add_receipt_sections",
+            "update_receipt_sections",
+            "delete_receipt_sections",
+            "add_receipt_metadata",
+            "update_receipt_metadata",
+            "delete_receipt_metadata",
+            "add_receipt_metadata_batch",
+            "update_receipt_metadata_batch",
+            "delete_receipt_metadata_batch",
+            "add_receipt_letter",
+            "update_receipt_letter",
+            "delete_receipt_letter",
+            "add_receipt_letters",
+            "update_receipt_letters",
+            "delete_receipt_letters",
         }
-        
+
         if operation in access_denied_operations:
-            raise DynamoDBAccessError(f"Access denied for {operation}") from error
-        
+            raise DynamoDBAccessError(
+                f"Access denied for {operation}"
+            ) from error
+
         # Use simple "Access denied" message for other operations
         raise DynamoDBAccessError("Access denied") from error
 
     def _handle_transaction_cancelled(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle transaction cancellation errors"""
         if "ConditionalCheckFailed" in str(error):
             # Special handling for receipt line item analyses batch operations
             if "update_receipt_line_item_analyses" in operation:
-                raise ValueError("One or more ReceiptLineItemAnalyses do not exist") from error
+                raise ValueError(
+                    "One or more ReceiptLineItemAnalyses do not exist"
+                ) from error
             elif "update_receipt_label_analyses" in operation:
-                raise ValueError("One or more receipt label analyses do not exist") from error
+                raise ValueError(
+                    "One or more receipt label analyses do not exist"
+                ) from error
             elif "update_receipt_word_labels" in operation:
-                raise ValueError("One or more receipt word labels do not exist") from error
+                raise ValueError(
+                    "One or more receipt word labels do not exist"
+                ) from error
             raise ValueError(
                 "One or more entities do not exist or conditions failed"
             ) from error
@@ -379,10 +472,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ) from error
 
     def _handle_unknown_error(
-        self, error: ClientError, operation: str, context: dict
+        self, error: ClientError, operation: str, context: Optional[dict]
     ):
         """Handle any other unknown errors"""
-        
+
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
             # Image operations
@@ -427,11 +520,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
             "get_receipt_validation_result": "Error getting receipt validation result",
             "list_receipt_validation_results": "Error listing receipt validation results",
-            "list_receipt_validation_results_by_type": "Error listing receipt validation results", 
+            "list_receipt_validation_results_by_type": "Error listing receipt validation results",
             "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
             # Receipt word label operations
             "update_receipt_word_label": "Error updating receipt word labels",
             "update_receipt_word_labels": "Error updating receipt word labels",
+            "delete_receipt_word_label": "Error deleting receipt word label",
+            "delete_receipt_word_labels": "Error deleting receipt word labels",
             # Job operations
             "add_job": "Something unexpected",
             "add_jobs": "Something unexpected",
@@ -453,11 +548,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "get_word": "Something unexpected",
             "list_words": "Something unexpected",
         }
-        
-        message = operation_messages.get(operation, f"Unknown error in {operation}: {error}")
+
+        message = operation_messages.get(
+            operation, f"Unknown error in {operation}: {error}"
+        )
         raise DynamoDBError(message) from error
 
-    def _extract_entity_context(self, context: dict) -> str:
+    def _extract_entity_context(self, context: Optional[dict]) -> str:
         """Extract entity information from context for error messages"""
         if not context or "args" not in context:
             return "unknown entity"
@@ -512,19 +609,33 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if entity is None:
             # Special handling for specific parameters
             if param_name == "job_checkpoint":
-                raise ValueError("JobCheckpoint parameter is required and cannot be None.")
+                raise ValueError(
+                    "JobCheckpoint parameter is required and cannot be None."
+                )
             elif param_name == "ReceiptLabelAnalysis":
-                raise ValueError("ReceiptLabelAnalysis parameter is required and cannot be None.")
+                raise ValueError(
+                    "ReceiptLabelAnalysis parameter is required and cannot be None."
+                )
             elif param_name == "ReceiptField":
-                raise ValueError("ReceiptField parameter is required and cannot be None.")
+                raise ValueError(
+                    "ReceiptField parameter is required and cannot be None."
+                )
             elif param_name == "image":
-                raise ValueError("image parameter is required and cannot be None.")
+                raise ValueError(
+                    "image parameter is required and cannot be None."
+                )
             elif param_name == "letter":
-                raise ValueError("Letter parameter is required and cannot be None.")
+                raise ValueError(
+                    "Letter parameter is required and cannot be None."
+                )
             elif param_name == "job":
-                raise ValueError("Job parameter is required and cannot be None.")
+                raise ValueError(
+                    "Job parameter is required and cannot be None."
+                )
             elif param_name == "result":
-                raise ValueError("result parameter is required and cannot be None.")
+                raise ValueError(
+                    "result parameter is required and cannot be None."
+                )
             elif param_name == "job_dependency":
                 raise ValueError("job_dependency cannot be None.")
             elif param_name == "job_log":
@@ -608,15 +719,25 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if entities is None:
             # Special handling for specific parameters
             if param_name == "receipt_label_analyses":
-                raise ValueError("ReceiptLabelAnalyses parameter is required and cannot be None.")
+                raise ValueError(
+                    "ReceiptLabelAnalyses parameter is required and cannot be None."
+                )
             elif param_name == "ReceiptFields":
-                raise ValueError("ReceiptFields parameter is required and cannot be None.")
+                raise ValueError(
+                    "ReceiptFields parameter is required and cannot be None."
+                )
             elif param_name == "images":
-                raise ValueError("images parameter is required and cannot be None.")
+                raise ValueError(
+                    "images parameter is required and cannot be None."
+                )
             elif param_name == "results":
-                raise ValueError("results parameter is required and cannot be None.")
+                raise ValueError(
+                    "results parameter is required and cannot be None."
+                )
             elif param_name == "receipt_word_labels":
-                raise ValueError("ReceiptWordLabels parameter is required and cannot be None.")
+                raise ValueError(
+                    "ReceiptWordLabels parameter is required and cannot be None."
+                )
             else:
                 # Capitalize first letter for backward compatibility
                 param_display = param_name[0].upper() + param_name[1:]
@@ -631,23 +752,33 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif param_name == "words":
                 raise ValueError("Words must be provided as a list.")
             elif param_name == "receipt_label_analyses":
-                raise ValueError("receipt_label_analyses must be a list of ReceiptLabelAnalysis instances.")
+                raise ValueError(
+                    "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances."
+                )
             elif param_name == "ReceiptFields":
-                raise ValueError("ReceiptFields must be a list of ReceiptField instances.")
+                raise ValueError(
+                    "ReceiptFields must be a list of ReceiptField instances."
+                )
             elif param_name == "jobs":
                 raise ValueError("jobs must be a list of Job instances.")
             elif param_name == "images":
                 raise ValueError("images must be a list of Image instances.")
             elif param_name == "results":
-                raise ValueError("results must be a list of ReceiptValidationResult instances.")
+                raise ValueError(
+                    "results must be a list of ReceiptValidationResult instances."
+                )
             elif param_name == "letters":
                 raise ValueError("Letters must be provided as a list.")
             elif param_name == "receipt_word_labels":
-                raise ValueError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
+                raise ValueError(
+                    "receipt_word_labels must be a list of ReceiptWordLabel instances."
+                )
             else:
                 # Default handling for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
-                raise ValueError(f"{param_display} must be a list of {entity_class.__name__} instances.")
+                raise ValueError(
+                    f"{param_display} must be a list of {entity_class.__name__} instances."
+                )
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             # Special handling for specific parameters
