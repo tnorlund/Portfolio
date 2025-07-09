@@ -3,6 +3,7 @@
 This refactored version reduces code from ~652 lines to ~210 lines (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo import (
@@ -19,7 +20,18 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+else:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 class _ReceiptLineItemAnalysis(
@@ -50,7 +62,7 @@ class _ReceiptLineItemAnalysis(
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
         self._add_entity(
             analysis,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("add_receipt_line_item_analyses")
@@ -66,10 +78,14 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be added to DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
+
         request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -90,7 +106,7 @@ class _ReceiptLineItemAnalysis(
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
         self._update_entity(
             analysis,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )
 
     @handle_dynamodb_errors("update_receipt_line_item_analyses")
@@ -106,10 +122,14 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
+
         request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -143,14 +163,14 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are invalid.
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
+
         request_items = [
-            {
-                "DeleteRequest": {
-                    "Key": analysis.key
-                }
-            }
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=analysis.key)
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -210,7 +230,7 @@ class _ReceiptLineItemAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): The key to start from.
 
         Returns:
-            Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]: 
+            Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]:
                 The analyses and last evaluated key.
 
         Raises:
@@ -219,8 +239,12 @@ class _ReceiptLineItemAnalysis(
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         line_item_analyses = []
         query_params: QueryInputTypeDef = {
@@ -248,7 +272,9 @@ class _ReceiptLineItemAnalysis(
         if limit is None:
             # Paginate through all analyses
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 line_item_analyses.extend(
                     [

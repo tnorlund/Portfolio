@@ -3,6 +3,7 @@
 This refactored version reduces code from ~944 lines to ~300 lines (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data._base import DynamoClientProtocol
@@ -20,7 +21,18 @@ from receipt_dynamo.entities.receipt_label_analysis import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
+else:
+    from receipt_dynamo.data._base import (
+        DeleteRequestTypeDef,
+        PutRequestTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -64,7 +76,9 @@ class _ReceiptLabelAnalysis(
                 exists
         """
         self._validate_entity(
-            receipt_label_analysis, ReceiptLabelAnalysis, "ReceiptLabelAnalysis"
+            receipt_label_analysis,
+            ReceiptLabelAnalysis,
+            "ReceiptLabelAnalysis",
         )
         self._add_entity(receipt_label_analysis)
 
@@ -83,11 +97,15 @@ class _ReceiptLabelAnalysis(
                 exists
         """
         self._validate_entity_list(
-            receipt_label_analyses, ReceiptLabelAnalysis, "receipt_label_analyses"
+            receipt_label_analyses,
+            ReceiptLabelAnalysis,
+            "receipt_label_analyses",
         )
-        
+
         request_items = [
-            {"PutRequest": {"Item": analysis.to_item()}} 
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in receipt_label_analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -107,7 +125,9 @@ class _ReceiptLabelAnalysis(
                 exist
         """
         self._validate_entity(
-            receipt_label_analysis, ReceiptLabelAnalysis, "ReceiptLabelAnalysis"
+            receipt_label_analysis,
+            ReceiptLabelAnalysis,
+            "ReceiptLabelAnalysis",
         )
         self._update_entity(receipt_label_analysis)
 
@@ -126,16 +146,18 @@ class _ReceiptLabelAnalysis(
                 exist
         """
         self._validate_entity_list(
-            receipt_label_analyses, ReceiptLabelAnalysis, "receipt_label_analyses"
+            receipt_label_analyses,
+            ReceiptLabelAnalysis,
+            "receipt_label_analyses",
         )
-        
+
         # Use transactional writes for updates to ensure items exist
         transact_items = [
             {
                 "Put": {
                     "TableName": self.table_name,
                     "Item": analysis.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
                 }
             }
             for analysis in receipt_label_analyses
@@ -157,7 +179,9 @@ class _ReceiptLabelAnalysis(
                 exist
         """
         self._validate_entity(
-            receipt_label_analysis, ReceiptLabelAnalysis, "ReceiptLabelAnalysis"
+            receipt_label_analysis,
+            ReceiptLabelAnalysis,
+            "ReceiptLabelAnalysis",
         )
         self._delete_entity(receipt_label_analysis)
 
@@ -176,16 +200,18 @@ class _ReceiptLabelAnalysis(
                 exist
         """
         self._validate_entity_list(
-            receipt_label_analyses, ReceiptLabelAnalysis, "receipt_label_analyses"
+            receipt_label_analyses,
+            ReceiptLabelAnalysis,
+            "receipt_label_analyses",
         )
-        
+
         # Use transactional writes for deletes to ensure items exist
         transact_items = [
             {
                 "Delete": {
                     "TableName": self.table_name,
                     "Key": analysis.key,
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
                 }
             }
             for analysis in receipt_label_analyses
@@ -214,7 +240,7 @@ class _ReceiptLabelAnalysis(
             raise ValueError("Image ID is required and cannot be None.")
         if receipt_id is None:
             raise ValueError("Receipt ID is required and cannot be None.")
-            
+
         # Then check types
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string")
@@ -226,7 +252,7 @@ class _ReceiptLabelAnalysis(
             raise ValueError(
                 f"version must be a string or None, got {type(version).__name__}"
             )
-            
+
         # Check for positive integers
         if receipt_id <= 0:
             raise ValueError("Receipt ID must be a positive integer.")
@@ -239,7 +265,9 @@ class _ReceiptLabelAnalysis(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"},
+                    "SK": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"
+                    },
                 },
             )
             item = response.get("Item")
@@ -260,7 +288,9 @@ class _ReceiptLabelAnalysis(
                 },
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
+                    ":sk_prefix": {
+                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
+                    },
                 },
                 "Limit": 1,
             }
@@ -327,7 +357,9 @@ class _ReceiptLabelAnalysis(
         if limit is None:
             # Paginate through all analyses
             while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
@@ -411,7 +443,7 @@ class _ReceiptLabelAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
 
         Returns:
-            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: 
+            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
@@ -463,8 +495,12 @@ class _ReceiptLabelAnalysis(
 
         if limit is None:
             # If no limit is provided, paginate until all items are retrieved
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
@@ -496,7 +532,7 @@ class _ReceiptLabelAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
 
         Returns:
-            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: 
+            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
@@ -529,7 +565,9 @@ class _ReceiptLabelAnalysis(
             },
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
+                },
             },
         }
 
@@ -549,8 +587,12 @@ class _ReceiptLabelAnalysis(
 
         if limit is None:
             # If no limit is provided, paginate until all items are retrieved
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
