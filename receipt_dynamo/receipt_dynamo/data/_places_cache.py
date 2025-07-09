@@ -364,7 +364,9 @@ class _PlacesCache(DynamoClientProtocol):
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         places_caches = []
         try:

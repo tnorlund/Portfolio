@@ -423,7 +423,9 @@ class _ReceiptMetadata(
         return [item_to_receipt_metadata(result) for result in results]
 
     def list_receipt_metadatas(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
