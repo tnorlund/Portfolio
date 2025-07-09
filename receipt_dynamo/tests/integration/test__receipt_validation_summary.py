@@ -124,22 +124,18 @@ def test_addReceiptValidationSummary_duplicate_raises(
         )
 
     # Check that the error message contains useful information
-    receipt_id = sample_receipt_validation_summary.receipt_id
-    image_id = sample_receipt_validation_summary.image_id
-    assert (
-        f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} already exists"
-        in str(excinfo.value)
-    )
+    assert "Entity already exists" in str(excinfo.value)
+    assert "ReceiptValidationSummary" in str(excinfo.value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "summary parameter is required and cannot be None."),
+        (None, "Summary parameter is required and cannot be None."),
         (
             "not-a-validation-summary",
-            "summary must be an instance of the ReceiptValidationSummary class.",
+            "Summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -175,12 +171,12 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptValidationSummary for receipt .* and image .* already exists",
+            "Entity already exists: ReceiptValidationSummary",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt validation summary to DynamoDB",
+            "Table not found for operation add_receipt_validation_summary",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -195,7 +191,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt validation summary to DynamoDB",
+            "Unknown error in add_receipt_validation_summary",
         ),
         (
             "ValidationException",
@@ -354,11 +350,8 @@ def test_updateReceiptValidationSummary_not_exists_raises(
         )
 
     # Check that the error message contains useful information
-    receipt_id = sample_receipt_validation_summary.receipt_id
-    image_id = sample_receipt_validation_summary.image_id
-    assert (
-        f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} does not exist"
-        in str(excinfo.value)
+    assert "Entity does not exist: ReceiptValidationSummary" in str(
+        excinfo.value
     )
 
 
@@ -366,10 +359,10 @@ def test_updateReceiptValidationSummary_not_exists_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "summary parameter is required and cannot be None."),
+        (None, "Summary parameter is required and cannot be None."),
         (
             "not a ReceiptValidationSummary",
-            "summary must be an instance of the ReceiptValidationSummary class.",
+            "Summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -405,7 +398,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationSummary for receipt",
+            "Entity does not exist: ReceiptValidationSummary",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -420,7 +413,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationSummary in the database",
+            "Table not found for operation update_receipt_validation_summary",
         ),
         (
             "ValidationException",
@@ -435,7 +428,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationSummary in the database",
+            "Unknown error in update_receipt_validation_summary",
         ),
     ],
 )
@@ -523,27 +516,25 @@ def test_deleteReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_deleteReceiptValidationSummary_not_exists_raises(
+def test_deleteReceiptValidationSummary_not_exists_succeeds(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
-    """Test deleting a non-existent ReceiptValidationSummary raises an error."""
+    """Test deleting a non-existent ReceiptValidationSummary succeeds (idempotent)."""
     # Create a DynamoDB client with the table name from the fixture
     client = DynamoClient(table_name=dynamodb_table)
 
     # Attempt to delete a validation summary that wasn't previously added
-    with pytest.raises(ValueError) as excinfo:
-        client.delete_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+    # This should succeed without error (idempotent delete)
+    client.delete_receipt_validation_summary(sample_receipt_validation_summary)
 
-    # Check that the error message contains useful information
-    receipt_id = sample_receipt_validation_summary.receipt_id
-    image_id = sample_receipt_validation_summary.image_id
-    assert (
-        f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} does not exist"
-        in str(excinfo.value)
-    )
+    # Verify we can still try to get it and it doesn't exist
+    with pytest.raises(ValueError) as excinfo:
+        client.get_receipt_validation_summary(
+            receipt_id=sample_receipt_validation_summary.receipt_id,
+            image_id=sample_receipt_validation_summary.image_id,
+        )
+    assert "does not exist" in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -603,12 +594,12 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationSummary for receipt .* and image .* does not exist",
+            "Entity does not exist: ReceiptValidationSummary",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationSummary from the database",
+            "Table not found for operation delete_receipt_validation_summary",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -633,7 +624,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationSummary from the database",
+            "Unknown error in delete_receipt_validation_summary",
         ),
     ],
 )
@@ -725,22 +716,28 @@ def test_getReceiptValidationSummary_success(
 
 
 @pytest.mark.integration
-def test_getReceiptValidationSummary_not_exists_returns_none(
+def test_getReceiptValidationSummary_not_exists_raises_error(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_summary: ReceiptValidationSummary,
 ):
-    """Test retrieving a non-existent ReceiptValidationSummary returns None."""
+    """Test retrieving a non-existent ReceiptValidationSummary raises ValueError."""
     # Create a DynamoDB client with the table name from the fixture
     client = DynamoClient(table_name=dynamodb_table)
 
     # Attempt to retrieve a validation summary that wasn't previously added
-    result = client.get_receipt_validation_summary(
-        receipt_id=sample_receipt_validation_summary.receipt_id,
-        image_id=sample_receipt_validation_summary.image_id,
-    )
+    with pytest.raises(ValueError) as excinfo:
+        client.get_receipt_validation_summary(
+            receipt_id=sample_receipt_validation_summary.receipt_id,
+            image_id=sample_receipt_validation_summary.image_id,
+        )
 
-    # Verify the result is None
-    assert result is None
+    # Verify the error message
+    receipt_id = sample_receipt_validation_summary.receipt_id
+    image_id = sample_receipt_validation_summary.image_id
+    assert (
+        f"ReceiptValidationSummary for receipt {receipt_id} and image {image_id} does not exist"
+        in str(excinfo.value)
+    )
 
 
 @pytest.mark.integration
@@ -750,15 +747,19 @@ def test_getReceiptValidationSummary_not_exists_returns_none(
         (
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id must be an integer, got NoneType",
         ),
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id must be an integer.",
+            "receipt_id must be an integer",
         ),
-        (12345, None, "image_id parameter is required and cannot be None."),
-        (12345, "invalid-uuid", "uuid must be a valid UUIDv4"),
+        (12345, None, "image_id must be a string, got NoneType"),
+        (
+            12345,
+            "invalid-uuid",
+            "Invalid image_id format: uuid must be a valid UUIDv4",
+        ),
     ],
 )
 def test_getReceiptValidationSummary_invalid_parameters(
@@ -788,7 +789,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not retrieve ReceiptValidationSummary from the database",
+            "Table not found for operation get_receipt_validation_summary",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -803,7 +804,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",
@@ -813,7 +814,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not retrieve ReceiptValidationSummary from the database",
+            "Unknown error in get_receipt_validation_summary",
         ),
     ],
 )

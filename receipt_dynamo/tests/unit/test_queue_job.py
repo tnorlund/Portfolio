@@ -157,8 +157,8 @@ def test_queue_job_init_invalid_position():
 
 @pytest.mark.unit
 def test_queue_job_key(example_queue_job):
-    """QueueJob.key() method returns the correct primary key."""
-    key = example_queue_job.key()
+    """QueueJob.key method returns the correct primary key."""
+    key = example_queue_job.key
     assert key["PK"] == {"S": "QUEUE#test-queue"}
     assert key["SK"] == {"S": "JOB#12345678-1234-4678-9234-567812345678"}
 

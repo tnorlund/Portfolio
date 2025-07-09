@@ -167,8 +167,8 @@ def test_job_log_init_invalid_exception():
 
 @pytest.mark.unit
 def test_job_log_key(example_job_log):
-    """Test the JobLog.key() method."""
-    assert example_job_log.key() == {
+    """Test the JobLog.key method."""
+    assert example_job_log.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LOG#2021-01-01T12:30:45"},
     }

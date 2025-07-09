@@ -371,7 +371,7 @@ def test_validation_summary_init_invalid_timestamp_updated():
 @pytest.mark.unit
 def test_key(example_validation_summary):
     """Test the key property"""
-    assert example_validation_summary.key() == {
+    assert example_validation_summary.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION"},
     }

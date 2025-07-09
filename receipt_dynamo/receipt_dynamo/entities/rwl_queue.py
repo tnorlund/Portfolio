@@ -78,6 +78,7 @@ class Queue:
             raise ValueError("job_count must be a non-negative integer")
         self.job_count: int = job_count
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the queue.
 
@@ -104,7 +105,7 @@ class Queue:
             dict: A dictionary representing the Queue object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "QUEUE"},
             "description": {"S": self.description},

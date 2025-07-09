@@ -126,7 +126,7 @@ def test_listBatchSummaries_with_limit_and_LEK(
     assert len(first_page) == 1
     assert lek is not None
     second_page, lek2 = client.list_batch_summaries(
-        limit=1, lastEvaluatedKey=lek
+        limit=1, last_evaluated_key=lek
     )
     assert len(second_page) == 1
 
