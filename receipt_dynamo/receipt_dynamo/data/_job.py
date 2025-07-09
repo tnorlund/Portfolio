@@ -91,6 +91,7 @@ class _Job(
     list_jobs_by_user(user_id: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
         Lists jobs created by a specific user.
     """
+
     @handle_dynamodb_errors("add_job")
     def add_job(self, job: Job):
         """Adds a job to the database
@@ -238,9 +239,7 @@ class _Job(
         if "Item" in response:
             return item_to_job(response["Item"])
         else:
-            raise EntityNotFoundError(
-                f"Job with ID {job_id} does not exist."
-            )
+            raise EntityNotFoundError(f"Job with ID {job_id} does not exist.")
 
     @handle_dynamodb_errors("get_job_with_status")
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
@@ -281,7 +280,9 @@ class _Job(
 
     @handle_dynamodb_errors("list_jobs")
     def list_jobs(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records from the database with support for pagination.
@@ -392,7 +393,8 @@ class _Job(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
-                k in last_evaluated_key for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+                k in last_evaluated_key
+                for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
@@ -478,7 +480,8 @@ class _Job(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
-                k in last_evaluated_key for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+                k in last_evaluated_key
+                for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"

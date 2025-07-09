@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.job_dependency import JobDependency
 from receipt_dynamo.data.shared_exceptions import DynamoDBError
+from receipt_dynamo.entities.job_dependency import JobDependency
 
 
 @pytest.fixture
@@ -126,7 +126,9 @@ def test_addJobDependency_raises_resource_not_found(
     )
 
     # Attempt to add the job dependency
-    with pytest.raises(DynamoDBError, match="Table not found for operation add_job_dependency"):
+    with pytest.raises(
+        DynamoDBError, match="Table not found for operation add_job_dependency"
+    ):
         job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
 
