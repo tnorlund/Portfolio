@@ -1828,7 +1828,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1988,7 +1988,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",
