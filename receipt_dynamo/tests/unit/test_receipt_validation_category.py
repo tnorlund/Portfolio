@@ -316,8 +316,8 @@ def test_validation_category_init_invalid_metadata():
 
 @pytest.mark.unit
 def test_key(example_validation_category):
-    """Test the key method"""
-    assert example_validation_category.key() == {
+    """Test the key property"""
+    assert example_validation_category.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#payment_info"},
     }

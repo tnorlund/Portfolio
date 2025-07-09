@@ -401,8 +401,8 @@ def test_validation_result_init_invalid_metadata():
 
 @pytest.mark.unit
 def test_key(example_validation_result):
-    """Test the key method"""
-    assert example_validation_result.key() == {
+    """Test the key property"""
+    assert example_validation_result.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {
             "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#total_amount#RESULT#0"
