@@ -209,6 +209,13 @@ class _ReceiptLabelAnalysis(
         Raises:
             ValueError: When the receipt label analysis does not exist
         """
+        # Check for None values first
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required and cannot be None.")
+            
+        # Then check types
         if not isinstance(image_id, str):
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
@@ -221,6 +228,10 @@ class _ReceiptLabelAnalysis(
             raise ValueError(
                 f"version must be a string or None, got {type(version).__name__}"
             )
+            
+        # Check for positive integers
+        if receipt_id <= 0:
+            raise ValueError("Receipt ID must be a positive integer.")
 
         assert_valid_uuid(image_id)
 
