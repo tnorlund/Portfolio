@@ -223,7 +223,7 @@ class _ReceiptValidationResult(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=result.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=result.key)
             )
             for result in results
         ]

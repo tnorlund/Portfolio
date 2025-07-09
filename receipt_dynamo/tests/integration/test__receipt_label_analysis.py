@@ -138,7 +138,7 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -278,8 +278,8 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -477,8 +477,8 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -688,8 +688,8 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -883,8 +883,8 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1051,8 +1051,8 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1240,7 +1240,7 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error",
         ),
         (
@@ -1470,8 +1470,8 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",

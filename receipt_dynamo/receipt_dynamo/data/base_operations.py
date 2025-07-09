@@ -313,7 +313,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         
         # Replace "given were" with "were" for operations that expect it
         # For receipt_label_analysis operations - they expect just "were"
-        if "receipt_label_analysis" in operation:
+        if "receipt_label_analysis" in operation or "receipt_label_analyses" in operation:
             if "One or more parameters given were invalid" in error_message:
                 error_message = error_message.replace(
                     "One or more parameters given were invalid", 
@@ -721,12 +721,12 @@ class SingleEntityCRUDMixin:
         Generic delete operation with error handling.
 
         Args:
-            entity: Entity to delete (must have key() method)
+            entity: Entity to delete (must have key property)
             condition_expression: DynamoDB condition for the operation
         """
         self._client.delete_item(
             TableName=self.table_name,
-            Key=entity.key(),
+            Key=entity.key,
             ConditionExpression=condition_expression,
         )
 

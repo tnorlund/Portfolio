@@ -155,7 +155,7 @@ def test_addReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -377,7 +377,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -528,7 +528,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -745,7 +745,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             None,
             DynamoDBValidationError,
@@ -909,7 +909,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -1004,7 +1004,7 @@ def test_deleteReceiptValidationResults_success(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -1066,7 +1066,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1212,7 +1212,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -1369,7 +1369,7 @@ def test_getReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error",
         ),
         (
@@ -1646,7 +1646,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -2011,7 +2011,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -2174,7 +2174,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
                     "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
                 },
                 "SK": {
-                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
+                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
                 "receipt_id": {
                     "N": str(sample_receipt_validation_result.receipt_id)
@@ -2212,7 +2212,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
         "LastEvaluatedKey": {
             "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
             },
         },
     }
@@ -2223,7 +2223,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
             {
                 "PK": {"S": f"IMAGE#{result2.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result2.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result2.field_name}#RESULT#1"
+                    "S": f"RECEIPT#{result2.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result2.field_name}#RESULT#1"
                 },
                 "receipt_id": {"N": str(result2.receipt_id)},
                 "image_id": {"S": result2.image_id},
@@ -2407,7 +2407,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (

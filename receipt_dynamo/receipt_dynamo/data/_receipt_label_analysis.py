@@ -184,7 +184,7 @@ class _ReceiptLabelAnalysis(
             {
                 "Delete": {
                     "TableName": self.table_name,
-                    "Key": analysis.key(),
+                    "Key": analysis.key,
                     "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
                 }
             }
