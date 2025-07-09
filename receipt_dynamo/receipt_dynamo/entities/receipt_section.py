@@ -78,6 +78,7 @@ class ReceiptSection:
             raise ValueError("created_at must be a datetime or ISO string")
         self.created_at = created_at
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generate the primary key for the receipt section."""
         return {
@@ -90,7 +91,7 @@ class ReceiptSection:
     def to_item(self) -> Dict[str, Any]:
         """Convert the ReceiptSection to a DynamoDB item."""
         return {
-            **self.key(),
+            **self.key,
             "TYPE": {"S": "RECEIPT_SECTION"},
             "section_type": {"S": self.section_type},
             "line_ids": {

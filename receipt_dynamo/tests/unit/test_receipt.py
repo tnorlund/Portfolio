@@ -299,7 +299,7 @@ def test_receipt_init_invalid_cdn_key():
 @pytest.mark.unit
 def test_receipt_key_generation(example_receipt):
     """Test that the primary key is correctly generated."""
-    assert example_receipt.key() == {
+    assert example_receipt.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001"},
     }

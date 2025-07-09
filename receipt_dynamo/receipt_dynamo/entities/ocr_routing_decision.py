@@ -53,6 +53,7 @@ class OCRRoutingDecision:
 
         self.status: str = normalize_enum(status, OCRStatus)
 
+    @property
     def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -67,7 +68,7 @@ class OCRRoutingDecision:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "OCR_ROUTING_DECISION"},
             "s3_bucket": {"S": self.s3_bucket},

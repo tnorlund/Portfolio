@@ -248,8 +248,8 @@ def test_image_init_invalid_cdn_s3_key():
 
 @pytest.mark.unit
 def test_image_key(example_image):
-    """Test the Image.key() method"""
-    assert example_image.key() == {
+    """Test the Image.key method"""
+    assert example_image.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "IMAGE"},
     }
@@ -257,8 +257,8 @@ def test_image_key(example_image):
 
 @pytest.mark.unit
 def test_image_gsi1_key(example_image):
-    """Test the Image.gsi1_key() method"""
-    assert example_image.gsi1_key() == {
+    """Test the Image.gsi1_key property"""
+    assert example_image.gsi1_key == {
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "IMAGE"},
     }

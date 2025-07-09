@@ -102,6 +102,7 @@ class Instance:
             )
         self.health_status = health_status.lower()
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the instance.
 
@@ -131,7 +132,7 @@ class Instance:
             dict: A dictionary representing the Instance object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "INSTANCE"},
             "instance_type": {"S": self.instance_type},

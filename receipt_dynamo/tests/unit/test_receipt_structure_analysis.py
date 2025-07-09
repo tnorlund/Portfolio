@@ -911,7 +911,7 @@ def test_receipt_structure_analysis_discovered_sections(
 @pytest.mark.unit
 def test_receipt_structure_analysis_key(example_receipt_structure_analysis):
     """Test key generation."""
-    key = example_receipt_structure_analysis.key()
+    key = example_receipt_structure_analysis.key
     assert key["PK"]["S"] == "IMAGE#abc123"
     assert key["SK"]["S"] == "RECEIPT#00123#ANALYSIS#STRUCTURE#1.0.0"
 

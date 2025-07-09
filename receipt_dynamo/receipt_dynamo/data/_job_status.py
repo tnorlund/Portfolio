@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -31,7 +35,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobStatus(DynamoClientProtocol):
+class _JobStatus(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_status")
     def add_job_status(self, job_status: JobStatus):
         """Adds a job status update to the database
 
@@ -76,6 +84,7 @@ class _JobStatus(DynamoClientProtocol):
                     f"Could not add job status to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_latest_job_status")
     def get_latest_job_status(self, job_id: str) -> JobStatus:
         """Gets the latest status for a job
 
@@ -133,7 +142,7 @@ class _JobStatus(DynamoClientProtocol):
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobStatus], dict | None]:
         """
         Retrieve status updates for a job from the database.
@@ -141,7 +150,7 @@ class _JobStatus(DynamoClientProtocol):
         Parameters:
             job_id (str): The ID of the job to get status updates for.
             limit (int, optional): The maximum number of status updates to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -160,10 +169,10 @@ class _JobStatus(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         statuses: List[JobStatus] = []
         try:
@@ -176,8 +185,8 @@ class _JobStatus(DynamoClientProtocol):
                 },
                 "ScanIndexForward": True,
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

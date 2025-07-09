@@ -432,7 +432,7 @@ def test_listJobCheckpoints_with_pagination(
     # List the second page
     checkpoints_page2, last_evaluated_key2 = (
         job_checkpoint_dynamo.list_job_checkpoints(
-            sample_job.job_id, limit=1, lastEvaluatedKey=last_evaluated_key
+            sample_job.job_id, limit=1, last_evaluated_key=last_evaluated_key
         )
     )
 

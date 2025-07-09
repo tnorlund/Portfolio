@@ -186,7 +186,7 @@ def test_receipt_label_analysis_default_metadata():
 @pytest.mark.unit
 def test_receipt_label_analysis_key_generation(example_receipt_label_analysis):
     """Test that key() generates the correct DynamoDB primary key."""
-    key = example_receipt_label_analysis.key()
+    key = example_receipt_label_analysis.key
 
     assert key["PK"]["S"] == "IMAGE#test_image_123"
     assert key["SK"]["S"] == "RECEIPT#00456#ANALYSIS#LABELS"
@@ -383,7 +383,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS"},
+        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
         "labels": {
             "L": [
                 {
@@ -467,7 +467,7 @@ def test_itemToReceiptLabelAnalysis_with_defaults():
     """Test that item_to_receipt_label_analysis provides default values."""
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS"},
+        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
     }
 
     result = item_to_receipt_label_analysis(item)
