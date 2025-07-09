@@ -223,7 +223,7 @@ class _ReceiptValidationCategory(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=category.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=category.key)
             )
             for category in categories
         ]
