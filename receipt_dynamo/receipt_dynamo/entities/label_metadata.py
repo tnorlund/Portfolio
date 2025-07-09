@@ -58,6 +58,7 @@ class LabelMetadata:
                 )
         self.receipt_refs = receipt_refs
 
+    @property
     def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"LABEL#{self.label}"},
@@ -78,7 +79,7 @@ class LabelMetadata:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "status": {"S": self.status},
             "aliases": {"SS": self.aliases},

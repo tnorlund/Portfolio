@@ -96,6 +96,7 @@ class EmbeddingBatchResult:
             )
         self.pinecone_id = pinecone_id
 
+    @property
     def key(self) -> Dict[str, Any]:
         sk = (
             f"RESULT#IMAGE#{self.image_id}"
@@ -124,7 +125,7 @@ class EmbeddingBatchResult:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi2_key(),
             **self.gsi3_key(),
             "TYPE": {"S": "EMBEDDING_BATCH_RESULT"},

@@ -124,6 +124,7 @@ class ReceiptWordLabel:
         else:
             self.label_consolidated_from = None
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt word label.
 
@@ -191,7 +192,7 @@ class ReceiptWordLabel:
             dict: A dictionary representing the ReceiptWordLabel object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),

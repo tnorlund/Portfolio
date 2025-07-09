@@ -73,7 +73,7 @@ def test_validation_status_buckets(matched_fields, expected_status):
 @pytest.mark.unit
 def test_key_and_gsi_keys(example_receipt_metadata):
     m = example_receipt_metadata
-    pk = m.key()
+    pk = m.key
     assert pk["PK"]["S"] == f"IMAGE#{m.image_id}"
     assert pk["SK"]["S"] == f"RECEIPT#{m.receipt_id:05d}#METADATA"
 

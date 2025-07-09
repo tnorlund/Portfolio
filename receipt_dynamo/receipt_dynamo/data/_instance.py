@@ -322,7 +322,7 @@ class _Instance(DynamoClientProtocol):
         # Then, query for its jobs
         instance_jobs = self.list_instance_jobs(instance_id)[
             0
-        ]  # Ignore lastEvaluatedKey
+        ]  # Ignore last_evaluated_key
 
         return instance, instance_jobs
 
@@ -528,25 +528,25 @@ class _Instance(DynamoClientProtocol):
     def list_instances(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Instance], Optional[Dict]]:
         """Lists instances in the DynamoDB table.
 
         Args:
             limit (int, optional): The maximum number of instances to return.
-            lastEvaluatedKey (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional): The exclusive start key for pagination.
 
         Returns:
             Tuple[List[Instance], Optional[Dict]]: A tuple containing the list of instances
                 and the last evaluated key for pagination, if any.
 
         Raises:
-            ValueError: If the lastEvaluatedKey is invalid.
+            ValueError: If the last_evaluated_key is invalid.
             Exception: If the request failed due to an unknown error.
         """
-        # Validate the lastEvaluatedKey if provided
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        # Validate the last_evaluated_key if provided
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -559,8 +559,8 @@ class _Instance(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             instances = []
@@ -588,21 +588,21 @@ class _Instance(DynamoClientProtocol):
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Instance], Optional[Dict]]:
         """Lists instances by status in the DynamoDB table.
 
         Args:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of instances to return.
-            lastEvaluatedKey (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional): The exclusive start key for pagination.
 
         Returns:
             Tuple[List[Instance], Optional[Dict]]: A tuple containing the list of instances
                 and the last evaluated key for pagination, if any.
 
         Raises:
-            ValueError: If the status or lastEvaluatedKey is invalid.
+            ValueError: If the status or last_evaluated_key is invalid.
             Exception: If the request failed due to an unknown error.
         """
         # Validate status
@@ -610,9 +610,9 @@ class _Instance(DynamoClientProtocol):
         if not status or status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
 
-        # Validate the lastEvaluatedKey if provided
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        # Validate the last_evaluated_key if provided
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -626,8 +626,8 @@ class _Instance(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             response = self._client.query(**query_params)
@@ -654,29 +654,29 @@ class _Instance(DynamoClientProtocol):
         self,
         instance_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists jobs associated with an instance in the DynamoDB table.
 
         Args:
             instance_id (str): The ID of the instance.
             limit (int, optional): The maximum number of jobs to return.
-            lastEvaluatedKey (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional): The exclusive start key for pagination.
 
         Returns:
             Tuple[List[InstanceJob], Optional[Dict]]: A tuple containing the list of instance-job
                 associations and the last evaluated key for pagination, if any.
 
         Raises:
-            ValueError: If the instance_id or lastEvaluatedKey is invalid.
+            ValueError: If the instance_id or last_evaluated_key is invalid.
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
             raise ValueError("instance_id cannot be None or empty")
 
-        # Validate the lastEvaluatedKey if provided
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        # Validate the last_evaluated_key if provided
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -690,8 +690,8 @@ class _Instance(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             response = self._client.query(**query_params)
@@ -719,29 +719,29 @@ class _Instance(DynamoClientProtocol):
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[InstanceJob], Optional[Dict]]:
         """Lists instances associated with a job in the DynamoDB table.
 
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of instances to return.
-            lastEvaluatedKey (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional): The exclusive start key for pagination.
 
         Returns:
             Tuple[List[InstanceJob], Optional[Dict]]: A tuple containing the list of instance-job
                 associations and the last evaluated key for pagination, if any.
 
         Raises:
-            ValueError: If the job_id or lastEvaluatedKey is invalid.
+            ValueError: If the job_id or last_evaluated_key is invalid.
             Exception: If the request failed due to an unknown error.
         """
         if not job_id:
             raise ValueError("job_id cannot be None or empty")
 
-        # Validate the lastEvaluatedKey if provided
-        if lastEvaluatedKey is not None:
-            validate_last_evaluated_key(lastEvaluatedKey)
+        # Validate the last_evaluated_key if provided
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -756,8 +756,8 @@ class _Instance(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         try:
             response = self._client.query(**query_params)

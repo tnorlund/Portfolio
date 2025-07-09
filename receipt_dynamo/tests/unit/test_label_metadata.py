@@ -129,7 +129,7 @@ def test_label_metadata_str(example_label_metadata):
 
 
 def test_label_metadata_keys(example_label_metadata):
-    keys = example_label_metadata.key()
+    keys = example_label_metadata.key
     assert keys["PK"]["S"] == "LABEL#SUBTOTAL"
     assert keys["SK"]["S"] == "METADATA"
 
