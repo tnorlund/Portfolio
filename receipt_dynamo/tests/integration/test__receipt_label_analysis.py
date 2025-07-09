@@ -1532,14 +1532,13 @@ def test_getReceiptLabelAnalysesByImage_success(
     client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = client.get_receipt_label_analyses_by_image(
+    analyses = client.list_receipt_label_analyses_for_image(
         sample_receipt_label_analysis.image_id
     )
 
     # Assert
     assert len(analyses) == 1
     assert analyses[0] == sample_receipt_label_analysis
-    assert last_evaluated_key is None
 
 
 @pytest.mark.integration

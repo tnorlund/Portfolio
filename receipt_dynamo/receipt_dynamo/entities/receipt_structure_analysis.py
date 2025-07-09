@@ -603,6 +603,7 @@ class ReceiptStructureAnalysis:
         """
         return self.sections
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """
         Get the primary key for the DynamoDB table.
