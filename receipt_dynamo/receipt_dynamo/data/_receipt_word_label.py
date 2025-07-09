@@ -255,7 +255,7 @@ class _ReceiptWordLabel(
         request_items = [
             {
                 "DeleteRequest": {
-                    "Key": label.key()
+                    "Key": label.key
                 }
             }
             for label in receipt_word_labels

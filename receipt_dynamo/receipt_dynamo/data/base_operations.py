@@ -97,6 +97,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Special handling for update_images to maintain backward compatibility
         if operation == "update_images":
             raise ValueError("One or more images do not exist") from error
+        
+        # Special handling for batch update operations
+        if "update_receipt_word_labels" in operation and entity_context == "list":
+            raise ValueError("One or more receipt word labels do not exist") from error
 
         # Special handling for receipt line item analysis operations for backward compatibility
         if "receipt_line_item_analysis" in operation:
