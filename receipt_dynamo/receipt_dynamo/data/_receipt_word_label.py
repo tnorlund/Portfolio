@@ -289,6 +289,19 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When the receipt word label does not exist
         """
+        # Check for None values first
+        if image_id is None:
+            raise ValueError("Image ID is required and cannot be None.")
+        if receipt_id is None:
+            raise ValueError("Receipt ID is required and cannot be None.")
+        if line_id is None:
+            raise ValueError("Line ID is required and cannot be None.")
+        if word_id is None:
+            raise ValueError("Word ID is required and cannot be None.")
+        if label is None:
+            raise ValueError("Label is required and cannot be None.")
+        
+        # Then check types
         if not isinstance(receipt_id, int):
             raise ValueError(
                 f"receipt_id must be an integer, got {type(receipt_id).__name__}"
@@ -309,6 +322,19 @@ class _ReceiptWordLabel(
             raise ValueError(
                 f"label must be a string, got {type(label).__name__}"
             )
+        
+        # Check for positive integers
+        if receipt_id <= 0:
+            raise ValueError("Receipt ID must be a positive integer.")
+        if line_id <= 0:
+            raise ValueError("Line ID must be a positive integer.")
+        if word_id <= 0:
+            raise ValueError("Word ID must be a positive integer.")
+            
+        # Check for non-empty label
+        if not label:
+            raise ValueError("Label must be a non-empty string.")
+            
         assert_valid_uuid(image_id)
 
         response = self._client.get_item(

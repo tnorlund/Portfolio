@@ -101,9 +101,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if operation == "update_images":
             raise ValueError("One or more images do not exist") from error
 
-        # Special handling for batch update operations
+        # Special handling for batch update/delete operations
         if (
-            "update_receipt_word_labels" in operation
+            ("update_receipt_word_labels" in operation or "delete_receipt_word_labels" in operation)
             and entity_context == "list"
         ):
             raise ValueError(
