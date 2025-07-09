@@ -364,6 +364,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("One or more ReceiptLineItemAnalyses do not exist") from error
             elif "update_receipt_label_analyses" in operation:
                 raise ValueError("One or more receipt label analyses do not exist") from error
+            elif "update_receipt_word_labels" in operation:
+                raise ValueError("One or more receipt word labels do not exist") from error
             raise ValueError(
                 "One or more entities do not exist or conditions failed"
             ) from error
@@ -609,6 +611,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("images parameter is required and cannot be None.")
             elif param_name == "results":
                 raise ValueError("results parameter is required and cannot be None.")
+            elif param_name == "receipt_word_labels":
+                raise ValueError("ReceiptWordLabels parameter is required and cannot be None.")
             else:
                 # Capitalize first letter for backward compatibility
                 param_display = param_name[0].upper() + param_name[1:]
@@ -634,6 +638,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("results must be a list of ReceiptValidationResult instances.")
             elif param_name == "letters":
                 raise ValueError("Letters must be provided as a list.")
+            elif param_name == "receipt_word_labels":
+                raise ValueError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
             else:
                 # Default handling for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -660,6 +666,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif param_name == "letters":
                 raise ValueError(
                     f"All items in the letters list must be instances of the {entity_class.__name__} class."
+                )
+            elif param_name == "receipt_word_labels":
+                raise ValueError(
+                    f"All receipt word labels must be instances of the {entity_class.__name__} class."
                 )
             # Default handling for other parameters
             raise ValueError(
