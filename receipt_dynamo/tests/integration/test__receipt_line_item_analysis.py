@@ -959,7 +959,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "The conditional request failed",
-            "ReceiptLineItemAnalysis for receipt ID 1 does not exist",
+            "ReceiptLineItemAnalysis does not exist",
         ),
         (
             "InternalServerError",
@@ -1004,10 +1004,7 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analysis(
-            sample_receipt_line_item_analysis.image_id,
-            sample_receipt_line_item_analysis.receipt_id,
-        )
+        client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
     assert expected_error in str(excinfo.value)
 
 
@@ -1047,11 +1044,7 @@ def test_deleteReceiptLineItemAnalyses_not_found(
     ]
 
     # Act - should not raise an error
-    keys = [
-        (analysis.image_id, analysis.receipt_id)
-        for analysis in non_existent_analyses
-    ]
-    client.delete_receipt_line_item_analyses(keys)
+    client.delete_receipt_line_item_analyses(non_existent_analyses)
 
     # Assert - The items weren't there to begin with, so no assertions are needed
 
@@ -1101,8 +1094,7 @@ def test_deleteReceiptLineItemAnalyses_success(
         assert "Item" in response
 
     # Act
-    keys = [(analysis.image_id, analysis.receipt_id) for analysis in analyses]
-    client.delete_receipt_line_item_analyses(keys)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert
     # Verify the analyses were deleted
@@ -1160,8 +1152,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         assert "Item" in response
 
     # Act
-    keys = [(analysis.image_id, analysis.receipt_id) for analysis in analyses]
-    client.delete_receipt_line_item_analyses(keys)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert - check a sample of the deleted items
     for receipt_id in [1, 15, 30]:
@@ -1181,14 +1172,14 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "keys must be a list"),
+        (None, "Analyses parameter is required and cannot be None."),
         (
             "not-a-list",
-            "keys must be a list",
+            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
-            [123, "not-a-tuple"],
-            "keys must be a list of (image_id, receipt_id) tuples",
+            [123, "not-an-analysis"],
+            "All analyses must be instances of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -1264,13 +1255,7 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        keys = [
-            (
-                sample_receipt_line_item_analysis.image_id,
-                sample_receipt_line_item_analysis.receipt_id,
-            )
-        ]
-        client.delete_receipt_line_item_analyses(keys)
+        client.delete_receipt_line_item_analyses([sample_receipt_line_item_analysis])
     assert expected_error in str(excinfo.value)
 
 
@@ -1319,8 +1304,7 @@ def test_deleteReceiptLineItemAnalyses_with_unprocessed_items_retries(
     ]
 
     # Act
-    keys = [(analysis.image_id, analysis.receipt_id) for analysis in analyses]
-    client.delete_receipt_line_item_analyses(keys)
+    client.delete_receipt_line_item_analyses(analyses)
 
     # Assert - verify the batch_write_item was called twice
     assert mock_client.batch_write_item.call_count == 2
