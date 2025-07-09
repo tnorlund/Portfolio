@@ -463,6 +463,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     "One or more receipt word labels do not exist"
                 ) from error
+            elif "delete_receipt_word_labels" in operation:
+                raise ValueError(
+                    "One or more receipt word labels do not exist"
+                ) from error
             raise ValueError(
                 "One or more entities do not exist or conditions failed"
             ) from error

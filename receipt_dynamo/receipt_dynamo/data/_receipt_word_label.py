@@ -252,15 +252,18 @@ class _ReceiptWordLabel(
             receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
         )
         
-        request_items = [
+        # Use transactional writes for deletes to ensure items exist
+        transact_items = [
             {
-                "DeleteRequest": {
-                    "Key": label.key
+                "Delete": {
+                    "TableName": self.table_name,
+                    "Key": label.key,
+                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)"
                 }
             }
             for label in receipt_word_labels
         ]
-        self._batch_write_with_retry(request_items)
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt_word_label")
     def get_receipt_word_label(
