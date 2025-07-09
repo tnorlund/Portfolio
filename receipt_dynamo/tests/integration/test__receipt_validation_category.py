@@ -94,10 +94,10 @@ def test_addReceiptValidationCategory_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "category parameter is required and cannot be None."),
+        (None, "Category parameter is required and cannot be None."),
         (
             "not-a-validation-category",
-            "category must be an instance of the ReceiptValidationCategory class.",
+            "Category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -142,7 +142,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt validation result to DynamoDB",
+            "Table not found for operation add_receipt_validation_category",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -157,7 +157,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt validation result to DynamoDB",
+            "Unknown error in add_receipt_validation_category",
         ),
         (
             "ValidationException",
@@ -381,10 +381,10 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "categories parameter is required and cannot be None."),
+        (None, "Categories parameter is required and cannot be None."),
         (
             "not-a-list",
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "Categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             ["not-a-validation-category"],
@@ -453,7 +453,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add receipt validation result to DynamoDB",
+            "Unknown error in add_receipt_validation_categories",
         ),
     ],
 )
@@ -552,10 +552,10 @@ def test_updateReceiptValidationCategory_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "category parameter is required and cannot be None."),
+        (None, "Category parameter is required and cannot be None."),
         (
             "not a ReceiptValidationCategory",
-            "category must be an instance of the ReceiptValidationCategory class.",
+            "Category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -610,7 +610,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResult in the database",
+            "Table not found for operation update_receipt_validation_category",
         ),
         (
             "ValidationException",
@@ -625,7 +625,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResult in the database",
+            "Unknown error in update_receipt_validation_category",
         ),
     ],
 )
@@ -828,10 +828,10 @@ def test_updateReceiptValidationCategories_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "categories parameter is required and cannot be None."),
+        (None, "Categories parameter is required and cannot be None."),
         (
             "not-a-list",
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "Categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             [123, "not-a-validation-category"],
@@ -877,7 +877,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResult in the database",
+            "Table not found for operation update_receipt_validation_categories",
             None,
             DynamoDBError,
         ),
@@ -919,7 +919,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResult in the database",
+            "Unknown error in update_receipt_validation_categories",
             None,
             DynamoDBError,
         ),
@@ -1013,10 +1013,10 @@ def test_deleteReceiptValidationCategory_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "category parameter is required and cannot be None."),
+        (None, "Category parameter is required and cannot be None."),
         (
             "not-a-validation-category",
-            "category must be an instance of the ReceiptValidationCategory class.",
+            "Category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -1061,7 +1061,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete receipt validation result from the database",
+            "Table not found for operation delete_receipt_validation_category",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1082,7 +1082,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation result from the database",
+            "Unknown error in delete_receipt_validation_category",
         ),
     ],
 )
@@ -1185,10 +1185,10 @@ def test_deleteReceiptValidationCategories_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "categories parameter is required and cannot be None."),
+        (None, "Categories parameter is required and cannot be None."),
         (
             "not-a-list",
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "Categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             [123, "not-a-validation-category"],
@@ -1257,7 +1257,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation result from the database",
+            "Unknown error in delete_receipt_validation_categories",
         ),
     ],
 )
@@ -1552,7 +1552,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not get receipt validation result from DynamoDB",
+            "Table not found for operation list_receipt_validation_categories_for_receipt",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1567,7 +1567,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",

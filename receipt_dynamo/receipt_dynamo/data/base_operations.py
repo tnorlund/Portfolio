@@ -103,9 +103,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         # Special handling for batch update/delete operations
         if (
-            ("update_receipt_word_labels" in operation or "delete_receipt_word_labels" in operation)
-            and entity_context == "list"
-        ):
+            "update_receipt_word_labels" in operation
+            or "delete_receipt_word_labels" in operation
+        ) and entity_context == "list":
             raise ValueError(
                 "One or more receipt word labels do not exist"
             ) from error
@@ -352,6 +352,21 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "update_receipt_word_labels",
             "delete_receipt_word_label",
             "delete_receipt_word_labels",
+            "add_receipt_validation_category",
+            "update_receipt_validation_category",
+            "delete_receipt_validation_category",
+            "add_receipt_validation_categories",
+            "update_receipt_validation_categories",
+            "delete_receipt_validation_categories",
+            "add_receipt_validation_summary",
+            "update_receipt_validation_summary",
+            "delete_receipt_validation_summary",
+            "add_receipt_structure_analysis",
+            "update_receipt_structure_analysis",
+            "delete_receipt_structure_analysis",
+            "add_receipt_structure_analyses",
+            "update_receipt_structure_analyses",
+            "delete_receipt_structure_analyses",
         }
 
         if operation in validation_error_operations:

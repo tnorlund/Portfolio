@@ -109,12 +109,12 @@ def test_addReceiptStructureAnalysis_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt structure analysis to DynamoDB: Table not found",
+            "Table not found for operation add_receipt_structure_analysis",
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt structure analysis to DynamoDB",
+            "Unknown error in add_receipt_structure_analysis",
         ),
     ],
 )
@@ -202,7 +202,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt structure analyses to DynamoDB: Table not found",
+            "Table not found for operation add_receipt_structure_analyses",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -223,7 +223,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add receipt structure analyses to DynamoDB",
+            "Unknown error in add_receipt_structure_analyses",
         ),
     ],
 )
@@ -376,13 +376,13 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update receipt structure analyses in DynamoDB: Table not found",
+            "Table not found for operation update_receipt_structure_analyses",
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "Error updating receipt structure analyses",
+            "One or more entities do not exist or conditions failed",
             [{"Code": "ConditionalCheckFailed"}],
         ),
         (
@@ -412,7 +412,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt structure analyses in DynamoDB",
+            "Unknown error in update_receipt_structure_analyses",
             None,
         ),
     ],
