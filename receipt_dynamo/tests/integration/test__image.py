@@ -175,7 +175,7 @@ def test_addImage_raises_unknown_exception(
     )
 
     with pytest.raises(
-        Exception, match="Could not add receipt validation result to DynamoDB"
+        Exception, match="Could not add image to DynamoDB"
     ):
         client.add_image(example_image)
 

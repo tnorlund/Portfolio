@@ -159,7 +159,7 @@ class _Line(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=line.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=line.key)
             )
             for line in lines
         ]

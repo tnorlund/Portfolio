@@ -132,7 +132,7 @@ class _Letter(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=letter.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=letter.key)
             )
             for letter in letters
         ]

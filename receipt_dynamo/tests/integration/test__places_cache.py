@@ -40,7 +40,7 @@ def test_addPlacesCache_success(
 
     # Assert
     response = dynamo._client.get_item(
-        TableName=dynamo.table_name, Key=sample_places_cache.key()
+        TableName=dynamo.table_name, Key=sample_places_cache.key
     )
     assert "Item" in response
 
@@ -165,7 +165,7 @@ def test_updatePlacesCache_success(
 
     # Assert
     response = dynamo._client.get_item(
-        TableName=dynamo.table_name, Key=updated_item.key()
+        TableName=dynamo.table_name, Key=updated_item.key
     )
     assert response["Item"]["query_count"]["N"] == "2"
 
@@ -199,7 +199,7 @@ def test_deletePlacesCache_success(
 
     # Assert
     response = dynamo._client.get_item(
-        TableName=dynamo.table_name, Key=sample_places_cache.key()
+        TableName=dynamo.table_name, Key=sample_places_cache.key
     )
     assert "Item" not in response
 

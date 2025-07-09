@@ -139,7 +139,7 @@ class _ReceiptLine(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=ln.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=ln.key)
             )
             for ln in lines
         ]

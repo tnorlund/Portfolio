@@ -253,7 +253,7 @@ class _ReceiptMetadata(
             TransactWriteItemTypeDef(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
-                    Key=item.key(),
+                    Key=item.key,
                     ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
                 )
             )

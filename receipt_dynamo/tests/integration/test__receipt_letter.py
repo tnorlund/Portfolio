@@ -1024,7 +1024,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
     first_response = {
         "UnprocessedItems": {
             dynamodb_table: [
-                {"DeleteRequest": {"Key": sample_receipt_letter.key()}}
+                {"DeleteRequest": {"Key": sample_receipt_letter.key}}
             ]
         }
     }

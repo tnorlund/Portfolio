@@ -314,7 +314,7 @@ class _Receipt(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=receipt.key(),
+                Key=receipt.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -376,7 +376,7 @@ class _Receipt(DynamoClientProtocol):
                         TransactWriteItemTypeDef(
                             Delete=DeleteTypeDef(
                                 TableName=self.table_name,
-                                Key=receipt.key(),
+                                Key=receipt.key,
                                 ConditionExpression="attribute_exists(PK)",
                             )
                         )

@@ -116,11 +116,8 @@ def test_addJobLog_raises_resource_not_found(
     )
 
     # Attempt to add the job log
-    with pytest.raises(ClientError) as excinfo:
+    with pytest.raises(DynamoDBError, match="Table not found"):
         job_log_dynamo.add_job_log(sample_job_log)
-    assert (
-        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
-    )
 
 
 @pytest.mark.integration
@@ -357,8 +354,5 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
 
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())
-    with pytest.raises(ClientError) as excinfo:
+    with pytest.raises(DynamoDBError, match="Table not found"):
         job_log_dynamo.list_job_logs(job_id=job_id)
-    assert (
-        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
-    )

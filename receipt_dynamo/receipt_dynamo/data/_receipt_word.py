@@ -136,7 +136,7 @@ class _ReceiptWord(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=w.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=w.key)
             )
             for w in words
         ]

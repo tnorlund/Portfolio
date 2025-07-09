@@ -148,7 +148,7 @@ class _ReceiptLineItemAnalysis(
         request_items = [
             {
                 "DeleteRequest": {
-                    "Key": analysis.key()
+                    "Key": analysis.key
                 }
             }
             for analysis in analyses

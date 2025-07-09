@@ -37,7 +37,7 @@ def test_line_add(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=line.key(),
+        Key=line.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line.to_item()
@@ -71,14 +71,14 @@ def test_line_add_all(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=line_1.key(),
+        Key=line_1.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line_1.to_item()
 
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=line_2.key(),
+        Key=line_2.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == line_2.to_item()

@@ -177,8 +177,8 @@ def test_job_dependency_init_invalid_condition():
 
 @pytest.mark.unit
 def test_job_dependency_key(example_job_dependency):
-    """Test the JobDependency.key() method."""
-    assert example_job_dependency.key() == {
+    """Test the JobDependency.key method."""
+    assert example_job_dependency.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "DEPENDS_ON#4f52804b-2fad-4e00-92c8-b593da3a8ed4"},
     }

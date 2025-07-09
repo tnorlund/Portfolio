@@ -168,7 +168,7 @@ class _Word(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=word.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=word.key)
             )
             for word in words
         ]

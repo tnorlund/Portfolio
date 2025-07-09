@@ -242,7 +242,7 @@ class _Queue(DynamoClientProtocol):
             # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=queue.key(),
+                Key=queue.key,
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
         except ClientError as e:
@@ -432,7 +432,7 @@ class _Queue(DynamoClientProtocol):
             # expression to ensure it exists
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=queue_job.key(),
+                Key=queue_job.key,
                 ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
             )
 

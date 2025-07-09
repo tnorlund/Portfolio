@@ -159,7 +159,7 @@ class _PlacesCache(DynamoClientProtocol):
             # Update the item's attributes
             response = self._client.update_item(
                 TableName=self.table_name,
-                Key=item.key(),
+                Key=item.key,
                 UpdateExpression="SET query_count = if_not_exists(query_count, :zero) + :inc, last_updated = :now",
                 ExpressionAttributeValues={
                     ":inc": {"N": "1"},
@@ -197,7 +197,7 @@ class _PlacesCache(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=item.key(),
+                Key=item.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -235,7 +235,7 @@ class _PlacesCache(DynamoClientProtocol):
                 TransactWriteItemTypeDef(
                     Delete=DeleteTypeDef(
                         TableName=self.table_name,
-                        Key=item.key(),
+                        Key=item.key,
                         # ConditionExpression="attribute_exists(PK)",
                     )
                 )
@@ -301,7 +301,7 @@ class _PlacesCache(DynamoClientProtocol):
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key=temp_cache.key(),
+                Key=temp_cache.key,
             )
             if "Item" not in response:
                 return None

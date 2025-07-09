@@ -212,7 +212,7 @@ class _ReceiptLetter(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=lt.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=lt.key)
             )
             for lt in letters
         ]

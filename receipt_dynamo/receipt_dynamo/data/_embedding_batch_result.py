@@ -226,7 +226,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=embedding_batch_result.key(),
+                Key=embedding_batch_result.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -268,7 +268,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 TransactWriteItemTypeDef(
                     Delete=DeleteTypeDef(
                         TableName=self.table_name,
-                        Key=r.key(),
+                        Key=r.key,
                         ConditionExpression="attribute_exists(PK)",
                     )
                 )

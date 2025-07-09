@@ -306,7 +306,7 @@ class _Image(
 
         request_items = [
             WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=image.key())
+                DeleteRequest=DeleteRequestTypeDef(Key=image.key)
             )
             for image in images
         ]

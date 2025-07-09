@@ -148,15 +148,7 @@ class _ReceiptStructureAnalysis(
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         self._validate_entity(analysis, ReceiptStructureAnalysis, "analysis")
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#STRUCTURE#{analysis.version}"
-                },
-            },
-        )
+        self._delete_entity(analysis)
 
     @handle_dynamodb_errors("delete_receipt_structure_analyses")
     def delete_receipt_structure_analyses(

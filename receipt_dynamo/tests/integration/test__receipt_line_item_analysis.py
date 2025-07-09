@@ -882,8 +882,7 @@ def test_deleteReceiptLineItemAnalysis_success(
 
     # Act
     client.delete_receipt_line_item_analysis(
-        sample_receipt_line_item_analysis.image_id,
-        sample_receipt_line_item_analysis.receipt_id
+        sample_receipt_line_item_analysis
     )
 
     # Assert

@@ -239,7 +239,7 @@ class _ReceiptSection(
                 chunk = sections[i : i + CHUNK_SIZE]
                 request_items = [
                     WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=s.key())
+                        DeleteRequest=DeleteRequestTypeDef(Key=s.key)
                     )
                     for s in chunk
                 ]

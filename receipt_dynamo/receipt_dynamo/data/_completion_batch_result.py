@@ -131,7 +131,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=result.key(),
+                Key=result.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:

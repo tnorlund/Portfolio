@@ -171,8 +171,8 @@ def test_job_metric_init_invalid_metadata():
 
 @pytest.mark.unit
 def test_job_metric_key(example_job_metric):
-    """Test the JobMetric.key() method."""
-    assert example_job_metric.key() == {
+    """Test the JobMetric.key method."""
+    assert example_job_metric.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "METRIC#loss#2021-01-01T12:30:45"},
     }

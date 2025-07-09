@@ -270,7 +270,7 @@ class _BatchSummary(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=batch_summary.key(),
+                Key=batch_summary.key,
                 ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
             )
         except ClientError as e:
@@ -315,7 +315,7 @@ class _BatchSummary(DynamoClientProtocol):
                     TransactWriteItemTypeDef(
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
-                            Key=item.key(),
+                            Key=item.key,
                             ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
                         )
                     )
