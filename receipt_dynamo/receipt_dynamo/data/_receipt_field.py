@@ -315,7 +315,7 @@ class _ReceiptField(
                 ) from e
 
     def list_receipt_fields(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt field records from the database with support for precise pagination.
@@ -324,7 +324,7 @@ class _ReceiptField(
         ----------
         limit : int, optional
             The maximum number of receipt field items to return.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             A key that marks the starting point for the query.
 
         Returns
@@ -342,10 +342,10 @@ class _ReceiptField(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         fields: List[ReceiptField] = []
         try:
@@ -356,8 +356,8 @@ class _ReceiptField(
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT_FIELD"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -408,7 +408,7 @@ class _ReceiptField(
         self,
         image_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt fields by image ID using GSI1.
@@ -419,7 +419,7 @@ class _ReceiptField(
             The image ID to search for.
         limit : int, optional
             The maximum number of fields to return.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start the query from.
 
         Returns
@@ -441,10 +441,10 @@ class _ReceiptField(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         fields: List[ReceiptField] = []
         try:
@@ -456,8 +456,8 @@ class _ReceiptField(
                     ":pk": {"S": f"IMAGE#{image_id}"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -511,7 +511,7 @@ class _ReceiptField(
         image_id: str,
         receipt_id: int,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
         Retrieve receipt fields by receipt ID using GSI1.
@@ -524,7 +524,7 @@ class _ReceiptField(
             The receipt ID to search for.
         limit : int, optional
             The maximum number of fields to return.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start the query from.
 
         Returns
@@ -548,10 +548,10 @@ class _ReceiptField(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         fields: List[ReceiptField] = []
         try:
@@ -564,8 +564,8 @@ class _ReceiptField(
                     ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

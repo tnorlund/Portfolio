@@ -142,7 +142,7 @@ class _JobStatus(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobStatus], dict | None]:
         """
         Retrieve status updates for a job from the database.
@@ -150,7 +150,7 @@ class _JobStatus(
         Parameters:
             job_id (str): The ID of the job to get status updates for.
             limit (int, optional): The maximum number of status updates to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -169,10 +169,10 @@ class _JobStatus(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         statuses: List[JobStatus] = []
         try:
@@ -185,8 +185,8 @@ class _JobStatus(
                 },
                 "ScanIndexForward": True,
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

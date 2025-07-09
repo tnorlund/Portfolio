@@ -201,13 +201,13 @@ class _ReceiptLineItemAnalysis(
     def list_receipt_line_item_analyses(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]:
         """Returns ReceiptLineItemAnalyses and the last evaluated key.
 
         Args:
             limit (Optional[int]): The maximum number of items to return.
-            lastEvaluatedKey (Optional[Dict[str, Any]]): The key to start from.
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from.
 
         Returns:
             Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]: 
@@ -219,8 +219,8 @@ class _ReceiptLineItemAnalysis(
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(lastEvaluatedKey, dict):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+            raise ValueError("last_evaluated_key must be a dictionary or None.")
 
         line_item_analyses = []
         query_params: QueryInputTypeDef = {
@@ -232,8 +232,8 @@ class _ReceiptLineItemAnalysis(
                 ":val": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"}
             },
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 

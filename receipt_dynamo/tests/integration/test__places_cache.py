@@ -345,7 +345,7 @@ def test_listPlacesCaches_with_pagination(
     # Act
     items, last_key = dynamo.list_places_caches(limit=1)
     second_page, final_key = dynamo.list_places_caches(
-        limit=1, lastEvaluatedKey=last_key
+        limit=1, last_evaluated_key=last_key
     )
 
     # Assert

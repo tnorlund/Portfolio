@@ -404,23 +404,23 @@ class _ReceiptWordLabel(
     def list_receipt_word_labels(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
         """Lists all receipt word labels
 
         Args:
             limit (Optional[int]): The maximum number of items to return
-            lastEvaluatedKey (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
 
         Returns:
             Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
-                raise ValueError("lastEvaluatedKey must be a dictionary or None")
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary or None")
+            validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []
         query_params: QueryInputTypeDef = {
@@ -432,8 +432,8 @@ class _ReceiptWordLabel(
                 ":val": {"S": "RECEIPT_WORD_LABEL"}
             },
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 
@@ -512,14 +512,14 @@ class _ReceiptWordLabel(
         self,
         status: ValidationStatus,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
         """Lists receipt word labels with a specific validation status
 
         Args:
             status (ValidationStatus): The validation status to filter by
             limit (Optional[int]): The maximum number of items to return
-            lastEvaluatedKey (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
 
         Returns:
             Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
@@ -528,10 +528,10 @@ class _ReceiptWordLabel(
             raise ValueError("status must be a ValidationStatus instance")
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
-                raise ValueError("lastEvaluatedKey must be a dictionary or None")
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary or None")
+            validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []
         query_params: QueryInputTypeDef = {
@@ -543,8 +543,8 @@ class _ReceiptWordLabel(
                 ":status": {"S": status.value}
             },
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 

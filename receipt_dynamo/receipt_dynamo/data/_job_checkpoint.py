@@ -53,13 +53,13 @@ class _JobCheckpoint(
         Gets a specific job checkpoint by job ID and timestamp.
     update_best_checkpoint(job_id: str, timestamp: str)
         Updates the 'is_best' flag for checkpoints in a job.
-    list_job_checkpoints(job_id: str, limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None)
+    list_job_checkpoints(job_id: str, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None)
         Lists all checkpoints for a specific job.
     get_best_checkpoint(job_id: str) -> Optional[JobCheckpoint]
         Gets the checkpoint marked as best for a job.
     delete_job_checkpoint(job_id: str, timestamp: str)
         Deletes a specific job checkpoint.
-    list_all_job_checkpoints(limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None)
+    list_all_job_checkpoints(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None)
         Lists all job checkpoints across all jobs.
     """
     @handle_dynamodb_errors("add_job_checkpoint")
@@ -178,7 +178,7 @@ class _JobCheckpoint(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve checkpoints for a job from the database.
@@ -186,7 +186,7 @@ class _JobCheckpoint(
         Parameters:
             job_id (str): The ID of the job to get checkpoints for.
             limit (int, optional): The maximum number of checkpoints to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -205,10 +205,10 @@ class _JobCheckpoint(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []
         try:
@@ -223,8 +223,8 @@ class _JobCheckpoint(
                 "ScanIndexForward": False,
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -378,14 +378,14 @@ class _JobCheckpoint(
 
     @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve all checkpoints across all jobs from the database.
 
         Parameters:
             limit (int, optional): The maximum number of checkpoints to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -400,10 +400,10 @@ class _JobCheckpoint(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []
         try:
@@ -418,8 +418,8 @@ class _JobCheckpoint(
                 "ScanIndexForward": False,
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

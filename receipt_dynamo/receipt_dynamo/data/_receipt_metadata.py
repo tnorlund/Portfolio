@@ -423,7 +423,7 @@ class _ReceiptMetadata(
         return [item_to_receipt_metadata(result) for result in results]
 
     def list_receipt_metadatas(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
@@ -432,7 +432,7 @@ class _ReceiptMetadata(
         ----------
         limit : int, optional
             Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start pagination from.
 
         Returns
@@ -450,10 +450,10 @@ class _ReceiptMetadata(
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
 
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary")
+            raise ValueError("last_evaluated_key must be a dictionary")
 
         metadatas: List[ReceiptMetadata] = []
         try:
@@ -466,8 +466,8 @@ class _ReceiptMetadata(
                     ":val": {"S": "RECEIPT_METADATA"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 
@@ -497,7 +497,7 @@ class _ReceiptMetadata(
         self,
         merchant_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records from DynamoDB by merchant name.
@@ -508,7 +508,7 @@ class _ReceiptMetadata(
             The merchant name to filter by.
         limit : int, optional
             Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start pagination from.
 
         Returns
@@ -537,8 +537,8 @@ class _ReceiptMetadata(
                 "ExpressionAttributeNames": {"#pk": "GSI1PK"},
                 "ExpressionAttributeValues": {":pk": {"S": gsi1_pk}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 
@@ -568,7 +568,7 @@ class _ReceiptMetadata(
         self,
         place_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records that have a specific place_id.
@@ -581,7 +581,7 @@ class _ReceiptMetadata(
             The place_id to query for.
         limit : int, optional
             Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start pagination from.
 
         Returns
@@ -602,10 +602,10 @@ class _ReceiptMetadata(
             raise ValueError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary")
+            raise ValueError("last_evaluated_key must be a dictionary")
 
         metadatas: List[ReceiptMetadata] = []
         try:
@@ -617,8 +617,8 @@ class _ReceiptMetadata(
                     ":pk": {"S": f"PLACE#{place_id}"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 
@@ -649,7 +649,7 @@ class _ReceiptMetadata(
         confidence: float,
         above: bool = True,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records by confidence score.
@@ -662,7 +662,7 @@ class _ReceiptMetadata(
             Whether to filter above or below the confidence score.
         limit : int, optional
             Maximum number of records to retrieve.
-        lastEvaluatedKey : dict, optional
+        last_evaluated_key : dict, optional
             The key to start pagination from.
 
         Returns
@@ -702,8 +702,8 @@ class _ReceiptMetadata(
                     ":sk": {"S": formatted_score},
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 

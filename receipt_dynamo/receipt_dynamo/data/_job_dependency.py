@@ -111,14 +111,14 @@ class _JobDependency(
         self,
         dependent_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all dependencies for a specific job.
 
         Args:
             dependent_job_id (str): The ID of the job to list dependencies for.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
@@ -148,8 +148,8 @@ class _JobDependency(
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)
@@ -167,14 +167,14 @@ class _JobDependency(
         self,
         dependency_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all jobs that depend on a specific job.
 
         Args:
             dependency_job_id (str): The ID of the job that others depend on.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
@@ -208,8 +208,8 @@ class _JobDependency(
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)

@@ -1763,7 +1763,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         (
             5,
             "not-a-dictionary",
-            "lastEvaluatedKey must be a dictionary or None.",
+            "last_evaluated_key must be a dictionary or None.",
         ),
     ],
 )
@@ -1787,7 +1787,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
         client.list_receipt_line_item_analyses(
-            limit=limit, lastEvaluatedKey=last_evaluated_key
+            limit=limit, last_evaluated_key=last_evaluated_key
         )
     assert expected_error in str(excinfo.value)
 

@@ -84,11 +84,11 @@ class _Job(
         Gets a job from the database.
     get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
         Gets a job with all its status updates.
-    list_jobs(limit: Optional[int] = None, lastEvaluatedKey: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs(limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
         Lists all jobs from the database.
-    list_jobs_by_status(status: str, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs_by_status(status: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
         Lists jobs filtered by status.
-    list_jobs_by_user(user_id: str, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs_by_user(user_id: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
         Lists jobs created by a specific user.
     """
     @handle_dynamodb_errors("add_job")
@@ -281,14 +281,14 @@ class _Job(
 
     @handle_dynamodb_errors("list_jobs")
     def list_jobs(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records from the database with support for pagination.
 
         Parameters:
             limit (int, optional): The maximum number of job items to return. If None, all jobs are fetched.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -303,10 +303,10 @@ class _Job(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         jobs: List[Job] = []
         query_params: QueryInputTypeDef = {
@@ -316,8 +316,8 @@ class _Job(
             "ExpressionAttributeNames": {"#t": "TYPE"},
             "ExpressionAttributeValues": {":val": {"S": "JOB"}},
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             # If a limit is provided, adjust the query's Limit to only
@@ -353,7 +353,7 @@ class _Job(
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records filtered by status from the database.
@@ -361,7 +361,7 @@ class _Job(
         Parameters:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of job items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -387,12 +387,12 @@ class _Job(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+                k in last_evaluated_key for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
@@ -410,8 +410,8 @@ class _Job(
             "FilterExpression": "#type = :job_type",
             "ExpressionAttributeNames": {"#type": "TYPE"},
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             # If a limit is provided, adjust the query's Limit to only
@@ -447,7 +447,7 @@ class _Job(
         self,
         user_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records created by a specific user from the database.
@@ -455,7 +455,7 @@ class _Job(
         Parameters:
             user_id (str): The ID of the user who created the jobs.
             limit (int, optional): The maximum number of job items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -473,12 +473,12 @@ class _Job(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+                k in last_evaluated_key for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
@@ -496,8 +496,8 @@ class _Job(
             "FilterExpression": "#type = :job_type",
             "ExpressionAttributeNames": {"#type": "TYPE"},
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         while True:
             # If a limit is provided, adjust the query's Limit to only

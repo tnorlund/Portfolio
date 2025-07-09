@@ -164,14 +164,14 @@ class _JobLog(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobLog], Optional[Dict]]:
         """Lists all log entries for a specific job.
 
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list of job logs and the last evaluated key.
@@ -200,8 +200,8 @@ class _JobLog(
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)

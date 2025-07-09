@@ -150,7 +150,7 @@ class _JobMetric(
         job_id: str,
         metric_name: Optional[str] = None,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics for a job from the database.
@@ -159,7 +159,7 @@ class _JobMetric(
             job_id (str): The ID of the job to get metrics for.
             metric_name (str, optional): Filter by specific metric name.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -178,10 +178,10 @@ class _JobMetric(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -204,8 +204,8 @@ class _JobMetric(
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -257,7 +257,7 @@ class _JobMetric(
         self,
         metric_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve all metrics with a specific name across all jobs.
@@ -265,7 +265,7 @@ class _JobMetric(
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -285,10 +285,10 @@ class _JobMetric(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -302,8 +302,8 @@ class _JobMetric(
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -354,7 +354,7 @@ class _JobMetric(
         self,
         metric_name: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
@@ -365,7 +365,7 @@ class _JobMetric(
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -385,10 +385,10 @@ class _JobMetric(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
         try:
@@ -402,8 +402,8 @@ class _JobMetric(
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

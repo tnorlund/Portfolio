@@ -257,7 +257,7 @@ def test_listDependencies_with_limit(
             job_dependency_dynamo.list_dependencies(
                 dependent_job_id=dependent_job_id,
                 limit=limit,
-                lastEvaluatedKey=last_key,
+                last_evaluated_key=last_key,
             )
         )
 
@@ -380,7 +380,7 @@ def test_listDependents_with_limit(job_dependency_dynamo):
         next_dependents, next_last_key = job_dependency_dynamo.list_dependents(
             dependency_job_id=dependency_job_id,
             limit=limit,
-            lastEvaluatedKey=last_key,
+            last_evaluated_key=last_key,
         )
 
         # Check that we got more dependents

@@ -228,7 +228,7 @@ class _JobResource(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve resources for a job from the database.
@@ -236,7 +236,7 @@ class _JobResource(
         Parameters:
             job_id (str): The ID of the job to get resources for.
             limit (int, optional): The maximum number of resources to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -255,10 +255,10 @@ class _JobResource(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         resources: List[JobResource] = []
         try:
@@ -272,8 +272,8 @@ class _JobResource(
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -324,7 +324,7 @@ class _JobResource(
         self,
         resource_type: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve all resources of a specific type across all jobs.
@@ -332,7 +332,7 @@ class _JobResource(
         Parameters:
             resource_type (str): The type of resource to search for.
             limit (int, optional): The maximum number of resources to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -352,10 +352,10 @@ class _JobResource(
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         resources: List[JobResource] = []
         try:
@@ -371,8 +371,8 @@ class _JobResource(
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

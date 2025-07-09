@@ -753,7 +753,7 @@ class ReceiptStructureAnalysis:
 
         # Create the item with properly formatted values
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_STRUCTURE_ANALYSIS"},
             "receipt_id": {"N": str(self.receipt_id)},

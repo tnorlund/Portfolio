@@ -1373,7 +1373,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
 
     # Get second page
     second_page, last_evaluated_key = client.list_receipt_word_labels(
-        limit=1, lastEvaluatedKey=last_evaluated_key
+        limit=1, last_evaluated_key=last_evaluated_key
     )
     assert len(second_page) == 1
     assert last_evaluated_key is None
@@ -1396,15 +1396,15 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
             "Limit must be greater than 0",
         ),
         (
-            {"lastEvaluatedKey": "not-a-dict"},
+            {"last_evaluated_key": "not-a-dict"},
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"lastEvaluatedKey": {}},
+            {"last_evaluated_key": {}},
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
-            {"lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            {"last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}}},
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
@@ -1420,9 +1420,9 @@ def test_listReceiptWordLabels_invalid_parameters(
     Tests that listReceiptWordLabels raises ValueError for invalid parameters:
     - When limit is not an integer
     - When limit is less than or equal to 0
-    - When lastEvaluatedKey is not a dictionary
-    - When lastEvaluatedKey is missing required keys
-    - When lastEvaluatedKey values are not properly formatted
+    - When last_evaluated_key is not a dictionary
+    - When last_evaluated_key is missing required keys
+    - When last_evaluated_key values are not properly formatted
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
@@ -1659,7 +1659,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
 
     # Get second page
     second_page, last_evaluated_key = client.get_receipt_word_labels_by_label(
-        "ITEM", limit=1, lastEvaluatedKey=last_evaluated_key
+        "ITEM", limit=1, last_evaluated_key=last_evaluated_key
     )
     assert len(second_page) == 1
     assert last_evaluated_key is None
@@ -1690,17 +1690,17 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
             "Limit must be greater than 0",
         ),
         (
-            {"label": "ITEM", "lastEvaluatedKey": "not-a-dict"},
+            {"label": "ITEM", "last_evaluated_key": "not-a-dict"},
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"label": "ITEM", "lastEvaluatedKey": {}},
+            {"label": "ITEM", "last_evaluated_key": {}},
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
             {
                 "label": "ITEM",
-                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}},
             },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
@@ -1718,9 +1718,9 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
     - When label is None or empty string
     - When limit is not an integer
     - When limit is less than or equal to 0
-    - When lastEvaluatedKey is not a dictionary
-    - When lastEvaluatedKey is missing required keys
-    - When lastEvaluatedKey values are not properly formatted
+    - When last_evaluated_key is not a dictionary
+    - When last_evaluated_key is missing required keys
+    - When last_evaluated_key values are not properly formatted
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
@@ -1916,18 +1916,18 @@ def test_getReceiptWordLabelsByValidationStatus_success(
         (
             {
                 "validation_status": "VALID",
-                "lastEvaluatedKey": "not-a-dict",
+                "last_evaluated_key": "not-a-dict",
             },
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"validation_status": "VALID", "lastEvaluatedKey": {}},
+            {"validation_status": "VALID", "last_evaluated_key": {}},
             "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
         ),
         (
             {
                 "validation_status": "VALID",
-                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}},
             },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),

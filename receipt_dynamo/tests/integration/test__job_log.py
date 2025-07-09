@@ -5,6 +5,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.entities.job_log import JobLog
+from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
 
 @pytest.fixture
@@ -258,7 +259,7 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
 
     # Use the last key to get the next batch
     next_logs, next_last_key = job_log_dynamo.list_job_logs(
-        job_id=job_id, limit=limit, lastEvaluatedKey=last_key
+        job_id=job_id, limit=limit, last_evaluated_key=last_key
     )
 
     # Check that we got more logs

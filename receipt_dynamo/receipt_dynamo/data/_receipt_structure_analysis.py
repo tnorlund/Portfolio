@@ -265,27 +265,27 @@ class _ReceiptStructureAnalysis(
     def list_receipt_structure_analyses(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptStructureAnalysis], Optional[Dict[str, Any]]]:
         """Lists all ReceiptStructureAnalyses.
 
         Args:
             limit (Optional[int], optional): The maximum number of items to return. Defaults to None.
-            lastEvaluatedKey (Optional[Dict[str, Any]], optional): The key to start from for pagination. Defaults to None.
+            last_evaluated_key (Optional[Dict[str, Any]], optional): The key to start from for pagination. Defaults to None.
 
         Returns:
             Tuple[List[ReceiptStructureAnalysis], Optional[Dict[str, Any]]]: A tuple containing the list of ReceiptStructureAnalyses and the last evaluated key for pagination.
 
         Raises:
-            ValueError: If the limit or lastEvaluatedKey are invalid.
+            ValueError: If the limit or last_evaluated_key are invalid.
             Exception: If the ReceiptStructureAnalyses cannot be retrieved from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None")
+            raise ValueError("last_evaluated_key must be a dictionary or None")
 
         structure_analyses = []
         query_params: QueryInputTypeDef = {
@@ -297,8 +297,8 @@ class _ReceiptStructureAnalysis(
                 ":val": {"S": "RECEIPT_STRUCTURE_ANALYSIS"}
             },
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
         response = self._client.query(**query_params)

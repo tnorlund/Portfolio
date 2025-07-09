@@ -282,13 +282,13 @@ class _ReceiptLabelAnalysis(
     def list_receipt_label_analyses(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
         """Lists all receipt label analyses
 
         Args:
             limit (Optional[int]): The maximum number of items to return
-            lastEvaluatedKey (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
 
         Returns:
             Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: The
@@ -296,10 +296,12 @@ class _ReceiptLabelAnalysis(
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
-                raise ValueError("lastEvaluatedKey must be a dictionary or None")
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if limit is not None and limit <= 0:
+            raise ValueError("Limit must be greater than 0")
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("LastEvaluatedKey must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
         query_params: QueryInputTypeDef = {
@@ -311,8 +313,8 @@ class _ReceiptLabelAnalysis(
                 ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
             },
         }
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 

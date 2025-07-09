@@ -85,7 +85,7 @@ class _Image(
     def listImageDetails(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[
         Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
         Optional[Dict],
@@ -316,11 +316,11 @@ class _Image(
     def list_images(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
         """Lists images from the database via a global secondary index."""
         return self._query_by_type(
-            "IMAGE", item_to_image, limit, lastEvaluatedKey
+            "IMAGE", item_to_image, limit, last_evaluated_key
         )
 
     @handle_dynamodb_errors("list_images_by_type")
@@ -328,7 +328,7 @@ class _Image(
         self,
         image_type: str | ImageType,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
         """Lists images from the database by type."""
         # Validate image type
@@ -353,8 +353,8 @@ class _Image(
             },
         }
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         if limit is not None:
             query_params["Limit"] = limit
@@ -386,7 +386,7 @@ class _Image(
         entity_type: str,
         converter_func: Any,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Any], Optional[Dict]]:
         """Generic method to query entities by TYPE using GSITYPE index."""
         entities = []
@@ -398,8 +398,8 @@ class _Image(
             "ExpressionAttributeValues": {":val": {"S": entity_type}},
         }
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         if limit is not None:
             query_params["Limit"] = limit

@@ -96,6 +96,7 @@ class JobStatus:
             raise ValueError("instance_id must be a string")
         self.instance_id: Optional[str] = instance_id
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job status.
 
@@ -125,7 +126,7 @@ class JobStatus:
             dict: A dictionary representing the JobStatus object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "JOB_STATUS"},
             "status": {"S": self.status},

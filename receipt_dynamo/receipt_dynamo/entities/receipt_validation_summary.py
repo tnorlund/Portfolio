@@ -116,6 +116,7 @@ class ReceiptValidationSummary:
                 "timestamp_updated must be a datetime, string, or None"
             )
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
@@ -191,7 +192,7 @@ class ReceiptValidationSummary:
             return result
 
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),

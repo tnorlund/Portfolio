@@ -53,7 +53,7 @@ class _Line(
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: Optional[int] = None, lastEvaluatedKey: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]
+    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -206,13 +206,13 @@ class _Line(
     def list_lines(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Line], Optional[Dict]]:
         """Lists all lines in the database
 
         Args:
             limit: Maximum number of items to return
-            lastEvaluatedKey: Key to start from for pagination
+            last_evaluated_key: Key to start from for pagination
 
         Returns:
             Tuple of lines list and last evaluated key for pagination
@@ -227,8 +227,8 @@ class _Line(
             "ScanIndexForward": True,  # Sorts the results in ascending order by PK
         }
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:
             query_params["Limit"] = limit
 
