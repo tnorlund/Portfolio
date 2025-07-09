@@ -70,6 +70,7 @@ class ReceiptValidationCategory:
             raise ValueError("metadata must be a dictionary")
         self.metadata = metadata or {}
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
@@ -123,7 +124,7 @@ class ReceiptValidationCategory:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key,
             **self.gsi3_key,
             "TYPE": {"S": "RECEIPT_VALIDATION_CATEGORY"},

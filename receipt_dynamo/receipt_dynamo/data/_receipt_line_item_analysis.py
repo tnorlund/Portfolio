@@ -116,64 +116,42 @@ class _ReceiptLineItemAnalysis(
 
     @handle_dynamodb_errors("delete_receipt_line_item_analysis")
     def delete_receipt_line_item_analysis(
-        self, image_id: str, receipt_id: int
+        self, analysis: ReceiptLineItemAnalysis
     ):
         """Deletes a single ReceiptLineItemAnalysis.
 
         Args:
-            image_id (str): The Image ID.
-            receipt_id (int): The Receipt ID.
+            analysis (ReceiptLineItemAnalysis): The ReceiptLineItemAnalysis to delete.
 
         Raises:
-            ValueError: If the IDs are invalid.
+            ValueError: If the analysis is invalid.
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
-        if not isinstance(image_id, str):
-            raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
-        assert_valid_uuid(image_id)
-
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
-            },
-        )
+        self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
+        self._delete_entity(analysis)
 
     @handle_dynamodb_errors("delete_receipt_line_item_analyses")
     def delete_receipt_line_item_analyses(
-        self, keys: list[tuple[str, int]]
+        self, analyses: list[ReceiptLineItemAnalysis]
     ):
         """Deletes multiple ReceiptLineItemAnalyses in batch.
 
         Args:
-            keys (list[tuple[str, int]]): List of (image_id, receipt_id) tuples.
+            analyses (list[ReceiptLineItemAnalysis]): The ReceiptLineItemAnalyses to delete.
 
         Raises:
-            ValueError: If the keys are invalid.
+            ValueError: If the analyses are invalid.
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
-        if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
-        if not all(isinstance(key, tuple) and len(key) == 2 for key in keys):
-            raise ValueError("keys must be a list of (image_id, receipt_id) tuples")
-
+        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
+        
         request_items = [
             {
                 "DeleteRequest": {
-                    "Key": {
-                        "PK": {"S": f"IMAGE#{image_id}"},
-                        "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
-                    }
+                    "Key": analysis.key()
                 }
             }
-            for image_id, receipt_id in keys
+            for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
 

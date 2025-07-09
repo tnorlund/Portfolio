@@ -199,7 +199,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
-            "GSI1SK": {"S": f"LINE_ITEM#{self.timestamp_added}"},
+            "GSI1SK": {"S": f"LINE_ITEMS#{self.timestamp_added}"},
         }
 
     def gsi2_key(self) -> Dict[str, Any]:

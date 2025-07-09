@@ -376,12 +376,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self, error: ClientError, operation: str, context: dict
     ):
         """Handle any other unknown errors"""
-        # Check if it's an add operation to maintain backward compatibility
-        if "add_image" in operation.lower():
-            # Check if this is actually a receipt validation result operation (legacy test)
-            if "receipt validation result" in str(error).lower():
-                raise Exception("Could not add receipt validation result to DynamoDB") from error
-            raise Exception("Could not add image to DynamoDB") from error
         
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
