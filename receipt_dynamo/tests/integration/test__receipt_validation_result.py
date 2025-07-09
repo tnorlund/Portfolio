@@ -2137,9 +2137,7 @@ def test_listReceiptValidationResultsForField_success(
             "#sk": "SK",
         },
         ExpressionAttributeValues={
-            ":pk": {
-                "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
-            },
+            ":pk": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             ":sk_prefix": {
                 "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
             },

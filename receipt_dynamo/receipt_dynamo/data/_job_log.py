@@ -58,7 +58,7 @@ class _JobLog(
         self._validate_entity(job_log, JobLog, "job_log")
         self._add_entity(
             job_log,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("add_job_logs")

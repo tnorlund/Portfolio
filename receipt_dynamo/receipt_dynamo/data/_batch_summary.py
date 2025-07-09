@@ -398,7 +398,9 @@ class _BatchSummary(DynamoClientProtocol):
                 raise ValueError(f"Error getting batch summary: {e}") from e
 
     def list_batch_summaries(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
         Lists BatchSummary records from DynamoDB with optional pagination.
