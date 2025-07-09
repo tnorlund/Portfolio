@@ -1683,7 +1683,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
-                "S": f"LINE_ITEM#{sample_receipt_line_item_analysis.timestamp_added}"
+                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
             },
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},
@@ -1720,7 +1720,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
-                "S": f"LINE_ITEM#{sample_receipt_line_item_analysis.timestamp_added}"
+                "S": f"LINE_ITEMS#{sample_receipt_line_item_analysis.timestamp_added}"
             },
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {"S": f"IMAGE#{uuid_base}{uuid_suffix}#RECEIPT#{i}"},

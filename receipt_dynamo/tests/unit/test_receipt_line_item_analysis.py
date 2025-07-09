@@ -311,7 +311,7 @@ def test_receipt_line_item_analysis_gsi1_key(
     """Test ReceiptLineItemAnalysis.gsi1_key() method."""
     expected = {
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
-        "GSI1SK": {"S": "LINE_ITEM#2021-01-01T00:00:00"},
+        "GSI1SK": {"S": "LINE_ITEMS#2021-01-01T00:00:00"},
     }
     assert example_receipt_line_item_analysis.gsi1_key() == expected
 
@@ -341,7 +341,7 @@ def test_receipt_line_item_analysis_to_item(
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "RECEIPT#00001#ANALYSIS#LINE_ITEMS"
     assert item["GSI1PK"]["S"] == "ANALYSIS_TYPE"
-    assert item["GSI1SK"]["S"] == "LINE_ITEM#2021-01-01T00:00:00"
+    assert item["GSI1SK"]["S"] == "LINE_ITEMS#2021-01-01T00:00:00"
     assert item["GSI2PK"]["S"] == "RECEIPT"
     assert (
         item["GSI2SK"]["S"]
