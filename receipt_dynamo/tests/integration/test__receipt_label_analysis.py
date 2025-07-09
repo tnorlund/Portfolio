@@ -1627,7 +1627,10 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                "last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
