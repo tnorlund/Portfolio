@@ -422,19 +422,25 @@ class _ReceiptValidationResult(
                 from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id parameter is required and cannot be None.")
+            raise ValueError(
+                "receipt_id parameter is required and cannot be None."
+            )
         if not isinstance(receipt_id, int):
             raise ValueError(
                 f"receipt_id must be an integer, got {type(receipt_id).__name__}"
             )
         if image_id is None:
-            raise ValueError("image_id parameter is required and cannot be None.")
+            raise ValueError(
+                "image_id parameter is required and cannot be None."
+            )
         if not isinstance(image_id, str):
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if field_name is None:
-            raise ValueError("field_name parameter is required and cannot be None.")
+            raise ValueError(
+                "field_name parameter is required and cannot be None."
+            )
         if not isinstance(field_name, str):
             raise ValueError(
                 f"field_name must be a string, got {type(field_name).__name__}"
@@ -587,4 +593,3 @@ class _ReceiptValidationResult(
             last_evaluated_key = response.get("LastEvaluatedKey")
 
         return results, last_evaluated_key
-

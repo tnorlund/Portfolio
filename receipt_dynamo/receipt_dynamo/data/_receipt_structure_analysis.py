@@ -3,6 +3,7 @@
 This refactored version reduces code from ~806 lines to ~260 lines (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo import (
@@ -63,7 +64,7 @@ class _ReceiptStructureAnalysis(
         self._validate_entity(analysis, ReceiptStructureAnalysis, "analysis")
         self._add_entity(
             analysis,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("add_receipt_structure_analyses")
@@ -80,8 +81,10 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be added to DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
+
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=analysis.to_item())
@@ -107,7 +110,7 @@ class _ReceiptStructureAnalysis(
         self._validate_entity(analysis, ReceiptStructureAnalysis, "analysis")
         self._update_entity(
             analysis,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )
 
     @handle_dynamodb_errors("update_receipt_structure_analyses")
@@ -123,8 +126,10 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
+
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=analysis.to_item())
@@ -163,8 +168,10 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
-        
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
+
         request_items = [
             WriteRequestTypeDef(
                 DeleteRequest=DeleteRequestTypeDef(
@@ -379,9 +386,7 @@ class _ReceiptStructureAnalysis(
 
         # Continue querying if there are more results
         while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response[
-                "LastEvaluatedKey"
-            ]
+            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
             response = self._client.query(**query_params)
             analyses.extend(
                 [

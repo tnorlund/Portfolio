@@ -135,9 +135,7 @@ class _ReceiptWord(
         self._validate_entity_list(words, ReceiptWord, "words")
 
         request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=w.key)
-            )
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=w.key))
             for w in words
         ]
         self._batch_write_with_retry(request_items)
@@ -269,7 +267,9 @@ class _ReceiptWord(
             ) from e
 
     def list_receipt_words(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
@@ -277,7 +277,9 @@ class _ReceiptWord(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         receipt_words = []
         try:

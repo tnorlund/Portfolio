@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.job_log import JobLog
 from receipt_dynamo.data.shared_exceptions import DynamoDBError
+from receipt_dynamo.entities.job_log import JobLog
 
 
 @pytest.fixture

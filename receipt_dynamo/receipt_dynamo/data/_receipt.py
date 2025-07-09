@@ -531,7 +531,9 @@ class _Receipt(DynamoClientProtocol):
             raise ValueError(f"Error getting receipt details: {e}") from e
 
     def list_receipts(
-        self, limit: Optional[int] = None, last_evaluated_key: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Receipt], dict | None]:
         """
         Retrieve receipt records from the database with support for precise pagination.
