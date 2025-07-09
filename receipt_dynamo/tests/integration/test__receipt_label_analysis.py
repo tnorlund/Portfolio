@@ -1421,7 +1421,7 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
         ),
         (
             {"last_evaluated_key": {}},
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            "LastEvaluatedKey must contain keys: \\{'SK', 'PK'\\}|LastEvaluatedKey must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
             {"last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}}},
@@ -1589,7 +1589,7 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
     [
         (
             {"image_id": None},
-            "Image ID must be a string",
+            "image_id must be a string",
         ),
         (
             {"image_id": "invalid-uuid"},
@@ -1615,14 +1615,14 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "last_evaluated_key": "not-a-dict",
             },
-            "LastEvaluatedKey must be a dictionary",
+            "last_evaluated_key must be a dictionary",
         ),
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "last_evaluated_key": {},
             },
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            "LastEvaluatedKey must contain keys: \\{'SK', 'PK'\\}|LastEvaluatedKey must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
             {
@@ -1697,7 +1697,7 @@ def test_getReceiptLabelAnalysesByReceipt_success(
     [
         (
             {"image_id": None, "receipt_id": 1},
-            "Image ID must be a string",
+            "image_id must be a string",
         ),
         (
             {"image_id": "invalid-uuid", "receipt_id": 1},
@@ -1708,14 +1708,14 @@ def test_getReceiptLabelAnalysesByReceipt_success(
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "receipt_id": None,
             },
-            "Receipt ID must be a positive integer",
+            "receipt_id must be a positive integer",
         ),
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "receipt_id": 0,
             },
-            "Receipt ID must be a positive integer",
+            "receipt_id must be a positive integer",
         ),
         (
             {
@@ -1739,7 +1739,7 @@ def test_getReceiptLabelAnalysesByReceipt_success(
                 "receipt_id": 1,
                 "last_evaluated_key": "not-a-dict",
             },
-            "LastEvaluatedKey must be a dictionary",
+            "last_evaluated_key must be a dictionary",
         ),
     ],
 )

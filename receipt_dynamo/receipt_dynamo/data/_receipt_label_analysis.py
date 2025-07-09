@@ -217,9 +217,7 @@ class _ReceiptLabelAnalysis(
             
         # Then check types
         if not isinstance(image_id, str):
-            raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
+            raise ValueError("image_id must be a string")
         if not isinstance(receipt_id, int):
             raise ValueError(
                 f"receipt_id must be an integer, got {type(receipt_id).__name__}"
@@ -356,9 +354,7 @@ class _ReceiptLabelAnalysis(
             List[ReceiptLabelAnalysis]: The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
-            raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
+            raise ValueError("image_id must be a string")
         assert_valid_uuid(image_id)
 
         label_analyses = []
@@ -376,7 +372,7 @@ class _ReceiptLabelAnalysis(
             "FilterExpression": "contains(#sk, :analysis_type)",
         }
         query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LABELS#"
+            "S": "#ANALYSIS#LABELS"
         }
 
         response = self._client.query(**query_params)
@@ -399,3 +395,172 @@ class _ReceiptLabelAnalysis(
             )
 
         return label_analyses
+
+    @handle_dynamodb_errors("get_receipt_label_analyses_by_image")
+    def get_receipt_label_analyses_by_image(
+        self,
+        image_id: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+        """Gets receipt label analyses for a given image with pagination support
+
+        Args:
+            image_id (str): The image ID
+            limit (Optional[int]): Maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
+
+        Returns:
+            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: 
+                The receipt label analyses and pagination key
+        """
+        if not isinstance(image_id, str):
+            raise ValueError("image_id must be a string")
+        assert_valid_uuid(image_id)
+
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise ValueError("Limit must be an integer")
+            if limit <= 0:
+                raise ValueError("Limit must be greater than 0")
+
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
+
+        label_analyses = []
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "ExpressionAttributeNames": {
+                "#pk": "PK",
+                "#sk": "SK",
+            },
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": "RECEIPT#"},
+            },
+            "FilterExpression": "contains(#sk, :analysis_type)",
+        }
+        query_params["ExpressionAttributeValues"][":analysis_type"] = {
+            "S": "#ANALYSIS#LABELS"
+        }
+
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        label_analyses.extend(
+            [
+                item_to_receipt_label_analysis(item)
+                for item in response["Items"]
+            ]
+        )
+
+        if limit is None:
+            # If no limit is provided, paginate until all items are retrieved
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
+                label_analyses.extend(
+                    [
+                        item_to_receipt_label_analysis(item)
+                        for item in response["Items"]
+                    ]
+                )
+            last_evaluated_key_result = None
+        else:
+            # If a limit is provided, capture the LastEvaluatedKey (if any)
+            last_evaluated_key_result = response.get("LastEvaluatedKey", None)
+
+        return label_analyses, last_evaluated_key_result
+
+    @handle_dynamodb_errors("get_receipt_label_analyses_by_receipt")
+    def get_receipt_label_analyses_by_receipt(
+        self,
+        image_id: str,
+        receipt_id: int,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+        """Gets receipt label analyses for a given image and receipt with pagination support
+
+        Args:
+            image_id (str): The image ID
+            receipt_id (int): The receipt ID
+            limit (Optional[int]): Maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
+
+        Returns:
+            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: 
+                The receipt label analyses and pagination key
+        """
+        if not isinstance(image_id, str):
+            raise ValueError("image_id must be a string")
+        assert_valid_uuid(image_id)
+
+        if not isinstance(receipt_id, int):
+            raise ValueError("receipt_id must be a positive integer")
+        if receipt_id <= 0:
+            raise ValueError("receipt_id must be a positive integer")
+
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise ValueError("Limit must be an integer")
+            if limit <= 0:
+                raise ValueError("Limit must be greater than 0")
+
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
+
+        label_analyses = []
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "ExpressionAttributeNames": {
+                "#pk": "PK",
+                "#sk": "SK",
+            },
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
+            },
+        }
+
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        label_analyses.extend(
+            [
+                item_to_receipt_label_analysis(item)
+                for item in response["Items"]
+            ]
+        )
+
+        if limit is None:
+            # If no limit is provided, paginate until all items are retrieved
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
+                label_analyses.extend(
+                    [
+                        item_to_receipt_label_analysis(item)
+                        for item in response["Items"]
+                    ]
+                )
+            last_evaluated_key_result = None
+        else:
+            # If a limit is provided, capture the LastEvaluatedKey (if any)
+            last_evaluated_key_result = response.get("LastEvaluatedKey", None)
+
+        return label_analyses, last_evaluated_key_result

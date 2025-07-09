@@ -34,12 +34,12 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise ValueError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
+            f"last_evaluated_key must contain keys: {required_keys}"
         )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+                f"last_evaluated_key[{key}] must be a dict containing a key 'S'"
             )
 
 
@@ -415,11 +415,14 @@ class _ReceiptWordLabel(
         Returns:
             Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
         """
-        if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise ValueError("limit must be an integer")
+            if limit <= 0:
+                raise ValueError("limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary or None")
+                raise ValueError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []
@@ -543,6 +546,160 @@ class _ReceiptWordLabel(
                 ":status": {"S": status.value}
             },
         }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        word_labels.extend(
+            [item_to_receipt_word_label(item) for item in response["Items"]]
+        )
+
+        if limit is None:
+            # Paginate through all labels
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
+                word_labels.extend(
+                    [item_to_receipt_word_label(item) for item in response["Items"]]
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+        return word_labels, last_evaluated_key
+
+    @handle_dynamodb_errors("get_receipt_word_labels_by_label")
+    def get_receipt_word_labels_by_label(
+        self,
+        label: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        """Lists receipt word labels by label type
+        
+        Args:
+            label (str): The label to filter by
+            limit (Optional[int]): The maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            
+        Returns:
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+        """
+        # Validate label
+        if not isinstance(label, str) or not label:
+            raise ValueError("label must be a non-empty string")
+        
+        # Validate limit
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise ValueError("limit must be an integer")
+            if limit <= 0:
+                raise ValueError("limit must be greater than 0")
+        
+        # Validate last_evaluated_key
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
+
+        word_labels = []
+        
+        # Generate the GSI1PK for the label with proper padding
+        label_upper = label.upper()
+        prefix = "LABEL#"
+        current_length = len(prefix) + len(label_upper)
+        padding_length = 40 - current_length
+        gsi1pk = f"{prefix}{label_upper}{'_' * padding_length}"
+        
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI1",
+            "KeyConditionExpression": "#pk = :pk",
+            "ExpressionAttributeNames": {"#pk": "GSI1PK"},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": gsi1pk}
+            },
+        }
+        
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        word_labels.extend(
+            [item_to_receipt_word_label(item) for item in response["Items"]]
+        )
+
+        if limit is None:
+            # Paginate through all labels
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
+                word_labels.extend(
+                    [item_to_receipt_word_label(item) for item in response["Items"]]
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+        return word_labels, last_evaluated_key
+
+    @handle_dynamodb_errors("get_receipt_word_labels_by_validation_status")
+    def get_receipt_word_labels_by_validation_status(
+        self,
+        validation_status: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        """Lists receipt word labels by validation status
+        
+        Args:
+            validation_status (str): The validation status to filter by
+            limit (Optional[int]): The maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            
+        Returns:
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+        """
+        # Validate validation_status
+        if not isinstance(validation_status, str) or not validation_status:
+            raise ValueError("validation status must be a non-empty string")
+        
+        # Validate that validation_status is one of the valid values
+        valid_statuses = [status.value for status in ValidationStatus]
+        if validation_status not in valid_statuses:
+            raise ValueError(
+                f"validation status must be one of the following: {', '.join(valid_statuses)}"
+            )
+        
+        # Validate limit
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise ValueError("limit must be an integer")
+            if limit <= 0:
+                raise ValueError("limit must be greater than 0")
+        
+        # Validate last_evaluated_key
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
+
+        word_labels = []
+        
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI3",
+            "KeyConditionExpression": "#pk = :pk",
+            "ExpressionAttributeNames": {"#pk": "GSI3PK"},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"VALIDATION_STATUS#{validation_status}"}
+            },
+        }
+        
         if last_evaluated_key is not None:
             query_params["ExclusiveStartKey"] = last_evaluated_key
         if limit is not None:

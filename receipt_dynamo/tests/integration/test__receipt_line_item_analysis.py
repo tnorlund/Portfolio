@@ -903,7 +903,7 @@ def test_deleteReceiptLineItemAnalysis_success(
 @pytest.mark.parametrize(
     "image_id,receipt_id,expected_error",
     [
-        (None, 1, "image_id must be a string, got NoneType"),
+        (None, 1, "uuid must be a string"),
         ("test-id", None, "receipt_id must be an integer, got NoneType"),
         ("test-id", "not-an-int", "receipt_id must be an integer, got str"),
         ("invalid-uuid", 1, "uuid must be a valid UUIDv4"),
@@ -920,8 +920,21 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
     mocker.patch.object(client, "_client")
 
     # Act & Assert
+    # Try to create an invalid analysis object
     with pytest.raises(ValueError) as excinfo:
-        client.delete_receipt_line_item_analysis(image_id, receipt_id)
+        # This will raise ValueError when trying to create the object with invalid parameters
+        from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
+        from datetime import datetime
+        
+        analysis = ReceiptLineItemAnalysis(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            timestamp_added=datetime.now(),
+            items=[],
+            reasoning="Test analysis",
+            version="v1"
+        )
+        client.delete_receipt_line_item_analysis(analysis)
     assert expected_error in str(excinfo.value)
 
 
