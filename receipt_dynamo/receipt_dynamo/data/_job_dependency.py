@@ -65,7 +65,7 @@ class _JobDependency(
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
         self._add_entity(
             job_dependency,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("get_job_dependency")
