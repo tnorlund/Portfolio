@@ -7,22 +7,26 @@ This directory contains active technical specifications and implementation plans
 | Specification | Status | Priority | GitHub Issue | Effort |
 |---------------|--------|----------|--------------|---------|
 | **AI Usage Tracking (Phase 5)** | 🟡 Next | High | #122 | 5-7 days |
+| **🟡 Line Item Processing Enhancement** | 🟡 Next | Medium | TBD | 2-4 weeks |
 | **Google Places API Tracking** | 🔴 Planned | Medium | #147 | 2-3 days |
 | **Receipt Upload Reformatting** | 🔴 Planned | Medium | #146 | 3-5 days |
 | **Agentic Refactor** | 📋 Specified | Low | TBD | 12-16 weeks |
 
 ## 🎯 Current Focus
 
-### **Next Sprint (Issue #122)**
-**AI Usage Tracking Phase 5 - Production Deployment**
-- Deploy complete AI usage tracking system to production
-- Implement advanced analytics and reporting
-- Achieve sub-100ms latency and 99.99% availability
+### **🟡 ENHANCEMENT: Line Item Processing**
+**The receipt_label package has functional but incomplete line item processing**
+- Core labeling works (60-70% effective) but GPT enhancement is broken
+- Missing GPT function that was never properly implemented
+- 30-40% of receipts fail advanced processing for complex patterns
 
-### **Upcoming Work**
-1. **Issue #147** - Google Places API context manager integration
-2. **Issue #146** - Receipt upload package reformatting to match standards
-3. **Agentic Refactor** - Long-term architectural transformation
+### **Unblocked Work**
+1. **Issue #122** - AI Usage Tracking (can proceed - core labeling works)
+2. **Issue #147** - Google Places API integration (can proceed)
+3. **Issue #146** - Receipt upload reformatting (can proceed)
+
+### **Enhancement Plan**
+4-week enhancement plan to improve line item processing from 60-70% to 90-95% accuracy using pattern matching + Pinecone
 
 ### **Long-term Vision**
 **Agentic Architecture Transformation** - Complete system refactor to agent-based architecture with:
@@ -35,18 +39,23 @@ This directory contains active technical specifications and implementation plans
 
 ```
 spec/
+├── line-item-enhancement/      # 🟡 ENHANCEMENT: Line item processing improvement
+│   ├── README.md              # 4-week enhancement plan (pattern matching + Pinecone)
+│   ├── financial-validation.md # Comprehensive financial validation specification
+│   └── currency-analysis-entity.md # DynamoDB schema design for currency analysis
 ├── ai-usage-tracking/          # AI usage tracking system (Phases 3-5)
 │   ├── implementation.md       # Core architecture and patterns
 │   └── testing-project.md      # Comprehensive test strategy
-├── agentic-refactor/          # 4-phase architecture transformation
+├── agentic-refactor/          # 4-phase architecture transformation [FUTURE]
 │   ├── week1-retrieval.md     # RAG-based intelligent labeling
 │   ├── week2-tools.md         # Tool registry and standardization
 │   ├── week3-orchestration.md # Agent orchestration patterns
 │   └── week4-streaming.md     # Real-time streaming and observability
 ├── technical-analysis/        # System architecture documentation
 │   ├── dynamo-entities.md     # DynamoDB entity reference
+│   ├── dynamodb-entity-consolidation.md # Entity consolidation plan with Pinecone
 │   ├── client-refactor.md     # Client management patterns
-│   └── labeler-refactor.md    # ReceiptLabeler architecture
+│   └── labeler-refactor.md    # ReceiptLabeler architecture (ALIGNED WITH CORE FIX)
 ├── archive/                   # Completed work (reference only)
 │   └── completed-2024/        # 2024 completed specifications
 └── README.md                  # This file (active roadmap)
@@ -62,6 +71,15 @@ spec/
 - 10,000+ requests per second support
 - 99.99% availability SLA
 - See: `ai-usage-tracking/implementation.md`
+
+### **🟡 Line Item Processing Enhancement** 🟡 NEXT
+**4-Week Enhancement Plan**
+- **Week 1**: Remove GPT dependency, enhance pattern matching (60-70% → 80-85%)
+- **Week 2**: Add Pinecone integration for retrieval-augmented processing (80-85% → 85-90%)
+- **Week 3**: Implement store-specific learning and complex relationships (85-90% → 90-95%)
+- **Week 4**: Financial validation with final "thumbs up/down" determination
+- **DynamoDB Optimization**: Consolidate 7 analysis entities → 3 entities (60% reduction)
+- See: `line-item-enhancement/README.md`, `line-item-enhancement/financial-validation.md`, and `technical-analysis/dynamodb-entity-consolidation.md`
 
 ### **Google Places API Integration (Issue #147)** 🔴 PLANNED
 **Context Manager for Places API**
