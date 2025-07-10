@@ -26,11 +26,11 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
-from receipt_label.embedding.word.realtime import (
-    embed_receipt_words_realtime,
-    embed_words_realtime,
+from receipt_label.embedding.integration import (
+    embed_receipt_realtime,
+    process_receipt_with_realtime_embedding,
 )
+from receipt_label.embedding.word.realtime import embed_words_realtime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -154,37 +154,43 @@ def test_embedding_with_context():
 
 
 def test_full_receipt_embedding(receipt_id: str):
-    """Test embedding a full receipt from DynamoDB."""
+    """Test embedding a full receipt from DynamoDB with merchant validation."""
     logger.info(f"Testing full receipt embedding for receipt_id: {receipt_id}")
 
     start_time = time.time()
 
     try:
-        # Embed words using modular implementation
-        word_embedding_pairs = embed_receipt_words_realtime(receipt_id)
+        # Use integrated approach with merchant validation
+        merchant_metadata, embedding_results = process_receipt_with_realtime_embedding(
+            receipt_id=receipt_id,
+            embed_words=True,
+            embed_lines=False,
+        )
 
         elapsed_time = time.time() - start_time
 
         logger.info(
-            f"Receipt embedding completed in {elapsed_time:.2f} seconds"
+            f"Receipt processing completed in {elapsed_time:.2f} seconds"
         )
-        logger.info(f"Processed {len(word_embedding_pairs)} words")
+        
+        # Show merchant validation results
+        logger.info(f"Merchant: {merchant_metadata.merchant_name}")
+        logger.info(f"Place ID: {merchant_metadata.place_id}")
+        logger.info(f"Validated by: {merchant_metadata.validated_by}")
+        
+        # Show embedding results
+        if "words" in embedding_results:
+            word_count = embedding_results["words"].get("count", 0)
+            logger.info(f"Embedded {word_count} words")
+        
+        if "lines" in embedding_results:
+            line_count = embedding_results["lines"].get("count", 0)
+            logger.info(f"Embedded {line_count} lines")
 
-        # Show sample results
-        for i, (word, embedding) in enumerate(word_embedding_pairs[:5]):
-            logger.info(
-                f"  - Word {i+1}: '{word.text}' -> {len(embedding)} dimensions"
-            )
-
-        if len(word_embedding_pairs) > 5:
-            logger.info(
-                f"  ... and {len(word_embedding_pairs) - 5} more words"
-            )
-
-        return word_embedding_pairs
+        return merchant_metadata, embedding_results
 
     except Exception as e:
-        logger.error(f"Error embedding receipt: {str(e)}")
+        logger.error(f"Error processing receipt: {str(e)}")
         raise
 
 

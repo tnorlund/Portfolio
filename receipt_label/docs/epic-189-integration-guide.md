@@ -2,10 +2,9 @@
 
 ## Overview
 
-Epic #189 provides two key capabilities for Epic #192 (Agent Integration):
+Epic #189 provides real-time embedding capabilities for Epic #192 (AWS Infrastructure Integration):
 
-1. **Real-time Embedding**: Embed receipt words immediately without waiting for batch processing
-2. **Merchant Pattern Queries**: Query patterns efficiently using merchant context (99% query reduction)
+**Real-time Embedding**: Embed receipt words and lines immediately without waiting for batch processing, integrated with existing merchant validation.
 
 ## Architecture
 
@@ -20,13 +19,13 @@ Key functions:
 - `embed_words_realtime(words, merchant_name)` - Embed specific words with merchant context
 - `embed_receipt_lines_realtime(receipt_id, merchant_name)` - Embed all lines from a receipt
 
-### Merchant Patterns Module
+### Merchant Validation Integration
 
-Location: `receipt_label/receipt_label/merchant_patterns/`
+Location: `receipt_label/receipt_label/embedding/integration.py`
 
 Key functions:
-- `get_merchant_patterns(merchant_name)` - Extract all patterns for a merchant
-- `query_patterns_for_words(merchant_name, words)` - Find patterns for specific words
+- `process_receipt_with_realtime_embedding()` - Complete workflow with merchant validation
+- `embed_receipt_realtime()` - Simplified embedding interface
 
 ## Integration Points for Epic #192
 
@@ -35,73 +34,100 @@ Key functions:
 After merchant validation completes, trigger real-time embeddings:
 
 ```python
-# In validate_merchant_step_functions Lambda
-from receipt_label.embedding.word.realtime import embed_receipt_words_realtime
+# In merchant validation Lambda or Step Function
+from receipt_label.embedding.integration import process_receipt_with_realtime_embedding
 
-def after_merchant_validation(receipt_id: str, merchant_metadata: ReceiptMetadata):
-    """Called after successful merchant validation."""
-
-    # Embed immediately if needed for downstream processing
-    if requires_immediate_embedding(receipt_id):
-        merchant_name = (
-            merchant_metadata.canonical_merchant_name
-            or merchant_metadata.merchant_name
-        )
-        word_embeddings = embed_receipt_words_realtime(
-            receipt_id=receipt_id,
-            merchant_name=merchant_name
-        )
-
-        # Words are now embedded and stored in Pinecone
-        # Can proceed with pattern matching immediately
-```
-
-### 2. Before GPT Labeling (Pattern Matching)
-
-Check merchant patterns before calling GPT to save costs:
-
-```python
-# In word labeling Lambda
-from receipt_label.merchant_patterns import query_patterns_for_words
-
-def label_receipt_words(receipt_id: str, merchant_name: str):
-    """Label words using patterns first, then GPT."""
-
-    # Get words to label
-    words = get_unlabeled_words(receipt_id)
-
-    # Query patterns (single Pinecone query for all words)
-    pattern_result = query_patterns_for_words(
-        merchant_name=merchant_name,
-        words=words,
-        confidence_threshold=0.8
+def process_receipt_with_embedding(receipt_id: str):
+    """Complete workflow: merchant validation + real-time embedding."""
+    
+    # Single call handles both merchant validation and embedding
+    merchant_metadata, embedding_results = process_receipt_with_realtime_embedding(
+        receipt_id=receipt_id,
+        embed_words=True,
+        embed_lines=False,  # Optional: embed lines too
     )
-
-    # Auto-label high confidence matches
-    for word_text, pattern in pattern_result.pattern_matches.items():
-        if pattern.confidence_level == PatternConfidence.HIGH:
-            # Skip GPT, use pattern
-            apply_label(word_text, pattern.suggested_label)
-
-    # Only call GPT for words without patterns
-    if pattern_result.words_without_patterns:
-        gpt_labels = call_gpt_for_labels(pattern_result.words_without_patterns)
+    
+    # Results include both merchant data and embedding status
+    return {
+        "merchant_name": merchant_metadata.merchant_name,
+        "place_id": merchant_metadata.place_id,
+        "words_embedded": embedding_results.get("words", {}).get("count", 0),
+        "validation_method": merchant_metadata.validated_by,
+    }
 ```
 
-### 3. Pattern Learning Loop
+### 2. Modular Real-time Embedding (Advanced Usage)
 
-After validation, update patterns:
+For use cases where merchant is already known:
 
 ```python
-# In validation completion Lambda
-def after_label_validation(receipt_id: str, validated_labels: dict):
-    """Update patterns after successful validation."""
+# Direct modular usage in specialized Lambdas
+from receipt_label.embedding.word.realtime import embed_receipt_words_realtime
+from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
 
-    # Patterns are automatically updated when embeddings include
-    # validated_labels in metadata
+def embed_receipt_words_only(receipt_id: str, merchant_name: str):
+    """Embed just words when merchant is pre-validated."""
+    
+    word_embeddings = embed_receipt_words_realtime(
+        receipt_id=receipt_id,
+        merchant_name=merchant_name
+    )
+    
+    return {
+        "words_embedded": len(word_embeddings),
+        "merchant_name": merchant_name,
+    }
 
-    # Next time query_patterns_for_words is called for this merchant,
-    # it will include the newly validated patterns
+def embed_receipt_lines_only(receipt_id: str, merchant_name: str):
+    """Embed just lines for section classification."""
+    
+    line_embeddings = embed_receipt_lines_realtime(
+        receipt_id=receipt_id,
+        merchant_name=merchant_name
+    )
+    
+    return {
+        "lines_embedded": len(line_embeddings),
+        "merchant_name": merchant_name,
+    }
+```
+
+### 3. Error Handling and Fallbacks
+
+Handle failures gracefully:
+
+```python
+# Robust error handling
+from receipt_label.embedding.integration import process_receipt_with_realtime_embedding
+
+def safe_receipt_processing(receipt_id: str):
+    """Process receipt with comprehensive error handling."""
+    
+    try:
+        merchant_metadata, embedding_results = process_receipt_with_realtime_embedding(
+            receipt_id=receipt_id,
+            embed_words=True,
+            embed_lines=False,
+        )
+        
+        # Check for embedding errors
+        if "error" in embedding_results.get("words", {}):
+            logger.warning(f"Word embedding failed for {receipt_id}: {embedding_results['words']['error']}")
+            # Could fall back to batch processing
+            
+        return {
+            "status": "success",
+            "merchant_metadata": merchant_metadata,
+            "embedding_results": embedding_results,
+        }
+        
+    except Exception as e:
+        logger.error(f"Receipt processing failed for {receipt_id}: {str(e)}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "fallback_to_batch": True,
+        }
 ```
 
 ## AWS Infrastructure Requirements for Epic #192
