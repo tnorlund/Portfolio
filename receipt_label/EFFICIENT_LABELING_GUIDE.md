@@ -30,10 +30,21 @@
 <!-- Extract merchant_name and category -->
 <!-- Handle missing metadata scenarios -->
 
-### Step 2: Embedding Verification
+### Step 2: Embedding Verification & Noise Detection
+#### Check Embeddings
 <!-- Check if lines/words are embedded -->
 <!-- Embed if missing -->
 <!-- Metadata requirements -->
+
+#### Identify Noise Words
+- Mark noise words with `is_noise=True` in DynamoDB
+- Skip noise words during Pinecone embedding
+- Noise detection happens once during initial processing
+
+**Storage Strategy**:
+- DynamoDB: Store ALL words (including noise)
+- Pinecone: Embed only meaningful words
+- Benefits: Complete OCR preservation + efficient search
 
 ### Step 3: Parallel Pattern Detection
 #### 3.1 Currency Pattern Detection

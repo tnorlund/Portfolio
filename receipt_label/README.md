@@ -136,6 +136,33 @@ Not every word needs labeling, and not every receipt needs GPT:
 - Update Pinecone with new successful patterns for future use
 - Track pattern confidence for continuous improvement
 
+### Noise Word Handling Strategy
+
+#### Storage Approach
+- **DynamoDB**: Store ALL words including noise (complete OCR preservation)
+- **Pinecone**: Embed only meaningful words (efficient semantic search)
+- **Labeling**: Skip noise words entirely (no CORE_LABELS assigned)
+
+#### Noise Word Identification
+Words are marked as noise if they are:
+- Single punctuation characters (`.`, `,`, `:`)
+- Separators (`---`, `===`, `***`)
+- OCR artifacts (scan noise, torn edges)
+- Pure non-alphanumeric strings
+
+#### Implementation
+```python
+# During processing
+for word in receipt_words:
+    if is_noise_word(word.text):
+        word.is_noise = True  # Mark in DynamoDB
+        continue  # Skip embedding and labeling
+
+    # Process meaningful words only
+    embed_word(word)
+    label_word(word)
+```
+
 ### Efficient Labeling Implementation
 
 #### Pattern Detection Functions
