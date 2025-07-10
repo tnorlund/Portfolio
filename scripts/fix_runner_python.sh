@@ -60,10 +60,9 @@ else
     echo -e "${GREEN}✅ Python 3.12 already installed${NC}"
 fi
 
-# Create symlink to make python3.12 available
-if [[ ! -f "/opt/homebrew/bin/python3.12" ]] && [[ -f "/opt/homebrew/bin/python3" ]]; then
-    ln -sf /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.12
-fi
+# Note: python3.12 should be available directly from Homebrew
+# Creating symlinks in Homebrew directories is not recommended
+# The workflow will use the full python3.12 path directly
 
 echo ""
 echo -e "${GREEN}🎉 Python setup complete!${NC}"
