@@ -1,8 +1,9 @@
 """
 GPT integration functions for receipt labeling.
 
-This module provides GPT-based analysis functions for receipt processing.
-These are temporary stubs until the functions are properly implemented in receipt_dynamo.
+This module provides stub implementations of GPT-based analysis functions.
+These functions return mock data and are intended for testing purposes only.
+The production system uses modern batch processing approaches instead of direct GPT calls.
 """
 
 import logging
@@ -72,15 +73,22 @@ def gpt_request_structure_analysis(
     gpt_api_key: Optional[str] = None,
 ) -> Tuple[Dict, str, str]:
     """
-    Forward to the actual implementation in receipt_dynamo.
+    Analyze receipt structure using GPT.
+
+    This is a stub implementation that returns mock data for testing.
     """
-    from receipt_dynamo.data._gpt import (
-        gpt_request_structure_analysis as _gpt_request_structure_analysis,
+    logger.warning(
+        "Using stub implementation of gpt_request_structure_analysis"
     )
 
-    return _gpt_request_structure_analysis(
-        receipt, receipt_lines, receipt_words, places_api_data, gpt_api_key
-    )
+    # Return mock structure analysis
+    mock_response = {
+        "discovered_sections": [],
+        "overall_confidence": 0.5,
+        "reasoning": "Stub implementation - no actual analysis performed",
+    }
+
+    return (mock_response, "mock_query", "mock_raw_response")
 
 
 def gpt_request_field_labeling(
@@ -92,17 +100,22 @@ def gpt_request_field_labeling(
     gpt_api_key: Optional[str] = None,
 ) -> Tuple[Dict, str, str]:
     """
-    Forward to the actual implementation in receipt_dynamo.
-    """
-    from receipt_dynamo.data._gpt import (
-        gpt_request_field_labeling as _gpt_request_field_labeling,
-    )
+    Label individual fields in a receipt using GPT.
 
-    return _gpt_request_field_labeling(
-        receipt,
-        receipt_lines,
-        receipt_words,
-        section_boundaries,
-        places_api_data,
-        gpt_api_key,
-    )
+    This is a stub implementation that returns mock data for testing.
+    """
+    logger.warning("Using stub implementation of gpt_request_field_labeling")
+
+    # Return mock field labeling analysis
+    mock_response = {
+        "labels": [],
+        "metadata": {
+            "total_labeled_words": 0,
+            "average_confidence": 0.5,
+            "requires_review": False,
+            "review_reasons": [],
+        },
+        "reasoning": "Stub implementation - no actual analysis performed",
+    }
+
+    return (mock_response, "mock_query", "mock_raw_response")
