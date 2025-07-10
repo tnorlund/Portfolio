@@ -35,11 +35,15 @@ aws s3 sync ../portfolio/out "s3://$BUCKET" \
 
 If assets are deleted, use the sync scripts:
 ```bash
-# Quick recovery from dev bucket
-./scripts/quick_sync_images.sh
+# Get bucket names from Pulumi
+DEV_BUCKET=$(pulumi stack output cdn_bucket_name --stack dev --cwd infra)
+PROD_BUCKET=$(pulumi stack output cdn_bucket_name --stack prod --cwd infra)
 
-# Or sync from another environment
-./scripts/sync_images_dev_to_prod.sh
+# Quick recovery using environment variables
+DEV_S3_BUCKET=$DEV_BUCKET PROD_S3_BUCKET=$PROD_BUCKET ./scripts/quick_sync_images.sh
+
+# Or pass as arguments
+./scripts/sync_images_dev_to_prod.sh $DEV_BUCKET $PROD_BUCKET
 ```
 
 ## Prevention
