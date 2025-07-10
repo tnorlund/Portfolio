@@ -34,12 +34,19 @@ flowchart TD
 
     ClassifyCurrency --> ApplyPatterns
 
-    ApplyPatterns --> CheckUnlabeled{Any Unlabeled?}
+    ApplyPatterns --> SmartCheck{Need GPT?}
 
-    CheckUnlabeled -->|Yes| BatchGPT[Single GPT Call<br/>with Context]
-    CheckUnlabeled -->|No| Store
+    SmartCheck --> EssentialCheck{Essential<br/>Labels Found?}
+    EssentialCheck -->|No| BatchGPT[Single GPT Call<br/>Find Missing Essentials]
+    EssentialCheck -->|Yes| NoiseCheck{Only Noise<br/>Words Left?}
 
-    BatchGPT --> Store[Store Labels<br/>in DynamoDB]
+    NoiseCheck -->|Yes| Store[Store Labels<br/>in DynamoDB]
+    NoiseCheck -->|No| ThresholdCheck{> 5 Meaningful<br/>Unlabeled Words?}
+
+    ThresholdCheck -->|Yes| BatchGPT
+    ThresholdCheck -->|No| Store
+
+    BatchGPT --> Store
 
     Store --> UpdatePinecone[Update Pinecone<br/>Pattern Cache]
 
@@ -103,14 +110,26 @@ Using patterns from the single Pinecone query:
   - Common: "VISA ****1234" → `PAYMENT_METHOD`
 - Confidence based on pattern frequency across receipts
 
-#### 6. **Batch GPT Labeling for Remaining Words**
-For any unlabeled words after pattern matching:
-- Group words by line for better context
-- Single GPT API call with:
-  - Merchant context (name, category)
-  - Already labeled words as examples
-  - List of valid CORE_LABELS only
-- Apply returned labels to all remaining words
+#### 6. **Smart GPT Decision & Batch Labeling**
+Not every word needs labeling, and not every receipt needs GPT:
+
+**Essential Labels** (must be found):
+- `MERCHANT_NAME` - Need to know where purchase was made
+- `DATE` - Need transaction date
+- `GRAND_TOTAL` - Need final amount
+- `PRODUCT_NAME` - Need at least one item
+
+**Decision Logic**:
+1. **Check Essential Labels**: If missing any essential label, call GPT to find them
+2. **Filter Noise Words**: Skip punctuation, separators, single characters
+3. **Apply Threshold**: If < 5 meaningful unlabeled words remain, skip GPT
+4. **Batch Remaining**: Group by line and make single GPT call
+
+**Noise Word Examples**:
+- Punctuation: `.`, `,`, `:`, `-`
+- Separators: `---`, `===`, `***`
+- Receipt artifacts: Torn edges, scan noise
+- Single characters (except `$`, `€`, etc.)
 
 #### 7. **Store Results and Update Patterns**
 - Store all word labels in DynamoDB as `ReceiptWordLabel` entities

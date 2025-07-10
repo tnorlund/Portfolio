@@ -90,17 +90,41 @@
 <!-- Confidence scoring -->
 <!-- Pattern precedence -->
 
-### Step 6: Batch GPT Labeling
-#### Grouping Strategy
+### Step 6: Smart GPT Decision & Batch Labeling
+
+#### 6.1 Determine if GPT is Needed
+**Essential Labels Check**:
+```
+ESSENTIAL_LABELS = {
+    "MERCHANT_NAME",    # Must have merchant
+    "DATE",             # Must have transaction date
+    "GRAND_TOTAL",      # Must have final amount
+    "PRODUCT_NAME"      # Must have at least one item
+}
+```
+
+**Decision Criteria**:
+1. **Skip GPT if all essential labels found** - Receipt is sufficiently labeled
+2. **Skip GPT if only noise words remain** - Words like punctuation, random characters
+3. **Skip GPT if unlabeled words < threshold** - e.g., less than 5 meaningful words
+4. **Call GPT if missing essential labels** - Need to find critical information
+
+**Noise Word Detection**:
+- Single characters (except currency symbols)
+- Pure punctuation
+- Common separators (---, ===, ...)
+- Receipt artifacts (torn edges, scan artifacts)
+
+#### 6.2 Grouping Strategy
 <!-- Group by line for context -->
 <!-- Batch size optimization -->
 
-#### Prompt Engineering
+#### 6.3 Prompt Engineering
 <!-- Include merchant context -->
 <!-- Provide labeled examples -->
 <!-- Constrain to CORE_LABELS -->
 
-#### Response Processing
+#### 6.4 Response Processing
 <!-- Parse structured output -->
 <!-- Validate against CORE_LABELS -->
 
@@ -116,24 +140,119 @@
 
 ## Code Examples
 
-### Pattern Detection Functions
+### Smart GPT Decision Logic
 ```python
-# Currency detection example
+def should_call_gpt(words: List[ReceiptWord], labeled_words: List[ReceiptWord]) -> bool:
+    """Determine if GPT is needed based on essential labels and noise filtering."""
+
+    # Define essential labels
+    ESSENTIAL_LABELS = {"MERCHANT_NAME", "DATE", "GRAND_TOTAL", "PRODUCT_NAME"}
+
+    # Check if all essential labels are found
+    found_labels = {word.label for word in labeled_words if word.label}
+    missing_essentials = ESSENTIAL_LABELS - found_labels
+
+    if missing_essentials:
+        return True  # Must call GPT to find essential labels
+
+    # Filter out noise words
+    meaningful_unlabeled = []
+    for word in words:
+        if word.label:
+            continue
+
+        # Skip noise words
+        if is_noise_word(word.text):
+            continue
+
+        meaningful_unlabeled.append(word)
+
+    # Apply threshold
+    return len(meaningful_unlabeled) >= 5
+
+def is_noise_word(text: str) -> bool:
+    """Detect noise words that don't need labeling."""
+    # Single character (except currency symbols)
+    if len(text) == 1 and text not in ['$', '€', '£', '¥']:
+        return True
+
+    # Pure punctuation or separators
+    if text in ['.', ',', ':', '-', '---', '===', '***', '...']:
+        return True
+
+    # Only special characters
+    if not any(c.isalnum() for c in text):
+        return True
+
+    return False
 ```
 
 ### Merchant Pattern Query
 ```python
-# Pinecone query implementation
+async def query_merchant_patterns(
+    merchant_name: str,
+    client_manager: ClientManager
+) -> Dict[str, str]:
+    """Query Pinecone for validated patterns from the same merchant."""
+
+    # Single query for all patterns
+    results = await client_manager.pinecone.query(
+        vector=[0] * 1536,  # Metadata-only query
+        top_k=1000,
+        include_metadata=True,
+        filter={
+            "merchant_name": merchant_name,
+            "validated_labels": {"$exists": True}
+        },
+        namespace="words"
+    )
+
+    # Build pattern dictionary
+    patterns = defaultdict(lambda: defaultdict(int))
+
+    for match in results.matches:
+        text = match.metadata.get("text", "").lower()
+        labels = match.metadata.get("validated_labels", [])
+
+        for label in labels:
+            patterns[text][label] += 1
+
+    # Return most common label for each word
+    final_patterns = {}
+    for text, label_counts in patterns.items():
+        final_patterns[text] = max(label_counts, key=label_counts.get)
+
+    return final_patterns
 ```
 
-### Smart Classification
+### Label Distribution Analysis
 ```python
-# Classification rules implementation
-```
+def analyze_label_distribution(labeled_words: List[ReceiptWord]) -> Dict[str, int]:
+    """Analyze which CORE_LABELS are present in the receipt."""
 
-### Batch GPT Labeling
-```python
-# GPT batch call example
+    label_counts = defaultdict(int)
+    for word in labeled_words:
+        if word.label:
+            label_counts[word.label] += 1
+
+    # Identify label categories present
+    categories = {
+        "merchant_info": any(label in label_counts for label in
+                            ["MERCHANT_NAME", "ADDRESS_LINE", "PHONE_NUMBER"]),
+        "transaction_info": any(label in label_counts for label in
+                               ["DATE", "TIME", "PAYMENT_METHOD"]),
+        "line_items": any(label in label_counts for label in
+                         ["PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"]),
+        "totals": any(label in label_counts for label in
+                     ["SUBTOTAL", "TAX", "GRAND_TOTAL"])
+    }
+
+    return {
+        "label_counts": dict(label_counts),
+        "categories_present": categories,
+        "total_labels": len(label_counts),
+        "missing_from_corpus": 18 - len(label_counts)
+    }
 ```
 
 ## Performance Metrics
