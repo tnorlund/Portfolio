@@ -4,7 +4,7 @@ A Python package for labeling and validating receipt data using GPT and Pinecone
 
 ## Receipt Word Labeling Flow
 
-The receipt labeling process leverages existing merchant metadata from our validation pipeline:
+The receipt labeling process leverages existing merchant metadata for direct word labeling:
 
 ```mermaid
 flowchart TD
@@ -13,36 +13,42 @@ flowchart TD
     CheckMeta --> |Found| UseMeta[Use Stored Metadata<br/>merchant_name, category, place_id]
     CheckMeta --> |Not Found| NeedsMerchant[Merchant Unknown<br/>Run validation pipeline first]
 
-    UseMeta --> Structure[Structure Analysis<br/>GPT with merchant context]
-    NeedsMerchant --> |After validation| Structure
+    UseMeta --> QueryPatterns[Query Pinecone:<br/>Find word labels from<br/>same merchant]
+    NeedsMerchant --> |After validation| QueryPatterns
 
-    Structure --> |Section Boundaries| FieldLabel[Field Labeling<br/>GPT with merchant context]
-    Structure --> |Currency Contexts| LineItem[Line Item Processing]
+    QueryPatterns --> ProcessWords[Process Each Word]
 
-    FieldLabel --> |Word Labels| Consolidate[Label Consolidation]
+    ProcessWords --> KnownPattern{Word pattern<br/>exists for merchant?}
 
-    LineItem --> Pattern[Pattern Matching<br/>FastPatternMatcher]
-    Pattern --> |Simple Items| LineLabels[Generate Line Item Labels]
-    Pattern --> |Complex Items| GPTAnalysis[GPT Analysis<br/>Currently Enhanced Patterns]
-    GPTAnalysis --> LineLabels
-    LineLabels --> |Item Labels| Consolidate
+    KnownPattern -->|Yes| ApplyLabel[Apply Known Label<br/>e.g. "Big Mac" → PRODUCT_NAME]
+    KnownPattern -->|No| GPTLabel[GPT Labeling with<br/>Merchant Context]
 
-    Consolidate --> Embedding[Word Embedding<br/>with merchant context]
+    ApplyLabel --> StorePattern[Update Pattern<br/>Confidence]
+    GPTLabel --> StoreNew[Store New<br/>Word Pattern]
+
+    StorePattern --> NextWord{More Words?}
+    StoreNew --> NextWord
+
+    NextWord -->|Yes| ProcessWords
+    NextWord -->|No| LineItems[Line Item Processing<br/>with labeled words]
+
+    LineItems --> Pattern[Pattern Matching<br/>FastPatternMatcher]
+    Pattern --> |Prices & Quantities| ExtractItems[Extract Line Items<br/>from labeled words]
+
+    ExtractItems --> Embedding[Word Embedding<br/>with merchant context<br/>and labels]
     Embedding --> Result([Labeled Receipt<br/>with enriched embeddings])
 
     style Start fill:#e1f5e1
     style Result fill:#e1f5e1
     style CheckMeta fill:#f9f,stroke:#333,stroke-width:4px
     style UseMeta fill:#e1f5e1
-    style NeedsMerchant fill:#ffe4e1
+    style QueryPatterns fill:#e1e5f5
+    style ApplyLabel fill:#e1f5e1
+    style StorePattern fill:#e1f5e1
     style Pattern fill:#fff4e1
-    style GPTAnalysis fill:#e1e5f5
-    style Structure fill:#e1e5f5
-    style FieldLabel fill:#e1e5f5
-    style Embedding fill:#e1e5f5
 ```
 
-**Note**: The merchant validation pipeline (Step Functions) runs after OCR and before labeling to ensure merchant metadata is available. This metadata enriches both the GPT prompts and word embeddings.
+**Note**: Structure emerges naturally from correctly labeled words. No explicit structure analysis needed - if words are labeled correctly (MERCHANT_NAME, PRODUCT_NAME, TOTAL, etc.), the receipt structure is implicit.
 
 ### Detailed Labeling Process
 
@@ -53,52 +59,54 @@ flowchart TD
 - If metadata exists: Use stored merchant_name, category, place_id
 - If no metadata: Receipt must go through merchant validation pipeline first
 
-#### 2. **Structure Analysis**
-- Method: `ReceiptAnalyzer.analyze_structure()`
-- Uses GPT to identify receipt sections:
-  - **Header**: Business name, address, phone, date/time
-  - **Body**: Line items, quantities, prices
-  - **Footer**: Totals, payment info, thank you message
-- **Enhanced with merchant context**: GPT receives merchant_name and category to better understand receipt structure
-- Returns section boundaries for targeted labeling
+#### 2. **Direct Word Labeling with Merchant Context**
+- Method: Query Pinecone for word patterns from same merchant
+- For each word:
+  - Check if we've seen this word at this merchant before
+  - If yes: Apply the known label (e.g., "Big Mac" at McDonald's → PRODUCT_NAME)
+  - If no: Use GPT with merchant context to label, then store pattern
+- **No structure analysis needed**: Structure emerges from labeled words
+- **Learning system**: Each new receipt improves labeling for that merchant
 
-#### 3. **Field Labeling**
-- Method: `ReceiptAnalyzer.label_fields()`
-- Processes each section with GPT
-- **Merchant-aware labeling**: Uses merchant category to improve accuracy (e.g., "BURGER" at McDonald's vs hardware store)
-- Labels include:
+#### 3. **Merchant-Specific Word Patterns**
+- Words get consistent labels at the same merchant:
+  - McDonald's: "Big Mac" → `PRODUCT_NAME`, "McFlurry" → `PRODUCT_NAME`
+  - Home Depot: "SKU" → `PRODUCT_ID_PREFIX`, "LUMBER" → `PRODUCT_CATEGORY`
+- Common label types:
   - `MERCHANT_NAME`, `ADDRESS_LINE`, `PHONE_NUMBER`
   - `DATE`, `TIME`, `PAYMENT_METHOD`
   - `PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`
   - `SUBTOTAL`, `TAX`, `GRAND_TOTAL`
-- Returns confidence scores and review flags
+- Pattern confidence grows with each occurrence
 
 #### 4. **Line Item Processing**
 - Method: `LineItemProcessor.analyze_line_items()`
-- Two-stage approach:
+- Works with already-labeled words to extract line items
+- Pattern matching on labeled data:
+  - Find `PRODUCT_NAME` words
+  - Look for nearby `QUANTITY` and `UNIT_PRICE` labels
+  - Group related labels into line items
+- **Currency detection** (`FastPatternMatcher`):
+  - Identifies prices: `$12.99`, `$1,234.56`
+  - Quantity formats: `2 @ $5.99`, `Qty: 3 x $4.50`
+- Validates financial totals against extracted items
 
-  a. **Pattern Matching** (`FastPatternMatcher`):
-  - Currency patterns: `$12.99`, `$1,234.56`
-  - Quantity patterns: `2 @ $5.99`, `Qty: 3 x $4.50`
-  - Financial fields: Subtotal, Tax, Total, Discount
+#### 5. **Word Embeddings with Context**
+- Each word gets embedded with:
+  - The word text
+  - Its assigned label
+  - Merchant context (name, category)
+  - Spatial position
+- Example: `"Big Mac [label=PRODUCT_NAME] (merchant=McDonald's, pos=middle)"`
+- Embeddings enable future similarity searches and pattern learning
 
-  b. **Enhanced Analysis**:
-  - Currently uses `EnhancedCurrencyAnalyzer` for 80-85% accuracy
-  - Planned: Pinecone lookups for edge cases (Week 2)
-
-#### 5. **Label Consolidation**
-- Merges field labels with line item labels
-- Priority system (1-9 scale):
-  - Financial totals: Priority 9
-  - Line item components: Priority 8
-  - Transaction details: Priority 6
-  - Business info: Priority 5
-- Higher priority labels override lower ones
-
-#### 6. **Validation** (Optional)
-- Checks mathematical consistency
-- Validates required fields presence
-- Flags discrepancies for review
+#### 6. **Structure Emerges from Labels**
+- No explicit structure analysis needed
+- Receipt sections emerge naturally:
+  - Words labeled `MERCHANT_NAME`, `ADDRESS` → Header
+  - Words labeled `PRODUCT_NAME`, `QUANTITY`, `PRICE` → Items section
+  - Words labeled `SUBTOTAL`, `TAX`, `TOTAL` → Footer
+- Structure is implicit in the labeling
 
 ### Label Categories
 
