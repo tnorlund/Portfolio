@@ -20,16 +20,17 @@ echo -e "${YELLOW}Step 1: Listing image files in DEV bucket...${NC}"
 echo "Dev bucket: s3://${DEV_BUCKET}/assets/"
 echo ""
 
-# Get list of image files from dev
-dev_images=$(aws s3 ls s3://${DEV_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | awk '{print $4}')
+# Get list of image files from dev (case-insensitive)
+dev_images=$(aws s3 ls s3://${DEV_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | awk '{print $4}')
 
 if [ -z "$dev_images" ]; then
     echo -e "${RED}No image files found in dev bucket!${NC}"
     exit 1
 fi
 
-# Count dev images
+# Count dev images (handle empty case)
 dev_count=$(echo "$dev_images" | wc -l | tr -d ' ')
+dev_count=${dev_count:-0}
 echo -e "${GREEN}Found ${dev_count} image files in dev bucket${NC}"
 echo ""
 

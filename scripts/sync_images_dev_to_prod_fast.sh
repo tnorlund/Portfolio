@@ -18,12 +18,16 @@ echo ""
 # Step 1: Get counts
 echo -e "${YELLOW}Step 1: Analyzing buckets...${NC}"
 
-# Count images in dev
-dev_count=$(aws s3 ls s3://${DEV_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+# Count images in dev (case-insensitive)
+dev_count=$(aws s3 ls s3://${DEV_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+# Ensure count is not empty
+dev_count=${dev_count:-0}
 echo -e "Dev bucket images: ${GREEN}${dev_count}${NC}"
 
-# Count images in prod
-prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+# Count images in prod (case-insensitive)
+prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+# Ensure count is not empty
+prod_count=${prod_count:-0}
 echo -e "Prod bucket images: ${GREEN}${prod_count}${NC}"
 
 echo ""
@@ -44,11 +48,16 @@ echo ""
 # Create a temp file to capture dry-run output
 temp_file=$(mktemp)
 
-# Run sync in dry-run mode and capture output
+# Run sync in dry-run mode and capture output (case-insensitive includes)
 aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
     --exclude "*" \
-    --include "*.jpg" --include "*.jpeg" --include "*.png" \
-    --include "*.webp" --include "*.avif" --include "*.gif" --include "*.svg" \
+    --include "*.jpg" --include "*.JPG" \
+    --include "*.jpeg" --include "*.JPEG" \
+    --include "*.png" --include "*.PNG" \
+    --include "*.webp" --include "*.WEBP" \
+    --include "*.avif" --include "*.AVIF" \
+    --include "*.gif" --include "*.GIF" \
+    --include "*.svg" --include "*.SVG" \
     --dryrun | tee "$temp_file"
 
 # Count files that would be copied
@@ -82,15 +91,21 @@ echo ""
 
 aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
     --exclude "*" \
-    --include "*.jpg" --include "*.jpeg" --include "*.png" \
-    --include "*.webp" --include "*.avif" --include "*.gif" --include "*.svg"
+    --include "*.jpg" --include "*.JPG" \
+    --include "*.jpeg" --include "*.JPEG" \
+    --include "*.png" --include "*.PNG" \
+    --include "*.webp" --include "*.WEBP" \
+    --include "*.avif" --include "*.AVIF" \
+    --include "*.gif" --include "*.GIF" \
+    --include "*.svg" --include "*.SVG"
 
 # Step 5: Verify counts
 echo ""
 echo -e "${YELLOW}Step 4: Verifying sync...${NC}"
 
-# New count in prod
-new_prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+# New count in prod (case-insensitive)
+new_prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+new_prod_count=${new_prod_count:-0}
 echo -e "Prod bucket images after sync: ${GREEN}${new_prod_count}${NC}"
 echo -e "Images added: ${GREEN}$((new_prod_count - prod_count))${NC}"
 
@@ -99,8 +114,8 @@ if [ "$new_prod_count" -gt "$prod_count" ]; then
     echo ""
     echo -e "${YELLOW}Step 5: Testing asset accessibility...${NC}"
     
-    # Get a sample file that was just synced
-    sample_file=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif)$' | head -1 | awk '{print $4}')
+    # Get a sample file that was just synced (case-insensitive)
+    sample_file=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif)$' | head -1 | awk '{print $4}')
     
     if [ -n "$sample_file" ]; then
         test_url="https://www.tylernorlund.com/$sample_file"
