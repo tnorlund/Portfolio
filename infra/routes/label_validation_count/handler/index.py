@@ -58,7 +58,7 @@ def fetch_label_counts(core_label):
             dynamo_client.get_receipt_word_labels_by_label(
                 label=core_label,
                 limit=1000,
-                lastEvaluatedKey=last_evaluated_key,
+                last_evaluated_key=last_evaluated_key,
             )
         )
         receipt_word_labels.extend(next_receipt_word_labels)
