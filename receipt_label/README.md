@@ -4,29 +4,30 @@ A Python package for labeling and validating receipt data using GPT and Pinecone
 
 ## Receipt Word Labeling Flow
 
-The receipt labeling process follows an efficient, parallel approach that minimizes API calls:
+The receipt labeling process integrates with existing Step Functions and follows an efficient, parallel approach:
 
 ```mermaid
 flowchart TD
     Start([Receipt Input<br/>with receipt_id]) --> CheckMeta{Check Existing<br/>Receipt Metadata}
 
     CheckMeta --> |Found| UseMeta[Use Stored Metadata<br/>merchant_name, category, place_id]
-    CheckMeta --> |Not Found| NeedsMerchant[Merchant Unknown<br/>Run validation pipeline first]
+    CheckMeta --> |Not Found| MerchantSF[Run Merchant Validation<br/>Step Function]
+
+    MerchantSF --> |Google Places + GPT| UseMeta
 
     UseMeta --> EmbedCheck{Lines & Words<br/>Embedded in Pinecone?}
-    NeedsMerchant --> |After validation| EmbedCheck
 
-    EmbedCheck -->|No| EmbedWords[Embed Lines & Words<br/>to Pinecone]
+    EmbedCheck -->|No| EmbedSF[Non-Batch Embedding<br/>Lines & Words to Pinecone]
     EmbedCheck -->|Yes| Parallel
-    EmbedWords --> Parallel{Run in Parallel}
+    EmbedSF --> Parallel{Run Pattern Detectors<br/>in Parallel}
 
     Parallel --> Currency[Detect Currency<br/>Patterns]
     Parallel --> DateTime[Detect Date/Time<br/>Patterns]
     Parallel --> Contact[Detect Phone/Web<br/>Patterns]
     Parallel --> Quantity[Detect Quantity<br/>Patterns]
-    Parallel --> PineconeQuery[ONE Pinecone Query<br/>Get Merchant Patterns]
+    Parallel --> PineconeQuery[Query Merchant Patterns<br/>from Validated Labels]
 
-    Currency --> ClassifyCurrency[Classify Currency<br/>by Position & Keywords]
+    Currency --> ClassifyCurrency[Smart Currency<br/>Classification]
     DateTime --> ApplyPatterns
     Contact --> ApplyPatterns
     Quantity --> ApplyPatterns
@@ -34,38 +35,46 @@ flowchart TD
 
     ClassifyCurrency --> ApplyPatterns
 
-    ApplyPatterns --> SmartCheck{Need GPT?}
+    ApplyPatterns --> SmartCheck{Smart GPT<br/>Decision Logic}
 
     SmartCheck --> EssentialCheck{Essential<br/>Labels Found?}
-    EssentialCheck -->|No| BatchGPT[Single GPT Call<br/>Find Missing Essentials]
+    EssentialCheck -->|No| BatchQueue[Queue for<br/>Batch Processing]
     EssentialCheck -->|Yes| NoiseCheck{Only Noise<br/>Words Left?}
 
     NoiseCheck -->|Yes| Store[Store Labels<br/>in DynamoDB]
     NoiseCheck -->|No| ThresholdCheck{> 5 Meaningful<br/>Unlabeled Words?}
 
-    ThresholdCheck -->|Yes| BatchGPT
+    ThresholdCheck -->|Yes| BatchQueue
     ThresholdCheck -->|No| Store
 
-    BatchGPT --> Store
+    BatchQueue --> BatchSF[GPT Batch Labeling<br/>Step Function]
+    BatchSF --> Store
 
-    Store --> UpdatePinecone[Update Pinecone<br/>Pattern Cache]
+    Store --> Validate{Validation<br/>Needed?}
 
-    UpdatePinecone --> Result([Labeled Receipt<br/>with all CORE_LABELS])
+    Validate -->|Yes| ValidationSF[Label Validation<br/>Step Function]
+    Validate -->|No| UpdatePinecone
+
+    ValidationSF --> |3-Pass Validation| UpdatePinecone[Update Pinecone<br/>Pattern Cache]
+
+    UpdatePinecone --> Result([Labeled Receipt<br/>with Validated Labels])
 
     style Start fill:#e1f5e1
     style Result fill:#e1f5e1
     style CheckMeta fill:#f9f,stroke:#333,stroke-width:4px
-    style UseMeta fill:#e1f5e1
+    style MerchantSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
+    style EmbedSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
+    style BatchSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
+    style ValidationSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
     style Parallel fill:#fff4e1
-    style PineconeQuery fill:#e1e5f5
-    style BatchGPT fill:#f9f9e1
+    style BatchQueue fill:#f9f9e1
 ```
 
-**Key Optimizations**:
-- **Parallel Detection**: All pattern detectors run simultaneously
-- **Single Pinecone Query**: Retrieves merchant patterns, not individual words
-- **Batch Processing**: One GPT call for all remaining words
-- **Pattern Learning**: Successful patterns cached back to Pinecone
+**Key Components**:
+- **Step Functions**: Leverages existing merchant validation, batch embedding, and label validation pipelines
+- **Parallel Detection**: Pattern detectors run simultaneously for efficiency
+- **Smart Batching**: Queue unlabeled words for OpenAI batch API (50% cost reduction)
+- **Validation Pipeline**: Optional 3-pass validation for high-accuracy requirements
 
 ### Detailed Labeling Process
 
