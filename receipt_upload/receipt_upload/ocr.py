@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import boto3
-
 from receipt_dynamo.entities import (
     Letter,
     Line,
@@ -18,6 +17,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+from receipt_label.utils.noise_detection import is_noise_word
 
 
 def process_ocr_dict_as_receipt(
@@ -63,6 +63,7 @@ def process_ocr_dict_as_receipt(
                 angle_radians=word_data["angle_radians"],
                 confidence=word_data["confidence"],
                 extracted_data=extracted_data,
+                is_noise=is_noise_word(word_data["text"]),  # NEW FIELD
             )
             words.append(word_obj)
 
