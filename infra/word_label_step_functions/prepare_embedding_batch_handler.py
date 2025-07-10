@@ -40,7 +40,7 @@ def submit_handler(event, context):
     logger.info("Starting prepare_embedding_batch_handler")
     words_without_embeddings = list_receipt_words_with_no_embeddings()
     logger.info(
-        f"Found {len(words_without_embeddings)} words without embeddings"
+        f"Found {len(words_without_embeddings)} words without embeddings (noise words filtered)"
     )
     batches = chunk_into_embedding_batches(words_without_embeddings)
     logger.info(f"Chunked into {len(batches)} batches")
