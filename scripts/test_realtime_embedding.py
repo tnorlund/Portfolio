@@ -22,15 +22,16 @@ from typing import List, Optional
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import ReceiptWord
 from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
 from receipt_label.embedding.word.realtime import (
     embed_receipt_words_realtime,
     embed_words_realtime,
 )
 from receipt_label.merchant_validation.handler import create_validation_handler
+
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptWord
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
