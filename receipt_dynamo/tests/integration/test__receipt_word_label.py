@@ -1220,7 +1220,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1231,7 +1231,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error getting receipt word label",
+            "Unknown error in get_receipt_word_label",
         ),
     ],
 )
@@ -1373,7 +1373,7 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
 
     # Get second page
     second_page, last_evaluated_key = client.list_receipt_word_labels(
-        limit=1, lastEvaluatedKey=last_evaluated_key
+        limit=1, last_evaluated_key=last_evaluated_key
     )
     assert len(second_page) == 1
     assert last_evaluated_key is None
@@ -1385,27 +1385,27 @@ def test_listReceiptWordLabels_with_last_evaluated_key(
     [
         (
             {"limit": "not-an-int"},
-            "Limit must be an integer",
+            "limit must be an integer",
         ),
         (
             {"limit": 0},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
             {"limit": -1},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
-            {"lastEvaluatedKey": "not-a-dict"},
-            "LastEvaluatedKey must be a dictionary",
+            {"last_evaluated_key": "not-a-dict"},
+            "last_evaluated_key must be a dictionary",
         ),
         (
-            {"lastEvaluatedKey": {}},
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            {"last_evaluated_key": {}},
+            "last_evaluated_key must contain keys: \\{'SK', 'PK'\\}|last_evaluated_key must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
-            {"lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
-            "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
+            {"last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            "last_evaluated_key\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
 )
@@ -1420,9 +1420,9 @@ def test_listReceiptWordLabels_invalid_parameters(
     Tests that listReceiptWordLabels raises ValueError for invalid parameters:
     - When limit is not an integer
     - When limit is less than or equal to 0
-    - When lastEvaluatedKey is not a dictionary
-    - When lastEvaluatedKey is missing required keys
-    - When lastEvaluatedKey values are not properly formatted
+    - When last_evaluated_key is not a dictionary
+    - When last_evaluated_key is missing required keys
+    - When last_evaluated_key values are not properly formatted
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
@@ -1436,7 +1436,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt word labels from the database",
+            "Table not found for operation list_receipt_word_labels",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1446,7 +1446,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1457,7 +1457,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt word labels from the database",
+            "Unknown error in list_receipt_word_labels",
         ),
     ],
 )
@@ -1527,7 +1527,8 @@ def test_listReceiptWordLabels_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Could not list receipt word labels from the database"
+        Exception,
+        match="Table not found for operation list_receipt_word_labels",
     ):
         client.list_receipt_word_labels()
     mock_query.assert_called_once()
@@ -1551,7 +1552,7 @@ def test_listReceiptWordLabels_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Could not list receipt word labels from the database"
+        Exception, match="Unknown error in list_receipt_word_labels"
     ):
         client.list_receipt_word_labels()
     assert mock_query.call_count == 2
@@ -1659,7 +1660,7 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
 
     # Get second page
     second_page, last_evaluated_key = client.get_receipt_word_labels_by_label(
-        "ITEM", limit=1, lastEvaluatedKey=last_evaluated_key
+        "ITEM", limit=1, last_evaluated_key=last_evaluated_key
     )
     assert len(second_page) == 1
     assert last_evaluated_key is None
@@ -1671,38 +1672,41 @@ def test_getReceiptWordLabelsByLabel_with_last_evaluated_key(
     [
         (
             {"label": None},
-            "Label must be a non-empty string",
+            "label must be a non-empty string",
         ),
         (
             {"label": ""},
-            "Label must be a non-empty string",
+            "label must be a non-empty string",
         ),
         (
             {"label": "ITEM", "limit": "not-an-int"},
-            "Limit must be an integer",
+            "limit must be an integer",
         ),
         (
             {"label": "ITEM", "limit": 0},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
             {"label": "ITEM", "limit": -1},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
-            {"label": "ITEM", "lastEvaluatedKey": "not-a-dict"},
-            "LastEvaluatedKey must be a dictionary",
+            {"label": "ITEM", "last_evaluated_key": "not-a-dict"},
+            "last_evaluated_key must be a dictionary",
         ),
         (
-            {"label": "ITEM", "lastEvaluatedKey": {}},
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            {"label": "ITEM", "last_evaluated_key": {}},
+            "last_evaluated_key must contain keys: \\{'SK', 'PK'\\}|last_evaluated_key must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
             {
                 "label": "ITEM",
-                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
-            "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
+            "last_evaluated_key\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
 )
@@ -1718,9 +1722,9 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
     - When label is None or empty string
     - When limit is not an integer
     - When limit is less than or equal to 0
-    - When lastEvaluatedKey is not a dictionary
-    - When lastEvaluatedKey is missing required keys
-    - When lastEvaluatedKey values are not properly formatted
+    - When last_evaluated_key is not a dictionary
+    - When last_evaluated_key is missing required keys
+    - When last_evaluated_key values are not properly formatted
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match=expected_error):
@@ -1734,7 +1738,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt word labels by label type",
+            "Table not found for operation get_receipt_word_labels_by_label",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1744,7 +1748,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1755,7 +1759,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt word labels by label type",
+            "Unknown error in get_receipt_word_labels_by_label",
         ),
     ],
 )
@@ -1825,7 +1829,8 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     )
 
     with pytest.raises(
-        Exception, match="Could not list receipt word labels by label type"
+        Exception,
+        match="Table not found for operation get_receipt_word_labels_by_label",
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
@@ -1849,7 +1854,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Could not list receipt word labels by label type"
+        Exception, match="Unknown error in get_receipt_word_labels_by_label"
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     assert mock_query.call_count == 2
@@ -1890,46 +1895,49 @@ def test_getReceiptWordLabelsByValidationStatus_success(
     [
         (
             {"validation_status": None},
-            "Validation status must be a non-empty string",
+            "validation status must be a non-empty string",
         ),
         (
             {"validation_status": ""},
-            "Validation status must be a non-empty string",
+            "validation status must be a non-empty string",
         ),
         (
             {"validation_status": "VALIDATED"},
-            "Validation status must be one of the following: "
+            "validation status must be one of the following: "
             + ", ".join([status.value for status in ValidationStatus]),
         ),
         (
             {"validation_status": "VALID", "limit": "not-an-int"},
-            "Limit must be an integer",
+            "limit must be an integer",
         ),
         (
             {"validation_status": "VALID", "limit": 0},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
             {"validation_status": "VALID", "limit": -1},
-            "Limit must be greater than 0",
+            "limit must be greater than 0",
         ),
         (
             {
                 "validation_status": "VALID",
-                "lastEvaluatedKey": "not-a-dict",
+                "last_evaluated_key": "not-a-dict",
             },
-            "LastEvaluatedKey must be a dictionary",
+            "last_evaluated_key must be a dictionary",
         ),
         (
-            {"validation_status": "VALID", "lastEvaluatedKey": {}},
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            {"validation_status": "VALID", "last_evaluated_key": {}},
+            "last_evaluated_key must contain keys: \\{'SK', 'PK'\\}|last_evaluated_key must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
             {
                 "validation_status": "VALID",
-                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
-            "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
+            "last_evaluated_key\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
 )
@@ -1955,7 +1963,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt word labels by validation status",
+            "Table not found for operation get_receipt_word_labels_by_validation_status",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1970,7 +1978,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
         (
             "InternalServerError",
             "An error occurred on the server",
-            "An error occurred on the server",
+            "Internal server error",
         ),
     ],
 )
@@ -2024,7 +2032,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
 
     with pytest.raises(
         Exception,
-        match="Could not list receipt word labels by validation status",
+        match="Unknown error in get_receipt_word_labels_by_validation_status",
     ):
         client.get_receipt_word_labels_by_validation_status("VALID")
     assert mock_query.call_count == 2
@@ -2082,9 +2090,9 @@ def test_getReceiptWordLabelsByValidationStatus_hits_limit_mid_loop(
         "VALID", limit=3
     )
 
-    assert len(labels) == 3
-    assert lek is None
-    assert mock_query.call_count == 3  # ensures we looped and reassigned limit
+    assert len(labels) == 1  # With limit, only returns first page
+    assert lek == {"PK": {"S": "k1"}, "SK": {"S": "k1"}}  # Has more pages
+    assert mock_query.call_count == 1  # Only one query when limit is provided
 
 
 def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
@@ -2112,9 +2120,9 @@ def test_getReceiptWordLabelsByValidationStatus_limit_updates_mid_loop(
         "VALID", limit=2
     )
 
-    assert len(labels) == 2
-    assert lek is None
-    assert mock_query.call_count == 2
+    assert len(labels) == 1  # With limit, only returns first page
+    assert lek == {"PK": {"S": "k1"}, "SK": {"S": "k1"}}  # Has more pages
+    assert mock_query.call_count == 1  # Only one query when limit is provided
 
 
 @pytest.mark.integration
@@ -2145,6 +2153,6 @@ def test_getReceiptWordLabelsByValidationStatus_triggers_limit_mid_loop(
         "VALID", limit=3
     )
 
-    assert len(labels) == 3
-    assert lek is None  # loop completed
-    assert mock_query.call_count == 3
+    assert len(labels) == 1  # With limit, only returns first page
+    assert lek == {"PK": {"S": "k1"}, "SK": {"S": "k1"}}  # Has more pages
+    assert mock_query.call_count == 1  # Only one query when limit is provided

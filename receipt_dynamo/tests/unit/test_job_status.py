@@ -172,8 +172,8 @@ def test_job_status_init_invalid_instance_id():
 
 @pytest.mark.unit
 def test_job_status_key(example_job_status):
-    """Test the JobStatus.key() method."""
-    assert example_job_status.key() == {
+    """Test the JobStatus.key method."""
+    assert example_job_status.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "STATUS#2021-01-01T00:00:00"},
     }

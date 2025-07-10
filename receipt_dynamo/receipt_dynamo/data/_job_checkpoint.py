@@ -2,11 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -20,6 +20,9 @@ from receipt_dynamo.entities.job_checkpoint import (
     item_to_job_checkpoint,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -35,7 +38,32 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobCheckpoint(DynamoClientProtocol):
+class _JobCheckpoint(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    """
+    A class used to represent a JobCheckpoint in the database.
+
+    Methods
+    -------
+    add_job_checkpoint(job_checkpoint: JobCheckpoint)
+        Adds a job checkpoint to the database.
+    get_job_checkpoint(job_id: str, timestamp: str) -> JobCheckpoint
+        Gets a specific job checkpoint by job ID and timestamp.
+    update_best_checkpoint(job_id: str, timestamp: str)
+        Updates the 'is_best' flag for checkpoints in a job.
+    list_job_checkpoints(job_id: str, limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None)
+        Lists all checkpoints for a specific job.
+    get_best_checkpoint(job_id: str) -> Optional[JobCheckpoint]
+        Gets the checkpoint marked as best for a job.
+    delete_job_checkpoint(job_id: str, timestamp: str)
+        Deletes a specific job checkpoint.
+    list_all_job_checkpoints(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None)
+        Lists all job checkpoints across all jobs.
+    """
+
+    @handle_dynamodb_errors("add_job_checkpoint")
     def add_job_checkpoint(self, job_checkpoint: JobCheckpoint):
         """Adds a job checkpoint to the database
 
@@ -45,41 +73,13 @@ class _JobCheckpoint(DynamoClientProtocol):
         Raises:
             ValueError: When a job checkpoint with the same timestamp already exists
         """
-        if job_checkpoint is None:
-            raise ValueError(
-                "JobCheckpoint parameter is required and cannot be None."
-            )
-        if not isinstance(job_checkpoint, JobCheckpoint):
-            raise ValueError(
-                "job_checkpoint must be an instance of the JobCheckpoint class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job_checkpoint.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"JobCheckpoint with timestamp {job_checkpoint.timestamp} for job {job_checkpoint.job_id} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job checkpoint to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(job_checkpoint, JobCheckpoint, "job_checkpoint")
+        self._add_entity(
+            job_checkpoint,
+            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+        )
 
+    @handle_dynamodb_errors("get_job_checkpoint")
     def get_job_checkpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
         """Gets a specific job checkpoint by job ID and timestamp
 
@@ -102,37 +102,20 @@ class _JobCheckpoint(DynamoClientProtocol):
                 "Timestamp is required and must be a non-empty string."
             )
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": f"CHECKPOINT#{timestamp}"},
+            },
+        )
+
+        if "Item" not in response:
+            raise ValueError(
+                f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
             )
 
-            if "Item" not in response:
-                raise ValueError(
-                    f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
-                )
-
-            return item_to_job_checkpoint(response["Item"])
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
-                    f"Could not get job checkpoint: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting job checkpoint: {e}"
-                ) from e
+        return item_to_job_checkpoint(response["Item"])
 
     def update_best_checkpoint(self, job_id: str, timestamp: str):
         """Updates the 'is_best' flag for checkpoints in a job
@@ -163,60 +146,38 @@ class _JobCheckpoint(DynamoClientProtocol):
                 f"Cannot update best checkpoint: No checkpoint found with job ID {job_id} and timestamp {timestamp}"
             )
 
-        try:
-            # First, set all checkpoints for this job to is_best=False
-            checkpoints, _ = self.list_job_checkpoints(job_id)
-            for checkpoint in checkpoints:
-                if checkpoint.timestamp != timestamp and checkpoint.is_best:
-                    self._client.update_item(
-                        TableName=self.table_name,
-                        Key={
-                            "PK": {"S": f"JOB#{job_id}"},
-                            "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},
-                        },
-                        UpdateExpression="SET is_best = :is_best",
-                        ExpressionAttributeValues={
-                            ":is_best": {"BOOL": False}
-                        },
-                    )
+        # First, set all checkpoints for this job to is_best=False
+        checkpoints, _ = self.list_job_checkpoints(job_id)
+        for checkpoint in checkpoints:
+            if checkpoint.timestamp != timestamp and checkpoint.is_best:
+                self._client.update_item(
+                    TableName=self.table_name,
+                    Key={
+                        "PK": {"S": f"JOB#{job_id}"},
+                        "SK": {"S": f"CHECKPOINT#{checkpoint.timestamp}"},
+                    },
+                    UpdateExpression="SET is_best = :is_best",
+                    ExpressionAttributeValues={":is_best": {"BOOL": False}},
+                )
 
-            # Then set the specified checkpoint to is_best=True
-            self._client.update_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
-                UpdateExpression="SET is_best = :is_best",
-                ExpressionAttributeValues={":is_best": {"BOOL": True}},
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"No job checkpoint found with job ID {job_id} and timestamp {timestamp}"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
-                    f"Could not update best checkpoint: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error updating best checkpoint: {e}"
-                ) from e
+        # Then set the specified checkpoint to is_best=True
+        self._client.update_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": f"CHECKPOINT#{timestamp}"},
+            },
+            UpdateExpression="SET is_best = :is_best",
+            ExpressionAttributeValues={":is_best": {"BOOL": True}},
+            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+        )
 
+    @handle_dynamodb_errors("list_job_checkpoints")
     def list_job_checkpoints(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve checkpoints for a job from the database.
@@ -224,7 +185,7 @@ class _JobCheckpoint(DynamoClientProtocol):
         Parameters:
             job_id (str): The ID of the job to get checkpoints for.
             limit (int, optional): The maximum number of checkpoints to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -243,10 +204,10 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []
         try:
@@ -261,8 +222,8 @@ class _JobCheckpoint(DynamoClientProtocol):
                 "ScanIndexForward": False,
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -309,6 +270,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"Error listing job checkpoints: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_best_checkpoint")
     def get_best_checkpoint(self, job_id: str) -> Optional[JobCheckpoint]:
         """
         Retrieve the best checkpoint for a job from the database.
@@ -367,6 +329,7 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"Error getting best checkpoint: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("delete_job_checkpoint")
     def delete_job_checkpoint(self, job_id: str, timestamp: str):
         """
         Delete a job checkpoint from the database.
@@ -412,15 +375,18 @@ class _JobCheckpoint(DynamoClientProtocol):
                     f"Error deleting job checkpoint: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
         Retrieve all checkpoints across all jobs from the database.
 
         Parameters:
             limit (int, optional): The maximum number of checkpoints to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -435,10 +401,10 @@ class _JobCheckpoint(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []
         try:
@@ -453,8 +419,8 @@ class _JobCheckpoint(DynamoClientProtocol):
                 "ScanIndexForward": False,
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

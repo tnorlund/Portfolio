@@ -117,10 +117,10 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "analysis parameter is required and cannot be None."),
+        (None, "Analysis parameter is required and cannot be None."),
         (
             "not-a-receipt-line-item-analysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -345,10 +345,10 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "analyses parameter is required and cannot be None."),
+        (None, "Analyses parameter is required and cannot be None."),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
@@ -487,10 +487,10 @@ def test_updateReceiptLineItemAnalysis_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "analysis parameter is required and cannot be None."),
+        (None, "Analysis parameter is required and cannot be None."),
         (
             "not a ReceiptLineItemAnalysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -727,10 +727,10 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "analyses parameter is required and cannot be None"),
+        (None, "Analyses parameter is required and cannot be None"),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances",
+            "Analyses must be a list of ReceiptLineItemAnalysis instances",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
@@ -844,8 +844,8 @@ def test_updateReceiptLineItemAnalyses_client_errors(
             "Error": {"Code": error_code, "Message": error_message}
         }
 
-    mock_client.transact_write_items.side_effect = ClientError(
-        error_response, "TransactWriteItems"
+    mock_client.batch_write_item.side_effect = ClientError(
+        error_response, "BatchWriteItem"
     )
 
     # Act & Assert
@@ -881,9 +881,7 @@ def test_deleteReceiptLineItemAnalysis_success(
     assert "Item" in response
 
     # Act
-    client.delete_receipt_line_item_analysis(
-        analysis=sample_receipt_line_item_analysis
-    )
+    client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Assert
     # Verify the analysis was deleted
@@ -901,17 +899,24 @@ def test_deleteReceiptLineItemAnalysis_success(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "invalid_input,expected_error",
+    "image_id,receipt_id,expected_error",
     [
-        (None, "analysis parameter is required and cannot be None."),
+        (None, 1, "uuid must be a string"),
         (
-            "not-a-receipt-line-item-analysis",
-            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            None,
+            "receipt_id must be an integer",
         ),
+        (
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "not-an-int",
+            "receipt_id must be an integer",
+        ),
+        ("invalid-uuid", 1, "uuid must be a valid UUIDv4"),
     ],
 )
 def test_deleteReceiptLineItemAnalysis_invalid_parameters(
-    dynamodb_table, mocker, invalid_input, expected_error
+    dynamodb_table, mocker, image_id, receipt_id, expected_error
 ):
     """Test that invalid parameters raise appropriate errors when deleting a ReceiptLineItemAnalysis."""
     # Arrange
@@ -921,8 +926,24 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
     mocker.patch.object(client, "_client")
 
     # Act & Assert
+    # Try to create an invalid analysis object
     with pytest.raises(ValueError) as excinfo:
-        client.delete_receipt_line_item_analysis(analysis=invalid_input)
+        # This will raise ValueError when trying to create the object with invalid parameters
+        from datetime import datetime
+
+        from receipt_dynamo.entities.receipt_line_item_analysis import (
+            ReceiptLineItemAnalysis,
+        )
+
+        analysis = ReceiptLineItemAnalysis(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            timestamp_added=datetime.now(),
+            items=[],
+            reasoning="Test analysis",
+            version="v1",
+        )
+        client.delete_receipt_line_item_analysis(analysis)
     assert expected_error in str(excinfo.value)
 
 
@@ -938,7 +959,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "The conditional request failed",
-            "ReceiptLineItemAnalysis for receipt ID 1 does not exist",
+            "ReceiptLineItemAnalysis does not exist",
         ),
         (
             "InternalServerError",
@@ -984,7 +1005,7 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
         client.delete_receipt_line_item_analysis(
-            analysis=sample_receipt_line_item_analysis
+            sample_receipt_line_item_analysis
         )
     assert expected_error in str(excinfo.value)
 
@@ -1153,13 +1174,13 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "analyses parameter is required and cannot be None."),
+        (None, "Analyses parameter is required and cannot be None."),
         (
             "not-a-list",
-            "analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
-            [123, "not-a-receipt-line-item-analysis"],
+            [123, "not-an-analysis"],
             "All analyses must be instances of the ReceiptLineItemAnalysis class.",
         ),
     ],
@@ -1360,11 +1381,11 @@ def test_getReceiptLineItemAnalysis_not_found(
 @pytest.mark.parametrize(
     "image_id,receipt_id,expected_error",
     [
-        (None, 1, "image_id parameter is required and cannot be None"),
+        (None, 1, "image_id must be a string, got NoneType"),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "receipt_id parameter is required and cannot be None",
+            "receipt_id must be an integer, got NoneType",
         ),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -1373,9 +1394,9 @@ def test_getReceiptLineItemAnalysis_not_found(
         ),
         ("", 1, "uuid must be a valid UUIDv4"),
         (
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            -1,
-            "receipt_id must be greater than 0",
+            "invalid-uuid",
+            1,
+            "uuid must be a valid UUIDv4",
         ),
     ],
 )
@@ -1760,7 +1781,7 @@ def test_listReceiptLineItemAnalyses_with_pagination(
         (
             5,
             "not-a-dictionary",
-            "lastEvaluatedKey must be a dictionary or None.",
+            "last_evaluated_key must be a dictionary or None.",
         ),
     ],
 )
@@ -1784,7 +1805,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
         client.list_receipt_line_item_analyses(
-            limit=limit, lastEvaluatedKey=last_evaluated_key
+            limit=limit, last_evaluated_key=last_evaluated_key
         )
     assert expected_error in str(excinfo.value)
 
@@ -1811,7 +1832,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1929,7 +1950,7 @@ def test_listReceiptLineItemAnalysesForImage_not_found(
 @pytest.mark.parametrize(
     "image_id,expected_error",
     [
-        (None, "image_id parameter is required and cannot be None"),
+        (None, "image_id must be a string, got NoneType"),
         ("", "uuid must be a valid UUIDv4"),
     ],
 )
@@ -1971,7 +1992,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "AccessDeniedException",

@@ -71,7 +71,7 @@ def list_pending_embedding_batches(
         status="PENDING",
         batch_type=BatchType.EMBEDDING,
         limit=25,
-        lastEvaluatedKey=None,
+        last_evaluated_key=None,
     )
     while lek:
         next_summaries, lek = (
@@ -79,7 +79,7 @@ def list_pending_embedding_batches(
                 status="PENDING",
                 batch_type=BatchType.EMBEDDING,
                 limit=25,
-                lastEvaluatedKey=lek,
+                last_evaluated_key=lek,
             )
         )
         summaries.extend(next_summaries)

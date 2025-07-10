@@ -2,7 +2,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -13,16 +19,32 @@ if TYPE_CHECKING:
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
-from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 
-class _JobLog(DynamoClientProtocol):
+class _JobLog(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+):
     """
     Provides methods for accessing job log data in DynamoDB.
 
     This class offers methods to add, get, delete, and list job logs.
+    Methods
+    -------
+    add_job_log(job_log: JobLog)
+        Adds a job log entry to the database.
+    add_job_logs(job_logs: List[JobLog])
+        Adds multiple job log entries to the database.
+    get_job_log(job_id: str, log_id: str) -> JobLog
+        Gets a specific job log entry.
+    list_job_logs(job_id: str) -> List[JobLog]
+        Lists all log entries for a specific job.
+    delete_job_log(job_log: JobLog)
+        Deletes a job log entry from the database.
     """
 
+    @handle_dynamodb_errors("add_job_log")
     def add_job_log(self, job_log: JobLog):
         """Adds a job log entry to the DynamoDB table.
 
@@ -33,29 +55,13 @@ class _JobLog(DynamoClientProtocol):
             ValueError: If job_log is None or not a JobLog instance.
             ClientError: If a DynamoDB error occurs.
         """
-        if job_log is None:
-            raise ValueError("job_log cannot be None")
-        if not isinstance(job_log, JobLog):
-            raise ValueError(
-                f"job_log must be a JobLog instance, got {type(job_log)}"
-            )
+        self._validate_entity(job_log, JobLog, "job_log")
+        self._add_entity(
+            job_log,
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job_log.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} already exists"
-                )
-            raise
-
+    @handle_dynamodb_errors("add_job_logs")
     def add_job_logs(self, job_logs: List[JobLog]):
         """Adds multiple job logs to the DynamoDB table in a batch.
 
@@ -117,6 +123,7 @@ class _JobLog(DynamoClientProtocol):
                     "BatchWriteItem",
                 )
 
+    @handle_dynamodb_errors("get_job_log")
     def get_job_log(self, job_id: str, timestamp: str) -> JobLog:
         """Gets a job log entry from the DynamoDB table.
 
@@ -152,18 +159,19 @@ class _JobLog(DynamoClientProtocol):
 
         return item_to_job_log(item)
 
+    @handle_dynamodb_errors("list_job_logs")
     def list_job_logs(
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobLog], Optional[Dict]]:
         """Lists all log entries for a specific job.
 
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list of job logs and the last evaluated key.
@@ -192,8 +200,8 @@ class _JobLog(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)
@@ -206,6 +214,7 @@ class _JobLog(DynamoClientProtocol):
 
         return job_logs, last_evaluated_key
 
+    @handle_dynamodb_errors("delete_job_log")
     def delete_job_log(self, job_log: JobLog):
         """Deletes a job log entry from the DynamoDB table.
 

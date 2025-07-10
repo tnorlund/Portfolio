@@ -103,6 +103,7 @@ class ReceiptField:
                 "timestamp_added must be a datetime object or a string"
             )
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt field.
 
@@ -136,7 +137,7 @@ class ReceiptField:
             dict: A dictionary representing the ReceiptField object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_FIELD"},
             "words": {

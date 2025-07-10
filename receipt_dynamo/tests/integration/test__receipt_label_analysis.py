@@ -138,7 +138,7 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -278,8 +278,8 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -477,8 +477,8 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -688,8 +688,8 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -883,8 +883,8 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1051,8 +1051,8 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1240,8 +1240,8 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
+            "One or more parameters given were invalid",
             "One or more parameters were invalid",
-            "Validation error",
         ),
         (
             "InternalServerError",
@@ -1275,7 +1275,7 @@ def test_getReceiptLabelAnalysis_client_errors(
     client = DynamoClient(dynamodb_table)
     mock_get = mocker.patch.object(
         client._client,
-        "get_item",
+        "query",
         side_effect=ClientError(
             {
                 "Error": {
@@ -1283,7 +1283,7 @@ def test_getReceiptLabelAnalysis_client_errors(
                     "Message": error_message,
                 }
             },
-            "GetItem",
+            "Query",
         ),
     )
 
@@ -1405,7 +1405,7 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
     [
         (
             {"limit": "not-an-int"},
-            "Limit must be an integer",
+            "limit must be an integer or None",
         ),
         (
             {"limit": 0},
@@ -1416,15 +1416,15 @@ def test_listReceiptLabelAnalyses_with_last_evaluated_key(
             "Limit must be greater than 0",
         ),
         (
-            {"lastEvaluatedKey": "not-a-dict"},
+            {"last_evaluated_key": "not-a-dict"},
             "LastEvaluatedKey must be a dictionary",
         ),
         (
-            {"lastEvaluatedKey": {}},
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            {"last_evaluated_key": {}},
+            "LastEvaluatedKey must contain keys: \\{'SK', 'PK'\\}|LastEvaluatedKey must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
-            {"lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}}},
+            {"last_evaluated_key": {"PK": "not-a-dict", "SK": {"S": "value"}}},
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
     ],
@@ -1440,9 +1440,9 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
     Tests that listReceiptLabelAnalyses raises ValueError for invalid parameters:
     - When limit is not an integer
     - When limit is less than or equal to 0
-    - When lastEvaluatedKey is not a dictionary
-    - When lastEvaluatedKey is missing required keys
-    - When lastEvaluatedKey has invalid format
+    - When last_evaluated_key is not a dictionary
+    - When last_evaluated_key is missing required keys
+    - When last_evaluated_key has invalid format
     """
     client = DynamoClient(dynamodb_table)
 
@@ -1450,8 +1450,8 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
     with pytest.raises(ValueError, match=expected_error):
         if "limit" in invalid_input:
             client.list_receipt_label_analyses(limit=invalid_input["limit"])  # type: ignore
-        elif "lastEvaluatedKey" in invalid_input:
-            client.list_receipt_label_analyses(last_evaluated_key=invalid_input["lastEvaluatedKey"])  # type: ignore
+        elif "last_evaluated_key" in invalid_input:
+            client.list_receipt_label_analyses(last_evaluated_key=invalid_input["last_evaluated_key"])  # type: ignore
 
 
 @pytest.mark.integration
@@ -1470,8 +1470,8 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
             "One or more parameters given were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1532,14 +1532,13 @@ def test_getReceiptLabelAnalysesByImage_success(
     client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = client.get_receipt_label_analyses_by_image(
+    analyses = client.list_receipt_label_analyses_for_image(
         sample_receipt_label_analysis.image_id
     )
 
     # Assert
     assert len(analyses) == 1
     assert analyses[0] == sample_receipt_label_analysis
-    assert last_evaluated_key is None
 
 
 @pytest.mark.integration
@@ -1590,7 +1589,7 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
     [
         (
             {"image_id": None},
-            "Image ID must be a string",
+            "image_id must be a string",
         ),
         (
             {"image_id": "invalid-uuid"},
@@ -1614,21 +1613,24 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                "lastEvaluatedKey": "not-a-dict",
+                "last_evaluated_key": "not-a-dict",
             },
-            "LastEvaluatedKey must be a dictionary",
+            "last_evaluated_key must be a dictionary",
         ),
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                "lastEvaluatedKey": {},
+                "last_evaluated_key": {},
             },
-            "LastEvaluatedKey must contain keys: \\{['PK', 'SK']|['SK', 'PK']\\}",
+            "LastEvaluatedKey must contain keys: \\{'SK', 'PK'\\}|LastEvaluatedKey must contain keys: \\{'PK', 'SK'\\}",
         ),
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-                "lastEvaluatedKey": {"PK": "not-a-dict", "SK": {"S": "value"}},
+                "last_evaluated_key": {
+                    "PK": "not-a-dict",
+                    "SK": {"S": "value"},
+                },
             },
             "LastEvaluatedKey\\[PK\\] must be a dict containing a key 'S'",
         ),
@@ -1656,8 +1658,8 @@ def test_getReceiptLabelAnalysesByImage_invalid_parameters(
     if "limit" in invalid_input:
         kwargs["limit"] = invalid_input["limit"]
 
-    if "lastEvaluatedKey" in invalid_input:
-        kwargs["last_evaluated_key"] = invalid_input["lastEvaluatedKey"]
+    if "last_evaluated_key" in invalid_input:
+        kwargs["last_evaluated_key"] = invalid_input["last_evaluated_key"]
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):
@@ -1698,7 +1700,7 @@ def test_getReceiptLabelAnalysesByReceipt_success(
     [
         (
             {"image_id": None, "receipt_id": 1},
-            "Image ID must be a string",
+            "image_id must be a string",
         ),
         (
             {"image_id": "invalid-uuid", "receipt_id": 1},
@@ -1709,14 +1711,14 @@ def test_getReceiptLabelAnalysesByReceipt_success(
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "receipt_id": None,
             },
-            "Receipt ID must be a positive integer",
+            "receipt_id must be a positive integer",
         ),
         (
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "receipt_id": 0,
             },
-            "Receipt ID must be a positive integer",
+            "receipt_id must be a positive integer",
         ),
         (
             {
@@ -1738,9 +1740,9 @@ def test_getReceiptLabelAnalysesByReceipt_success(
             {
                 "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 "receipt_id": 1,
-                "lastEvaluatedKey": "not-a-dict",
+                "last_evaluated_key": "not-a-dict",
             },
-            "LastEvaluatedKey must be a dictionary",
+            "last_evaluated_key must be a dictionary",
         ),
     ],
 )
@@ -1771,8 +1773,8 @@ def test_getReceiptLabelAnalysesByReceipt_invalid_parameters(
     if "limit" in invalid_input:
         kwargs["limit"] = invalid_input["limit"]
 
-    if "lastEvaluatedKey" in invalid_input:
-        kwargs["last_evaluated_key"] = invalid_input["lastEvaluatedKey"]
+    if "last_evaluated_key" in invalid_input:
+        kwargs["last_evaluated_key"] = invalid_input["last_evaluated_key"]
 
     # Call with the specific invalid parameter
     with pytest.raises(ValueError, match=expected_error):

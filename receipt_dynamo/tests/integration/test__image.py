@@ -37,7 +37,7 @@ def test_addImage_raises_value_error_for_none_image(dynamodb_table):
     """
     # Use the real table name from the fixture
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Image parameter is required"):
+    with pytest.raises(ValueError, match="image parameter is required"):
         client.add_image(None)
 
 
@@ -141,7 +141,7 @@ def test_addImage_raises_internal_server_error(
         ),
     )
 
-    with pytest.raises(Exception, match="Internal server error:"):
+    with pytest.raises(Exception, match="Internal server error"):
         client.add_image(example_image)
 
     mock_put.assert_called_once()
@@ -174,7 +174,7 @@ def test_addImage_raises_unknown_exception(
         ),
     )
 
-    with pytest.raises(Exception, match="Error putting image:"):
+    with pytest.raises(Exception, match="Could not add image to DynamoDB"):
         client.add_image(example_image)
 
     mock_put.assert_called_once()
@@ -575,7 +575,7 @@ def test_updateImages_raises_value_error_images_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Images parameter is required and cannot be None."
+        ValueError, match="images parameter is required and cannot be None."
     ):
         client.update_images(None)  # type: ignore
 
@@ -589,7 +589,9 @@ def test_updateImages_raises_value_error_images_not_list(
     a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Images must be provided as a list."):
+    with pytest.raises(
+        ValueError, match="images must be a list of Image instances."
+    ):
         client.update_images("not-a-list")  # type: ignore
 
 
@@ -604,10 +606,7 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
-        match=(
-            "All items in the images list must be instances of the "
-            "Image class."
-        ),
+        match="All images must be instances of the Image class.",
     ):
         client.update_images([example_image, "not-an-image"])  # type: ignore
 
@@ -773,7 +772,10 @@ def test_updateImages_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Resource not found"):
+    with pytest.raises(
+        DynamoDBError,
+        match="Could not update ReceiptValidationResult in the database",
+    ):
         client.update_images([example_image])
 
     mock_transact.assert_called_once()

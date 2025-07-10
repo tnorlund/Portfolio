@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data.shared_exceptions import DynamoDBError
 from receipt_dynamo.entities.job_log import JobLog
 
 
@@ -116,11 +117,8 @@ def test_addJobLog_raises_resource_not_found(
     )
 
     # Attempt to add the job log
-    with pytest.raises(ClientError) as excinfo:
+    with pytest.raises(DynamoDBError, match="Table not found"):
         job_log_dynamo.add_job_log(sample_job_log)
-    assert (
-        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
-    )
 
 
 @pytest.mark.integration
@@ -261,7 +259,7 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
 
     # Use the last key to get the next batch
     next_logs, next_last_key = job_log_dynamo.list_job_logs(
-        job_id=job_id, limit=limit, lastEvaluatedKey=last_key
+        job_id=job_id, limit=limit, last_evaluated_key=last_key
     )
 
     # Check that we got more logs
@@ -357,8 +355,5 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
 
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())
-    with pytest.raises(ClientError) as excinfo:
+    with pytest.raises(DynamoDBError, match="Table not found"):
         job_log_dynamo.list_job_logs(job_id=job_id)
-    assert (
-        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
-    )

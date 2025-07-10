@@ -135,9 +135,7 @@ class _ReceiptWord(
         self._validate_entity_list(words, ReceiptWord, "words")
 
         request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=w.key())
-            )
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=w.key))
             for w in words
         ]
         self._batch_write_with_retry(request_items)
@@ -269,15 +267,19 @@ class _ReceiptWord(
             ) from e
 
     def list_receipt_words(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         receipt_words = []
         try:
@@ -288,8 +290,8 @@ class _ReceiptWord(
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)

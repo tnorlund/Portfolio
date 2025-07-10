@@ -270,7 +270,7 @@ class _BatchSummary(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=batch_summary.key(),
+                Key=batch_summary.key,
                 ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
             )
         except ClientError as e:
@@ -315,7 +315,7 @@ class _BatchSummary(DynamoClientProtocol):
                     TransactWriteItemTypeDef(
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
-                            Key=item.key(),
+                            Key=item.key,
                             ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
                         )
                     )
@@ -398,29 +398,31 @@ class _BatchSummary(DynamoClientProtocol):
                 raise ValueError(f"Error getting batch summary: {e}") from e
 
     def list_batch_summaries(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
         Lists BatchSummary records from DynamoDB with optional pagination.
 
         Args:
             limit (int, optional): Maximum number of records to retrieve.
-            lastEvaluatedKey (dict, optional): The key to start pagination from.
+            last_evaluated_key (dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[BatchSummary], dict | None]: A tuple containing the list of BatchSummary records and the last evaluated key.
 
         Raises:
-            ValueError: If limit or lastEvaluatedKey are invalid.
+            ValueError: If limit or last_evaluated_key are invalid.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
-                raise ValueError("lastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise ValueError("last_evaluated_key must be a dictionary")
+            validate_last_evaluated_key(last_evaluated_key)
 
         summaries: List[BatchSummary] = []
         try:
@@ -431,8 +433,8 @@ class _BatchSummary(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "BATCH_SUMMARY"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -476,7 +478,7 @@ class _BatchSummary(DynamoClientProtocol):
         status: str | BatchStatus,
         batch_type: str | BatchType = "EMBEDDING",
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
         Retrieves BatchSummary records filtered by status with optional pagination.
@@ -484,7 +486,7 @@ class _BatchSummary(DynamoClientProtocol):
         Args:
             status (str): The status to filter by.
             limit (int, optional): Maximum number of records to retrieve.
-            lastEvaluatedKey (dict, optional): The key to start pagination from.
+            last_evaluated_key (dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[BatchSummary], dict | None]: A tuple containing the list of BatchSummary records and the last evaluated key.
@@ -524,10 +526,10 @@ class _BatchSummary(DynamoClientProtocol):
 
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         summaries: List[BatchSummary] = []
         try:
@@ -540,8 +542,8 @@ class _BatchSummary(DynamoClientProtocol):
                     ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

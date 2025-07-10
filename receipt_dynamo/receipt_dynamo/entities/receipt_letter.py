@@ -135,6 +135,7 @@ class ReceiptLetter:
             raise ValueError("confidence must be between 0 and 1")
         self.confidence = confidence
 
+    @property
     def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt letter.
@@ -162,7 +163,7 @@ class ReceiptLetter:
             dict: A dictionary representing the ReceiptLetter object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             "TYPE": {"S": "RECEIPT_LETTER"},
             "text": {"S": self.text},
             "bounding_box": {

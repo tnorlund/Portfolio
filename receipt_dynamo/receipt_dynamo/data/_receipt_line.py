@@ -138,9 +138,7 @@ class _ReceiptLine(
         self._validate_entity_list(lines, ReceiptLine, "lines")
 
         request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=ln.key())
-            )
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=ln.key))
             for ln in lines
         ]
         self._batch_write_with_retry(request_items)

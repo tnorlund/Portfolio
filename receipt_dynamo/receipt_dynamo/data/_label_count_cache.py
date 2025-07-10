@@ -125,7 +125,7 @@ class _LabelCountCache(DynamoClientProtocol):
     def list_label_count_caches(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
         counts: list[LabelCountCache] = []
         try:
@@ -139,8 +139,8 @@ class _LabelCountCache(DynamoClientProtocol):
                 },
                 "ScanIndexForward": True,
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)

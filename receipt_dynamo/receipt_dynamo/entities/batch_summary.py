@@ -55,6 +55,7 @@ class BatchSummary:
             )
         self.receipt_refs = receipt_refs
 
+    @property
     def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
@@ -71,7 +72,7 @@ class BatchSummary:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "BATCH_SUMMARY"},
             "batch_type": {"S": self.batch_type},
