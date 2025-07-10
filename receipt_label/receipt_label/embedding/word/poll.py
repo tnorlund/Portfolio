@@ -23,11 +23,11 @@ import json
 import re
 from typing import List
 
-from receipt_label.utils import get_client_manager
-from receipt_label.utils.client_manager import ClientManager
-
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
@@ -71,7 +71,7 @@ def list_pending_embedding_batches(
         status="PENDING",
         batch_type=BatchType.EMBEDDING,
         limit=25,
-        lastEvaluatedKey=None,
+        last_evaluated_key=None,
     )
     while lek:
         next_summaries, lek = (
@@ -79,7 +79,7 @@ def list_pending_embedding_batches(
                 status="PENDING",
                 batch_type=BatchType.EMBEDDING,
                 limit=25,
-                lastEvaluatedKey=lek,
+                last_evaluated_key=lek,
             )
         )
         summaries.extend(next_summaries)
