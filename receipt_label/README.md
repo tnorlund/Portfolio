@@ -4,14 +4,19 @@ A Python package for labeling and validating receipt data using GPT and Pinecone
 
 ## Receipt Word Labeling Flow
 
-The receipt labeling process follows a structured pipeline that combines pattern matching, GPT analysis, and validation:
+The receipt labeling process leverages existing merchant metadata from our validation pipeline:
 
 ```mermaid
 flowchart TD
-    Start([Receipt Input]) --> FetchPlaces[Fetch Places API Data<br/>Optional]
-    FetchPlaces --> Structure[Structure Analysis<br/>GPT]
+    Start([Receipt Input<br/>with receipt_id]) --> CheckMeta{Check Existing<br/>Receipt Metadata}
 
-    Structure --> |Section Boundaries| FieldLabel[Field Labeling<br/>GPT]
+    CheckMeta --> |Found| UseMeta[Use Stored Metadata<br/>merchant_name, category, place_id]
+    CheckMeta --> |Not Found| NeedsMerchant[Merchant Unknown<br/>Run validation pipeline first]
+
+    UseMeta --> Structure[Structure Analysis<br/>GPT with merchant context]
+    NeedsMerchant --> |After validation| Structure
+
+    Structure --> |Section Boundaries| FieldLabel[Field Labeling<br/>GPT with merchant context]
     Structure --> |Currency Contexts| LineItem[Line Item Processing]
 
     FieldLabel --> |Word Labels| Consolidate[Label Consolidation]
@@ -22,23 +27,31 @@ flowchart TD
     GPTAnalysis --> LineLabels
     LineLabels --> |Item Labels| Consolidate
 
-    Consolidate --> Validation[Validation<br/>Optional]
-    Validation --> Result([Labeled Receipt])
+    Consolidate --> Embedding[Word Embedding<br/>with merchant context]
+    Embedding --> Result([Labeled Receipt<br/>with enriched embeddings])
 
     style Start fill:#e1f5e1
     style Result fill:#e1f5e1
+    style CheckMeta fill:#f9f,stroke:#333,stroke-width:4px
+    style UseMeta fill:#e1f5e1
+    style NeedsMerchant fill:#ffe4e1
     style Pattern fill:#fff4e1
     style GPTAnalysis fill:#e1e5f5
     style Structure fill:#e1e5f5
     style FieldLabel fill:#e1e5f5
+    style Embedding fill:#e1e5f5
 ```
+
+**Note**: The merchant validation pipeline (Step Functions) runs after OCR and before labeling to ensure merchant metadata is available. This metadata enriches both the GPT prompts and word embeddings.
 
 ### Detailed Labeling Process
 
-#### 1. **Receipt Ingestion**
+#### 1. **Receipt Ingestion & Metadata Lookup**
 - Entry point: `ReceiptLabeler.label_receipt()`
 - Input: Receipt with OCR-extracted words and lines
-- Optional: Fetch business context from Google Places API
+- First step: Query existing `ReceiptMetadata` by receipt_id
+- If metadata exists: Use stored merchant_name, category, place_id
+- If no metadata: Receipt must go through merchant validation pipeline first
 
 #### 2. **Structure Analysis**
 - Method: `ReceiptAnalyzer.analyze_structure()`
@@ -46,11 +59,13 @@ flowchart TD
   - **Header**: Business name, address, phone, date/time
   - **Body**: Line items, quantities, prices
   - **Footer**: Totals, payment info, thank you message
+- **Enhanced with merchant context**: GPT receives merchant_name and category to better understand receipt structure
 - Returns section boundaries for targeted labeling
 
 #### 3. **Field Labeling**
 - Method: `ReceiptAnalyzer.label_fields()`
 - Processes each section with GPT
+- **Merchant-aware labeling**: Uses merchant category to improve accuracy (e.g., "BURGER" at McDonald's vs hardware store)
 - Labels include:
   - `MERCHANT_NAME`, `ADDRESS_LINE`, `PHONE_NUMBER`
   - `DATE`, `TIME`, `PAYMENT_METHOD`
@@ -117,6 +132,28 @@ The `FastPatternMatcher` and `EnhancedCurrencyAnalyzer` detect:
 - **GPT-4**: Structure analysis, field labeling, complex line items
 - **Pattern Matching**: Fast local processing for common formats
 - **Pinecone** (Planned): Semantic search for edge cases and validation
+
+### Merchant Metadata Integration
+
+The system leverages existing merchant validation pipelines:
+
+1. **Merchant Validation Pipeline** (Step Functions):
+   - Runs after OCR, before labeling
+   - Validates merchant using Google Places API
+   - Normalizes data with OpenAI
+   - Stores as `ReceiptMetadata` entity in DynamoDB
+
+2. **Metadata Usage in Labeling**:
+   - Query by receipt_id to get merchant context
+   - Include merchant_name and category in GPT prompts
+   - Enrich word embeddings with merchant information
+   - Example: "BURGER [label=PRODUCT_NAME] (merchant=McDonald's, category=restaurant)"
+
+3. **Benefits**:
+   - More accurate labeling (merchant context disambiguates items)
+   - Richer embeddings for better semantic search
+   - No additional API calls needed
+   - Leverages already-validated merchant data
 
 ## Package Responsibilities
 
