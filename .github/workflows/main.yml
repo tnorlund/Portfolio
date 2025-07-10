@@ -16,7 +16,7 @@ jobs:
   # Stage 1: Fast checks (fail fast)
   fast-checks:
     name: Format & Lint Checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: write
       pull-requests: read
@@ -59,10 +59,33 @@ jobs:
               - '**/*.js'
               - '**/*.ts'
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
 
       - name: Cache pip packages
         uses: actions/cache@v3
@@ -74,7 +97,7 @@ jobs:
 
       - name: Install minimal dependencies
         run: |
-          pip install black isort
+          python3 -m pip install black isort
 
       - name: Check Python formatting
         run: |
@@ -103,8 +126,7 @@ jobs:
   test-python:
     name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
     needs: fast-checks
-    # TODO: Revert to self-hosted runner after landing (airplane mode workaround)
-    runs-on: ubuntu-latest  # Temporarily using GitHub-hosted runners
+    runs-on: [self-hosted, macOS, ARM64]
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
@@ -137,33 +159,53 @@ jobs:
           # receipt_label tests (marker-based, not directory-based)
           - package: receipt_label
             test_type: unit
-            test_path: receipt_label/tests
+            test_path: tests
             test_markers: "-m unit"
           - package: receipt_label
             test_type: integration
-            test_path: receipt_label/tests
+            test_path: tests
             test_markers: "-m integration"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
 
-      - name: Cache pip packages and virtual environment
+      - name: Cache pip packages only (not virtual environments)
         uses: actions/cache@v4  # Use latest cache action
         with:
           path: |
-            ~/.cache/pip
-            ${{ env.pythonLocation }}
-            ~/.local/lib/python3.12/site-packages
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
             **/__pycache__
-            .pytest_cache/pytest-results
-          key: ${{ runner.os }}-python-v2-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml', 'conftest.py', 'pytest*.ini') }}
+          key: ${{ runner.os }}-pip-cache-py312-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: |
-            ${{ runner.os }}-python-v2-${{ matrix.package }}-
-            ${{ runner.os }}-python-v2-
+            ${{ runner.os }}-pip-cache-py312-
+            ${{ runner.os }}-pip-cache-
 
       - name: Cache pytest results and coverage
         uses: actions/cache@v4
@@ -176,49 +218,56 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pytest-${{ matrix.package }}-
 
-      - name: Install package with optimizations
+      - name: Setup virtual environment and install packages
         run: |
-          # Upgrade pip for faster installs
-          python -m pip install --upgrade pip wheel --disable-pip-version-check
-
-          # Check if packages are already cached
-          if pip list | grep -q "pytest-xdist"; then
-            echo "✓ Test dependencies already cached"
-          else
-            echo "Installing test dependencies..."
-            # Use parallel installs and disable version checks for speed
-            pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
-            pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
+          # Create isolated virtual environment for this job to prevent collisions
+          VENV_PATH=".venv-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}"
+          echo "Creating virtual environment: $VENV_PATH"
+          
+          # Always create fresh virtual environment to ensure we test against PR code
+          if [ -d "$VENV_PATH" ]; then
+            echo "Removing existing virtual environment to ensure fresh dependencies..."
+            rm -rf "$VENV_PATH"
           fi
+          
+          python3 -m venv "$VENV_PATH"
+          source "$VENV_PATH/bin/activate"
+          
+          # Add venv to PATH for subsequent steps
+          echo "$PWD/$VENV_PATH/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$PWD/$VENV_PATH" >> $GITHUB_ENV
+          
+          # Upgrade pip for faster installs
+          python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
+          # CRITICAL: Always install packages in editable mode to use PR's source code
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            if pip list | grep -q "receipt-dynamo"; then
-              echo "✓ receipt_dynamo already cached"
-            else
-              pip install -e "receipt_dynamo[dev]" --no-deps
-              pip install -e "receipt_dynamo[dev]"
-            fi
+            echo "Installing receipt_dynamo dependency from PR source..."
+            python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
           fi
 
-          # Install the target package with minimal dependencies first
+          # Install the target package from PR source with all test dependencies
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-            pip install -e "${{ matrix.package }}[dev]"
+            echo "Installing ${{ matrix.package }} from PR source..."
+            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[dev]" --disable-pip-version-check
           else
-            # Check if already installed
-            PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
-            if pip list | grep -q "${PACKAGE_NAME}"; then
-              echo "✓ ${{ matrix.package }} already cached"
-            else
-              # Install with minimum dependencies first, then test extras
-              pip install -e "${{ matrix.package }}" --no-deps
-              pip install -e "${{ matrix.package }}[test]"
-            fi
+            echo "Installing ${{ matrix.package }} from PR source..."
+            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
           fi
 
-          # Verify installation
-          echo "=== Key packages installed ==="
-          pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
+          # Verify we're using the correct source code
+          echo "=== Virtual environment packages ==="
+          python3 -m pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
+          echo "Python location: $(which python3)"
+          echo "Virtual environment: $VIRTUAL_ENV"
+          
+          # Show we're using editable installs from current directory
+          echo "=== Verifying editable installs ==="
+          python3 -m pip show receipt_dynamo 2>/dev/null | grep -E "(Location|Editable)" || echo "receipt_dynamo not found"
+          if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
+            python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
+          fi
 
       - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         if: |
@@ -266,7 +315,7 @@ jobs:
   test-typescript:
     name: TypeScript Tests
     needs: fast-checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v4
 
@@ -336,10 +385,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -363,7 +435,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r infra/requirements.txt
+          python3 -m pip install -r infra/requirements.txt
 
       - name: Deploy with Pulumi
         run: |
@@ -402,14 +474,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
 
       - name: Install package
         run: |
-          pip install -e "receipt_dynamo[test]"
+          python3 -m pip install -e "receipt_dynamo[test]"
 
       - name: Run E2E tests
         working-directory: receipt_dynamo
@@ -424,7 +519,7 @@ jobs:
   ci-success:
     name: CI Success
     needs: [fast-checks, test-python, test-typescript]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     if: always()
     steps:
       - name: Check all jobs

@@ -15,15 +15,39 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: actions/setup-python@v4
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
+        uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
 
       - name: Check Python formatting
         id: check
         run: |
           # Install formatters
-          pip install isort black
+          python3 -m pip install isort black
 
           # Check if code is formatted
           if isort --check-only --profile=black --line-length=79 . && black --check --line-length=79 .; then
@@ -37,8 +61,7 @@ jobs:
     name: Quick Tests (${{ matrix.package }})
     needs: format-check
     if: always()
-    # TODO: Revert to self-hosted runner after landing (airplane mode workaround)
-    runs-on: ubuntu-latest  # Temporarily using GitHub-hosted runners
+    runs-on: [self-hosted, macOS, ARM64]
     strategy:
       matrix:
         package: [receipt_dynamo, receipt_label]
@@ -47,35 +70,88 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up Python
+      - name: Set up Python (GitHub-hosted)
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
+      - name: Use system Python (self-hosted)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Using Python 3.12 on self-hosted runner"
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
+          python3 --version
+          which python3
+
+      - name: Setup virtual environment and install packages
+        run: |
+          # Create isolated virtual environment for this PR check job
+          VENV_PATH=".venv-pr-${{ matrix.package }}"
+          echo "Creating virtual environment: $VENV_PATH"
+          
+          # Always create fresh virtual environment to ensure we test against PR code
+          if [ -d "$VENV_PATH" ]; then
+            echo "Removing existing virtual environment to ensure fresh dependencies..."
+            rm -rf "$VENV_PATH"
+          fi
+          
+          python3 -m venv "$VENV_PATH"
+          source "$VENV_PATH/bin/activate"
+          
+          # Add venv to PATH and environment for subsequent steps
+          echo "$PWD/$VENV_PATH/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$PWD/$VENV_PATH" >> $GITHUB_ENV
+          
+          # Upgrade pip
+          python3 -m pip install --upgrade pip --disable-pip-version-check
+
+          # Install package with test dependencies from PR source
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            echo "Installing receipt_dynamo dependency from PR source first"
+            python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
+          fi
+          
+          # Install target package with all test dependencies
+          cd ${{ matrix.package }}
+          if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
+            echo "Installing package with test dependencies from PR source"
+            python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
+          else
+            echo "Installing package from PR source with minimal test dependencies"
+            python3 -m pip install --force-reinstall -e . --disable-pip-version-check
+            python3 -m pip install pytest pytest-xdist pytest-cov pytest-mock --disable-pip-version-check
+          fi
+
+          # Verify we're using PR source code
+          echo "=== Virtual environment packages ==="
+          python3 -m pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
+          echo "Python location: $(which python3)"
+          echo "Virtual environment: $VIRTUAL_ENV"
+          
+          # Verify editable installs
+          echo "=== Verifying editable installs ==="
+          python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
         env:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
-          # Install package with test dependencies
-          if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
-            echo "Installing package with test dependencies"
-            pip install -e ".[test]"
-          else
-            echo "Installing minimal test dependencies"
-            pip install pytest pytest-xdist pytest-cov
-            pip install -e .
-          fi
-
-          # Handle cross-package dependencies
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            echo "Installing receipt_dynamo dependency for receipt_label"
-            pip install -e "../receipt_dynamo"
-          fi
-
-          # Verify installation
-          echo "=== Installed packages ==="
-          pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
 
           # Run only fast unit tests
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
