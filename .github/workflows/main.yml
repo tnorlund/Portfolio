@@ -456,6 +456,7 @@ jobs:
         run: |
           aws s3 sync portfolio/out s3://${{ steps.pulumi-outputs.outputs.bucket_name }} \
             --delete \
+            --exclude "assets/*" \
             --cache-control "public, max-age=3600"
 
       - name: Invalidate CloudFront
