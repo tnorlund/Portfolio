@@ -29,7 +29,7 @@ def _format_word_context_embedding_input(
     # Find neighboring words on the same line (vertical span overlap)
     target_top = target_word.top_left["y"]
     target_bottom = target_word.bottom_left["y"]
-    target_center_x = target_word.calculate_centroid()["x"]
+    target_center_x = target_word.calculate_centroid()[0]  # x-coordinate from tuple
 
     left_word = "<EDGE>"
     right_word = "<EDGE>"
@@ -48,7 +48,7 @@ def _format_word_context_embedding_input(
 
         # Overlap condition: max(tops) < min(bottoms)
         if max(target_top, word_top) < min(target_bottom, word_bottom):
-            word_center_x = word.calculate_centroid()["x"]
+            word_center_x = word.calculate_centroid()[0]  # x-coordinate from tuple
 
             if word_center_x < target_center_x:
                 left_candidates.append((word, target_center_x - word_center_x))
@@ -71,32 +71,28 @@ def _get_word_position(word: ReceiptWord) -> str:
     Get word position in 3x3 grid format matching batch system.
 
     Replicates logic from embedding/word/submit.py
+    Uses normalized coordinates (0.0-1.0) from calculate_centroid()
     """
-    centroid = word.calculate_centroid()
-    x, y = centroid["x"], centroid["y"]
-
-    # Assume receipt bounds (adjust based on actual receipt dimensions)
-    # For now, use simple thirds division
-    RECEIPT_WIDTH = 1000  # Typical receipt width
-    RECEIPT_HEIGHT = 1500  # Typical receipt height
-
-    # Horizontal position
-    if x < RECEIPT_WIDTH / 3:
-        h_pos = "left"
-    elif x < 2 * RECEIPT_WIDTH / 3:
-        h_pos = "center"
+    # Calculate centroid coordinates (normalized 0.0–1.0)
+    x_center, y_center = word.calculate_centroid()
+    
+    # Determine vertical bucket (y=0 at bottom in receipt coordinate system)
+    if y_center > 0.66:
+        vertical = "top"
+    elif y_center > 0.33:
+        vertical = "middle"
     else:
-        h_pos = "right"
-
-    # Vertical position
-    if y < RECEIPT_HEIGHT / 3:
-        v_pos = "top"
-    elif y < 2 * RECEIPT_HEIGHT / 3:
-        v_pos = "middle"
+        vertical = "bottom"
+        
+    # Determine horizontal bucket
+    if x_center < 0.33:
+        horizontal = "left"
+    elif x_center < 0.66:
+        horizontal = "center"
     else:
-        v_pos = "bottom"
-
-    return f"{v_pos}-{h_pos}"
+        horizontal = "right"
+        
+    return f"{vertical}-{horizontal}"
 
 
 def _create_word_metadata(

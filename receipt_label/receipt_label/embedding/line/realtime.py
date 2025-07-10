@@ -51,20 +51,19 @@ def _format_line_context_embedding_input(
 
 def _get_line_position(line: ReceiptLine) -> str:
     """
-    Get line position in vertical zones matching batch system.
+    Get line position in vertical zones using normalized coordinates.
 
-    Replicates logic from embedding/line/submit.py
+    Uses normalized coordinates (0.0-1.0) from calculate_centroid()
+    matching the coordinate system used throughout the system.
     """
-    centroid = line.calculate_centroid()
-    y = centroid["y"]
-
-    # Assume receipt bounds (adjust based on actual receipt dimensions)
-    RECEIPT_HEIGHT = 1500  # Typical receipt height
+    # Calculate centroid coordinates (normalized 0.0–1.0)
+    x_center, y_center = line.calculate_centroid()
 
     # Vertical position (3-zone system for lines)
-    if y < RECEIPT_HEIGHT / 3:
+    # y=0 at bottom in receipt coordinate system
+    if y_center > 0.66:
         return "top"
-    elif y < 2 * RECEIPT_HEIGHT / 3:
+    elif y_center > 0.33:
         return "middle"
     else:
         return "bottom"
