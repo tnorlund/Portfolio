@@ -29,7 +29,9 @@ def _format_word_context_embedding_input(
     # Find neighboring words on the same line (vertical span overlap)
     target_top = target_word.top_left["y"]
     target_bottom = target_word.bottom_left["y"]
-    target_center_x = target_word.calculate_centroid()[0]  # x-coordinate from tuple
+    target_center_x = target_word.calculate_centroid()[
+        0
+    ]  # x-coordinate from tuple
 
     left_word = "<EDGE>"
     right_word = "<EDGE>"
@@ -48,7 +50,9 @@ def _format_word_context_embedding_input(
 
         # Overlap condition: max(tops) < min(bottoms)
         if max(target_top, word_top) < min(target_bottom, word_bottom):
-            word_center_x = word.calculate_centroid()[0]  # x-coordinate from tuple
+            word_center_x = word.calculate_centroid()[
+                0
+            ]  # x-coordinate from tuple
 
             if word_center_x < target_center_x:
                 left_candidates.append((word, target_center_x - word_center_x))
@@ -66,6 +70,62 @@ def _format_word_context_embedding_input(
     return f"<TARGET>{target_word.text}</TARGET> <POS>{position}</POS> <CONTEXT>{left_word} {right_word}</CONTEXT>"
 
 
+def _get_word_neighbors(
+    target_word: ReceiptWord, all_words: List[ReceiptWord]
+) -> Tuple[str, str]:
+    """
+    Get the left and right neighbor words for the target word.
+
+    This is the same logic as _format_word_context_embedding_input but
+    returns the neighbors directly instead of formatting them.
+
+    Returns:
+        Tuple of (left_word, right_word)
+    """
+    # Find neighboring words on the same line (vertical span overlap)
+    target_top = target_word.top_left["y"]
+    target_bottom = target_word.bottom_left["y"]
+    target_center_x = target_word.calculate_centroid()[
+        0
+    ]  # x-coordinate from tuple
+
+    left_word = "<EDGE>"
+    right_word = "<EDGE>"
+
+    # Find closest words to left and right with vertical overlap
+    left_candidates = []
+    right_candidates = []
+
+    for word in all_words:
+        if word.word_id == target_word.word_id:
+            continue
+
+        # Check vertical overlap (same logic as batch)
+        word_top = word.top_left["y"]
+        word_bottom = word.bottom_left["y"]
+
+        # Overlap condition: max(tops) < min(bottoms)
+        if max(target_top, word_top) < min(target_bottom, word_bottom):
+            word_center_x = word.calculate_centroid()[
+                0
+            ]  # x-coordinate from tuple
+
+            if word_center_x < target_center_x:
+                left_candidates.append((word, target_center_x - word_center_x))
+            elif word_center_x > target_center_x:
+                right_candidates.append(
+                    (word, word_center_x - target_center_x)
+                )
+
+    # Get closest neighbors
+    if left_candidates:
+        left_word = min(left_candidates, key=lambda x: x[1])[0].text
+    if right_candidates:
+        right_word = min(right_candidates, key=lambda x: x[1])[0].text
+
+    return left_word, right_word
+
+
 def _get_word_position(word: ReceiptWord) -> str:
     """
     Get word position in 3x3 grid format matching batch system.
@@ -75,7 +135,7 @@ def _get_word_position(word: ReceiptWord) -> str:
     """
     # Calculate centroid coordinates (normalized 0.0–1.0)
     x_center, y_center = word.calculate_centroid()
-    
+
     # Determine vertical bucket (y=0 at bottom in receipt coordinate system)
     if y_center > 0.66:
         vertical = "top"
@@ -83,7 +143,7 @@ def _get_word_position(word: ReceiptWord) -> str:
         vertical = "middle"
     else:
         vertical = "bottom"
-        
+
     # Determine horizontal bucket
     if x_center < 0.33:
         horizontal = "left"
@@ -91,7 +151,7 @@ def _get_word_position(word: ReceiptWord) -> str:
         horizontal = "center"
     else:
         horizontal = "right"
-        
+
     return f"{vertical}-{horizontal}"
 
 
@@ -107,7 +167,7 @@ def _create_word_metadata(
 
     Replicates metadata from embedding/word/poll.py
     """
-    centroid = word.calculate_centroid()
+    x_center, y_center = word.calculate_centroid()
 
     metadata = {
         "image_id": word.image_id,
@@ -116,8 +176,8 @@ def _create_word_metadata(
         "word_id": word.word_id,
         "source": "openai_embedding_realtime",  # Different from batch
         "text": word.text,
-        "x": centroid["x"],
-        "y": centroid["y"],
+        "x": x_center,
+        "y": y_center,
         "width": word.bounding_box["width"],
         "height": word.bounding_box["height"],
         "confidence": word.confidence,
@@ -229,34 +289,13 @@ def embed_receipt_words_realtime(
 
     for word in words:
         if word.text in embeddings:
-            # Extract spatial context for metadata
-            formatted_input = _format_word_context_embedding_input(word, words)
-
-            # Parse left/right words from formatted input
-            import re
-
-            context_match = re.search(
-                r"<CONTEXT>([^<]*)</CONTEXT>", formatted_input
-            )
-            if context_match:
-                context_content = context_match.group(1).strip()
-                if not context_content:
-                    left_word = right_word = "<EDGE>"
-                else:
-                    # Split into exactly 2 parts to handle spaces in words correctly
-                    context_parts = context_content.split(' ', 1)
-                    left_word = context_parts[0] if len(context_parts) > 0 else "<EDGE>"
-                    right_word = context_parts[1] if len(context_parts) > 1 else "<EDGE>"
-            else:
-                left_word = right_word = "<EDGE>"
+            # Get left and right words directly using the same logic as formatting
+            # This avoids parsing issues with spaces in words
+            left_word, right_word = _get_word_neighbors(word, words)
 
             # Create vector ID matching batch format
-            # Ensure IDs are integers for proper formatting
-            receipt_id_int = int(word.receipt_id) if isinstance(word.receipt_id, str) else word.receipt_id
-            line_id_int = int(word.line_id) if isinstance(word.line_id, str) else word.line_id
-            word_id_int = int(word.word_id) if isinstance(word.word_id, str) else word.word_id
-            
-            vector_id = f"IMAGE#{word.image_id}#RECEIPT#{receipt_id_int:05d}#LINE#{line_id_int:05d}#WORD#{word_id_int:05d}"
+            # IDs are always integers per entity definitions
+            vector_id = f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
 
             # Create metadata matching batch structure
             metadata = _create_word_metadata(

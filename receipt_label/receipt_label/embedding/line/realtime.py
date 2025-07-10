@@ -26,13 +26,13 @@ def _format_line_context_embedding_input(
     position = _get_line_position(target_line)
 
     # Find previous and next lines by y-coordinate
-    target_y = target_line.calculate_centroid()["y"]
+    _, target_y = target_line.calculate_centroid()
 
     prev_line = "<EDGE>"
     next_line = "<EDGE>"
 
     # Sort lines by y-coordinate to find neighbors
-    sorted_lines = sorted(all_lines, key=lambda l: l.calculate_centroid()["y"])
+    sorted_lines = sorted(all_lines, key=lambda l: l.calculate_centroid()[1])
 
     target_index = None
     for i, line in enumerate(sorted_lines):
@@ -47,6 +47,42 @@ def _format_line_context_embedding_input(
             next_line = sorted_lines[target_index + 1].text
 
     return f"<TARGET>{target_line.text}</TARGET> <POS>{position}</POS> <CONTEXT>{prev_line} {next_line}</CONTEXT>"
+
+
+def _get_line_neighbors(
+    target_line: ReceiptLine, all_lines: List[ReceiptLine]
+) -> Tuple[str, str]:
+    """
+    Get the previous and next lines for the target line.
+
+    This is the same logic as _format_line_context_embedding_input but
+    returns the neighbors directly instead of formatting them.
+
+    Returns:
+        Tuple of (prev_line, next_line)
+    """
+    # Find previous and next lines by y-coordinate
+    _, target_y = target_line.calculate_centroid()
+
+    prev_line = "<EDGE>"
+    next_line = "<EDGE>"
+
+    # Sort lines by y-coordinate to find neighbors
+    sorted_lines = sorted(all_lines, key=lambda l: l.calculate_centroid()[1])
+
+    target_index = None
+    for i, line in enumerate(sorted_lines):
+        if line.line_id == target_line.line_id:
+            target_index = i
+            break
+
+    if target_index is not None:
+        if target_index > 0:
+            prev_line = sorted_lines[target_index - 1].text
+        if target_index < len(sorted_lines) - 1:
+            next_line = sorted_lines[target_index + 1].text
+
+    return prev_line, next_line
 
 
 def _get_line_position(line: ReceiptLine) -> str:
@@ -81,7 +117,7 @@ def _create_line_metadata(
 
     Replicates metadata from embedding/line/poll.py
     """
-    centroid = line.calculate_centroid()
+    x_center, y_center = line.calculate_centroid()
 
     # Calculate average word confidence if words are available
     avg_word_confidence = line.confidence  # Default to line confidence
@@ -93,8 +129,8 @@ def _create_line_metadata(
         "line_id": line.line_id,
         "source": "openai_line_embedding_realtime",  # Different from batch
         "text": line.text,
-        "x": centroid["x"],
-        "y": centroid["y"],
+        "x": x_center,
+        "y": y_center,
         "width": line.bounding_box["width"],
         "height": line.bounding_box["height"],
         "confidence": line.confidence,
@@ -199,33 +235,13 @@ def embed_receipt_lines_realtime(
 
     for line in lines:
         if line.text in embeddings:
-            # Extract vertical context for metadata
-            formatted_input = _format_line_context_embedding_input(line, lines)
-
-            # Parse prev/next lines from formatted input
-            import re
-
-            context_match = re.search(
-                r"<CONTEXT>([^<]*)</CONTEXT>", formatted_input
-            )
-            if context_match:
-                context_content = context_match.group(1).strip()
-                if not context_content:
-                    prev_line = next_line = "<EDGE>"
-                else:
-                    # Split into exactly 2 parts to handle spaces in lines correctly
-                    context_parts = context_content.split(' ', 1)
-                    prev_line = context_parts[0] if len(context_parts) > 0 else "<EDGE>"
-                    next_line = context_parts[1] if len(context_parts) > 1 else "<EDGE>"
-            else:
-                prev_line = next_line = "<EDGE>"
+            # Get prev and next lines directly using the same logic as formatting
+            # This avoids parsing issues with spaces in lines
+            prev_line, next_line = _get_line_neighbors(line, lines)
 
             # Create vector ID matching batch format
-            # Ensure IDs are integers for proper formatting
-            receipt_id_int = int(line.receipt_id) if isinstance(line.receipt_id, str) else line.receipt_id
-            line_id_int = int(line.line_id) if isinstance(line.line_id, str) else line.line_id
-            
-            vector_id = f"IMAGE#{line.image_id}#RECEIPT#{receipt_id_int:05d}#LINE#{line_id_int:05d}"
+            # IDs are always integers per entity definitions
+            vector_id = f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
 
             # Create metadata matching batch structure
             metadata = _create_line_metadata(
