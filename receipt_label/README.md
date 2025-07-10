@@ -18,24 +18,24 @@ flowchart TD
     UseMeta --> EmbedCheck{Lines & Words<br/>Embedded in Pinecone?}
 
     EmbedCheck -->|No| EmbedSF[Non-Batch Embedding<br/>Lines & Words to Pinecone]
-    EmbedCheck -->|Yes| Parallel
-    EmbedSF --> Parallel{Run Pattern Detectors<br/>in Parallel}
+    EmbedCheck -->|Yes| ParallelStart
+    EmbedSF --> ParallelStart[⚡ Start Parallel Processing<br/>Target: < 100ms Combined]
 
-    Parallel --> Currency[Detect Currency<br/>Patterns]
-    Parallel --> DateTime[Detect Date/Time<br/>Patterns]
-    Parallel --> Contact[Detect Phone/Web<br/>Patterns]
-    Parallel --> Quantity[Detect Quantity<br/>Patterns]
-    Parallel --> PineconeQuery[Query Merchant Patterns<br/>from Validated Labels]
+    ParallelStart --> CurrencyDetector[💰 Currency Pattern Detector<br/>$5.99, €10, £15, ¥100<br/>Regex + Amount Extraction]
+    ParallelStart --> DateTimeDetector[📅 DateTime Pattern Detector<br/>MM/DD/YYYY, 12:34 PM<br/>Relative Dates, Timezones]
+    ParallelStart --> ContactDetector[📞 Contact Pattern Detector<br/>Phone, Email, URLs<br/>Social Media Handles]
+    ParallelStart --> QuantityDetector[📊 Quantity Pattern Detector<br/>2 @ $5.99, 3 x $4.50<br/>Qty:, Units (lbs, kg)]
+    ParallelStart --> PineconeQuery[🔍 Query Merchant Patterns<br/>Single Query with Filter<br/>Validated Labels Only]
 
-    Currency --> ClassifyCurrency[Smart Currency<br/>Classification]
-    DateTime --> ApplyPatterns
-    Contact --> ApplyPatterns
-    Quantity --> ApplyPatterns
-    PineconeQuery --> ApplyPatterns[Apply Known<br/>Merchant Patterns]
+    CurrencyDetector --> SmartClassification[🧠 Smart Classification Engine<br/>Position + Keywords + Context<br/>Currency → Label Mapping]
+    DateTimeDetector --> PatternApplication
+    ContactDetector --> PatternApplication
+    QuantityDetector --> SmartClassification
+    PineconeQuery --> PatternApplication[📋 Apply Known Patterns<br/>Merchant-Specific Rules<br/>Confidence-Based Labeling]
 
-    ClassifyCurrency --> ApplyPatterns
+    SmartClassification --> PatternApplication
 
-    ApplyPatterns --> SmartCheck{Smart GPT<br/>Decision Logic}
+    PatternApplication --> SmartCheck{Smart GPT<br/>Decision Logic}
 
     SmartCheck --> EssentialCheck{Essential<br/>Labels Found?}
     EssentialCheck -->|No| BatchQueue[Queue for<br/>Batch Processing]
@@ -66,13 +66,25 @@ flowchart TD
     style EmbedSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
     style BatchSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
     style ValidationSF fill:#e1e5f5,stroke:#1d76db,stroke-width:2px
-    style Parallel fill:#fff4e1
+    style ParallelStart fill:#fff4e1
+    style CurrencyDetector fill:#e8f5e8
+    style DateTimeDetector fill:#e8f5e8
+    style ContactDetector fill:#e8f5e8
+    style QuantityDetector fill:#e8f5e8
+    style SmartClassification fill:#fff4e1
+    style PatternApplication fill:#fff4e1
     style BatchQueue fill:#f9f9e1
 ```
 
 **Key Components**:
 - **Step Functions**: Leverages existing merchant validation, batch embedding, and label validation pipelines
-- **Parallel Detection**: Pattern detectors run simultaneously for efficiency
+- **Parallel Pattern Detection**: 4 specific detectors run concurrently using asyncio (< 100ms combined)
+  - 💰 **Currency Detector**: $5.99, €10, £15, ¥100 with regex + amount extraction
+  - 📅 **DateTime Detector**: MM/DD/YYYY, 12:34 PM, relative dates, timezone handling
+  - 📞 **Contact Detector**: Phone numbers, emails, URLs, social media handles
+  - 📊 **Quantity Detector**: 2 @ $5.99, 3 x $4.50, Qty: patterns, units (lbs, kg)
+- **Smart Classification**: Position + keywords + context for currency labeling
+- **Merchant Pattern Query**: Single Pinecone query with merchant filter (99% query reduction)
 - **Smart Batching**: Queue unlabeled words for OpenAI batch API (50% cost reduction)
 - **Validation Pipeline**: Optional 3-pass validation for high-accuracy requirements
 
@@ -91,13 +103,34 @@ flowchart TD
 - Store embeddings with metadata including receipt_id and merchant info
 - This ensures all text is searchable for pattern matching
 
-#### 3. **Parallel Pattern Detection**
-Run these detectors simultaneously for efficiency:
-- **Currency Detection**: Find all monetary amounts using regex patterns
-- **DateTime Detection**: Identify dates and times in various formats
-- **Contact Detection**: Find phone numbers, websites, email addresses
-- **Quantity Detection**: Identify quantity patterns (2 @, Qty:, x3, etc.)
-- **Single Pinecone Query**: Retrieve labeling patterns from similar merchant receipts
+#### 3. **Parallel Pattern Detection (< 100ms Target)**
+Run these 4 detectors concurrently using asyncio for maximum efficiency:
+
+- **💰 Currency Pattern Detector**:
+  - Regex patterns: `$5.99`, `5.99`, `$1,234.56`
+  - International currencies: `€10`, `£15`, `¥100`
+  - Amount extraction for classification logic
+  - Edge case handling for currency symbols
+
+- **📅 DateTime Pattern Detector**:
+  - Common formats: `MM/DD/YYYY`, `YYYY-MM-DD`, `DD-MM-YYYY`
+  - Time formats: `12:34 PM`, `23:45:00`, `2:30p`
+  - Relative dates: "Today", "Yesterday", contextual dates
+  - Timezone handling for receipts with timestamps
+
+- **📞 Contact Pattern Detector**:
+  - Phone numbers: `(555) 123-4567`, `555-123-4567`, `+1-555-123-4567`
+  - Email addresses: Standard email validation patterns
+  - Websites/URLs: `http://`, `https://`, `www.` patterns
+  - Social media handles: `@username`, Facebook, Twitter patterns
+
+- **📊 Quantity Pattern Detector**:
+  - At symbol patterns: `2 @ $5.99`, `3 @ $12.50 each`
+  - Multiplication patterns: `3 x $4.50`, `Qty: 3 x $4.50`
+  - Unit patterns: `1.5 lbs`, `2 kg`, `500ml`, `12 oz`
+  - Qty prefix patterns: `Qty:`, `QTY`, `Quantity:`, `Count:`
+
+- **🔍 Single Pinecone Query**: Retrieve labeling patterns from validated merchant labels
 
 #### 4. **Smart Currency Classification**
 Currency amounts are classified based on:
@@ -110,14 +143,22 @@ Currency amounts are classified based on:
   - Near "subtotal" → `SUBTOTAL`
   - Has quantity before → `UNIT_PRICE` or `LINE_TOTAL`
 
-#### 5. **Apply Merchant-Specific Patterns**
-Using patterns from the single Pinecone query:
+#### 5. **Apply Merchant-Specific Patterns & Classification Results**
+Combine results from all parallel detectors:
+
+**Pattern Application from Pinecone Query**:
 - Apply known word→label mappings for this merchant
 - Example patterns:
   - McDonald's: "Big Mac" → `PRODUCT_NAME`
   - Home Depot: "SKU" → `PRODUCT_NAME`
   - Common: "VISA ****1234" → `PAYMENT_METHOD`
 - Confidence based on pattern frequency across receipts
+
+**Smart Classification Results**:
+- Currency amounts classified using position + keywords + context
+- DateTime patterns applied to date/time fields
+- Contact information labeled appropriately
+- Quantity patterns enhance line item understanding
 
 #### 6. **Smart GPT Decision & Batch Labeling**
 Not every word needs labeling, and not every receipt needs GPT:
@@ -180,25 +221,31 @@ async def label_receipt_efficiently(receipt_id: str, words: List[ReceiptWord]):
     # Step 1: Get merchant context
     metadata = await get_receipt_metadata(receipt_id)
 
-    # Step 2: Run all detectors in parallel
-    results = await asyncio.gather(
-        detect_currency_patterns(words),
-        detect_datetime_patterns(words),
-        detect_contact_patterns(words),
-        detect_quantity_patterns(words),
-        query_merchant_patterns(metadata.merchant_name)
+    # Step 2: Run all 4 detectors in parallel (Target: < 100ms combined)
+    currency_results, datetime_results, contact_results, quantity_results, merchant_patterns = await asyncio.gather(
+        detect_currency_patterns(words),      # 💰 Currency: $5.99, €10, £15, ¥100
+        detect_datetime_patterns(words),      # 📅 DateTime: MM/DD/YYYY, 12:34 PM
+        detect_contact_patterns(words),       # 📞 Contact: Phone, Email, URLs
+        detect_quantity_patterns(words),      # 📊 Quantity: 2 @ $5.99, 3 x $4.50
+        query_merchant_patterns(metadata.merchant_name)  # 🔍 Pinecone: Validated patterns
     )
 
-    # Step 3: Apply smart classification
-    labeled_words = apply_pattern_rules(words, results)
+    # Step 3: Smart classification and pattern application
+    labeled_words = apply_smart_classification(words, {
+        'currency': currency_results,
+        'datetime': datetime_results,
+        'contact': contact_results,
+        'quantity': quantity_results,
+        'merchant_patterns': merchant_patterns
+    })
 
-    # Step 4: Batch label remaining
-    unlabeled = [w for w in words if not w.label]
-    if unlabeled:
+    # Step 4: Batch label remaining unlabeled words
+    unlabeled = [w for w in words if not w.label and not w.is_noise]
+    if should_use_gpt(unlabeled, labeled_words):
         labels = await batch_gpt_label(unlabeled, labeled_words, metadata)
         apply_labels(unlabeled, labels)
 
-    # Step 5: Store and learn
+    # Step 5: Store results and update pattern cache
     await store_labels(receipt_id, words)
     await update_pattern_cache(metadata.merchant_name, words)
 ```
