@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from pinecone.grpc import Vector
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptMetadata, ReceiptWord
 
 from receipt_label.client_manager import get_client_manager
@@ -219,7 +220,7 @@ def embed_receipt_realtime(
 
             # Update embedding status in DynamoDB
             for word, _ in word_embedding_pairs:
-                word.embedding_status = "SUCCESS"
+                word.embedding_status = EmbeddingStatus.SUCCESS
                 word.embedded_at = datetime.utcnow()
                 dynamo_client.put_receipt_word(word)
 
