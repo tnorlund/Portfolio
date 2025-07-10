@@ -5,18 +5,18 @@
 DEV_BUCKET="${DEV_S3_BUCKET:-}"
 PROD_BUCKET="${PROD_S3_BUCKET:-}"
 
+# Allow bucket names to be passed as arguments
+if [ $# -eq 2 ]; then
+    DEV_BUCKET="$1"
+    PROD_BUCKET="$2"
+fi
+
 # Check if bucket names are provided
 if [ -z "$DEV_BUCKET" ] || [ -z "$PROD_BUCKET" ]; then
     echo "Error: S3 bucket names must be set via environment variables or arguments"
     echo "Usage: DEV_S3_BUCKET=<dev-bucket> PROD_S3_BUCKET=<prod-bucket> $0"
     echo "   or: $0 <dev-bucket> <prod-bucket>"
     exit 1
-fi
-
-# Allow bucket names to be passed as arguments
-if [ $# -eq 2 ]; then
-    DEV_BUCKET="$1"
-    PROD_BUCKET="$2"
 fi
 
 # Colors for output
