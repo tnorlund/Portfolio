@@ -22,7 +22,7 @@ def fetch_merchant_counts():
         next_receipt_metadatas, last_evaluated_key = (
             dynamo_client.list_receipt_metadatas(
                 limit=1000,
-                lastEvaluatedKey=last_evaluated_key,
+                last_evaluated_key=last_evaluated_key,
             )
         )
         receipt_metadatas.extend(next_receipt_metadatas)

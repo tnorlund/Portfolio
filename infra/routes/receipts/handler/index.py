@@ -35,7 +35,7 @@ def handler(event, _):
 
         # Call listReceipts with the provided parameters.
         receipts, lek = client.list_receipts(
-            limit=limit, lastEvaluatedKey=lastEvaluatedKey
+            limit=limit, last_evaluated_key=lastEvaluatedKey
         )
 
         response_body = {
