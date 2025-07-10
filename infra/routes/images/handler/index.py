@@ -43,7 +43,7 @@ def handler(event, _):
             raw_images, lek = client.list_images_by_type(
                 image_type=image_type,
                 limit=limit,
-                lastEvaluatedKey=last_evaluated_key,
+                last_evaluated_key=last_evaluated_key,
             )
             # Remove duplicates
             seen_ids = set()
@@ -69,7 +69,7 @@ def handler(event, _):
             photo_images, photo_lek = client.list_images_by_type(
                 image_type=ImageType.PHOTO.value,
                 limit=photo_limit,
-                lastEvaluatedKey=(
+                last_evaluated_key=(
                     last_evaluated_key.get("photo")
                     if last_evaluated_key
                     and isinstance(last_evaluated_key, dict)
@@ -81,7 +81,7 @@ def handler(event, _):
             scan_images, scan_lek = client.list_images_by_type(
                 image_type=ImageType.SCAN.value,
                 limit=scan_limit,
-                lastEvaluatedKey=(
+                last_evaluated_key=(
                     last_evaluated_key.get("scan")
                     if last_evaluated_key
                     and isinstance(last_evaluated_key, dict)
