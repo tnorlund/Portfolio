@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from pinecone.grpc import Vector
 from receipt_dynamo.constants import EmbeddingStatus
@@ -205,7 +205,7 @@ def embed_words_realtime(
     words: List[ReceiptWord],
     merchant_name: Optional[str] = None,
     model: str = "text-embedding-3-small",
-) -> Dict[str, List[float]]:
+) -> List[Tuple[ReceiptWord, List[float]]]:
     """
     Embed words in real-time using batch-compatible formatting.
 
@@ -215,7 +215,7 @@ def embed_words_realtime(
         model: OpenAI model to use for embeddings
 
     Returns:
-        Dictionary mapping word text to embedding vectors
+        List of (word, embedding) tuples
     """
     client_manager = get_client_manager()
     openai_client = client_manager.openai
@@ -225,30 +225,30 @@ def embed_words_realtime(
 
     if not meaningful_words:
         logger.info("No meaningful words to embed")
-        return {}
+        return []
 
-    # Format texts using batch embedding structure
-    formatted_texts = []
+    # Build list of (word, formatted_text) pairs
+    word_text_pairs = []
     for word in meaningful_words:
         formatted_text = _format_word_context_embedding_input(word, words)
-        formatted_texts.append(formatted_text)
+        word_text_pairs.append((word, formatted_text))
 
     try:
         # Get embeddings from OpenAI
         response = openai_client.embeddings.create(
             model=model,
-            input=formatted_texts,
+            input=[pair[1] for pair in word_text_pairs],
         )
 
-        # Map embeddings back to words
-        embeddings = {}
-        for i, word in enumerate(meaningful_words):
-            embeddings[word.text] = response.data[i].embedding
+        # Build list of (word, embedding) tuples
+        word_embeddings = []
+        for i, (word, _) in enumerate(word_text_pairs):
+            word_embeddings.append((word, response.data[i].embedding))
 
         logger.info(
-            f"Successfully embedded {len(embeddings)} words with spatial context"
+            f"Successfully embedded {len(word_embeddings)} words with spatial context"
         )
-        return embeddings
+        return word_embeddings
 
     except Exception as e:
         logger.error(f"Error embedding words: {str(e)}")
@@ -281,14 +281,18 @@ def embed_receipt_words_realtime(
         return []
 
     # Get embeddings with spatial context
-    embeddings = embed_words_realtime(words, merchant_name)
+    word_embeddings = embed_words_realtime(words, merchant_name)
 
     # Prepare vectors for Pinecone using batch structure
     vectors = []
     word_embedding_pairs = []
 
+    # Create a mapping for quick lookup of embeddings by word
+    embedding_map = {(w.word_id, w.line_id): emb for w, emb in word_embeddings}
+
     for word in words:
-        if word.text in embeddings:
+        word_key = (word.word_id, word.line_id)
+        if word_key in embedding_map:
             # Get left and right words directly using the same logic as formatting
             # This avoids parsing issues with spaces in words
             left_word, right_word = _get_word_neighbors(word, words)
@@ -310,12 +314,12 @@ def embed_receipt_words_realtime(
             vectors.append(
                 Vector(
                     id=vector_id,
-                    values=embeddings[word.text],
+                    values=embedding_map[word_key],
                     metadata=metadata,
                 )
             )
 
-            word_embedding_pairs.append((word, embeddings[word.text]))
+            word_embedding_pairs.append((word, embedding_map[word_key]))
 
     # Store to Pinecone using correct namespace
     if vectors:

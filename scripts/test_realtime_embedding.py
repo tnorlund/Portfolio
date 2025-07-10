@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
 from receipt_label.embedding.word.realtime import (
     embed_receipt_words_realtime,
@@ -134,19 +135,19 @@ def test_embedding_with_context():
     start_time = time.time()
 
     try:
-        embeddings = embed_words_realtime(words, merchant_name)
+        word_embeddings = embed_words_realtime(words, merchant_name)
 
         elapsed_time = time.time() - start_time
 
         logger.info(f"Embedding completed in {elapsed_time:.2f} seconds")
         logger.info(
-            f"Embedded {len(embeddings)} words (filtered {len(words) - len(embeddings)} noise words)"
+            f"Embedded {len(word_embeddings)} words (filtered {len(words) - len(word_embeddings)} noise words)"
         )
 
-        for word_text, embedding in embeddings.items():
-            logger.info(f"  - {word_text}: {len(embedding)} dimensions")
+        for word, embedding in word_embeddings:
+            logger.info(f"  - {word.text}: {len(embedding)} dimensions")
 
-        return embeddings
+        return word_embeddings
 
     except Exception as e:
         logger.error(f"Error during embedding: {str(e)}")

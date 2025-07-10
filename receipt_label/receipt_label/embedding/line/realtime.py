@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from pinecone.grpc import Vector
 from receipt_dynamo.constants import EmbeddingStatus
@@ -154,7 +154,7 @@ def embed_lines_realtime(
     lines: List[ReceiptLine],
     merchant_name: Optional[str] = None,
     model: str = "text-embedding-3-small",
-) -> Dict[str, List[float]]:
+) -> List[Tuple[ReceiptLine, List[float]]]:
     """
     Embed lines in real-time using batch-compatible formatting.
 
@@ -164,37 +164,37 @@ def embed_lines_realtime(
         model: OpenAI model to use for embeddings
 
     Returns:
-        Dictionary mapping line text to embedding vectors
+        List of (line, embedding) tuples
     """
     client_manager = get_client_manager()
     openai_client = client_manager.openai
 
     if not lines:
         logger.info("No lines to embed")
-        return {}
+        return []
 
-    # Format texts using batch embedding structure
-    formatted_texts = []
+    # Build list of (line, formatted_text) pairs
+    line_text_pairs = []
     for line in lines:
         formatted_text = _format_line_context_embedding_input(line, lines)
-        formatted_texts.append(formatted_text)
+        line_text_pairs.append((line, formatted_text))
 
     try:
         # Get embeddings from OpenAI
         response = openai_client.embeddings.create(
             model=model,
-            input=formatted_texts,
+            input=[pair[1] for pair in line_text_pairs],
         )
 
-        # Map embeddings back to lines
-        embeddings = {}
-        for i, line in enumerate(lines):
-            embeddings[line.text] = response.data[i].embedding
+        # Build list of (line, embedding) tuples
+        line_embeddings = []
+        for i, (line, _) in enumerate(line_text_pairs):
+            line_embeddings.append((line, response.data[i].embedding))
 
         logger.info(
-            f"Successfully embedded {len(embeddings)} lines with vertical context"
+            f"Successfully embedded {len(line_embeddings)} lines with vertical context"
         )
-        return embeddings
+        return line_embeddings
 
     except Exception as e:
         logger.error(f"Error embedding lines: {str(e)}")
@@ -227,14 +227,17 @@ def embed_receipt_lines_realtime(
         return []
 
     # Get embeddings with vertical context
-    embeddings = embed_lines_realtime(lines, merchant_name)
+    line_embeddings = embed_lines_realtime(lines, merchant_name)
 
     # Prepare vectors for Pinecone using batch structure
     vectors = []
     line_embedding_pairs = []
 
+    # Create a mapping for quick lookup of embeddings by line
+    embedding_map = {line.line_id: emb for line, emb in line_embeddings}
+
     for line in lines:
-        if line.text in embeddings:
+        if line.line_id in embedding_map:
             # Get prev and next lines directly using the same logic as formatting
             # This avoids parsing issues with spaces in lines
             prev_line, next_line = _get_line_neighbors(line, lines)
@@ -256,12 +259,12 @@ def embed_receipt_lines_realtime(
             vectors.append(
                 Vector(
                     id=vector_id,
-                    values=embeddings[line.text],
+                    values=embedding_map[line.line_id],
                     metadata=metadata,
                 )
             )
 
-            line_embedding_pairs.append((line, embeddings[line.text]))
+            line_embedding_pairs.append((line, embedding_map[line.line_id]))
 
     # Store to Pinecone using correct namespace
     if vectors:
