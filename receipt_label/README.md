@@ -20,7 +20,7 @@ flowchart TD
 
     ProcessWords --> KnownPattern{Word pattern<br/>exists for merchant?}
 
-    KnownPattern -->|Yes| ApplyLabel[Apply Known Label<br/>e.g. "Big Mac" → PRODUCT_NAME]
+    KnownPattern -->|Yes| ApplyLabel[Apply Known Label<br/>e.g. Big Mac = PRODUCT_NAME]
     KnownPattern -->|No| GPTLabel[GPT Labeling with<br/>Merchant Context]
 
     ApplyLabel --> StorePattern[Update Pattern<br/>Confidence]
@@ -63,15 +63,15 @@ flowchart TD
 - Method: Query Pinecone for word patterns from same merchant
 - For each word:
   - Check if we've seen this word at this merchant before
-  - If yes: Apply the known label (e.g., "Big Mac" at McDonald's → PRODUCT_NAME)
+  - If yes: Apply the known label (e.g., "Big Mac" at McDonald's = PRODUCT_NAME)
   - If no: Use GPT with merchant context to label, then store pattern
 - **No structure analysis needed**: Structure emerges from labeled words
 - **Learning system**: Each new receipt improves labeling for that merchant
 
 #### 3. **Merchant-Specific Word Patterns**
 - Words get consistent labels at the same merchant:
-  - McDonald's: "Big Mac" → `PRODUCT_NAME`, "McFlurry" → `PRODUCT_NAME`
-  - Home Depot: "SKU" → `PRODUCT_ID_PREFIX`, "LUMBER" → `PRODUCT_CATEGORY`
+  - McDonald's: "Big Mac" = `PRODUCT_NAME`, "McFlurry" = `PRODUCT_NAME`
+  - Home Depot: "SKU" = `PRODUCT_ID_PREFIX`, "LUMBER" = `PRODUCT_CATEGORY`
 - Common label types:
   - `MERCHANT_NAME`, `ADDRESS_LINE`, `PHONE_NUMBER`
   - `DATE`, `TIME`, `PAYMENT_METHOD`
@@ -103,9 +103,9 @@ flowchart TD
 #### 6. **Structure Emerges from Labels**
 - No explicit structure analysis needed
 - Receipt sections emerge naturally:
-  - Words labeled `MERCHANT_NAME`, `ADDRESS` → Header
-  - Words labeled `PRODUCT_NAME`, `QUANTITY`, `PRICE` → Items section
-  - Words labeled `SUBTOTAL`, `TAX`, `TOTAL` → Footer
+  - Words labeled `MERCHANT_NAME`, `ADDRESS` = Header
+  - Words labeled `PRODUCT_NAME`, `QUANTITY`, `PRICE` = Items section
+  - Words labeled `SUBTOTAL`, `TAX`, `TOTAL` = Footer
 - Structure is implicit in the labeling
 
 ### Label Categories
