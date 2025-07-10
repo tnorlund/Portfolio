@@ -882,7 +882,7 @@ def test_embedding_batch_poll(
 
     for word in receipt_words:
         word.embedding_status = EmbeddingStatus.PENDING
-    moto_client.add_words(receipt_words)
+    moto_client.add_receipt_words(receipt_words)
     batch_id = submit_batch.generate_batch_id()
     moto_client.add_batch_summary(
         BatchSummary(

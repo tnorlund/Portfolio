@@ -351,8 +351,10 @@ class TestCostMonitor:
                     "model": {"S": "gpt-3.5-turbo"},
                     "operation": {"S": "completion"},
                     "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
-                    "job_id": {"S": "test-job-123"},
-                    "cost_usd": {"N": "1.50"},
+                    "requestId": {"S": "req-123"},
+                    "apiCalls": {"N": "1"},
+                    "jobId": {"S": "test-job-123"},
+                    "costUSD": {"N": "1.50"},
                     "date": {"S": "2024-01-01"},
                 }
             ]
@@ -383,25 +385,27 @@ class TestCostMonitor:
         )
 
     def test_query_metrics_environment_scope(self, mock_dynamo_client):
-        """Test querying metrics for environment scope using scan."""
+        """Test querying metrics for environment scope using enhanced GSI3."""
         monitor = CostMonitor(mock_dynamo_client)
 
-        # Mock scan response
-        mock_scan_response = {
+        # Mock GSI3 query response (enhanced GSI3 is used for environment scope)
+        mock_query_response = {
             "Items": [
                 {
                     "service": {"S": "anthropic"},
                     "model": {"S": "claude-3-opus"},
                     "operation": {"S": "completion"},
                     "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
+                    "requestId": {"S": "req-456"},
+                    "apiCalls": {"N": "1"},
                     "environment": {"S": "production"},
-                    "cost_usd": {"N": "2.25"},
+                    "costUSD": {"N": "2.25"},
                     "date": {"S": "2024-01-01"},
                 }
             ]
         }
 
-        mock_dynamo_client._client.scan.return_value = mock_scan_response
+        mock_dynamo_client._client.query.return_value = mock_query_response
 
         # Test environment scope query
         metrics = monitor._query_metrics(
@@ -415,3 +419,12 @@ class TestCostMonitor:
         assert metrics[0].environment == "production"
         assert metrics[0].service == "anthropic"
         assert metrics[0].cost_usd == Decimal("2.25")
+
+        # Verify GSI3 query was called instead of scan
+        mock_dynamo_client._client.query.assert_called_once()
+        call_kwargs = mock_dynamo_client._client.query.call_args[1]
+        assert call_kwargs["IndexName"] == "GSI3"
+        assert (
+            call_kwargs["ExpressionAttributeValues"][":pk"]["S"]
+            == "ENV#production"
+        )

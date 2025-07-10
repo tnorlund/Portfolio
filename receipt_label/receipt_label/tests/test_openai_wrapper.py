@@ -709,6 +709,7 @@ class TestWrapperEdgeCases:
 
 
 @pytest.mark.unit
+@pytest.mark.performance
 class TestWrapperPerformance:
     """Test wrapper performance characteristics."""
 
