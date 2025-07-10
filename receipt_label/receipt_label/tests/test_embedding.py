@@ -5,9 +5,6 @@ from typing import Literal
 
 import boto3
 import pytest
-from receipt_label.embedding.word import poll as poll_batch
-from receipt_label.embedding.word import submit as submit_batch
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import BatchStatus, BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
@@ -16,6 +13,9 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
     ReceiptWord,
 )
+
+from receipt_label.embedding.word import poll as poll_batch
+from receipt_label.embedding.word import submit as submit_batch
 
 
 @pytest.fixture
@@ -882,7 +882,7 @@ def test_embedding_batch_poll(
 
     for word in receipt_words:
         word.embedding_status = EmbeddingStatus.PENDING
-    moto_client.add_words(receipt_words)
+    moto_client.add_receipt_words(receipt_words)
     batch_id = submit_batch.generate_batch_id()
     moto_client.add_batch_summary(
         BatchSummary(

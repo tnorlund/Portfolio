@@ -24,11 +24,10 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-from receipt_label.utils import get_client_manager
-from receipt_label.utils.client_manager import ClientManager
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptWord
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 
 def serialize_receipt_words(
@@ -161,12 +160,14 @@ def generate_batch_id() -> str:
 def list_receipt_words_with_no_embeddings(
     client_manager: ClientManager = None,
 ) -> list[ReceiptWord]:
-    """Fetch all ReceiptWord items with embedding_status == NONE."""
+    """Fetch all ReceiptWord items with embedding_status == NONE and is_noise == False."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.list_receipt_words_by_embedding_status(
+    all_words = client_manager.dynamo.list_receipt_words_by_embedding_status(
         EmbeddingStatus.NONE
     )
+    # Filter out noise words
+    return [word for word in all_words if not word.is_noise]
 
 
 def _format_word_context_embedding_input(
