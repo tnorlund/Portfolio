@@ -23,7 +23,14 @@ prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg
 
 echo -e "Dev images: ${GREEN}${dev_count}${NC}"
 echo -e "Prod images: ${GREEN}${prod_count}${NC}"
-echo -e "Estimated missing: ~$((dev_count - prod_count))"
+
+# Calculate difference, ensuring non-negative
+missing_estimate=$((dev_count - prod_count))
+if [ $missing_estimate -lt 0 ]; then
+    echo -e "${YELLOW}Note: Production has more files than development${NC}"
+else
+    echo -e "Estimated missing: ~$missing_estimate"
+fi
 echo ""
 
 # Perform sync directly
@@ -39,9 +46,29 @@ aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
 echo ""
 echo -e "${GREEN}Sync complete!${NC}"
 
-# Test the specific file
+# Test a sample file
 echo ""
-echo -e "${YELLOW}Testing your specific WebP file...${NC}"
-url="https://www.tylernorlund.com/assets/80d76b93-9e71-42ee-a650-d176895d965a_RECEIPT_00001.webp"
-response=$(curl -sI "$url" | head -20)
-echo "$response"
+echo -e "${YELLOW}Verifying sync completed successfully...${NC}"
+
+# Get current count and check if any files were synced
+final_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
+synced_count=$((final_count - prod_count))
+
+if [ $synced_count -gt 0 ]; then
+    echo -e "${GREEN}Successfully synced $synced_count files${NC}"
+    
+    # Test a sample file
+    sample_file=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif)$' | head -1 | awk '{print $4}')
+    if [ -n "$sample_file" ]; then
+        url="https://www.tylernorlund.com/$sample_file"
+        echo "Testing sample: $url"
+        status=$(curl -sI "$url" | head -1 | cut -d' ' -f2)
+        if [ "$status" = "200" ]; then
+            echo -e "${GREEN}✓ Assets accessible${NC}"
+        else
+            echo -e "${RED}✗ HTTP $status - check CloudFront${NC}"
+        fi
+    fi
+else
+    echo -e "${YELLOW}No files needed to be synced${NC}"
+fi

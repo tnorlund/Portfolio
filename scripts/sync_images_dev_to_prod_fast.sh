@@ -27,7 +27,14 @@ prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg
 echo -e "Prod bucket images: ${GREEN}${prod_count}${NC}"
 
 echo ""
-echo -e "${YELLOW}Estimated missing files: ~$((dev_count - prod_count))${NC}"
+# Calculate difference, ensuring non-negative
+missing_estimate=$((dev_count - prod_count))
+if [ $missing_estimate -lt 0 ]; then
+    echo -e "${YELLOW}Note: Production has more files than development${NC}"
+    echo -e "Dev: $dev_count, Prod: $prod_count (difference: $missing_estimate)"
+else
+    echo -e "${YELLOW}Estimated missing files: ~$missing_estimate${NC}"
+fi
 echo ""
 
 # Step 2: Use aws s3 sync with dry run to see what would be copied
@@ -87,33 +94,36 @@ new_prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.
 echo -e "Prod bucket images after sync: ${GREEN}${new_prod_count}${NC}"
 echo -e "Images added: ${GREEN}$((new_prod_count - prod_count))${NC}"
 
-# Step 6: Test a specific WebP file
-echo ""
-echo -e "${YELLOW}Step 5: Testing the specific WebP file you mentioned...${NC}"
-test_url="https://www.tylernorlund.com/assets/80d76b93-9e71-42ee-a650-d176895d965a_RECEIPT_00001.webp"
-
-echo "Checking: $test_url"
-response=$(curl -sI "$test_url")
-status_code=$(echo "$response" | head -n1 | cut -d' ' -f2)
-content_type=$(echo "$response" | grep -i "content-type:" | cut -d' ' -f2 | tr -d '\r')
-content_length=$(echo "$response" | grep -i "content-length:" | cut -d' ' -f2 | tr -d '\r')
-
-if [ "$status_code" = "200" ]; then
-    echo -e "${GREEN}✓ Status: 200 OK${NC}"
-    echo -e "  Content-Type: $content_type"
-    echo -e "  Content-Length: $content_length bytes"
+# Step 6: Test a sample file (if any were synced)
+if [ "$new_prod_count" -gt "$prod_count" ]; then
+    echo ""
+    echo -e "${YELLOW}Step 5: Testing asset accessibility...${NC}"
     
-    if [[ "$content_type" == image/* ]]; then
-        echo -e "${GREEN}✓ File is being served correctly!${NC}"
-    else
-        echo -e "${RED}✗ Content-Type issue: Expected image/webp but got $content_type${NC}"
-        echo ""
-        echo "You may need to:"
-        echo "1. Wait a few minutes for CloudFront cache to update"
-        echo "2. Create a CloudFront invalidation: aws cloudfront create-invalidation --distribution-id E3RH4PZ3LNS1SL --paths '/assets/*'"
+    # Get a sample file that was just synced
+    sample_file=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -E '\.(jpg|jpeg|png|webp|avif)$' | head -1 | awk '{print $4}')
+    
+    if [ -n "$sample_file" ]; then
+        test_url="https://www.tylernorlund.com/$sample_file"
+        echo "Testing: $test_url"
+        
+        response=$(curl -sI "$test_url")
+        status_code=$(echo "$response" | head -n1 | cut -d' ' -f2)
+        content_type=$(echo "$response" | grep -i "content-type:" | cut -d' ' -f2 | tr -d '\r')
+        
+        if [ "$status_code" = "200" ]; then
+            echo -e "${GREEN}✓ Status: 200 OK${NC}"
+            echo -e "  Content-Type: $content_type"
+            
+            if [[ "$content_type" == image/* ]]; then
+                echo -e "${GREEN}✓ Assets are being served correctly!${NC}"
+            else
+                echo -e "${RED}✗ Content-Type issue detected${NC}"
+                echo "CloudFront may need cache invalidation"
+            fi
+        else
+            echo -e "${RED}✗ HTTP Status: $status_code${NC}"
+        fi
     fi
-else
-    echo -e "${RED}✗ HTTP Status: $status_code${NC}"
 fi
 
 echo ""
