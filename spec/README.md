@@ -53,6 +53,7 @@ spec/
 │   └── week4-streaming.md     # Real-time streaming and observability
 ├── technical-analysis/        # System architecture documentation
 │   ├── dynamo-entities.md     # DynamoDB entity reference
+│   ├── dynamodb-entity-consolidation.md # Entity consolidation plan with Pinecone
 │   ├── client-refactor.md     # Client management patterns
 │   └── labeler-refactor.md    # ReceiptLabeler architecture (ALIGNED WITH CORE FIX)
 ├── archive/                   # Completed work (reference only)
@@ -77,7 +78,8 @@ spec/
 - **Week 2**: Add Pinecone integration for retrieval-augmented processing (80-85% → 85-90%)
 - **Week 3**: Implement store-specific learning and complex relationships (85-90% → 90-95%)
 - **Week 4**: Financial validation with final "thumbs up/down" determination
-- See: `line-item-enhancement/README.md` and `line-item-enhancement/financial-validation.md`
+- **DynamoDB Optimization**: Consolidate 7 analysis entities → 3 entities (60% reduction)
+- See: `line-item-enhancement/README.md`, `line-item-enhancement/financial-validation.md`, and `technical-analysis/dynamodb-entity-consolidation.md`
 
 ### **Google Places API Integration (Issue #147)** 🔴 PLANNED
 **Context Manager for Places API**
