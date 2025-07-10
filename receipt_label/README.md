@@ -2,6 +2,122 @@
 
 A Python package for labeling and validating receipt data using GPT and Pinecone.
 
+## Receipt Word Labeling Flow
+
+The receipt labeling process follows a structured pipeline that combines pattern matching, GPT analysis, and validation:
+
+```mermaid
+flowchart TD
+    Start([Receipt Input]) --> FetchPlaces[Fetch Places API Data<br/>Optional]
+    FetchPlaces --> Structure[Structure Analysis<br/>GPT]
+
+    Structure --> |Section Boundaries| FieldLabel[Field Labeling<br/>GPT]
+    Structure --> |Currency Contexts| LineItem[Line Item Processing]
+
+    FieldLabel --> |Word Labels| Consolidate[Label Consolidation]
+
+    LineItem --> Pattern[Pattern Matching<br/>FastPatternMatcher]
+    Pattern --> |Simple Items| LineLabels[Generate Line Item Labels]
+    Pattern --> |Complex Items| GPTAnalysis[GPT Analysis<br/>Currently Enhanced Patterns]
+    GPTAnalysis --> LineLabels
+    LineLabels --> |Item Labels| Consolidate
+
+    Consolidate --> Validation[Validation<br/>Optional]
+    Validation --> Result([Labeled Receipt])
+
+    style Start fill:#e1f5e1
+    style Result fill:#e1f5e1
+    style Pattern fill:#fff4e1
+    style GPTAnalysis fill:#e1e5f5
+    style Structure fill:#e1e5f5
+    style FieldLabel fill:#e1e5f5
+```
+
+### Detailed Labeling Process
+
+#### 1. **Receipt Ingestion**
+- Entry point: `ReceiptLabeler.label_receipt()`
+- Input: Receipt with OCR-extracted words and lines
+- Optional: Fetch business context from Google Places API
+
+#### 2. **Structure Analysis**
+- Method: `ReceiptAnalyzer.analyze_structure()`
+- Uses GPT to identify receipt sections:
+  - **Header**: Business name, address, phone, date/time
+  - **Body**: Line items, quantities, prices
+  - **Footer**: Totals, payment info, thank you message
+- Returns section boundaries for targeted labeling
+
+#### 3. **Field Labeling**
+- Method: `ReceiptAnalyzer.label_fields()`
+- Processes each section with GPT
+- Labels include:
+  - `MERCHANT_NAME`, `ADDRESS_LINE`, `PHONE_NUMBER`
+  - `DATE`, `TIME`, `PAYMENT_METHOD`
+  - `PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`
+  - `SUBTOTAL`, `TAX`, `GRAND_TOTAL`
+- Returns confidence scores and review flags
+
+#### 4. **Line Item Processing**
+- Method: `LineItemProcessor.analyze_line_items()`
+- Two-stage approach:
+
+  a. **Pattern Matching** (`FastPatternMatcher`):
+  - Currency patterns: `$12.99`, `$1,234.56`
+  - Quantity patterns: `2 @ $5.99`, `Qty: 3 x $4.50`
+  - Financial fields: Subtotal, Tax, Total, Discount
+
+  b. **Enhanced Analysis**:
+  - Currently uses `EnhancedCurrencyAnalyzer` for 80-85% accuracy
+  - Planned: Pinecone lookups for edge cases (Week 2)
+
+#### 5. **Label Consolidation**
+- Merges field labels with line item labels
+- Priority system (1-9 scale):
+  - Financial totals: Priority 9
+  - Line item components: Priority 8
+  - Transaction details: Priority 6
+  - Business info: Priority 5
+- Higher priority labels override lower ones
+
+#### 6. **Validation** (Optional)
+- Checks mathematical consistency
+- Validates required fields presence
+- Flags discrepancies for review
+
+### Label Categories
+
+| Category | Labels | Priority |
+|----------|--------|----------|
+| **Financial Totals** | `SUBTOTAL`, `TAX`, `GRAND_TOTAL` | 9 |
+| **Line Items** | `ITEM_NAME`, `ITEM_QUANTITY`, `ITEM_PRICE`, `ITEM_TOTAL` | 8 |
+| **Transaction** | `DATE`, `TIME`, `PAYMENT_METHOD`, `DISCOUNT` | 6 |
+| **Business Info** | `MERCHANT_NAME`, `ADDRESS_LINE`, `PHONE_NUMBER` | 5 |
+| **Other** | `COUPON`, `LOYALTY_ID`, `WEBSITE` | 1-4 |
+
+### Pattern Matching Details
+
+The `FastPatternMatcher` and `EnhancedCurrencyAnalyzer` detect:
+
+- **Currency Formats**: `$5.99`, `5.99`, `$1,234.56`
+- **Quantity Patterns**:
+  - At symbol: `2 @ $5.99`
+  - Multiplication: `3 x $4.50`, `Qty: 3 x $4.50`
+  - Slash notation: `2/$10.00`
+  - For pricing: `3 for $15.00`
+  - With units: `2 items @ $5.99`
+- **Financial Keywords**:
+  - Subtotal: "subtotal", "sub total", "net total", "merchandise"
+  - Tax: "tax", "sales tax", "vat", "gst", "hst"
+  - Total: "total", "grand total", "amount due", "balance due"
+  - Discount: "discount", "coupon", "savings", "% off"
+
+### Integration with AI Services
+
+- **GPT-4**: Structure analysis, field labeling, complex line items
+- **Pattern Matching**: Fast local processing for common formats
+- **Pinecone** (Planned): Semantic search for edge cases and validation
+
 ## Package Responsibilities
 
 **IMPORTANT**: This package handles business logic and AI integrations. It must NOT contain DynamoDB-specific code.
