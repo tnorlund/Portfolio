@@ -125,7 +125,6 @@ def test_pattern_query_for_receipt(receipt_id: str):
         merchant_name=merchant_name,
         words=words[:20],  # Test with first 20 words
         confidence_threshold=0.7,
-        use_embeddings=True,
     )
 
     elapsed_time = time.time() - start_time
@@ -227,7 +226,6 @@ def compare_query_methods(merchant_name: str, num_words: int = 20):
         merchant_name=merchant_name,
         words=words,
         confidence_threshold=0.7,
-        use_embeddings=False,  # Just pattern lookup for comparison
     )
 
     new_time = time.time() - new_start

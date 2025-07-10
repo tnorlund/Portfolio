@@ -9,10 +9,6 @@ from typing import Dict, List, Optional, Set, Tuple
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.client_manager import get_client_manager
-from receipt_label.embedding.realtime.embed import (
-    EmbeddingContext,
-    embed_words_realtime,
-)
 
 from .types import (
     MerchantPatterns,
@@ -154,20 +150,18 @@ def query_patterns_for_words(
     merchant_name: str,
     words: List[ReceiptWord],
     confidence_threshold: float = 0.7,
-    use_embeddings: bool = True,
 ) -> MerchantPatternResult:
     """
-    Query patterns for multiple words using merchant-filtered Pinecone queries.
+    Query patterns for multiple words using a single merchant-filtered Pinecone query.
 
-    This function provides significant query reduction by filtering all queries
-    to a specific merchant's data, reducing the search space by ~90% compared
-    to querying the entire index.
+    This function achieves true query reduction by using a single metadata-filtered
+    query to retrieve all patterns for the specified words from the merchant's data.
+    This is much more efficient than N embedding-based queries.
 
     Args:
         merchant_name: Canonical merchant name
         words: List of words to find patterns for
         confidence_threshold: Minimum confidence for pattern matching
-        use_embeddings: Whether to use embeddings for similarity matching
 
     Returns:
         MerchantPatternResult with pattern matches
@@ -192,117 +186,96 @@ def query_patterns_for_words(
 
     pattern_matches = {}
 
-    if use_embeddings and words:
-        # Create embedding context
-        context = EmbeddingContext(
-            receipt_id=words[0].receipt_id,
-            image_id=words[0].image_id,
-            canonical_merchant_name=merchant_name,
-        )
-
-        # Get embeddings for all words at once
-        embeddings = embed_words_realtime(words, context)
-
-        if embeddings:
-            # Query for each word to avoid bias from using single embedding
-            # Still more efficient than N separate queries without merchant filter
-            for word in words:
-                if word.text not in embeddings:
-                    continue
-
-                query_vector = embeddings[word.text]
-
-                # Query with both original and lowercase text variants
-                results = index.query(
-                    vector=query_vector,
-                    filter={
-                        "merchant_name": {"$eq": merchant_name},
-                        "embedding_type": {"$eq": "word"},
-                        "$or": [
-                            {"text": {"$eq": word.text}},  # Original case
-                            {"text": {"$eq": word.text.lower()}},  # Lowercase
-                        ],
-                    },
-                    top_k=20,  # Get top matches for this specific word
-                    include_metadata=True,
-                    namespace="word",
+    # Use single query approach - query by metadata filter only, no embedding needed
+    # This is much more efficient than N embedding queries when we know exact text
+    
+    # Prepare text variants for all words (original and lowercase)
+    text_variants = []
+    word_text_map = {}  # Map text variant back to original word
+    
+    for word in words:
+        # Add both original and lowercase variants
+        text_variants.extend([word.text, word.text.lower()])
+        word_text_map[word.text] = word
+        word_text_map[word.text.lower()] = word
+    
+    # Single query to get all patterns for this merchant and these words
+    # Use dummy vector since we're filtering by metadata only
+    dummy_vector = [0.0] * 1536  # Standard embedding dimension
+    
+    results = index.query(
+        vector=dummy_vector,
+        filter={
+            "merchant_name": {"$eq": merchant_name},
+            "embedding_type": {"$eq": "word"},
+            "text": {"$in": text_variants},  # Filter for all our words at once
+        },
+        top_k=10000,  # Get all matches for this merchant and these words
+        include_metadata=True,
+        namespace="word",
+    )
+    
+    # Group results by word text (case-insensitive)
+    word_results = defaultdict(list)
+    for match in results.matches:
+        metadata = match.metadata
+        matched_text = metadata.get("text", "")
+        validated_labels = metadata.get("validated_labels", {})
+        
+        if matched_text and validated_labels:
+            # Group by lowercase for consistent matching
+            word_key = matched_text.lower()
+            if word_key in [w.text.lower() for w in words]:
+                word_results[word_key].append((match, validated_labels))
+    
+    # Process each word's results to find patterns
+    for word in words:
+        word_key = word.text.lower()
+        matches_for_word = word_results.get(word_key, [])
+        
+        if not matches_for_word:
+            continue
+            
+        # Collect label frequencies
+        label_counts = defaultdict(int)
+        for match, validated_labels in matches_for_word:
+            for label, value in validated_labels.items():
+                if value:  # Non-empty label
+                    label_counts[label] += 1
+        
+        if label_counts:
+            # Find most common label
+            best_label = max(label_counts.items(), key=lambda x: x[1])[0]
+            best_count = label_counts[best_label]
+            total_occurrences = sum(label_counts.values())
+            
+            # Calculate frequency-based confidence
+            frequency_confidence = best_count / total_occurrences if total_occurrences > 0 else 0
+            
+            # Since we're not using embedding similarity, use frequency as primary confidence
+            # with a small boost for having multiple occurrences
+            occurrence_boost = min(len(matches_for_word) / 10.0, 0.2)  # Up to 20% boost
+            combined_confidence = frequency_confidence + occurrence_boost
+            
+            # Cap at 1.0
+            combined_confidence = min(combined_confidence, 1.0)
+            
+            # Only keep patterns above threshold
+            if combined_confidence >= confidence_threshold:
+                pattern = PatternMatch(
+                    word=word.text,  # Keep original case for display
+                    suggested_label=best_label,
+                    confidence=combined_confidence,
+                    confidence_level=PatternMatch.from_confidence_score(
+                        combined_confidence
+                    ),
+                    frequency=best_count,
+                    last_validated=datetime.utcnow(),
+                    merchant_name=merchant_name,
+                    sample_contexts=[word.text],
                 )
-
-                # Collect all label occurrences and similarity scores for this word
-                label_counts = defaultdict(int)
-                matched_scores = []  # Store scores from actual filtered matches
-                total_matches = 0
-
-                # Process results to count label frequencies and collect matching scores
-                for match in results.matches:
-                    metadata = match.metadata
-                    matched_text = metadata.get("text", "")
-                    validated_labels = metadata.get("validated_labels", {})
-
-                    # Check if this is one of our words (case-insensitive)
-                    if (
-                        matched_text.lower() == word.text.lower()
-                        and validated_labels
-                    ):
-                        total_matches += 1
-                        matched_scores.append(match.score)  # Collect score from filtered match
-                        # Count each label occurrence
-                        for label, value in validated_labels.items():
-                            if value:  # Non-empty label
-                                label_counts[label] += 1
-
-                # Find the most common label
-                if label_counts and matched_scores:
-                    best_label = max(label_counts.items(), key=lambda x: x[1])[0]
-                    best_count = label_counts[best_label]
-                    
-                    # Calculate confidence based on frequency and similarity
-                    frequency_confidence = best_count / total_matches if total_matches > 0 else 0
-                    # Use average similarity score from actual filtered matches
-                    avg_similarity = sum(matched_scores) / len(matched_scores)
-                    # Combined confidence: frequency weight (70%) + similarity weight (30%)
-                    combined_confidence = (frequency_confidence * 0.7) + (avg_similarity * 0.3)
-
-                    word_key = word.text.lower()
-
-                    # Only keep patterns above threshold
-                    if combined_confidence >= confidence_threshold:
-                        pattern = PatternMatch(
-                            word=word.text,  # Keep original case for display
-                            suggested_label=best_label,
-                            confidence=combined_confidence,
-                            confidence_level=PatternMatch.from_confidence_score(
-                                combined_confidence
-                            ),
-                            frequency=best_count,
-                            last_validated=datetime.utcnow(),
-                            merchant_name=merchant_name,
-                            sample_contexts=[
-                                word.text
-                            ],  # Could collect actual contexts
-                        )
-
-                        # Keep the best pattern for each word
-                        if (
-                            word_key not in pattern_matches
-                            or combined_confidence > pattern_matches[word_key].confidence
-                        ):
-                            pattern_matches[word_key] = pattern
-
-    else:
-        # Fallback: Get patterns without embeddings
-        merchant_patterns = get_merchant_patterns(merchant_name)
-
-        for word in words:
-            word_key = word.text.lower()
-            best_pattern = merchant_patterns.get_best_pattern(word_key)
-            if (
-                best_pattern
-                and best_pattern.confidence >= confidence_threshold
-            ):
-                # Update pattern to use original case
-                best_pattern.word = word.text
-                pattern_matches[word_key] = best_pattern
+                
+                pattern_matches[word_key] = pattern
 
     # Calculate results
     words_with_patterns = list(pattern_matches.keys())
@@ -312,11 +285,10 @@ def query_patterns_for_words(
         if w.lower() not in pattern_matches
     ]
 
-    # Query reduction: Still significant because each query is merchant-filtered
-    # Without merchant filter: N queries across entire index
-    # With merchant filter: N queries but only within merchant's data (much smaller search space)
-    # Estimated 90% reduction in search space per query
-    query_reduction_ratio = 0.9  # 90% reduction due to merchant filtering
+    # Query reduction: True single query approach
+    # Traditional approach: N queries (one per word) across entire index
+    # Our approach: 1 query with merchant + text filters
+    query_reduction_ratio = 1.0 - (1.0 / len(words)) if len(words) > 1 else 0.0
 
     return MerchantPatternResult(
         merchant_name=merchant_name,
