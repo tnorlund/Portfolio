@@ -1,4 +1,5 @@
 import pytest
+
 from receipt_dynamo import ReceiptWord, item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 
