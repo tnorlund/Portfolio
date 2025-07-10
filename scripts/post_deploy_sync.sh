@@ -7,7 +7,12 @@ PROD_BUCKET="sitebucket-778abc9"
 echo "Post-deployment asset sync..."
 aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
     --exclude "*" \
-    --include "*.jpg" --include "*.jpeg" --include "*.png" \
-    --include "*.webp" --include "*.avif" --include "*.gif" --include "*.svg"
+    --include "*.jpg" --include "*.JPG" \
+    --include "*.jpeg" --include "*.JPEG" \
+    --include "*.png" --include "*.PNG" \
+    --include "*.webp" --include "*.WEBP" \
+    --include "*.avif" --include "*.AVIF" \
+    --include "*.gif" --include "*.GIF" \
+    --include "*.svg" --include "*.SVG"
 
 echo "Asset sync complete!"

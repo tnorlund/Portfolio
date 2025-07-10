@@ -86,7 +86,7 @@ fi
 
 # Step 4: Perform the actual sync
 echo ""
-echo -e "${YELLOW}Step 3: Syncing files...${NC}"
+echo -e "${YELLOW}Step 4: Syncing files...${NC}"
 echo ""
 
 aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
@@ -101,7 +101,7 @@ aws s3 sync s3://${DEV_BUCKET}/assets/ s3://${PROD_BUCKET}/assets/ \
 
 # Step 5: Verify counts
 echo ""
-echo -e "${YELLOW}Step 4: Verifying sync...${NC}"
+echo -e "${YELLOW}Step 5: Verifying sync...${NC}"
 
 # New count in prod (case-insensitive)
 new_prod_count=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif|gif|svg)$' | wc -l | tr -d ' ')
@@ -112,7 +112,7 @@ echo -e "Images added: ${GREEN}$((new_prod_count - prod_count))${NC}"
 # Step 6: Test a sample file (if any were synced)
 if [ "$new_prod_count" -gt "$prod_count" ]; then
     echo ""
-    echo -e "${YELLOW}Step 5: Testing asset accessibility...${NC}"
+    echo -e "${YELLOW}Step 6: Testing asset accessibility...${NC}"
     
     # Get a sample file that was just synced (case-insensitive)
     sample_file=$(aws s3 ls s3://${PROD_BUCKET}/assets/ --recursive | grep -iE '\.(jpg|jpeg|png|webp|avif)$' | head -1 | awk '{print $4}')

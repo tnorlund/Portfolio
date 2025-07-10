@@ -83,7 +83,7 @@ fi
 
 # Step 5: Copy missing files
 echo ""
-echo -e "${YELLOW}Step 3: Copying missing files...${NC}"
+echo -e "${YELLOW}Step 5: Copying missing files...${NC}"
 
 success_count=0
 failed_count=0
