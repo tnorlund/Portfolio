@@ -34,3 +34,20 @@ CORE_LABELS: dict[str, str] = {
     "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
     "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
 }
+
+# Noise Detection Configuration
+from .utils.noise_detection import NoiseDetectionConfig
+
+# Default noise detection configuration
+NOISE_DETECTION_CONFIG = NoiseDetectionConfig(
+    # Single punctuation marks to filter
+    punctuation_patterns=[r"^[.,;:!?\"\'\-\(\)\[\]\{\}]$"],
+    # Separator characters
+    separator_patterns=[r"^[|/\\~_=+*&%]$"],
+    # Non-alphanumeric artifacts
+    artifact_patterns=[r"^[^\w\s]+$"],
+    # Minimum word length (not used for direct filtering)
+    min_word_length=2,
+    # Preserve currency symbols and amounts
+    preserve_currency=True,
+)
