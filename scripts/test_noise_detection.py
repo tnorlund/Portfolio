@@ -25,10 +25,10 @@ from typing import Dict, List, Tuple
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from receipt_label.utils.noise_detection import is_noise_word
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.export_image import export_image
-
-from receipt_label.utils.noise_detection import is_noise_word
 
 
 class NoiseDetectionAnalyzer:
