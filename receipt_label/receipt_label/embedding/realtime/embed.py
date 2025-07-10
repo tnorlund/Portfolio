@@ -225,10 +225,6 @@ def embed_receipt_realtime(
                 current_time = datetime.utcnow()
                 
                 for word, _ in word_embedding_pairs:
-                    # Ensure the word has the embedded_at attribute
-                    if not hasattr(word, 'embedded_at'):
-                        word.embedded_at = None
-                    
                     word.embedding_status = EmbeddingStatus.SUCCESS
                     word.embedded_at = current_time
                     updated_words.append(word)
