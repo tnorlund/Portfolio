@@ -26,11 +26,12 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.embedding.realtime import (
+from receipt_label.embedding.realtime.embed import (
     EmbeddingContext,
     embed_receipt_realtime,
-    embed_words_realtime,
+    embed_words_realtime_simple,
 )
+from receipt_label.embedding.word.realtime import embed_words_realtime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,7 +55,6 @@ def create_sample_words() -> List[ReceiptWord]:
             angle_radians=0.0,
             confidence=0.95,
             embedding_status=EmbeddingStatus.NONE,
-            is_noise=False,
         ),
         ReceiptWord(
             receipt_id=1,
@@ -71,7 +71,6 @@ def create_sample_words() -> List[ReceiptWord]:
             angle_radians=0.0,
             confidence=0.94,
             embedding_status=EmbeddingStatus.NONE,
-            is_noise=False,
         ),
         ReceiptWord(
             receipt_id=1,
@@ -88,7 +87,6 @@ def create_sample_words() -> List[ReceiptWord]:
             angle_radians=0.0,
             confidence=0.98,
             embedding_status=EmbeddingStatus.NONE,
-            is_noise=False,
         ),
         ReceiptWord(
             receipt_id=1,
@@ -105,7 +103,6 @@ def create_sample_words() -> List[ReceiptWord]:
             angle_radians=0.0,
             confidence=0.97,
             embedding_status=EmbeddingStatus.NONE,
-            is_noise=False,
         ),
         # Add some noise words to test filtering
         ReceiptWord(

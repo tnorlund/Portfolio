@@ -65,7 +65,7 @@ def get_merchant_patterns(
         },
         top_k=10000,  # Get all vectors for this merchant
         include_metadata=True,
-        namespace="word",
+        namespace="words",  # Match batch embedding namespace
     )
 
     # Extract patterns from results
@@ -212,7 +212,7 @@ def query_patterns_for_words(
         },
         top_k=10000,  # Get all matches for this merchant and these words
         include_metadata=True,
-        namespace="word",
+        namespace="words",  # Match batch embedding namespace
     )
     
     # Group results by word text (case-insensitive)
