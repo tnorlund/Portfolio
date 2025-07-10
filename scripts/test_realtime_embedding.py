@@ -26,12 +26,11 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.embedding.realtime.embed import (
-    EmbeddingContext,
-    embed_receipt_realtime,
-    embed_words_realtime_simple,
+from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
+from receipt_label.embedding.word.realtime import (
+    embed_receipt_words_realtime,
+    embed_words_realtime,
 )
-from receipt_label.embedding.word.realtime import embed_words_realtime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -130,23 +129,12 @@ def test_embedding_with_context():
     logger.info("Testing real-time embedding with merchant context...")
 
     words = create_sample_words()
-
-    # Create context with merchant information
-    context = EmbeddingContext(
-        receipt_id="test-receipt-001",
-        image_id="test-image-001",
-        merchant_name="Walmart",
-        canonical_merchant_name="WALMART",
-        merchant_category="Retail",
-        validation_status="MATCHED",
-        requires_immediate_response=True,
-        is_user_facing=True,
-    )
+    merchant_name = "WALMART"
 
     start_time = time.time()
 
     try:
-        embeddings = embed_words_realtime(words, context)
+        embeddings = embed_words_realtime(words, merchant_name)
 
         elapsed_time = time.time() - start_time
 
@@ -172,7 +160,8 @@ def test_full_receipt_embedding(receipt_id: str):
     start_time = time.time()
 
     try:
-        word_embedding_pairs = embed_receipt_realtime(receipt_id)
+        # Embed words using modular implementation
+        word_embedding_pairs = embed_receipt_words_realtime(receipt_id)
 
         elapsed_time = time.time() - start_time
 

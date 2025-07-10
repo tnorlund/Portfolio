@@ -188,21 +188,21 @@ def query_patterns_for_words(
 
     # Use single query approach - query by metadata filter only, no embedding needed
     # This is much more efficient than N embedding queries when we know exact text
-    
+
     # Prepare text variants for all words (original and lowercase)
     text_variants = []
     word_text_map = {}  # Map text variant back to original word
-    
+
     for word in words:
         # Add both original and lowercase variants
         text_variants.extend([word.text, word.text.lower()])
         word_text_map[word.text] = word
         word_text_map[word.text.lower()] = word
-    
+
     # Single query to get all patterns for this merchant and these words
     # Use dummy vector since we're filtering by metadata only
     dummy_vector = [0.0] * 1536  # Standard embedding dimension
-    
+
     results = index.query(
         vector=dummy_vector,
         filter={
@@ -214,52 +214,56 @@ def query_patterns_for_words(
         include_metadata=True,
         namespace="words",  # Match batch embedding namespace
     )
-    
+
     # Group results by word text (case-insensitive)
     word_results = defaultdict(list)
     for match in results.matches:
         metadata = match.metadata
         matched_text = metadata.get("text", "")
         validated_labels = metadata.get("validated_labels", {})
-        
+
         if matched_text and validated_labels:
             # Group by lowercase for consistent matching
             word_key = matched_text.lower()
             if word_key in [w.text.lower() for w in words]:
                 word_results[word_key].append((match, validated_labels))
-    
+
     # Process each word's results to find patterns
     for word in words:
         word_key = word.text.lower()
         matches_for_word = word_results.get(word_key, [])
-        
+
         if not matches_for_word:
             continue
-            
+
         # Collect label frequencies
         label_counts = defaultdict(int)
         for match, validated_labels in matches_for_word:
             for label, value in validated_labels.items():
                 if value:  # Non-empty label
                     label_counts[label] += 1
-        
+
         if label_counts:
             # Find most common label
             best_label = max(label_counts.items(), key=lambda x: x[1])[0]
             best_count = label_counts[best_label]
             total_occurrences = sum(label_counts.values())
-            
+
             # Calculate frequency-based confidence
-            frequency_confidence = best_count / total_occurrences if total_occurrences > 0 else 0
-            
+            frequency_confidence = (
+                best_count / total_occurrences if total_occurrences > 0 else 0
+            )
+
             # Since we're not using embedding similarity, use frequency as primary confidence
             # with a small boost for having multiple occurrences
-            occurrence_boost = min(len(matches_for_word) / 10.0, 0.2)  # Up to 20% boost
+            occurrence_boost = min(
+                len(matches_for_word) / 10.0, 0.2
+            )  # Up to 20% boost
             combined_confidence = frequency_confidence + occurrence_boost
-            
+
             # Cap at 1.0
             combined_confidence = min(combined_confidence, 1.0)
-            
+
             # Only keep patterns above threshold
             if combined_confidence >= confidence_threshold:
                 pattern = PatternMatch(
@@ -274,7 +278,7 @@ def query_patterns_for_words(
                     merchant_name=merchant_name,
                     sample_contexts=[word.text],
                 )
-                
+
                 pattern_matches[word_key] = pattern
 
     # Calculate results

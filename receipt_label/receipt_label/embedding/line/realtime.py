@@ -18,49 +18,49 @@ def _format_line_context_embedding_input(
 ) -> str:
     """
     Format line with vertical context matching batch embedding structure.
-    
+
     Replicates the format from embedding/line/submit.py:
     <TARGET>line text</TARGET> <POS>position</POS> <CONTEXT>prev_line next_line</CONTEXT>
     """
     # Calculate position using same logic as batch system
     position = _get_line_position(target_line)
-    
+
     # Find previous and next lines by y-coordinate
     target_y = target_line.calculate_centroid()["y"]
-    
+
     prev_line = "<EDGE>"
     next_line = "<EDGE>"
-    
+
     # Sort lines by y-coordinate to find neighbors
     sorted_lines = sorted(all_lines, key=lambda l: l.calculate_centroid()["y"])
-    
+
     target_index = None
     for i, line in enumerate(sorted_lines):
         if line.line_id == target_line.line_id:
             target_index = i
             break
-    
+
     if target_index is not None:
         if target_index > 0:
             prev_line = sorted_lines[target_index - 1].text
         if target_index < len(sorted_lines) - 1:
             next_line = sorted_lines[target_index + 1].text
-    
+
     return f"<TARGET>{target_line.text}</TARGET> <POS>{position}</POS> <CONTEXT>{prev_line} {next_line}</CONTEXT>"
 
 
 def _get_line_position(line: ReceiptLine) -> str:
     """
     Get line position in vertical zones matching batch system.
-    
+
     Replicates logic from embedding/line/submit.py
     """
     centroid = line.calculate_centroid()
     y = centroid["y"]
-    
+
     # Assume receipt bounds (adjust based on actual receipt dimensions)
     RECEIPT_HEIGHT = 1500  # Typical receipt height
-    
+
     # Vertical position (3-zone system for lines)
     if y < RECEIPT_HEIGHT / 3:
         return "top"
@@ -75,19 +75,19 @@ def _create_line_metadata(
     prev_line: str,
     next_line: str,
     merchant_name: Optional[str] = None,
-    section: str = "UNLABELED"
+    section: str = "UNLABELED",
 ) -> dict:
     """
     Create comprehensive metadata matching batch embedding structure.
-    
+
     Replicates metadata from embedding/line/poll.py
     """
     centroid = line.calculate_centroid()
-    
+
     # Calculate average word confidence if words are available
     avg_word_confidence = line.confidence  # Default to line confidence
     word_count = len(line.text.split())  # Approximate word count
-    
+
     metadata = {
         "image_id": line.image_id,
         "receipt_id": str(line.receipt_id),  # Ensure string for consistency
@@ -107,11 +107,11 @@ def _create_line_metadata(
         "section": section,
         "embedding_type": "line",  # For filtering
     }
-    
+
     # Add merchant info if available
     if merchant_name:
         metadata["merchant_name"] = merchant_name
-    
+
     return metadata
 
 
@@ -122,43 +122,45 @@ def embed_lines_realtime(
 ) -> Dict[str, List[float]]:
     """
     Embed lines in real-time using batch-compatible formatting.
-    
+
     Args:
         lines: List of receipt lines to embed
         merchant_name: Optional merchant name for context
         model: OpenAI model to use for embeddings
-        
+
     Returns:
         Dictionary mapping line text to embedding vectors
     """
     client_manager = get_client_manager()
     openai_client = client_manager.openai
-    
+
     if not lines:
         logger.info("No lines to embed")
         return {}
-    
+
     # Format texts using batch embedding structure
     formatted_texts = []
     for line in lines:
         formatted_text = _format_line_context_embedding_input(line, lines)
         formatted_texts.append(formatted_text)
-    
+
     try:
         # Get embeddings from OpenAI
         response = openai_client.embeddings.create(
             model=model,
             input=formatted_texts,
         )
-        
+
         # Map embeddings back to lines
         embeddings = {}
         for i, line in enumerate(lines):
             embeddings[line.text] = response.data[i].embedding
-        
-        logger.info(f"Successfully embedded {len(embeddings)} lines with vertical context")
+
+        logger.info(
+            f"Successfully embedded {len(embeddings)} lines with vertical context"
+        )
         return embeddings
-        
+
     except Exception as e:
         logger.error(f"Error embedding lines: {str(e)}")
         raise
@@ -170,59 +172,68 @@ def embed_receipt_lines_realtime(
 ) -> List[Tuple[ReceiptLine, List[float]]]:
     """
     Embed all lines from a receipt and store to Pinecone using batch-compatible structure.
-    
+
     Args:
         receipt_id: ID of the receipt to process
         merchant_name: Optional merchant name for context
-        
+
     Returns:
         List of (line, embedding) tuples
     """
     client_manager = get_client_manager()
     dynamo_client = client_manager.dynamo
     pinecone_client = client_manager.pinecone
-    
+
     # Get receipt lines from DynamoDB
     lines = dynamo_client.list_receipt_lines_by_receipt(receipt_id)
-    
+
     if not lines:
         logger.warning(f"No lines found for receipt {receipt_id}")
         return []
-    
+
     # Get embeddings with vertical context
     embeddings = embed_lines_realtime(lines, merchant_name)
-    
+
     # Prepare vectors for Pinecone using batch structure
     vectors = []
     line_embedding_pairs = []
-    
+
     for line in lines:
         if line.text in embeddings:
             # Extract vertical context for metadata
             formatted_input = _format_line_context_embedding_input(line, lines)
-            
+
             # Parse prev/next lines from formatted input
             import re
-            context_match = re.search(r'<CONTEXT>([^<]*)</CONTEXT>', formatted_input)
+
+            context_match = re.search(
+                r"<CONTEXT>([^<]*)</CONTEXT>", formatted_input
+            )
             if context_match:
-                context_parts = context_match.group(1).strip().split(' ', 1)  # Split into max 2 parts
-                prev_line = context_parts[0] if len(context_parts) > 0 else "<EDGE>"
-                next_line = context_parts[1] if len(context_parts) > 1 else "<EDGE>"
+                context_parts = (
+                    context_match.group(1).strip().split(" ", 1)
+                )  # Split into max 2 parts
+                prev_line = (
+                    context_parts[0] if len(context_parts) > 0 else "<EDGE>"
+                )
+                next_line = (
+                    context_parts[1] if len(context_parts) > 1 else "<EDGE>"
+                )
             else:
                 prev_line = next_line = "<EDGE>"
-            
+
             # Create vector ID matching batch format
             vector_id = f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
-            
+
             # Create metadata matching batch structure
             metadata = _create_line_metadata(
                 line=line,
                 prev_line=prev_line,
                 next_line=next_line,
                 merchant_name=merchant_name,
-                section="UNLABELED"  # Default section
+                section="UNLABELED",  # Default section
             )
-            
+
             # Create Pinecone vector
             vectors.append(
                 Vector(
@@ -231,27 +242,31 @@ def embed_receipt_lines_realtime(
                     metadata=metadata,
                 )
             )
-            
+
             line_embedding_pairs.append((line, embeddings[line.text]))
-    
+
     # Store to Pinecone using correct namespace
     if vectors:
         try:
             index = pinecone_client.Index("receipt-embeddings")
-            index.upsert(vectors=vectors, namespace="lines")  # Match batch namespace
-            
-            logger.info(f"Stored {len(vectors)} line embeddings to Pinecone for receipt {receipt_id}")
-            
+            index.upsert(
+                vectors=vectors, namespace="lines"
+            )  # Match batch namespace
+
+            logger.info(
+                f"Stored {len(vectors)} line embeddings to Pinecone for receipt {receipt_id}"
+            )
+
             # Update embedding status in DynamoDB
             try:
                 updated_lines = []
                 current_time = datetime.utcnow()
-                
+
                 for line, _ in line_embedding_pairs:
                     line.embedding_status = EmbeddingStatus.SUCCESS
                     line.embedded_at = current_time
                     updated_lines.append(line)
-                
+
                 # Update lines individually with error handling
                 failed_updates = []
                 for line in updated_lines:
@@ -259,17 +274,25 @@ def embed_receipt_lines_realtime(
                         dynamo_client.put_receipt_line(line)
                     except Exception as update_error:
                         failed_updates.append((line, update_error))
-                        logger.error(f"Failed to update embedding status for line {line.line_id}: {update_error}")
-                
+                        logger.error(
+                            f"Failed to update embedding status for line {line.line_id}: {update_error}"
+                        )
+
                 if failed_updates:
-                    logger.warning(f"Failed to update {len(failed_updates)} out of {len(updated_lines)} lines")
-                    
+                    logger.warning(
+                        f"Failed to update {len(failed_updates)} out of {len(updated_lines)} lines"
+                    )
+
             except Exception as batch_error:
-                logger.error(f"Error during DynamoDB batch update: {batch_error}")
-                raise RuntimeError(f"Embeddings stored to Pinecone but DynamoDB update failed: {batch_error}")
-            
+                logger.error(
+                    f"Error during DynamoDB batch update: {batch_error}"
+                )
+                raise RuntimeError(
+                    f"Embeddings stored to Pinecone but DynamoDB update failed: {batch_error}"
+                )
+
         except Exception as e:
             logger.error(f"Error storing to Pinecone: {str(e)}")
             raise
-    
+
     return line_embedding_pairs

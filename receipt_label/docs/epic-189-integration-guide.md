@@ -11,11 +11,14 @@ Epic #189 provides two key capabilities for Epic #192 (Agent Integration):
 
 ### Real-time Embedding Module
 
-Location: `receipt_label/receipt_label/embedding/realtime/`
+**Modular Structure:**
+- `receipt_label/receipt_label/embedding/word/realtime.py` - Word embedding functions
+- `receipt_label/receipt_label/embedding/line/realtime.py` - Line embedding functions
 
 Key functions:
-- `embed_receipt_realtime(receipt_id, merchant_metadata)` - Embed all words from a receipt
-- `embed_words_realtime(words, context)` - Embed specific words with merchant context
+- `embed_receipt_words_realtime(receipt_id, merchant_name)` - Embed all words from a receipt
+- `embed_words_realtime(words, merchant_name)` - Embed specific words with merchant context
+- `embed_receipt_lines_realtime(receipt_id, merchant_name)` - Embed all lines from a receipt
 
 ### Merchant Patterns Module
 
@@ -33,16 +36,20 @@ After merchant validation completes, trigger real-time embeddings:
 
 ```python
 # In validate_merchant_step_functions Lambda
-from receipt_label.embedding.realtime import embed_receipt_realtime
+from receipt_label.embedding.word.realtime import embed_receipt_words_realtime
 
 def after_merchant_validation(receipt_id: str, merchant_metadata: ReceiptMetadata):
     """Called after successful merchant validation."""
 
     # Embed immediately if needed for downstream processing
     if requires_immediate_embedding(receipt_id):
-        word_embeddings = embed_receipt_realtime(
+        merchant_name = (
+            merchant_metadata.canonical_merchant_name
+            or merchant_metadata.merchant_name
+        )
+        word_embeddings = embed_receipt_words_realtime(
             receipt_id=receipt_id,
-            merchant_metadata=merchant_metadata
+            merchant_name=merchant_name
         )
 
         # Words are now embedded and stored in Pinecone
@@ -191,13 +198,16 @@ print(f"Query reduction: {result.query_reduction_ratio:.0%}")
 async def process_receipt_immediately(receipt_id: str):
     # 1. Get merchant metadata
     metadata = get_merchant_metadata(receipt_id)
+    merchant_name = metadata.canonical_merchant_name or metadata.merchant_name
 
     # 2. Embed in real-time
-    embeddings = embed_receipt_realtime(receipt_id, metadata)
+    from receipt_label.embedding.word.realtime import embed_receipt_words_realtime
+    embeddings = embed_receipt_words_realtime(receipt_id, merchant_name)
 
     # 3. Query patterns
+    from receipt_label.merchant_patterns import query_patterns_for_words
     patterns = query_patterns_for_words(
-        metadata.canonical_merchant_name,
+        merchant_name,
         get_receipt_words(receipt_id)
     )
 

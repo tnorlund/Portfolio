@@ -1,18 +1,9 @@
 """Real-time embedding module for immediate receipt processing.
 
-This module provides real-time embedding capabilities alongside the existing
-batch processing system. It's designed for use cases requiring immediate
-embeddings, such as merchant validation and user-facing features.
+This module has been restructured to use modular implementations.
+Use the specialized realtime.py files in word/ and line/ directories instead.
 """
 
-from .embed import (
-    EmbeddingContext,
-    embed_receipt_realtime,
-    embed_words_realtime,
-)
-
-__all__ = [
-    "embed_receipt_realtime",
-    "embed_words_realtime",
-    "EmbeddingContext",
-]
+# This module is deprecated in favor of modular approach:
+# - receipt_label.embedding.word.realtime
+# - receipt_label.embedding.line.realtime
