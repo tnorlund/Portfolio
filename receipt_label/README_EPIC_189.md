@@ -10,8 +10,7 @@ This implementation adds real-time embedding capabilities to the receipt_label p
 
 ### Real-time Embedding Modules (Modular Architecture)
 - **Word Embedding**: `receipt_label/embedding/word/realtime.py`
-- **Line Embedding**: `receipt_label/embedding/line/realtime.py`  
-- **Integration**: `receipt_label/embedding/integration.py`
+- **Line Embedding**: `receipt_label/embedding/line/realtime.py`
 - **Purpose**: Enable immediate embeddings for user-facing features and merchant validation
 - **Key Features**:
   - Modular structure following batch embedding pattern
@@ -42,17 +41,36 @@ python scripts/test_realtime_embedding.py --image-id abc-123
 ### Use Real-time Embedding with Merchant Validation
 
 ```python
-from receipt_label.embedding.integration import process_receipt_with_realtime_embedding
+from receipt_label.embedding.word.realtime import embed_receipt_words_realtime
+from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
+from receipt_label.merchant_validation.handler import create_validation_handler
+from receipt_label.client_manager import get_client_manager
 
-# Complete workflow: merchant validation + real-time embedding
-merchant_metadata, embedding_results = process_receipt_with_realtime_embedding(
-    receipt_id="12345",
-    embed_words=True,
-    embed_lines=False,
+# Get receipt data
+client_manager = get_client_manager()
+dynamo_client = client_manager.dynamo
+receipt_words = dynamo_client.list_receipt_words_by_receipt("12345")
+receipt_lines = dynamo_client.list_receipt_lines_by_receipt("12345")
+
+# Run merchant validation
+validation_handler = create_validation_handler()
+merchant_metadata, status_info = validation_handler.validate_receipt_merchant(
+    image_id=receipt_words[0].image_id,
+    receipt_id=12345,
+    receipt_lines=receipt_lines,
+    receipt_words=receipt_words
 )
 
-print(f"Merchant: {merchant_metadata.merchant_name}")
-print(f"Embedded {embedding_results['words']['count']} words")
+# Get canonical merchant name
+canonical_merchant_name = (
+    merchant_metadata.canonical_merchant_name
+    or merchant_metadata.merchant_name
+) if merchant_metadata else None
+
+# Perform real-time embedding
+word_embeddings = embed_receipt_words_realtime("12345", canonical_merchant_name)
+print(f"Merchant: {canonical_merchant_name}")
+print(f"Embedded {len(word_embeddings)} words")
 ```
 
 ### Use Modular Real-time Embedding
@@ -101,15 +119,14 @@ receipt_label/
 ├── receipt_label/
 │   └── embedding/
 │       ├── word/realtime.py          # Word real-time embedding
-│       ├── line/realtime.py          # Line real-time embedding
-│       └── integration.py            # Merchant validation integration
+│       └── line/realtime.py          # Line real-time embedding
 ├── docs/
 │   ├── epic-189-integration-guide.md
 │   └── merchant-validation-analysis.md
 └── README_EPIC_189.md (this file)
 
 scripts/
-└── test_realtime_embedding.py       # Updated for integration testing
+└── test_realtime_embedding.py       # Test script with merchant validation
 ```
 
 ## Dependencies

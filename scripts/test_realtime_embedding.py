@@ -25,12 +25,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
-
-from receipt_label.embedding.integration import (
-    embed_receipt_realtime,
-    process_receipt_with_realtime_embedding,
+from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
+from receipt_label.embedding.word.realtime import (
+    embed_receipt_words_realtime,
+    embed_words_realtime,
 )
-from receipt_label.embedding.word.realtime import embed_words_realtime
+from receipt_label.merchant_validation.handler import create_validation_handler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -160,29 +160,84 @@ def test_full_receipt_embedding(receipt_id: str):
     start_time = time.time()
 
     try:
-        # Use integrated approach with merchant validation
-        merchant_metadata, embedding_results = process_receipt_with_realtime_embedding(
-            receipt_id=receipt_id,
-            embed_words=True,
-            embed_lines=False,
+        # Get receipt data from DynamoDB
+        dynamo_client = DynamoClient("ReceiptsTable")
+        receipt_words = dynamo_client.list_receipt_words_by_receipt(receipt_id)
+        receipt_lines = dynamo_client.list_receipt_lines_by_receipt(receipt_id)
+
+        if not receipt_words:
+            raise ValueError(f"No words found for receipt {receipt_id}")
+
+        # Run merchant validation
+        logger.info(f"Running merchant validation for receipt {receipt_id}")
+        validation_handler = create_validation_handler()
+
+        # Convert receipt_id to integer for validation
+        receipt_id_int = int(receipt_id)
+
+        merchant_metadata, status_info = (
+            validation_handler.validate_receipt_merchant(
+                image_id=receipt_words[0].image_id,
+                receipt_id=receipt_id_int,
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+            )
         )
+
+        logger.info(
+            f"Merchant validation completed: {status_info.get('status', 'unknown')}"
+        )
+
+        # Get canonical merchant name
+        canonical_merchant_name = (
+            (
+                merchant_metadata.canonical_merchant_name
+                or merchant_metadata.merchant_name
+            )
+            if merchant_metadata
+            else None
+        )
+
+        # Perform real-time embedding
+        embedding_results = {}
+
+        # Embed words
+        logger.info(f"Embedding words for receipt {receipt_id}")
+        word_embeddings = embed_receipt_words_realtime(
+            receipt_id, canonical_merchant_name
+        )
+        embedding_results["words"] = {
+            "count": len(word_embeddings),
+            "merchant_name": canonical_merchant_name,
+        }
+        logger.info(f"Successfully embedded {len(word_embeddings)} words")
+
+        # Optionally embed lines
+        # line_embeddings = embed_receipt_lines_realtime(
+        #     receipt_id, canonical_merchant_name
+        # )
+        # embedding_results["lines"] = {
+        #     "count": len(line_embeddings),
+        #     "merchant_name": canonical_merchant_name,
+        # }
 
         elapsed_time = time.time() - start_time
 
         logger.info(
             f"Receipt processing completed in {elapsed_time:.2f} seconds"
         )
-        
+
         # Show merchant validation results
-        logger.info(f"Merchant: {merchant_metadata.merchant_name}")
-        logger.info(f"Place ID: {merchant_metadata.place_id}")
-        logger.info(f"Validated by: {merchant_metadata.validated_by}")
-        
+        if merchant_metadata:
+            logger.info(f"Merchant: {merchant_metadata.merchant_name}")
+            logger.info(f"Place ID: {merchant_metadata.place_id}")
+            logger.info(f"Validated by: {merchant_metadata.validated_by}")
+
         # Show embedding results
         if "words" in embedding_results:
             word_count = embedding_results["words"].get("count", 0)
             logger.info(f"Embedded {word_count} words")
-        
+
         if "lines" in embedding_results:
             line_count = embedding_results["lines"].get("count", 0)
             logger.info(f"Embedded {line_count} lines")
