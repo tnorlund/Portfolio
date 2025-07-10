@@ -5,11 +5,11 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from pinecone.grpc import Vector
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.client_manager import get_client_manager
 from receipt_label.utils.noise_detection import is_noise_word
+
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities import ReceiptWord
 
 logger = logging.getLogger(__name__)
 
