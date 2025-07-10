@@ -24,7 +24,9 @@ def handler(event, context):
             # Paginate through all images to get the final count
             receipts, lek = client.list_receipts(QUERY_LIMIT)
             while lek:
-                next_receipts, lek = client.list_receipts(QUERY_LIMIT, lek)
+                next_receipts, lek = client.list_receipts(
+                    QUERY_LIMIT, last_evaluated_key=lek
+                )
                 receipts.extend(next_receipts)
 
             return {
