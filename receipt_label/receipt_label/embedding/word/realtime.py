@@ -239,18 +239,24 @@ def embed_receipt_words_realtime(
                 r"<CONTEXT>([^<]*)</CONTEXT>", formatted_input
             )
             if context_match:
-                context_parts = context_match.group(1).strip().split()
-                left_word = (
-                    context_parts[0] if len(context_parts) > 0 else "<EDGE>"
-                )
-                right_word = (
-                    context_parts[1] if len(context_parts) > 1 else "<EDGE>"
-                )
+                context_content = context_match.group(1).strip()
+                if not context_content:
+                    left_word = right_word = "<EDGE>"
+                else:
+                    # Split into exactly 2 parts to handle spaces in words correctly
+                    context_parts = context_content.split(' ', 1)
+                    left_word = context_parts[0] if len(context_parts) > 0 else "<EDGE>"
+                    right_word = context_parts[1] if len(context_parts) > 1 else "<EDGE>"
             else:
                 left_word = right_word = "<EDGE>"
 
             # Create vector ID matching batch format
-            vector_id = f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+            # Ensure IDs are integers for proper formatting
+            receipt_id_int = int(word.receipt_id) if isinstance(word.receipt_id, str) else word.receipt_id
+            line_id_int = int(word.line_id) if isinstance(word.line_id, str) else word.line_id
+            word_id_int = int(word.word_id) if isinstance(word.word_id, str) else word.word_id
+            
+            vector_id = f"IMAGE#{word.image_id}#RECEIPT#{receipt_id_int:05d}#LINE#{line_id_int:05d}#WORD#{word_id_int:05d}"
 
             # Create metadata matching batch structure
             metadata = _create_word_metadata(

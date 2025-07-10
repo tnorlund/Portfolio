@@ -55,9 +55,16 @@ def process_receipt_with_realtime_embedding(
         
         # Use existing merchant validation agent
         validation_handler = create_validation_handler()
+        
+        # Safely convert receipt_id to integer
+        try:
+            receipt_id_int = int(receipt_id)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid receipt_id '{receipt_id}': must be convertible to integer") from e
+        
         merchant_metadata, status_info = validation_handler.validate_receipt_merchant(
             image_id=receipt_words[0].image_id,
-            receipt_id=int(receipt_id),
+            receipt_id=receipt_id_int,
             receipt_lines=receipt_lines,
             receipt_words=receipt_words
         )

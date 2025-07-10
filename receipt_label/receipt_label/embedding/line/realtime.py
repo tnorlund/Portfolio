@@ -209,20 +209,23 @@ def embed_receipt_lines_realtime(
                 r"<CONTEXT>([^<]*)</CONTEXT>", formatted_input
             )
             if context_match:
-                context_parts = (
-                    context_match.group(1).strip().split(" ", 1)
-                )  # Split into max 2 parts
-                prev_line = (
-                    context_parts[0] if len(context_parts) > 0 else "<EDGE>"
-                )
-                next_line = (
-                    context_parts[1] if len(context_parts) > 1 else "<EDGE>"
-                )
+                context_content = context_match.group(1).strip()
+                if not context_content:
+                    prev_line = next_line = "<EDGE>"
+                else:
+                    # Split into exactly 2 parts to handle spaces in lines correctly
+                    context_parts = context_content.split(' ', 1)
+                    prev_line = context_parts[0] if len(context_parts) > 0 else "<EDGE>"
+                    next_line = context_parts[1] if len(context_parts) > 1 else "<EDGE>"
             else:
                 prev_line = next_line = "<EDGE>"
 
             # Create vector ID matching batch format
-            vector_id = f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+            # Ensure IDs are integers for proper formatting
+            receipt_id_int = int(line.receipt_id) if isinstance(line.receipt_id, str) else line.receipt_id
+            line_id_int = int(line.line_id) if isinstance(line.line_id, str) else line.line_id
+            
+            vector_id = f"IMAGE#{line.image_id}#RECEIPT#{receipt_id_int:05d}#LINE#{line_id_int:05d}"
 
             # Create metadata matching batch structure
             metadata = _create_line_metadata(
