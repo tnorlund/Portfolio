@@ -22,7 +22,7 @@ class TestNoiseFilteringIntegration:
             # Meaningful words
             ReceiptWord(
                 receipt_id=1,
-                image_id="test-image-001",
+                image_id="550e8400-e29b-41d4-a716-446655440001",
                 line_id=1,
                 word_id=1,
                 text="TOTAL",
@@ -39,7 +39,7 @@ class TestNoiseFilteringIntegration:
             ),
             ReceiptWord(
                 receipt_id=1,
-                image_id="test-image-001",
+                image_id="550e8400-e29b-41d4-a716-446655440001",
                 line_id=1,
                 word_id=2,
                 text="$15.99",
@@ -57,7 +57,7 @@ class TestNoiseFilteringIntegration:
             # Noise words
             ReceiptWord(
                 receipt_id=1,
-                image_id="test-image-001",
+                image_id="550e8400-e29b-41d4-a716-446655440001",
                 line_id=2,
                 word_id=1,
                 text=".",
@@ -74,7 +74,7 @@ class TestNoiseFilteringIntegration:
             ),
             ReceiptWord(
                 receipt_id=1,
-                image_id="test-image-001",
+                image_id="550e8400-e29b-41d4-a716-446655440001",
                 line_id=3,
                 word_id=1,
                 text="---",
@@ -127,7 +127,7 @@ class TestNoiseFilteringIntegration:
         # Create words without is_noise field (simulating old data)
         old_word = ReceiptWord(
             receipt_id=1,
-            image_id="test-image-001",
+            image_id="550e8400-e29b-41d4-a716-446655440001",
             line_id=1,
             word_id=1,
             text="LEGACY",
