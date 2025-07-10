@@ -218,11 +218,50 @@ def embed_receipt_realtime(
                 f"Stored {len(vectors)} embeddings to Pinecone for receipt {receipt_id}"
             )
 
-            # Update embedding status in DynamoDB
-            for word, _ in word_embedding_pairs:
-                word.embedding_status = EmbeddingStatus.SUCCESS
-                word.embedded_at = datetime.utcnow()
-                dynamo_client.put_receipt_word(word)
+            # Update embedding status in DynamoDB atomically
+            # Prepare all updates first, then batch them
+            try:
+                updated_words = []
+                current_time = datetime.utcnow()
+                
+                for word, _ in word_embedding_pairs:
+                    # Ensure the word has the embedded_at attribute
+                    if not hasattr(word, 'embedded_at'):
+                        word.embedded_at = None
+                    
+                    word.embedding_status = EmbeddingStatus.SUCCESS
+                    word.embedded_at = current_time
+                    updated_words.append(word)
+                
+                # Batch update all words at once
+                # TODO: Implement batch_put_receipt_words for true atomicity
+                # For now, update individually but with proper error handling
+                failed_updates = []
+                for word in updated_words:
+                    try:
+                        dynamo_client.put_receipt_word(word)
+                    except Exception as update_error:
+                        failed_updates.append((word, update_error))
+                        logger.error(
+                            f"Failed to update embedding status for word {word.word_id}: {update_error}"
+                        )
+                
+                if failed_updates:
+                    # If some updates failed, log the issue but don't fail the entire operation
+                    # The embeddings are already in Pinecone, so this is a data consistency issue
+                    logger.warning(
+                        f"Failed to update {len(failed_updates)} out of {len(updated_words)} words. "
+                        f"Embeddings are stored in Pinecone but DynamoDB status may be inconsistent."
+                    )
+                    # Could implement retry logic or compensation transaction here
+                    
+            except Exception as batch_error:
+                logger.error(f"Error during DynamoDB batch update: {batch_error}")
+                # The embeddings are already in Pinecone, so we don't want to fail completely
+                # But we should notify about the inconsistent state
+                raise RuntimeError(
+                    f"Embeddings stored to Pinecone but DynamoDB update failed: {batch_error}"
+                )
 
         except Exception as e:
             logger.error(f"Error storing to Pinecone: {str(e)}")

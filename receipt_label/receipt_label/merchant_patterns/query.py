@@ -228,7 +228,11 @@ def query_patterns_for_words(
                     namespace="word",
                 )
 
-                # Process results to find patterns
+                # Collect all label occurrences for this word
+                label_counts = defaultdict(int)
+                total_matches = 0
+
+                # Process results to count label frequencies
                 for match in results.matches:
                     metadata = match.metadata
                     matched_text = metadata.get("text", "")
@@ -239,44 +243,49 @@ def query_patterns_for_words(
                         matched_text.lower() == word.text.lower()
                         and validated_labels
                     ):
-                        # Find the most common label for this word
-                        best_label = None
-                        best_count = 0
-
+                        total_matches += 1
+                        # Count each label occurrence
                         for label, value in validated_labels.items():
                             if value:  # Non-empty label
-                                # In real implementation, we'd count frequency
-                                # For now, just take the first valid label
-                                if not best_label:
-                                    best_label = label
+                                label_counts[label] += 1
 
-                        if best_label:
-                            # Use lowercase as the key for consistency
-                            word_key = word.text.lower()
+                # Find the most common label
+                if label_counts:
+                    best_label = max(label_counts.items(), key=lambda x: x[1])[0]
+                    best_count = label_counts[best_label]
+                    
+                    # Calculate confidence based on frequency and similarity
+                    frequency_confidence = best_count / total_matches if total_matches > 0 else 0
+                    # Use average similarity score for this word
+                    avg_similarity = sum(match.score for match in results.matches[:total_matches]) / max(total_matches, 1)
+                    # Combined confidence: frequency weight (70%) + similarity weight (30%)
+                    combined_confidence = (frequency_confidence * 0.7) + (avg_similarity * 0.3)
 
-                            # Only keep the best pattern for each word
-                            if (
-                                word_key not in pattern_matches
-                                or match.score
-                                > pattern_matches[word_key].confidence
-                            ):
-                                pattern = PatternMatch(
-                                    word=word.text,  # Keep original case for display
-                                    suggested_label=best_label,
-                                    confidence=match.score,  # Use similarity score
-                                    confidence_level=PatternMatch.from_confidence_score(
-                                        match.score
-                                    ),
-                                    frequency=1,  # Would need actual frequency
-                                    last_validated=datetime.utcnow(),
-                                    merchant_name=merchant_name,
-                                    sample_contexts=[
-                                        matched_text
-                                    ],  # Would need actual contexts
-                                )
+                    word_key = word.text.lower()
 
-                                if pattern.confidence >= confidence_threshold:
-                                    pattern_matches[word_key] = pattern
+                    # Only keep patterns above threshold
+                    if combined_confidence >= confidence_threshold:
+                        pattern = PatternMatch(
+                            word=word.text,  # Keep original case for display
+                            suggested_label=best_label,
+                            confidence=combined_confidence,
+                            confidence_level=PatternMatch.from_confidence_score(
+                                combined_confidence
+                            ),
+                            frequency=best_count,
+                            last_validated=datetime.utcnow(),
+                            merchant_name=merchant_name,
+                            sample_contexts=[
+                                word.text
+                            ],  # Could collect actual contexts
+                        )
+
+                        # Keep the best pattern for each word
+                        if (
+                            word_key not in pattern_matches
+                            or combined_confidence > pattern_matches[word_key].confidence
+                        ):
+                            pattern_matches[word_key] = pattern
 
     else:
         # Fallback: Get patterns without embeddings
