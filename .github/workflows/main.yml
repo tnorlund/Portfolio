@@ -156,13 +156,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment != 'github-hosted' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
           # Check if Homebrew Python exists (ARM64 macOS)
@@ -177,19 +177,19 @@ jobs:
           python3 --version
           which python3
 
-      - name: Cache pip packages and virtual environment
+      - name: Cache pip packages and virtual environments
         uses: actions/cache@v4  # Use latest cache action
         with:
           path: |
-            ~/.cache/pip
-            ${{ env.pythonLocation }}
-            ~/.local/lib/python3.12/site-packages
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
+            .venv-*
             **/__pycache__
             .pytest_cache/pytest-results
-          key: ${{ runner.os }}-python-v2-${{ matrix.package }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml', 'conftest.py', 'pytest*.ini') }}
+          key: ${{ runner.os }}-venv-v3-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}-${{ hashFiles(format('{0}/pyproject.toml', matrix.package), 'receipt_dynamo/pyproject.toml', 'conftest.py', 'pytest*.ini') }}
           restore-keys: |
-            ${{ runner.os }}-python-v2-${{ matrix.package }}-
-            ${{ runner.os }}-python-v2-
+            ${{ runner.os }}-venv-v3-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}-
+            ${{ runner.os }}-venv-v3-${{ matrix.package }}-
+            ${{ runner.os }}-venv-v3-
 
       - name: Cache pytest results and coverage
         uses: actions/cache@v4
@@ -202,49 +202,44 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pytest-${{ matrix.package }}-
 
-      - name: Install package with optimizations
+      - name: Setup virtual environment and install packages
         run: |
+          # Create isolated virtual environment for this job to prevent collisions
+          VENV_PATH=".venv-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}"
+          echo "Creating virtual environment: $VENV_PATH"
+          python3 -m venv "$VENV_PATH"
+          source "$VENV_PATH/bin/activate"
+          
+          # Add venv to PATH for subsequent steps
+          echo "$PWD/$VENV_PATH/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$PWD/$VENV_PATH" >> $GITHUB_ENV
+          
           # Upgrade pip for faster installs
           python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
-          # Check if packages are already cached
-          if python3 -m pip list | grep -q "pytest-xdist"; then
-            echo "✓ Test dependencies already cached"
-          else
-            echo "Installing test dependencies..."
-            # Use parallel installs and disable version checks for speed
-            python3 -m pip install --no-deps pytest pytest-xdist pytest-timeout psutil moto boto3
-            python3 -m pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
-          fi
+          # Install test dependencies
+          echo "Installing test dependencies..."
+          python3 -m pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
 
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            if python3 -m pip list | grep -q "receipt-dynamo"; then
-              echo "✓ receipt_dynamo already cached"
-            else
-              python3 -m pip install -e "receipt_dynamo[dev]" --no-deps
-              python3 -m pip install -e "receipt_dynamo[dev]"
-            fi
+            echo "Installing receipt_dynamo dependency..."
+            python3 -m pip install -e "receipt_dynamo[dev]"
           fi
 
-          # Install the target package with minimal dependencies first
+          # Install the target package
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
             python3 -m pip install -e "${{ matrix.package }}[dev]"
           else
-            # Check if already installed
-            PACKAGE_NAME=$(echo "${{ matrix.package }}" | tr '_' '-')
-            if python3 -m pip list | grep -q "${PACKAGE_NAME}"; then
-              echo "✓ ${{ matrix.package }} already cached"
-            else
-              # Install with minimum dependencies first, then test extras
-              python3 -m pip install -e "${{ matrix.package }}" --no-deps
-              python3 -m pip install -e "${{ matrix.package }}[test]"
-            fi
+            # Install with test extras
+            python3 -m pip install -e "${{ matrix.package }}[test]"
           fi
 
           # Verify installation
-          echo "=== Key packages installed ==="
-          pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
+          echo "=== Virtual environment packages ==="
+          python3 -m pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
+          echo "Python location: $(which python3)"
+          echo "Virtual environment: $VIRTUAL_ENV"
 
       - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
         if: |
@@ -363,13 +358,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment != 'github-hosted' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
           # Check if Homebrew Python exists (ARM64 macOS)
@@ -446,13 +441,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment != 'github-hosted' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
           # Check if Homebrew Python exists (ARM64 macOS)
