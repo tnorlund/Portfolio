@@ -16,17 +16,24 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
+        if: ${{ contains(runner.labels, 'self-hosted') }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
-          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Check if Homebrew Python exists (ARM64 macOS)
+          if [ -f "/opt/homebrew/bin/python3" ]; then
+            export PATH="/opt/homebrew/bin:$PATH"
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          # Fall back to Framework Python
+          elif [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          fi
           python3 --version
           which python3
 
@@ -58,17 +65,24 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
       
       - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
+        if: ${{ contains(runner.labels, 'self-hosted') }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
-          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Check if Homebrew Python exists (ARM64 macOS)
+          if [ -f "/opt/homebrew/bin/python3" ]; then
+            export PATH="/opt/homebrew/bin:$PATH"
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          # Fall back to Framework Python
+          elif [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          fi
           python3 --version
           which python3
 

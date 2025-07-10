@@ -31,9 +31,22 @@ for runner_dir in "$RUNNER_BASE"/actions-runner*; do
             cp "$ENV_FILE" "$ENV_FILE.backup"
         fi
         
-        # Remove old PATH if exists
-        grep -v "^PATH=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
-        mv "$ENV_FILE.tmp" "$ENV_FILE"
+        # Remove old PATH if exists, preserving other environment variables
+        if [[ -f "$ENV_FILE" ]]; then
+            # Create a temporary file that preserves all non-PATH variables
+            grep -v "^PATH=" "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || {
+                # If grep fails (no matches or file doesn't exist), preserve the original file
+                if [[ -f "$ENV_FILE" ]]; then
+                    cp "$ENV_FILE" "$ENV_FILE.tmp"
+                else
+                    touch "$ENV_FILE.tmp"
+                fi
+            }
+            mv "$ENV_FILE.tmp" "$ENV_FILE"
+        else
+            # Create new .env file if it doesn't exist
+            touch "$ENV_FILE"
+        fi
         
         # Add complete PATH with system utilities first
         echo "PATH=$SYSTEM_PATH:\$PATH" >> "$ENV_FILE"
