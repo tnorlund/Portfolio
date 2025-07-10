@@ -228,11 +228,12 @@ def query_patterns_for_words(
                     namespace="word",
                 )
 
-                # Collect all label occurrences for this word
+                # Collect all label occurrences and similarity scores for this word
                 label_counts = defaultdict(int)
+                matched_scores = []  # Store scores from actual filtered matches
                 total_matches = 0
 
-                # Process results to count label frequencies
+                # Process results to count label frequencies and collect matching scores
                 for match in results.matches:
                     metadata = match.metadata
                     matched_text = metadata.get("text", "")
@@ -244,20 +245,21 @@ def query_patterns_for_words(
                         and validated_labels
                     ):
                         total_matches += 1
+                        matched_scores.append(match.score)  # Collect score from filtered match
                         # Count each label occurrence
                         for label, value in validated_labels.items():
                             if value:  # Non-empty label
                                 label_counts[label] += 1
 
                 # Find the most common label
-                if label_counts:
+                if label_counts and matched_scores:
                     best_label = max(label_counts.items(), key=lambda x: x[1])[0]
                     best_count = label_counts[best_label]
                     
                     # Calculate confidence based on frequency and similarity
                     frequency_confidence = best_count / total_matches if total_matches > 0 else 0
-                    # Use average similarity score for this word
-                    avg_similarity = sum(match.score for match in results.matches[:total_matches]) / max(total_matches, 1)
+                    # Use average similarity score from actual filtered matches
+                    avg_similarity = sum(matched_scores) / len(matched_scores)
                     # Combined confidence: frequency weight (70%) + similarity weight (30%)
                     combined_confidence = (frequency_confidence * 0.7) + (avg_similarity * 0.3)
 
