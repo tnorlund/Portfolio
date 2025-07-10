@@ -227,24 +227,20 @@ jobs:
           # Upgrade pip for faster installs
           python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
-          # Install test dependencies
-          echo "Installing test dependencies..."
-          python3 -m pip install pytest pytest-xdist pytest-timeout psutil moto boto3 --disable-pip-version-check
-
           # CRITICAL: Always install packages in editable mode to use PR's source code
           # Install receipt_dynamo first as it's a dependency for other packages
           if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
             echo "Installing receipt_dynamo dependency from PR source..."
-            python3 -m pip install --force-reinstall --no-deps -e "receipt_dynamo[dev]"
+            python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
           fi
 
-          # Install the target package from PR source
+          # Install the target package from PR source with all test dependencies
           if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
             echo "Installing ${{ matrix.package }} from PR source..."
-            python3 -m pip install --force-reinstall --no-deps -e "${{ matrix.package }}[dev]"
+            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[dev]" --disable-pip-version-check
           else
             echo "Installing ${{ matrix.package }} from PR source..."
-            python3 -m pip install --force-reinstall --no-deps -e "${{ matrix.package }}[test]"
+            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
           fi
 
           # Verify we're using the correct source code
