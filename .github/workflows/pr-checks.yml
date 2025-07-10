@@ -25,14 +25,20 @@ jobs:
         if: ${{ runner.environment != 'github-hosted' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
-          # Check if Homebrew Python exists (ARM64 macOS)
-          if [ -f "/opt/homebrew/bin/python3" ]; then
-            export PATH="/opt/homebrew/bin:$PATH"
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          # Fall back to Framework Python
-          elif [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
             export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
             echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
           fi
           python3 --version
           which python3
@@ -74,14 +80,20 @@ jobs:
         if: ${{ runner.environment != 'github-hosted' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
-          # Check if Homebrew Python exists (ARM64 macOS)
-          if [ -f "/opt/homebrew/bin/python3" ]; then
-            export PATH="/opt/homebrew/bin:$PATH"
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          # Fall back to Framework Python
-          elif [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
             export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
             echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
           fi
           python3 --version
           which python3
@@ -91,6 +103,13 @@ jobs:
           # Create isolated virtual environment for this PR check job
           VENV_PATH=".venv-pr-${{ matrix.package }}"
           echo "Creating virtual environment: $VENV_PATH"
+          
+          # Always create fresh virtual environment to ensure we test against PR code
+          if [ -d "$VENV_PATH" ]; then
+            echo "Removing existing virtual environment to ensure fresh dependencies..."
+            rm -rf "$VENV_PATH"
+          fi
+          
           python3 -m venv "$VENV_PATH"
           source "$VENV_PATH/bin/activate"
           
@@ -101,28 +120,33 @@ jobs:
           # Upgrade pip
           python3 -m pip install --upgrade pip --disable-pip-version-check
 
-          # Install package with test dependencies
+          # Install package with test dependencies from PR source
           cd ${{ matrix.package }}
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
-            echo "Installing package with test dependencies"
-            python3 -m pip install -e ".[test]"
+            echo "Installing package with test dependencies from PR source"
+            python3 -m pip install --force-reinstall --no-deps -e ".[test]"
           else
             echo "Installing minimal test dependencies"
             python3 -m pip install pytest pytest-xdist pytest-cov
-            python3 -m pip install -e .
+            echo "Installing package from PR source"
+            python3 -m pip install --force-reinstall --no-deps -e .
           fi
 
-          # Handle cross-package dependencies
+          # Handle cross-package dependencies - always use PR source
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            echo "Installing receipt_dynamo dependency for receipt_label"
-            python3 -m pip install -e "../receipt_dynamo"
+            echo "Installing receipt_dynamo dependency from PR source"
+            python3 -m pip install --force-reinstall --no-deps -e "../receipt_dynamo"
           fi
 
-          # Verify installation
+          # Verify we're using PR source code
           echo "=== Virtual environment packages ==="
           python3 -m pip list | grep -E "(receipt|pytest)" || echo "No receipt/pytest packages found"
           echo "Python location: $(which python3)"
           echo "Virtual environment: $VIRTUAL_ENV"
+          
+          # Verify editable installs
+          echo "=== Verifying editable installs ==="
+          python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
