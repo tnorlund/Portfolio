@@ -1,4 +1,7 @@
 name: Deploy to Production
+# IMPORTANT: This workflow preserves the /assets/ directory in S3
+# which contains uploaded receipt images from the receipt_upload package.
+# The --exclude "assets/*" flag prevents deletion of these files during deployment.
 on:
   push:
     branches:
@@ -158,9 +161,10 @@ jobs:
           BUCKET=$(pulumi stack output cdn_bucket_name)
           DISTRIBUTION=$(pulumi stack output cdn_distribution_id)
 
-          # Sync files
+          # Sync files - exclude assets directory to preserve uploaded images
           aws s3 sync ../portfolio/out "s3://$BUCKET" \
             --delete \
+            --exclude "assets/*" \
             --cache-control "public, max-age=3600"
 
           # Invalidate CloudFront
