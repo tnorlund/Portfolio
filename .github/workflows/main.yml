@@ -69,8 +69,21 @@ jobs:
         if: ${{ runner.os == 'macOS' }}
         run: |
           echo "Using Python 3.12 on self-hosted runner"
-          export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Prioritize Framework Python 3.12 to match workflow requirements
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          # Fall back to Homebrew Python (but check version)
+          elif [ -f "/opt/homebrew/bin/python3" ]; then
+            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
+            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+              echo "/opt/homebrew/bin" >> $GITHUB_PATH
+            else
+              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
+              echo "Continuing with system Python"
+            fi
+          fi
           python3 --version
           which python3
 
