@@ -25,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.embedding.line.realtime import embed_receipt_lines_realtime
 from receipt_label.embedding.word.realtime import (
     embed_receipt_words_realtime,
@@ -154,7 +153,9 @@ def test_embedding_with_context():
         raise
 
 
-def test_full_receipt_embedding(receipt_id: str):
+def test_full_receipt_embedding(
+    receipt_id: str, table_name: str = "ReceiptsTable"
+):
     """Test embedding a full receipt from DynamoDB with merchant validation."""
     logger.info(f"Testing full receipt embedding for receipt_id: {receipt_id}")
 
@@ -162,7 +163,7 @@ def test_full_receipt_embedding(receipt_id: str):
 
     try:
         # Get receipt data from DynamoDB
-        dynamo_client = DynamoClient("ReceiptsTable")
+        dynamo_client = DynamoClient(table_name)
         receipt_words = dynamo_client.list_receipt_words_by_receipt(receipt_id)
         receipt_lines = dynamo_client.list_receipt_lines_by_receipt(receipt_id)
 
@@ -250,11 +251,11 @@ def test_full_receipt_embedding(receipt_id: str):
         raise
 
 
-def test_with_image_id(image_id: str):
+def test_with_image_id(image_id: str, table_name: str = "ReceiptsTable"):
     """Test embedding all receipts from an image."""
     logger.info(f"Testing embeddings for image_id: {image_id}")
 
-    dynamo_client = DynamoClient("ReceiptsTable")
+    dynamo_client = DynamoClient(table_name)
 
     # Get all receipts for this image
     receipts = dynamo_client.query(
@@ -271,7 +272,7 @@ def test_with_image_id(image_id: str):
 
     for receipt_id in receipt_ids:
         logger.info(f"\nProcessing receipt {receipt_id}...")
-        test_full_receipt_embedding(str(receipt_id))
+        test_full_receipt_embedding(str(receipt_id), table_name)
 
 
 def main():
@@ -307,11 +308,11 @@ def main():
 
     elif args.receipt_id:
         # Test with real receipt
-        test_full_receipt_embedding(args.receipt_id)
+        test_full_receipt_embedding(args.receipt_id, args.table_name)
 
     elif args.image_id:
         # Test with all receipts from an image
-        test_with_image_id(args.image_id)
+        test_with_image_id(args.image_id, args.table_name)
 
     else:
         parser.error(
