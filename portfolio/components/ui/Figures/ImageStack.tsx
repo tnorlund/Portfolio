@@ -307,20 +307,22 @@ const ImageStack: React.FC<ImageStackProps> = ({
       isLoadingRef.current = true;
 
       try {
-        // Calculate remaining needed based on current state
+        // Get current count without modifying state
+        let currentImagesCount = 0;
         setImages(prevImages => {
-          const currentImagesCount = prevImages.length;
-          if (currentImagesCount >= maxImages) {
-            setLoadingRemaining(false);
-            isLoadingRef.current = false;
-            return prevImages;
-          }
-          
-          // Continue with async loading
-          return prevImages;
+          currentImagesCount = prevImages.length;
+          return prevImages; // Don't modify state, just read it
         });
 
-        const remainingNeeded = maxImages - initialCount;
+        // Check if we already have enough images
+        if (currentImagesCount >= maxImages) {
+          setLoadingRemaining(false);
+          isLoadingRef.current = false;
+          return;
+        }
+
+        // Calculate remaining needed based on actual current count
+        const remainingNeeded = maxImages - currentImagesCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
         // Use the stored lastEvaluatedKey from initial fetch

@@ -317,20 +317,22 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
       isLoadingRef.current = true;
 
       try {
-        // Calculate remaining needed based on current state
+        // Get current count without modifying state
+        let currentReceiptsCount = 0;
         setReceipts(prevReceipts => {
-          const currentReceiptsCount = prevReceipts.length;
-          if (currentReceiptsCount >= maxReceipts) {
-            setLoadingRemaining(false);
-            isLoadingRef.current = false;
-            return prevReceipts;
-          }
-          
-          // Continue with async loading
-          return prevReceipts;
+          currentReceiptsCount = prevReceipts.length;
+          return prevReceipts; // Don't modify state, just read it
         });
 
-        const remainingNeeded = maxReceipts - initialCount;
+        // Check if we already have enough receipts
+        if (currentReceiptsCount >= maxReceipts) {
+          setLoadingRemaining(false);
+          isLoadingRef.current = false;
+          return;
+        }
+
+        // Calculate remaining needed based on actual current count
+        const remainingNeeded = maxReceipts - currentReceiptsCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
         // Use the stored lastEvaluatedKey from initial fetch

@@ -52,12 +52,28 @@ The following features have been temporarily disabled and need redesign:
 1. Performance monitoring in ReceiptStack - needs to avoid causing re-renders
 2. Render tracking hooks - for debugging only
 
+## Additional Bug Fixed
+
+### 4. Incorrect Item Count Calculation
+The `remainingNeeded` calculation was incorrectly changed to use `initialCount` instead of the actual current item count:
+- **Wrong**: `const remainingNeeded = maxImages - initialCount`
+- **Fixed**: `const remainingNeeded = maxImages - currentImagesCount`
+
+This bug caused:
+- Over-fetching when initial load returned fewer items than requested
+- Under-fetching when more items were already loaded
+- Unnecessary API calls when maximum items were already loaded
+
+The early return logic was also fixed to properly exit the function when enough items are loaded, preventing wasteful API calls.
+
 ## Testing
 - Build successful with no TypeScript errors
 - Receipt page loads without infinite loop errors
-- Progressive image loading still functions correctly
+- Progressive image loading functions correctly with accurate item counts
+- API calls are optimized based on actual loaded items
 
 ## Future Improvements Needed
 1. Redesign performance monitoring to use refs or separate context that doesn't trigger re-renders
 2. Re-enable render tracking with proper safeguards
 3. Add automated tests to prevent similar issues
+4. Consider using a ref to track current item count for better performance
