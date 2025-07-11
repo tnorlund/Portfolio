@@ -1,12 +1,12 @@
 """Tests for contact pattern detection."""
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection import (
     ContactPatternDetector,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestContactPatternDetector:
@@ -61,7 +61,11 @@ class TestContactPatternDetector:
             ("+86-10-12345678", PatternType.PHONE_NUMBER, "+86-10-12345678"),
             # With labels
             ("Tel: 555-123-4567", PatternType.PHONE_NUMBER, "555-123-4567"),
-            ("Phone: (555) 123-4567", PatternType.PHONE_NUMBER, "555-123-4567"),
+            (
+                "Phone: (555) 123-4567",
+                PatternType.PHONE_NUMBER,
+                "555-123-4567",
+            ),
             ("Call 555-123-4567", PatternType.PHONE_NUMBER, "555-123-4567"),
         ]
 
@@ -111,7 +115,9 @@ class TestContactPatternDetector:
         for i, text in enumerate(invalid_emails):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
-            assert len(matches) == 0, f"Should not detect invalid email: {text}"
+            assert (
+                len(matches) == 0
+            ), f"Should not detect invalid email: {text}"
 
     @pytest.mark.asyncio
     async def test_website_detection(self, detector, create_word):
