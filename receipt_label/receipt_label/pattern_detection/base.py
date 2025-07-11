@@ -116,17 +116,28 @@ class PatternDetector(ABC):
             for w in all_words
             if abs(w.bounding_box["y"] - word.bounding_box["y"])
             <= line_threshold
-            and w.word_id != word.word_id
         ]
 
-        # Check for nearby keywords
-        nearby_text = " ".join([w.text for w in same_line_words])
+        # Sort words by x-coordinate to determine line position
+        same_line_words.sort(key=lambda w: w.bounding_box["x"])
+        
+        # Find the current word's position in the line
+        line_position = 0
+        for i, w in enumerate(same_line_words):
+            if w.word_id == word.word_id:
+                line_position = i
+                break
+
+        # Get text from other words on the same line
+        other_line_words = [w for w in same_line_words if w.word_id != word.word_id]
+        nearby_text = " ".join([w.text for w in other_line_words])
 
         return {
             "relative_y_position": relative_y,
             "is_bottom_20_percent": relative_y >= 0.8,
             "same_line_text": nearby_text,
-            "line_word_count": len(same_line_words) + 1,
+            "line_word_count": len(same_line_words),
+            "line_position": line_position,
         }
 
     def _find_nearby_words(
