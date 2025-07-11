@@ -202,6 +202,7 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
   const [loadingRemaining, setLoadingRemaining] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -284,6 +285,8 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         }
 
         setReceipts(response.receipts.slice(0, initialCount));
+        // Store the lastEvaluatedKey for pagination
+        setLastEvaluatedKey(response.lastEvaluatedKey);
 
         // If we need more receipts, load them after initial render
         if (initialCount < maxReceipts && response.receipts.length === initialCount) {
@@ -305,24 +308,14 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   // Load remaining receipts after initial set
   useEffect(() => {
     const loadRemainingReceipts = async () => {
-      if (!formatSupport || !loadingRemaining || receipts.length >= maxReceipts) return;
+      if (!formatSupport || !loadingRemaining || receipts.length >= maxReceipts || !lastEvaluatedKey) return;
 
       try {
         const remainingNeeded = maxReceipts - receipts.length;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
-        // First, get the cursor position after initial receipts
-        let firstPageKey: any = undefined;
-        if (receipts.length > 0) {
-          const response: ReceiptApiResponse = await api.fetchReceipts(
-            receipts.length,
-            undefined
-          );
-          firstPageKey = response.lastEvaluatedKey;
-        }
-
-        // Fetch the first page to get initial cursor
-        const firstPageResponse = await api.fetchReceipts(pageSize, firstPageKey);
+        // Use the stored lastEvaluatedKey from initial fetch
+        const firstPageResponse = await api.fetchReceipts(pageSize, lastEvaluatedKey);
         if (!firstPageResponse || !firstPageResponse.receipts) {
           throw new Error("Invalid response");
         }
@@ -360,7 +353,7 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
       const timer = setTimeout(loadRemainingReceipts, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, receipts, maxReceipts, pageSize]);
+  }, [formatSupport, loadingRemaining, receipts, maxReceipts, pageSize, lastEvaluatedKey]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {

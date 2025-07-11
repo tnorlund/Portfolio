@@ -195,6 +195,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
   const [loadingRemaining, setLoadingRemaining] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -277,6 +278,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
         }
 
         setImages(response.images.slice(0, initialCount));
+        // Store the lastEvaluatedKey for pagination
+        setLastEvaluatedKey(response.lastEvaluatedKey);
 
         // If we need more images, load them after initial render
         if (initialCount < maxImages && response.images.length === initialCount) {
@@ -298,24 +301,14 @@ const ImageStack: React.FC<ImageStackProps> = ({
   // Load remaining images after initial set
   useEffect(() => {
     const loadRemainingImages = async () => {
-      if (!formatSupport || !loadingRemaining || images.length >= maxImages) return;
+      if (!formatSupport || !loadingRemaining || images.length >= maxImages || !lastEvaluatedKey) return;
 
       try {
         const remainingNeeded = maxImages - images.length;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
-        // First, get the cursor position after initial images
-        let firstPageKey: any = undefined;
-        if (images.length > 0) {
-          const response: ImagesApiResponse = await api.fetchImages(
-            images.length,
-            undefined
-          );
-          firstPageKey = response.lastEvaluatedKey;
-        }
-
-        // Fetch the first page to get initial cursor
-        const firstPageResponse = await api.fetchImages(pageSize, firstPageKey);
+        // Use the stored lastEvaluatedKey from initial fetch
+        const firstPageResponse = await api.fetchImages(pageSize, lastEvaluatedKey);
         if (!firstPageResponse || !firstPageResponse.images) {
           throw new Error("Invalid response");
         }
@@ -353,7 +346,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
       const timer = setTimeout(loadRemainingImages, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, images, maxImages, pageSize]);
+  }, [formatSupport, loadingRemaining, images, maxImages, pageSize, lastEvaluatedKey]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {

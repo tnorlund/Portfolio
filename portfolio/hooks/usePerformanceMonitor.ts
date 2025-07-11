@@ -25,6 +25,11 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
     };
   }, []);
 
+  // Mark render start BEFORE useEffect
+  if (trackRender && componentName) {
+    renderStartTime.current = performance.now();
+  }
+
   // Track component render time
   useEffect(() => {
     if (trackRender && componentName && renderStartTime.current > 0) {
@@ -32,12 +37,7 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
       getPerformanceMonitor().trackComponentRender(componentName, renderDuration);
       renderCount.current += 1;
     }
-  });
-
-  // Mark render start
-  if (trackRender && componentName) {
-    renderStartTime.current = performance.now();
-  }
+  }, [trackRender, componentName]); // Add dependencies to fix missing dependency array
 
   const trackAPICall = useCallback(async <T,>(
     endpoint: string,
