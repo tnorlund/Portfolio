@@ -189,11 +189,11 @@ class PerformanceMonitor {
 // Singleton instance
 let performanceMonitor: PerformanceMonitor | null = null;
 
-export function getPerformanceMonitor(): PerformanceMonitor {
+export function getPerformanceMonitor(): PerformanceMonitor | null {
   if (!performanceMonitor && typeof window !== 'undefined') {
     performanceMonitor = new PerformanceMonitor();
   }
-  return performanceMonitor!;
+  return performanceMonitor;
 }
 
 // Performance measurement utilities
@@ -223,21 +223,26 @@ export function measureSync<T>(
 
 // Web Vitals helpers
 export function getCLS(): number | undefined {
-  return getPerformanceMonitor().getMetrics().cls;
+  const monitor = getPerformanceMonitor();
+  return monitor?.getMetrics().cls;
 }
 
 export function getLCP(): number | undefined {
-  return getPerformanceMonitor().getMetrics().lcp;
+  const monitor = getPerformanceMonitor();
+  return monitor?.getMetrics().lcp;
 }
 
 export function getFID(): number | undefined {
-  return getPerformanceMonitor().getMetrics().fid;
+  const monitor = getPerformanceMonitor();
+  return monitor?.getMetrics().fid;
 }
 
 export function getFCP(): number | undefined {
-  return getPerformanceMonitor().getMetrics().fcp;
+  const monitor = getPerformanceMonitor();
+  return monitor?.getMetrics().fcp;
 }
 
 export function getTTFB(): number | undefined {
-  return getPerformanceMonitor().getMetrics().ttfb;
+  const monitor = getPerformanceMonitor();
+  return monitor?.getMetrics().ttfb;
 }

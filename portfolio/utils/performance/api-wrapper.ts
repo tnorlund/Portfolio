@@ -16,7 +16,7 @@ export function withPerformanceTracking<T extends any[], R>(
     try {
       const result = await fn(...args);
       const duration = performance.now() - start;
-      monitor.trackAPICall(endpoint, duration);
+      monitor?.trackAPICall(endpoint, duration);
       
       if (process.env.NODE_ENV === 'development') {
         console.log(`[API Performance] ${endpoint}: ${duration.toFixed(2)}ms`);
@@ -25,7 +25,7 @@ export function withPerformanceTracking<T extends any[], R>(
       return result;
     } catch (error) {
       const duration = performance.now() - start;
-      monitor.trackAPICall(endpoint, duration);
+      monitor?.trackAPICall(endpoint, duration);
       
       if (process.env.NODE_ENV === 'development') {
         console.error(`[API Performance] ${endpoint}: ${duration.toFixed(2)}ms (failed)`);

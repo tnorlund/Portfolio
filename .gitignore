@@ -217,3 +217,7 @@ portfolio/.lighthouseci/
 # Playwright test artifacts
 portfolio/playwright-report/
 portfolio/test-results/
+
+# CI performance metrics and artifacts
+ci-metrics/
+PR_DESCRIPTION.md
