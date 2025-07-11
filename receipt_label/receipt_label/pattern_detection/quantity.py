@@ -307,11 +307,16 @@ class QuantityPatternDetector(PatternDetector):
         # Check position - quantities usually appear at start of line
         context = self._calculate_position_context(word, all_words)
         is_line_start = (
-            context.get("line_word_count", 1) > 2
-        )  # Line has multiple words
+            context.get("line_position", 1) == 0
+            and context.get("line_word_count", 1) > 1
+        )  # First word in a multi-word line
 
-        # High confidence if we have both price and product context
-        return (has_price_nearby or has_product_nearby) and value <= 20
+        # High confidence if we have context indicators and appropriate position
+        return (
+            (has_price_nearby or has_product_nearby)
+            and value <= 20
+            and (is_line_start or has_price_nearby)
+        )
 
     def _create_match(
         self,
