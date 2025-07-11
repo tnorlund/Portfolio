@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Image, ImagesApiResponse } from "../../../types/api";
@@ -35,11 +35,11 @@ const ImageItem = React.memo<ImageItemProps>(
     const [hasErrored, setHasErrored] = useState<boolean>(false);
 
     useEffect(() => {
-      if (formatSupport && !currentSrc) {
+      if (formatSupport) {
         const bestUrl = getBestImageUrl(image, formatSupport);
         setCurrentSrc(bestUrl);
       }
-    }, [formatSupport, image, currentSrc]);
+    }, [formatSupport, image]); // currentSrc removed to prevent infinite loop
 
     const handleImageLoad = useCallback(() => {
       setImageLoaded(true);
@@ -196,6 +196,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
   const [startAnimation, setStartAnimation] = useState(false);
   const [loadingRemaining, setLoadingRemaining] = useState(false);
   const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
+  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -301,16 +302,25 @@ const ImageStack: React.FC<ImageStackProps> = ({
   // Load remaining images after initial set
   useEffect(() => {
     const loadRemainingImages = async () => {
-      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey) return;
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
+      
+      isLoadingRef.current = true;
 
       try {
-        const currentImagesCount = images.length;
-        if (currentImagesCount >= maxImages) {
-          setLoadingRemaining(false);
-          return;
-        }
+        // Calculate remaining needed based on current state
+        setImages(prevImages => {
+          const currentImagesCount = prevImages.length;
+          if (currentImagesCount >= maxImages) {
+            setLoadingRemaining(false);
+            isLoadingRef.current = false;
+            return prevImages;
+          }
+          
+          // Continue with async loading
+          return prevImages;
+        });
 
-        const remainingNeeded = maxImages - currentImagesCount;
+        const remainingNeeded = maxImages - initialCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
         // Use the stored lastEvaluatedKey from initial fetch
@@ -322,10 +332,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
         let allNewImages: Image[] = firstPageResponse.images;
         let currentKey = firstPageResponse.lastEvaluatedKey;
 
-        // If we need more pages, fetch them in parallel batches
+        // If we need more pages, fetch them sequentially
         if (pagesNeeded > 1 && currentKey) {
-          // For simplicity, fetch remaining pages sequentially
-          // (parallel would require knowing all cursor keys in advance)
           for (let i = 1; i < pagesNeeded && currentKey; i++) {
             const response = await api.fetchImages(pageSize, currentKey);
             if (response && response.images) {
@@ -343,19 +351,20 @@ const ImageStack: React.FC<ImageStackProps> = ({
           return combinedImages;
         });
         setLoadingRemaining(false);
+        isLoadingRef.current = false;
       } catch (error) {
         console.error("Error loading remaining images:", error);
         setLoadingRemaining(false);
+        isLoadingRef.current = false;
       }
     };
 
-    if (loadingRemaining && lastEvaluatedKey) {
+    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
       // Delay loading remaining images until after initial render
       const timer = setTimeout(loadRemainingImages, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: images.length is intentionally NOT included to prevent infinite loop
+  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
@@ -367,7 +376,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
     if (inView && images.length > 0 && !startAnimation) {
       setStartAnimation(true);
     }
-  }, [inView, images.length, startAnimation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, images.length]); // startAnimation removed to prevent infinite loop
 
   if (error) {
     return (
