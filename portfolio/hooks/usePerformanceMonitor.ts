@@ -18,6 +18,8 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
 
   useEffect(() => {
     const monitor = getPerformanceMonitor();
+    if (!monitor) return;
+
     const unsubscribe = monitor.subscribe(setMetrics);
 
     return () => {
@@ -35,11 +37,14 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
   // Track component render time using useLayoutEffect for accurate timing
   useLayoutEffect(() => {
     if (trackRender && componentName && renderStartTime.current > 0) {
+      const monitor = getPerformanceMonitor();
+      if (!monitor) return;
+
       // Mark render end - useLayoutEffect runs synchronously after DOM mutations
       const renderEndTime = performance.now();
       const renderDuration = renderEndTime - renderStartTime.current;
       
-      getPerformanceMonitor().trackComponentRender(componentName, renderDuration);
+      monitor.trackComponentRender(componentName, renderDuration);
       renderCount.current += 1;
       
       // Set start time for next render
@@ -55,18 +60,21 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
     try {
       const result = await apiCall();
       const duration = performance.now() - start;
-      getPerformanceMonitor().trackAPICall(endpoint, duration);
+      const monitor = getPerformanceMonitor();
+      monitor?.trackAPICall(endpoint, duration);
       return result;
     } catch (error) {
       const duration = performance.now() - start;
-      getPerformanceMonitor().trackAPICall(endpoint, duration);
+      const monitor = getPerformanceMonitor();
+      monitor?.trackAPICall(endpoint, duration);
       throw error;
     }
   }, []);
 
   const trackImageLoad = useCallback((imageSrc: string, startTime: number) => {
     const duration = performance.now() - startTime;
-    getPerformanceMonitor().trackImageLoad(imageSrc, duration);
+    const monitor = getPerformanceMonitor();
+    monitor?.trackImageLoad(imageSrc, duration);
   }, []);
 
   const measureFunction = useCallback(<T,>(
