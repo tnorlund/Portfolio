@@ -105,7 +105,7 @@ const PerformanceOverlay: React.FC<PerformanceOverlayProps> = ({
         <span style={{ fontWeight: 'bold' }}>
           {isMinimized ? '⚡' : '⚡ Performance'}
         </span>
-        {!isMinimized && <span>{isMinimized ? '▼' : '▲'}</span>}
+        <span>{isMinimized ? '▼' : '▲'}</span>
       </div>
 
       {!isMinimized && (

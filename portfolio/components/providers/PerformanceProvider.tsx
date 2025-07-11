@@ -24,10 +24,14 @@ export const PerformanceProvider: React.FC<PerformanceProviderProps> = ({
       }
     });
 
-    // Log navigation timing on initial load
-    if (performance.timing) {
-      const navigationTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
-      console.log(`[Performance] Page load time: ${navigationTime}ms`);
+    // Log navigation timing on initial load using modern API
+    if (performance.getEntriesByType) {
+      const navigationEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+      if (navigationEntries.length > 0) {
+        const navEntry = navigationEntries[0];
+        const navigationTime = navEntry.loadEventEnd - navEntry.startTime;
+        console.log(`[Performance] Page load time: ${navigationTime.toFixed(0)}ms`);
+      }
     }
 
     // Set up visibility change tracking

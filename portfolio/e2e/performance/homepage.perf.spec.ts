@@ -18,10 +18,18 @@ async function getMetrics(page: any) {
       }
     });
 
+    // Get navigation timing using modern API
+    const getNavigationTiming = () => {
+      const navEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+      return navEntries.length > 0 ? navEntries[0] : null;
+    };
+
+    const navTiming = getNavigationTiming();
+
     return {
-      // Navigation timing
-      domContentLoaded: Math.round(performance.timing.domContentLoadedEventEnd - performance.timing.navigationStart),
-      loadComplete: Math.round(performance.timing.loadEventEnd - performance.timing.navigationStart),
+      // Navigation timing using modern API
+      domContentLoaded: navTiming ? Math.round(navTiming.domContentLoadedEventEnd - navTiming.startTime) : null,
+      loadComplete: navTiming ? Math.round(navTiming.loadEventEnd - navTiming.startTime) : null,
       
       // Core Web Vitals
       fcp: getMetric('first-contentful-paint'),
@@ -30,7 +38,7 @@ async function getMetrics(page: any) {
                      (performance.getEntriesByType('largest-contentful-paint').pop() as any).loadTime)
         : null,
       cls: Math.round(clsValue * 1000) / 1000,
-      ttfb: Math.round(performance.timing.responseStart - performance.timing.requestStart),
+      ttfb: navTiming ? Math.round(navTiming.responseStart - navTiming.fetchStart) : null,
       
       // Memory (if available)
       memory: (performance as any).memory ? {

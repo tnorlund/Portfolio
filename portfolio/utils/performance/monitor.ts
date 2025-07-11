@@ -23,6 +23,7 @@ class PerformanceMonitor {
   private metrics: PerformanceMetrics = {};
   private observers: Map<string, PerformanceObserver> = new Map();
   private listeners: Set<(metrics: PerformanceMetrics) => void> = new Set();
+  private memoryTrackingInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -106,14 +107,15 @@ class PerformanceMonitor {
       const navigationEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
       if (navigationEntries.length > 0) {
         const navEntry = navigationEntries[0];
-        this.metrics.ttfb = navEntry.responseStart - navEntry.requestStart;
+        // Fix TTFB calculation - responseStart is relative to navigationStart, not requestStart
+        this.metrics.ttfb = navEntry.responseStart - navEntry.fetchStart;
       }
     }
   }
 
   private trackMemoryUsage() {
     if ('memory' in performance) {
-      setInterval(() => {
+      this.memoryTrackingInterval = setInterval(() => {
         const memory = (performance as any).memory;
         this.metrics.jsHeapSize = memory.totalJSHeapSize;
         this.metrics.jsHeapSizeLimit = memory.jsHeapSizeLimit;
@@ -175,6 +177,12 @@ class PerformanceMonitor {
     this.observers.forEach(observer => observer.disconnect());
     this.observers.clear();
     this.listeners.clear();
+    
+    // Clear memory tracking interval to prevent memory leak
+    if (this.memoryTrackingInterval) {
+      clearInterval(this.memoryTrackingInterval);
+      this.memoryTrackingInterval = null;
+    }
   }
 }
 
