@@ -210,3 +210,10 @@ portfolio/next-env.d.ts
 portfolio/.eslintcache
 portfolio/.stylelintcache
 portfolio/coverage*
+
+# Lighthouse CI temporary files
+portfolio/.lighthouseci/
+
+# Playwright test artifacts
+portfolio/playwright-report/
+portfolio/test-results/
