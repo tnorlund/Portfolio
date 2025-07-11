@@ -89,21 +89,23 @@ describe('Rendering Performance Tests', () => {
   });
 
   test('should memoize expensive computations', () => {
+    // Track computation calls directly instead of mocking native API
+    let computationCallCount = 0;
+    const computationResults: number[] = [];
+    
     const MemoizedComponent: React.FC<{ value: number; unrelated: string }> = 
       React.memo(({ value, unrelated }) => {
         // This computation should only run when 'value' changes
         const expensiveResult = React.useMemo(() => {
-          performance.mark('computation-start');
+          computationCallCount++;
           
           // Simulate expensive computation
           let result = 0;
-          for (let i = 0; i < 1000000; i++) {
+          for (let i = 0; i < 100000; i++) { // Reduced iterations for test performance
             result += Math.sqrt(i * value);
           }
           
-          performance.mark('computation-end');
-          performance.measure('computation', 'computation-start', 'computation-end');
-          
+          computationResults.push(result);
           return result;
         }, [value]);
         
@@ -115,32 +117,37 @@ describe('Rendering Performance Tests', () => {
         );
       });
     
-    const { rerender } = render(
+    MemoizedComponent.displayName = 'MemoizedComponent';
+    
+    // Initial render
+    const { rerender, getByTestId } = render(
       <MemoizedComponent value={5} unrelated="initial" />
     );
     
-    // Clear previous measures
-    performance.clearMeasures();
-    // Mock the getEntriesByName to return empty array after clearing
-    (performance.getEntriesByName as jest.Mock).mockReturnValue([]);
+    // Should have computed once
+    expect(computationCallCount).toBe(1);
+    const initialResult = getByTestId('result').textContent;
+    expect(computationResults).toHaveLength(1);
     
     // Re-render with same value but different unrelated prop
     rerender(<MemoizedComponent value={5} unrelated="updated" />);
     
-    // Computation should not have run again
-    const computations = performance.getEntriesByName('computation');
-    expect(computations).toHaveLength(0);
+    // Computation should NOT have run again (memoization working)
+    expect(computationCallCount).toBe(1);
+    expect(computationResults).toHaveLength(1);
+    expect(getByTestId('result').textContent).toBe(initialResult);
+    expect(getByTestId('unrelated').textContent).toBe('updated');
     
     // Re-render with different value
-    // Mock the getEntriesByName to return one entry
-    (performance.getEntriesByName as jest.Mock).mockReturnValue([{ duration: 10 }]);
     rerender(<MemoizedComponent value={10} unrelated="updated" />);
     
-    // Computation should have run once
-    const newComputations = performance.getEntriesByName('computation');
-    expect(newComputations).toHaveLength(1);
+    // Computation should have run again (dependency changed)
+    expect(computationCallCount).toBe(2);
+    expect(computationResults).toHaveLength(2);
+    expect(getByTestId('result').textContent).not.toBe(initialResult);
     
-    console.log(`Computation time: ${newComputations[0].duration.toFixed(2)}ms`);
+    console.log(`Computation ran ${computationCallCount} times (expected: 2)`);
+    console.log(`Results: ${computationResults.map(r => r.toFixed(2)).join(', ')}`);
   });
 
   test('should batch state updates efficiently', async () => {
