@@ -280,6 +280,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
           throw new Error("Invalid response");
         }
 
+
         setImages(response.images.slice(0, initialCount));
         // Store the lastEvaluatedKey for pagination
         setLastEvaluatedKey(response.lastEvaluatedKey);

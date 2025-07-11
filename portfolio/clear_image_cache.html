@@ -1,0 +1,34 @@
+<\!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Image Cache</title>
+</head>
+<body>
+    <h1>Clear Image Format Cache</h1>
+    <p>Open this file in your browser and click the button to clear the image format cache.</p>
+    <button onclick="clearCache()">Clear Cache</button>
+    <div id="result"></div>
+    
+    <script>
+    function clearCache() {
+        try {
+            // Clear the image format cache
+            localStorage.removeItem('imageFormatSupport');
+            
+            // Clear all caches that might affect images
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                    });
+                });
+            }
+            
+            document.getElementById('result').innerHTML = '<p style="color: green;">✅ Cache cleared\! Now refresh your portfolio page.</p>';
+        } catch (e) {
+            document.getElementById('result').innerHTML = '<p style="color: red;">Error: ' + e.message + '</p>';
+        }
+    }
+    </script>
+</body>
+</html>

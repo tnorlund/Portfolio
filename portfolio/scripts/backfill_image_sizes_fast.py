@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Backfill script to generate missing image sizes for existing images.
-
-This script:
-1. Queries DynamoDB for images/receipts missing thumbnail fields
-2. Downloads original images from S3
-3. Generates missing sizes using upload_all_cdn_formats()
-4. Updates DynamoDB records with new S3 keys
+Fast version of backfill script with optimizations:
+- No sleep delays between batches
+- Larger batch size
+- Parallel processing within batches
 """
 
 import argparse
+import asyncio
+import concurrent.futures
 import logging
 import os
 import sys
@@ -24,12 +23,10 @@ from PIL import Image as PIL_Image
 from tqdm import tqdm
 
 # Add parent directories to path for imports
-# Get the absolute path to the portfolio root
 script_dir = os.path.dirname(os.path.abspath(__file__))
 portfolio_root = os.path.dirname(script_dir)
 parent_dir = os.path.dirname(portfolio_root)
 
-# Add both parent and sibling directories to Python path
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
@@ -44,15 +41,15 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("backfill_image_sizes.log"),
+        logging.FileHandler("backfill_image_sizes_fast.log"),
         logging.StreamHandler(),
     ],
 )
 logger = logging.getLogger(__name__)
 
 
-class ImageBackfiller:
-    """Handles backfilling of image sizes for existing images."""
+class FastImageBackfiller:
+    """Fast backfilling of image sizes with parallel processing."""
 
     def __init__(
         self,
@@ -60,13 +57,15 @@ class ImageBackfiller:
         raw_bucket: str,
         site_bucket: str,
         dry_run: bool = False,
-        batch_size: int = 10,
+        batch_size: int = 20,  # Increased from 10
+        max_workers: int = 4,   # Parallel workers
     ):
         self.dynamo_client = DynamoClient(dynamo_table_name)
         self.raw_bucket = raw_bucket
         self.site_bucket = site_bucket
         self.dry_run = dry_run
         self.batch_size = batch_size
+        self.max_workers = max_workers
         self.s3_client = boto3.client("s3")
         
         # Track statistics
@@ -91,7 +90,6 @@ class ImageBackfiller:
 
     def needs_thumbnail_fields(self, item: Dict[str, Any]) -> bool:
         """Check if an item needs thumbnail fields added."""
-        # Check if any thumbnail field is missing
         thumbnail_fields = [
             "cdn_thumbnail_s3_key",
             "cdn_thumbnail_webp_s3_key",
@@ -105,13 +103,11 @@ class ImageBackfiller:
         ]
         
         for field in thumbnail_fields:
-            # Check if field is missing, None, or has DynamoDB NULL value
             if field not in item:
                 return True
             value = item[field]
             if value is None:
                 return True
-            # Check for DynamoDB NULL value
             if isinstance(value, dict) and value.get('NULL') is True:
                 return True
         return False
@@ -122,30 +118,24 @@ class ImageBackfiller:
         
         logger.info("Scanning for images needing thumbnail generation...")
         
-        # Get all images using the DynamoClient methods
-        # We'll check both PHOTO and SCAN types
         for image_type in [ImageType.PHOTO, ImageType.SCAN]:
             last_evaluated_key = None
             
             while True:
-                # Get a batch of images
                 images, last_evaluated_key = self.dynamo_client.list_images_by_type(
                     image_type=image_type,
-                    limit=100,  # Process in batches of 100
+                    limit=100,
                     last_evaluated_key=last_evaluated_key,
                 )
                 
                 self.stats["total_scanned"] += len(images)
                 
-                # Check each image for missing thumbnail fields
                 for image in images:
-                    # Convert to dict to check fields
                     item = image.to_item()
                     if self.needs_thumbnail_fields(item):
                         self.stats["needs_backfill"] += 1
                         images_to_process.append(image)
                 
-                # If no more items, break
                 if not last_evaluated_key:
                     break
         
@@ -161,23 +151,19 @@ class ImageBackfiller:
         last_evaluated_key = None
         
         while True:
-            # Get a batch of receipts
             receipts, last_evaluated_key = self.dynamo_client.list_receipts(
-                limit=100,  # Process in batches of 100
+                limit=100,
                 last_evaluated_key=last_evaluated_key,
             )
             
             self.stats["total_scanned"] += len(receipts)
             
-            # Check each receipt for missing thumbnail fields
             for receipt in receipts:
-                # Convert to dict to check fields
                 item = receipt.to_item()
                 if self.needs_thumbnail_fields(item):
                     self.stats["needs_backfill"] += 1
                     receipts_to_process.append(receipt)
             
-            # If no more items, break
             if not last_evaluated_key:
                 break
         
@@ -282,8 +268,19 @@ class ImageBackfiller:
             })
             return False
 
+    def process_batch_parallel(self, items: List, process_func):
+        """Process a batch of items in parallel."""
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = {executor.submit(process_func, item): item for item in items}
+            
+            for future in concurrent.futures.as_completed(futures):
+                if future.result():
+                    self.stats["successfully_processed"] += 1
+                else:
+                    self.stats["failed"] += 1
+
     def run(self, limit: Optional[int] = None):
-        """Run the backfill process."""
+        """Run the backfill process with parallel processing."""
         start_time = time.time()
         
         # Get items needing backfill
@@ -302,35 +299,19 @@ class ImageBackfiller:
         
         logger.info(f"Processing {len(images)} images and {len(receipts)} receipts...")
         
-        # Process images
+        # Process images in parallel batches
         with tqdm(total=len(images), desc="Processing images") as pbar:
             for i in range(0, len(images), self.batch_size):
                 batch = images[i:i + self.batch_size]
-                for image in batch:
-                    if self.process_image(image):
-                        self.stats["successfully_processed"] += 1
-                    else:
-                        self.stats["failed"] += 1
-                    pbar.update(1)
-                
-                # Small delay between batches to avoid overwhelming S3
-                if not self.dry_run:
-                    time.sleep(0.5)
+                self.process_batch_parallel(batch, self.process_image)
+                pbar.update(len(batch))
         
-        # Process receipts
+        # Process receipts in parallel batches
         with tqdm(total=len(receipts), desc="Processing receipts") as pbar:
             for i in range(0, len(receipts), self.batch_size):
                 batch = receipts[i:i + self.batch_size]
-                for receipt in batch:
-                    if self.process_receipt(receipt):
-                        self.stats["successfully_processed"] += 1
-                    else:
-                        self.stats["failed"] += 1
-                    pbar.update(1)
-                
-                # Small delay between batches
-                if not self.dry_run:
-                    time.sleep(0.5)
+                self.process_batch_parallel(batch, self.process_receipt)
+                pbar.update(len(batch))
         
         # Print summary
         elapsed_time = time.time() - start_time
@@ -342,6 +323,7 @@ class ImageBackfiller:
         logger.info(f"Successfully processed: {self.stats['successfully_processed']}")
         logger.info(f"Failed: {self.stats['failed']}")
         logger.info(f"Time elapsed: {elapsed_time:.2f} seconds")
+        logger.info(f"Average time per item: {elapsed_time / max(self.stats['successfully_processed'], 1):.2f} seconds")
         
         if self.failed_items:
             logger.error("\nFailed items:")
@@ -355,7 +337,7 @@ class ImageBackfiller:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Backfill missing image sizes for existing images"
+        description="Fast backfill of missing image sizes with parallel processing"
     )
     parser.add_argument(
         "--stack",
@@ -371,8 +353,14 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=10,
-        help="Number of items to process in each batch (default: 10)",
+        default=20,
+        help="Number of items to process in each batch (default: 20)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Maximum parallel workers (default: 4)",
     )
     parser.add_argument(
         "--limit",
@@ -413,12 +401,13 @@ def main():
     logger.info(f"Site bucket: {site_bucket}")
     
     # Create and run backfiller
-    backfiller = ImageBackfiller(
+    backfiller = FastImageBackfiller(
         dynamo_table_name=dynamo_table_name,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
         dry_run=args.dry_run,
         batch_size=args.batch_size,
+        max_workers=args.max_workers,
     )
     
     backfiller.run(limit=args.limit)

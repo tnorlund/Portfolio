@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Backfill script to generate missing image sizes for existing images.
+Force re-backfill script to fix CDN key conflicts.
 
-This script:
-1. Queries DynamoDB for images/receipts missing thumbnail fields
-2. Downloads original images from S3
-3. Generates missing sizes using upload_all_cdn_formats()
-4. Updates DynamoDB records with new S3 keys
+This script specifically targets the data corruption issue where receipt processing
+overwrote image CDN keys. It forces regeneration of CDN keys for all images that
+have receipts, regardless of whether thumbnail fields exist.
 """
 
 import argparse
+import concurrent.futures
 import logging
 import os
 import sys
@@ -19,17 +18,14 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Set
 
 import boto3
-from boto3.dynamodb.conditions import Attr
 from PIL import Image as PIL_Image
 from tqdm import tqdm
 
 # Add parent directories to path for imports
-# Get the absolute path to the portfolio root
 script_dir = os.path.dirname(os.path.abspath(__file__))
 portfolio_root = os.path.dirname(script_dir)
 parent_dir = os.path.dirname(portfolio_root)
 
-# Add both parent and sibling directories to Python path
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
@@ -44,15 +40,15 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("backfill_image_sizes.log"),
+        logging.FileHandler("force_rebackfill_corrupted_keys.log"),
         logging.StreamHandler(),
     ],
 )
 logger = logging.getLogger(__name__)
 
 
-class ImageBackfiller:
-    """Handles backfilling of image sizes for existing images."""
+class ForceRebackfiller:
+    """Force re-backfill for images with CDN key conflicts."""
 
     def __init__(
         self,
@@ -60,22 +56,26 @@ class ImageBackfiller:
         raw_bucket: str,
         site_bucket: str,
         dry_run: bool = False,
-        batch_size: int = 10,
+        batch_size: int = 20,
+        max_workers: int = 6,
     ):
         self.dynamo_client = DynamoClient(dynamo_table_name)
         self.raw_bucket = raw_bucket
         self.site_bucket = site_bucket
         self.dry_run = dry_run
         self.batch_size = batch_size
+        self.max_workers = max_workers
         self.s3_client = boto3.client("s3")
         
         # Track statistics
         self.stats = {
-            "total_scanned": 0,
-            "needs_backfill": 0,
-            "successfully_processed": 0,
+            "total_images": 0,
+            "total_receipts": 0,
+            "images_with_receipts": 0,
+            "conflicts_found": 0,
+            "images_processed": 0,
+            "receipts_processed": 0,
             "failed": 0,
-            "skipped": 0,
         }
         self.failed_items: List[Dict[str, Any]] = []
 
@@ -89,108 +89,93 @@ class ImageBackfiller:
             logger.error(f"Failed to download image from s3://{bucket}/{key}: {e}")
             return None
 
-    def needs_thumbnail_fields(self, item: Dict[str, Any]) -> bool:
-        """Check if an item needs thumbnail fields added."""
-        # Check if any thumbnail field is missing
-        thumbnail_fields = [
-            "cdn_thumbnail_s3_key",
-            "cdn_thumbnail_webp_s3_key",
-            "cdn_thumbnail_avif_s3_key",
-            "cdn_small_s3_key",
-            "cdn_small_webp_s3_key",
-            "cdn_small_avif_s3_key",
-            "cdn_medium_s3_key",
-            "cdn_medium_webp_s3_key",
-            "cdn_medium_avif_s3_key",
-        ]
+    def get_all_images_and_receipts(self) -> tuple[Dict[str, Image], Dict[str, List[Receipt]]]:
+        """Get all images and group receipts by image_id."""
         
-        for field in thumbnail_fields:
-            # Check if field is missing, None, or has DynamoDB NULL value
-            if field not in item:
-                return True
-            value = item[field]
-            if value is None:
-                return True
-            # Check for DynamoDB NULL value
-            if isinstance(value, dict) and value.get('NULL') is True:
-                return True
-        return False
-
-    def scan_images_needing_backfill(self) -> List[Image]:
-        """Scan for all images that need thumbnail generation."""
-        images_to_process = []
-        
-        logger.info("Scanning for images needing thumbnail generation...")
-        
-        # Get all images using the DynamoClient methods
-        # We'll check both PHOTO and SCAN types
+        # Get all images
+        logger.info("Fetching all images...")
+        all_images = []
         for image_type in [ImageType.PHOTO, ImageType.SCAN]:
             last_evaluated_key = None
-            
             while True:
-                # Get a batch of images
                 images, last_evaluated_key = self.dynamo_client.list_images_by_type(
                     image_type=image_type,
-                    limit=100,  # Process in batches of 100
+                    limit=100,
                     last_evaluated_key=last_evaluated_key,
                 )
-                
-                self.stats["total_scanned"] += len(images)
-                
-                # Check each image for missing thumbnail fields
-                for image in images:
-                    # Convert to dict to check fields
-                    item = image.to_item()
-                    if self.needs_thumbnail_fields(item):
-                        self.stats["needs_backfill"] += 1
-                        images_to_process.append(image)
-                
-                # If no more items, break
+                all_images.extend(images)
                 if not last_evaluated_key:
                     break
         
-        logger.info(f"Found {len(images_to_process)} images needing backfill out of {self.stats['total_scanned']} total images")
-        return images_to_process
-
-    def scan_receipts_needing_backfill(self) -> List[Receipt]:
-        """Scan for all receipts that need thumbnail generation."""
-        receipts_to_process = []
+        images_by_id = {image.image_id: image for image in all_images}
+        self.stats["total_images"] = len(all_images)
+        logger.info(f"Found {len(all_images)} total images")
         
-        logger.info("Scanning for receipts needing thumbnail generation...")
-        
+        # Get all receipts
+        logger.info("Fetching all receipts...")
+        all_receipts = []
         last_evaluated_key = None
-        
         while True:
-            # Get a batch of receipts
             receipts, last_evaluated_key = self.dynamo_client.list_receipts(
-                limit=100,  # Process in batches of 100
+                limit=100,
                 last_evaluated_key=last_evaluated_key,
             )
-            
-            self.stats["total_scanned"] += len(receipts)
-            
-            # Check each receipt for missing thumbnail fields
-            for receipt in receipts:
-                # Convert to dict to check fields
-                item = receipt.to_item()
-                if self.needs_thumbnail_fields(item):
-                    self.stats["needs_backfill"] += 1
-                    receipts_to_process.append(receipt)
-            
-            # If no more items, break
+            all_receipts.extend(receipts)
             if not last_evaluated_key:
                 break
         
-        logger.info(f"Found {len(receipts_to_process)} receipts needing backfill")
-        return receipts_to_process
+        # Group receipts by image_id
+        receipts_by_image = {}
+        for receipt in all_receipts:
+            if receipt.image_id not in receipts_by_image:
+                receipts_by_image[receipt.image_id] = []
+            receipts_by_image[receipt.image_id].append(receipt)
+        
+        self.stats["total_receipts"] = len(all_receipts)
+        self.stats["images_with_receipts"] = len(receipts_by_image)
+        logger.info(f"Found {len(all_receipts)} total receipts")
+        logger.info(f"Found {len(receipts_by_image)} images with receipts")
+        
+        return images_by_id, receipts_by_image
+
+    def analyze_conflicts(self, images_by_id: Dict[str, Image], receipts_by_image: Dict[str, List[Receipt]]) -> List[str]:
+        """Analyze CDN key conflicts and return list of image_ids with conflicts."""
+        
+        conflicted_image_ids = []
+        
+        logger.info("Analyzing CDN key conflicts...")
+        
+        for image_id, receipts in receipts_by_image.items():
+            if image_id not in images_by_id:
+                logger.warning(f"Image {image_id} has receipts but image not found!")
+                continue
+                
+            image = images_by_id[image_id]
+            has_conflicts = False
+            
+            for receipt in receipts:
+                # Check for conflicts in any CDN key
+                if (image.cdn_thumbnail_s3_key == receipt.cdn_thumbnail_s3_key or
+                    image.cdn_small_s3_key == receipt.cdn_small_s3_key or
+                    image.cdn_medium_s3_key == receipt.cdn_medium_s3_key or
+                    image.cdn_s3_key == receipt.cdn_s3_key):
+                    has_conflicts = True
+                    self.stats["conflicts_found"] += 1
+                    break
+            
+            if has_conflicts:
+                conflicted_image_ids.append(image_id)
+        
+        logger.info(f"Found {len(conflicted_image_ids)} images with CDN key conflicts")
+        return conflicted_image_ids
 
     def process_image(self, image: Image) -> bool:
-        """Process a single image to generate thumbnails."""
+        """Force re-process an image to generate new CDN keys."""
         try:
-            logger.info(f"Processing image {image.image_id}")
+            logger.info(f"Force processing image {image.image_id}")
             
             if self.dry_run:
-                logger.info(f"[DRY RUN] Would process image {image.image_id}")
+                logger.info(f"[DRY RUN] Would force process image {image.image_id}")
                 return True
             
             # Download the original image
@@ -198,7 +183,7 @@ class ImageBackfiller:
             if not pil_image:
                 raise Exception("Failed to download image")
             
-            # Generate all sizes
+            # Generate all sizes with the correct S3 prefix
             s3_prefix = f"assets/{image.image_id}"
             cdn_keys = upload_all_cdn_formats(
                 pil_image,
@@ -221,11 +206,11 @@ class ImageBackfiller:
             # Update DynamoDB
             self.dynamo_client.update_image(image)
             
-            logger.info(f"Successfully processed image {image.image_id}")
+            logger.info(f"Successfully force processed image {image.image_id}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to process image {image.image_id}: {e}")
+            logger.error(f"Failed to force process image {image.image_id}: {e}")
             self.failed_items.append({
                 "type": "image",
                 "id": image.image_id,
@@ -234,12 +219,12 @@ class ImageBackfiller:
             return False
 
     def process_receipt(self, receipt: Receipt) -> bool:
-        """Process a single receipt to generate thumbnails."""
+        """Force re-process a receipt to generate new CDN keys."""
         try:
-            logger.info(f"Processing receipt {receipt.image_id}:{receipt.receipt_id}")
+            logger.info(f"Force processing receipt {receipt.image_id}:{receipt.receipt_id}")
             
             if self.dry_run:
-                logger.info(f"[DRY RUN] Would process receipt {receipt.image_id}:{receipt.receipt_id}")
+                logger.info(f"[DRY RUN] Would force process receipt {receipt.image_id}:{receipt.receipt_id}")
                 return True
             
             # Download the original image
@@ -247,7 +232,7 @@ class ImageBackfiller:
             if not pil_image:
                 raise Exception("Failed to download image")
             
-            # For receipts, use a unique S3 prefix to avoid overwriting image CDN keys
+            # For receipts, use the CORRECTED S3 prefix to avoid conflicts
             s3_prefix = f"assets/{receipt.image_id}/{receipt.receipt_id}"
             cdn_keys = upload_all_cdn_formats(
                 pil_image,
@@ -270,11 +255,11 @@ class ImageBackfiller:
             # Update DynamoDB
             self.dynamo_client.update_receipt(receipt)
             
-            logger.info(f"Successfully processed receipt {receipt.image_id}:{receipt.receipt_id}")
+            logger.info(f"Successfully force processed receipt {receipt.image_id}:{receipt.receipt_id}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to process receipt {receipt.image_id}:{receipt.receipt_id}: {e}")
+            logger.error(f"Failed to force process receipt {receipt.image_id}:{receipt.receipt_id}: {e}")
             self.failed_items.append({
                 "type": "receipt",
                 "id": f"{receipt.image_id}:{receipt.receipt_id}",
@@ -282,64 +267,72 @@ class ImageBackfiller:
             })
             return False
 
+    def process_batch_parallel(self, items: List, process_func):
+        """Process a batch of items in parallel."""
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = {executor.submit(process_func, item): item for item in items}
+            
+            for future in concurrent.futures.as_completed(futures):
+                if future.result():
+                    if process_func.__name__ == "process_image":
+                        self.stats["images_processed"] += 1
+                    else:
+                        self.stats["receipts_processed"] += 1
+                else:
+                    self.stats["failed"] += 1
+
     def run(self, limit: Optional[int] = None):
-        """Run the backfill process."""
+        """Run the force re-backfill process."""
         start_time = time.time()
         
-        # Get items needing backfill
-        images = self.scan_images_needing_backfill()
-        receipts = self.scan_receipts_needing_backfill()
+        # Get all data
+        images_by_id, receipts_by_image = self.get_all_images_and_receipts()
+        
+        # Analyze conflicts
+        conflicted_image_ids = self.analyze_conflicts(images_by_id, receipts_by_image)
+        
+        if not conflicted_image_ids:
+            logger.info("No CDN key conflicts found!")
+            return
         
         # Apply limit if specified
         if limit:
-            images = images[:limit]
-            receipts = receipts[:max(0, limit - len(images))]
+            conflicted_image_ids = conflicted_image_ids[:limit]
         
-        total_items = len(images) + len(receipts)
-        if total_items == 0:
-            logger.info("No items need backfilling!")
-            return
+        logger.info(f"Force processing {len(conflicted_image_ids)} images with conflicts...")
         
-        logger.info(f"Processing {len(images)} images and {len(receipts)} receipts...")
+        # Process conflicted images
+        conflicted_images = [images_by_id[image_id] for image_id in conflicted_image_ids]
+        with tqdm(total=len(conflicted_images), desc="Force processing images") as pbar:
+            for i in range(0, len(conflicted_images), self.batch_size):
+                batch = conflicted_images[i:i + self.batch_size]
+                self.process_batch_parallel(batch, self.process_image)
+                pbar.update(len(batch))
         
-        # Process images
-        with tqdm(total=len(images), desc="Processing images") as pbar:
-            for i in range(0, len(images), self.batch_size):
-                batch = images[i:i + self.batch_size]
-                for image in batch:
-                    if self.process_image(image):
-                        self.stats["successfully_processed"] += 1
-                    else:
-                        self.stats["failed"] += 1
-                    pbar.update(1)
-                
-                # Small delay between batches to avoid overwhelming S3
-                if not self.dry_run:
-                    time.sleep(0.5)
+        # Process all receipts for these images
+        all_receipts_to_process = []
+        for image_id in conflicted_image_ids:
+            if image_id in receipts_by_image:
+                all_receipts_to_process.extend(receipts_by_image[image_id])
         
-        # Process receipts
-        with tqdm(total=len(receipts), desc="Processing receipts") as pbar:
-            for i in range(0, len(receipts), self.batch_size):
-                batch = receipts[i:i + self.batch_size]
-                for receipt in batch:
-                    if self.process_receipt(receipt):
-                        self.stats["successfully_processed"] += 1
-                    else:
-                        self.stats["failed"] += 1
-                    pbar.update(1)
-                
-                # Small delay between batches
-                if not self.dry_run:
-                    time.sleep(0.5)
+        logger.info(f"Force processing {len(all_receipts_to_process)} receipts...")
+        with tqdm(total=len(all_receipts_to_process), desc="Force processing receipts") as pbar:
+            for i in range(0, len(all_receipts_to_process), self.batch_size):
+                batch = all_receipts_to_process[i:i + self.batch_size]
+                self.process_batch_parallel(batch, self.process_receipt)
+                pbar.update(len(batch))
         
         # Print summary
         elapsed_time = time.time() - start_time
         logger.info("\n" + "=" * 50)
-        logger.info("BACKFILL SUMMARY")
+        logger.info("FORCE RE-BACKFILL SUMMARY")
         logger.info("=" * 50)
-        logger.info(f"Total items scanned: {self.stats['total_scanned']}")
-        logger.info(f"Items needing backfill: {self.stats['needs_backfill']}")
-        logger.info(f"Successfully processed: {self.stats['successfully_processed']}")
+        logger.info(f"Total images: {self.stats['total_images']}")
+        logger.info(f"Total receipts: {self.stats['total_receipts']}")
+        logger.info(f"Images with receipts: {self.stats['images_with_receipts']}")
+        logger.info(f"Conflicts found: {self.stats['conflicts_found']}")
+        logger.info(f"Images processed: {self.stats['images_processed']}")
+        logger.info(f"Receipts processed: {self.stats['receipts_processed']}")
         logger.info(f"Failed: {self.stats['failed']}")
         logger.info(f"Time elapsed: {elapsed_time:.2f} seconds")
         
@@ -355,7 +348,7 @@ class ImageBackfiller:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Backfill missing image sizes for existing images"
+        description="Force re-backfill to fix CDN key conflicts"
     )
     parser.add_argument(
         "--stack",
@@ -371,13 +364,19 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=10,
-        help="Number of items to process in each batch (default: 10)",
+        default=20,
+        help="Number of items to process in each batch (default: 20)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=6,
+        help="Maximum parallel workers (default: 6)",
     )
     parser.add_argument(
         "--limit",
         type=int,
-        help="Limit the number of items to process",
+        help="Limit the number of conflicted images to process",
     )
     
     args = parser.parse_args()
@@ -387,7 +386,6 @@ def main():
     
     # Set up the stack
     stack_name = f"tnorlund/portfolio/{args.stack}"
-    # Get the path to the infra directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     portfolio_root = os.path.dirname(script_dir)
     parent_dir = os.path.dirname(portfolio_root)
@@ -412,13 +410,14 @@ def main():
     logger.info(f"Raw bucket: {raw_bucket}")
     logger.info(f"Site bucket: {site_bucket}")
     
-    # Create and run backfiller
-    backfiller = ImageBackfiller(
+    # Create and run force re-backfiller
+    backfiller = ForceRebackfiller(
         dynamo_table_name=dynamo_table_name,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
         dry_run=args.dry_run,
         batch_size=args.batch_size,
+        max_workers=args.max_workers,
     )
     
     backfiller.run(limit=args.limit)

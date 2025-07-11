@@ -113,11 +113,24 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
 
+  // Debug: Check what image type we actually received
+  if (firstImage && isClient) {
+    console.log(`[PhotoReceiptBoundingBox] Browser: ${navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome'}`);
+    console.log(`[PhotoReceiptBoundingBox] Requested: PHOTO, Received: ${firstImage.image_type}`);
+    console.log(`[PhotoReceiptBoundingBox] Image ID: ${firstImage.image_id}`);
+    if (firstImage.image_type !== 'PHOTO') {
+      console.error(`[PhotoReceiptBoundingBox] ❌ WRONG TYPE! Expected PHOTO, got ${firstImage.image_type}`);
+    } else {
+      console.log(`[PhotoReceiptBoundingBox] ✅ Correct type: PHOTO`);
+    }
+  }
+
   // Get the optimal image URL based on browser support and available formats
+  // Use medium size for PhotoReceiptBoundingBox to balance quality and performance
   // Use fallback URL during SSR/initial render to prevent hydration mismatch
   const cdnUrl =
     firstImage && formatSupport && isClient
-      ? getBestImageUrl(firstImage, formatSupport)
+      ? getBestImageUrl(firstImage, formatSupport, 'medium')
       : firstImage
       ? `${
           isDevelopment
