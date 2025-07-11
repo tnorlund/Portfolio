@@ -12,10 +12,14 @@ export const PerformanceProvider: React.FC<PerformanceProviderProps> = ({
   enabled = process.env.NODE_ENV === 'development',
 }) => {
   useEffect(() => {
-    if (!enabled) return;
+    // Skip performance monitoring during SSR
+    if (typeof window === 'undefined' || !enabled) return;
 
     const monitor = getPerformanceMonitor();
     const logger = getPerformanceLogger();
+
+    // Skip if monitor is not available (SSR or disabled)
+    if (!monitor) return;
 
     // Subscribe to metrics and log them (only if logger is available)
     const unsubscribe = monitor.subscribe((metrics) => {
