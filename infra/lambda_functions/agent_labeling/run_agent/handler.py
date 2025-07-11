@@ -22,7 +22,7 @@ from receipt_label.agent import (
     LabelApplicator,
     PatternDetector,
 )
-from receipt_label.client_manager import ClientManager
+from receipt_label.utils.client_manager import ClientManager
 from receipt_label.constants import CORE_LABELS
 
 logger = logging.getLogger()

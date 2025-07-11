@@ -22,14 +22,14 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sfn import StateMachine
 
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
-from notifications import NotificationSystem
-from step_functions.base import BaseStepFunction
+from ..dynamo_db import dynamodb_table
+from ..lambda_layer import dynamo_layer, label_layer
+from ..notifications import NotificationSystem
+from .base import BaseStepFunction
 
 # Import references to other step functions
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
-from word_label_step_functions import WordLabelStepFunctions
+from ..validate_merchant_step_functions import ValidateMerchantStepFunctions
+from ..word_label_step_functions import WordLabelStepFunctions
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
