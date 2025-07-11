@@ -159,9 +159,12 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
   }, []);
 
   const uploadToS3 = useCallback(() => {
-    uploadToS3Internal(files);
-    setFiles([]);
-  }, [files, uploadToS3Internal]);
+    // Use functional update to get current files without adding to dependencies
+    setFiles((currentFiles) => {
+      uploadToS3Internal(currentFiles);
+      return []; // Clear files after initiating upload
+    });
+  }, [uploadToS3Internal]);
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
