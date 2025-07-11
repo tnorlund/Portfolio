@@ -1,0 +1,13 @@
+{
+  "job_name": "test-lint-optimization",
+  "timestamp": "2025-07-11T01:17:15.286766",
+  "system_info": {
+    "cpu_count": 12,
+    "memory_total": 103079215104,
+    "memory_available": 47652126720,
+    "disk_usage": 0.9,
+    "python_version": "3.13.1 (v3.13.1:06714517797, Dec  3 2024, 14:00:22) [Clang 15.0.0 (clang-1500.3.9.4)]",
+    "platform": "darwin"
+  },
+  "start_time": "2025-07-11T01:17:15.286766"
+}
