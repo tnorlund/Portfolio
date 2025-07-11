@@ -1,0 +1,30 @@
+{
+  "receipt_id": "test-receipt-123",
+  "labeling": {
+    "pattern_labels": {
+      "word-1": {
+        "label": "DATE",
+        "confidence": 0.98,
+        "source": "pattern_detection"
+      },
+      "word-2": {
+        "label": "TIME",
+        "confidence": 0.95,
+        "source": "pattern_detection"
+      }
+    },
+    "gpt_required": true,
+    "missing_essential_labels": [
+      "MERCHANT_NAME",
+      "GRAND_TOTAL"
+    ],
+    "unlabeled_count": 45
+  },
+  "metadata": {
+    "merchant_name": "Starbucks",
+    "location": {
+      "city": "Seattle",
+      "state": "WA"
+    }
+  }
+}

@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Local DynamoDB
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: receipt-dynamodb-local
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
+    volumes:
+      - dynamodb-data:/data
+    environment:
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+      - AWS_DEFAULT_REGION=us-east-1
+
+  # LocalStack for AWS services
+  localstack:
+    image: localstack/localstack:latest
+    container_name: receipt-localstack
+    ports:
+      - "4566:4566"  # LocalStack gateway
+      - "4571:4571"  # Elasticsearch (if needed)
+    environment:
+      - SERVICES=lambda,stepfunctions,sns,s3,iam,logs
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack-data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # DynamoDB Admin UI (optional)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: receipt-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+    depends_on:
+      - dynamodb-local
+
+  # Initialization container
+  init-local:
+    image: amazon/aws-cli:latest
+    container_name: receipt-init-local
+    depends_on:
+      - dynamodb-local
+      - localstack
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - ./scripts/init-local.sh:/init-local.sh
+      - ./infra/init-tables.json:/init-tables.json
+    entrypoint: /bin/sh
+    command: /init-local.sh
+
+volumes:
+  dynamodb-data:
+  localstack-data:

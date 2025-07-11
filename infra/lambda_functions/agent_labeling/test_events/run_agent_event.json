@@ -1,0 +1,22 @@
+{
+  "receipt_id": "test-receipt-123",
+  "metadata": {
+    "found": true,
+    "merchant_name": "Starbucks",
+    "location": {
+      "city": "Seattle",
+      "state": "WA"
+    }
+  },
+  "embeddings": {
+    "has_embeddings": true,
+    "embedding_count": 150,
+    "merchant_patterns": [
+      {
+        "pattern_type": "date_format",
+        "confidence": 0.95,
+        "example": "MM/DD/YYYY"
+      }
+    ]
+  }
+}
