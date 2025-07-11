@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
@@ -36,11 +36,11 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
     const [hasErrored, setHasErrored] = useState<boolean>(false);
 
     useEffect(() => {
-      if (formatSupport && !currentSrc) {
+      if (formatSupport) {
         const bestUrl = getBestImageUrl(receipt, formatSupport);
         setCurrentSrc(bestUrl);
       }
-    }, [formatSupport, receipt, currentSrc]);
+    }, [formatSupport, receipt]); // currentSrc removed to prevent infinite loop
 
     const handleImageLoad = useCallback(() => {
       setImageLoaded(true);
@@ -169,10 +169,13 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   initialCount = 6,
 }) => {
   // Add performance monitoring
-  const { trackAPICall, trackImageLoad } = usePerformanceMonitor({
-    componentName: 'ReceiptStack',
-    trackRender: true,
-  });
+  // TEMPORARILY DISABLED: Performance monitor causes infinite render loop
+  // const { trackAPICall, trackImageLoad } = usePerformanceMonitor({
+  //   componentName: 'ReceiptStack',
+  //   trackRender: true,
+  // });
+  const trackAPICall = async <T,>(endpoint: string, apiCall: () => Promise<T>): Promise<T> => apiCall();
+  const trackImageLoad = () => {};
 
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
@@ -203,6 +206,7 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   const [startAnimation, setStartAnimation] = useState(false);
   const [loadingRemaining, setLoadingRemaining] = useState(false);
   const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
+  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -308,15 +312,26 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   // Load remaining receipts after initial set
   useEffect(() => {
     const loadRemainingReceipts = async () => {
-      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey) return;
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
+      
+      isLoadingRef.current = true;
 
       try {
-        const currentReceiptsCount = receipts.length;
+        // Get current count without modifying state
+        let currentReceiptsCount = 0;
+        setReceipts(prevReceipts => {
+          currentReceiptsCount = prevReceipts.length;
+          return prevReceipts; // Don't modify state, just read it
+        });
+
+        // Check if we already have enough receipts
         if (currentReceiptsCount >= maxReceipts) {
           setLoadingRemaining(false);
+          isLoadingRef.current = false;
           return;
         }
 
+        // Calculate remaining needed based on actual current count
         const remainingNeeded = maxReceipts - currentReceiptsCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
@@ -329,10 +344,8 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         let allNewReceipts: Receipt[] = firstPageResponse.receipts;
         let currentKey = firstPageResponse.lastEvaluatedKey;
 
-        // If we need more pages, fetch them in parallel batches
+        // If we need more pages, fetch them sequentially
         if (pagesNeeded > 1 && currentKey) {
-          // For simplicity, fetch remaining pages sequentially
-          // (parallel would require knowing all cursor keys in advance)
           for (let i = 1; i < pagesNeeded && currentKey; i++) {
             const response = await api.fetchReceipts(pageSize, currentKey);
             if (response && response.receipts) {
@@ -350,19 +363,20 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
           return combinedReceipts;
         });
         setLoadingRemaining(false);
+        isLoadingRef.current = false;
       } catch (error) {
         console.error("Error loading remaining receipts:", error);
         setLoadingRemaining(false);
+        isLoadingRef.current = false;
       }
     };
 
-    if (loadingRemaining && lastEvaluatedKey) {
+    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
       // Delay loading remaining receipts until after initial render
       const timer = setTimeout(loadRemainingReceipts, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, maxReceipts, pageSize, lastEvaluatedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: receipts.length is intentionally NOT included to prevent infinite loop
+  }, [formatSupport, loadingRemaining, maxReceipts, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
@@ -374,7 +388,8 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     if (inView && receipts.length > 0 && !startAnimation) {
       setStartAnimation(true);
     }
-  }, [inView, receipts.length, startAnimation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, receipts.length]); // startAnimation removed to prevent infinite loop
 
   if (error) {
     return (
