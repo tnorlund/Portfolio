@@ -210,3 +210,6 @@ portfolio/next-env.d.ts
 portfolio/.eslintcache
 portfolio/.stylelintcache
 portfolio/coverage*
+
+# Lighthouse CI temporary files
+portfolio/.lighthouseci/
