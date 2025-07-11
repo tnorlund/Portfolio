@@ -6,6 +6,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
 import { usePerformanceMonitor } from "../../../hooks/usePerformanceMonitor";
 
@@ -37,7 +38,8 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
 
     useEffect(() => {
       if (formatSupport) {
-        const bestUrl = getBestImageUrl(receipt, formatSupport);
+        // Use thumbnail size for ReceiptStack since receipts are displayed at 100px
+        const bestUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
     }, [formatSupport, receipt]); // currentSrc removed to prevent infinite loop
@@ -48,34 +50,34 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
-
-      let fallbackUrl = "";
-
-      if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && receipt.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_webp_s3_key}`;
-        } else if (receipt.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
+      // Try progressively larger sizes if thumbnail fails
+      if (currentSrc.includes("_thumbnail")) {
+        // Try small size
+        const smallUrl = getBestImageUrl(receipt, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'small');
+        if (smallUrl && smallUrl !== currentSrc) {
+          setCurrentSrc(smallUrl);
+          return;
         }
-      } else if (currentSrc.includes(".webp") && receipt.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
-        return;
+      } else if (currentSrc.includes("_small")) {
+        // Try medium size
+        const mediumUrl = getBestImageUrl(receipt, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'medium');
+        if (mediumUrl && mediumUrl !== currentSrc) {
+          setCurrentSrc(mediumUrl);
+          return;
+        }
+      } else if (currentSrc.includes("_medium")) {
+        // Try full size
+        const fullUrl = getBestImageUrl(receipt, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'full');
+        if (fullUrl && fullUrl !== currentSrc) {
+          setCurrentSrc(fullUrl);
+          return;
+        }
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
-      }
+      // If all sizes fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;

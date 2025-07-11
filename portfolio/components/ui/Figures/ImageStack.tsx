@@ -6,6 +6,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -36,7 +37,8 @@ const ImageItem = React.memo<ImageItemProps>(
 
     useEffect(() => {
       if (formatSupport) {
-        const bestUrl = getBestImageUrl(image, formatSupport);
+        // Use thumbnail size for ImageStack since images are displayed at 150px
+        const bestUrl = getBestImageUrl(image, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
     }, [formatSupport, image]); // currentSrc removed to prevent infinite loop
@@ -47,34 +49,34 @@ const ImageItem = React.memo<ImageItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
-
-      let fallbackUrl = "";
-
-      if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && image.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_webp_s3_key}`;
-        } else if (image.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
+      // Try progressively larger sizes if thumbnail fails
+      if (currentSrc.includes("_thumbnail")) {
+        // Try small size
+        const smallUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'small');
+        if (smallUrl && smallUrl !== currentSrc) {
+          setCurrentSrc(smallUrl);
+          return;
         }
-      } else if (currentSrc.includes(".webp") && image.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true); // Consider it "loaded" even on error
-        onLoad();
-        return;
+      } else if (currentSrc.includes("_small")) {
+        // Try medium size
+        const mediumUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'medium');
+        if (mediumUrl && mediumUrl !== currentSrc) {
+          setCurrentSrc(mediumUrl);
+          return;
+        }
+      } else if (currentSrc.includes("_medium")) {
+        // Try full size
+        const fullUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'full');
+        if (fullUrl && fullUrl !== currentSrc) {
+          setCurrentSrc(fullUrl);
+          return;
+        }
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
-      }
+      // If all sizes fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;
