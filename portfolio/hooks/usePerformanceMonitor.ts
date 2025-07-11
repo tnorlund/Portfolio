@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { 
   getPerformanceMonitor, 
   PerformanceMetrics,
@@ -25,19 +25,29 @@ export function usePerformanceMonitor(options: UsePerformanceMonitorOptions = {}
     };
   }, []);
 
-  // Mark render start BEFORE useEffect
-  if (trackRender && componentName) {
-    renderStartTime.current = performance.now();
-  }
-
-  // Track component render time
-  useEffect(() => {
-    if (trackRender && componentName && renderStartTime.current > 0) {
-      const renderDuration = performance.now() - renderStartTime.current;
-      getPerformanceMonitor().trackComponentRender(componentName, renderDuration);
-      renderCount.current += 1;
+  // Track component render time using useLayoutEffect for accurate timing
+  useLayoutEffect(() => {
+    if (trackRender && componentName) {
+      // Mark render end - useLayoutEffect runs synchronously after DOM mutations
+      const renderEndTime = performance.now();
+      
+      if (renderStartTime.current > 0) {
+        const renderDuration = renderEndTime - renderStartTime.current;
+        getPerformanceMonitor().trackComponentRender(componentName, renderDuration);
+        renderCount.current += 1;
+      }
+      
+      // Set start time for next render
+      renderStartTime.current = renderEndTime;
     }
-  }, [trackRender, componentName]); // Add dependencies to fix missing dependency array
+  }, [trackRender, componentName]); // Dependencies ensure effect runs when these change
+  
+  // Set initial render start time
+  useLayoutEffect(() => {
+    if (trackRender && componentName && renderStartTime.current === 0) {
+      renderStartTime.current = performance.now();
+    }
+  }, []); // Run only once on mount
 
   const trackAPICall = useCallback(async <T,>(
     endpoint: string,

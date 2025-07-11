@@ -98,7 +98,7 @@ export default defineConfig({
           args: [
             '--enable-precise-memory-info',
             '--enable-gpu-benchmarking',
-            '--enable-thread-composting',
+            '--enable-threaded-compositing',
           ],
         },
         // Disable animations for consistent measurements

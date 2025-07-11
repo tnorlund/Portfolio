@@ -17,9 +17,11 @@ export const PerformanceProvider: React.FC<PerformanceProviderProps> = ({
     const monitor = getPerformanceMonitor();
     const logger = getPerformanceLogger();
 
-    // Subscribe to metrics and log them
+    // Subscribe to metrics and log them (only if logger is available)
     const unsubscribe = monitor.subscribe((metrics) => {
-      logger.log(metrics);
+      if (logger) {
+        logger.log(metrics);
+      }
     });
 
     // Log navigation timing on initial load

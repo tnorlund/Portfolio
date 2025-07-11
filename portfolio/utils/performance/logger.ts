@@ -258,10 +258,10 @@ export class PerformanceLogger {
 // Singleton instance
 let performanceLogger: PerformanceLogger | null = null;
 
-export function getPerformanceLogger(): PerformanceLogger {
+export function getPerformanceLogger(): PerformanceLogger | null {
   if (!performanceLogger && typeof window !== 'undefined') {
     performanceLogger = new PerformanceLogger();
     performanceLogger.loadFromLocalStorage();
   }
-  return performanceLogger!;
+  return performanceLogger;
 }
