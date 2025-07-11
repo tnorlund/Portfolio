@@ -3,13 +3,13 @@
 import re
 from typing import Dict, List, Optional
 
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 # Common top-level domains for website detection
 COMMON_TLDS = [

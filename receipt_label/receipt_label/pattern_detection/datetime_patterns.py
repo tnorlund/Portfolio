@@ -4,13 +4,13 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class DateTimePatternDetector(PatternDetector):
@@ -215,7 +215,9 @@ class DateTimePatternDetector(PatternDetector):
                 )
                 if date_dict:
                     # Mark as ambiguous when both values could be month or day
-                    date_dict["is_ambiguous"] = (first <= 12 and second <= 12 and first != second)
+                    date_dict["is_ambiguous"] = (
+                        first <= 12 and second <= 12 and first != second
+                    )
                 return date_dict
 
         return None

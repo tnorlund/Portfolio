@@ -1,13 +1,13 @@
 """Tests for base pattern detection classes."""
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestPatternMatch:
@@ -53,7 +53,9 @@ class TestPatternMatch:
     def test_pattern_match_confidence_validation(self, sample_word):
         """Test that confidence is validated to be between 0 and 1."""
         # Test invalid confidence values
-        with pytest.raises(ValueError, match="Confidence must be between 0 and 1"):
+        with pytest.raises(
+            ValueError, match="Confidence must be between 0 and 1"
+        ):
             PatternMatch(
                 word=sample_word,
                 pattern_type=PatternType.CURRENCY,
@@ -63,7 +65,9 @@ class TestPatternMatch:
                 metadata={},
             )
 
-        with pytest.raises(ValueError, match="Confidence must be between 0 and 1"):
+        with pytest.raises(
+            ValueError, match="Confidence must be between 0 and 1"
+        ):
             PatternMatch(
                 word=sample_word,
                 pattern_type=PatternType.CURRENCY,
@@ -182,7 +186,9 @@ class TestPatternDetector:
         assert context["line_word_count"] == 2  # Two words on same line
         assert context["line_position"] in [0, 1]  # Position in line
 
-    def test_calculate_position_context_empty_words(self, detector, sample_words):
+    def test_calculate_position_context_empty_words(
+        self, detector, sample_words
+    ):
         """Test position context with empty word list."""
         word = sample_words[0]
         context = detector._calculate_position_context(word, [])
@@ -209,7 +215,9 @@ class TestPatternDetector:
 
         context = detector._calculate_position_context(word, [word])
 
-        assert context["relative_y_position"] == 0.5  # Only word, middle position
+        assert (
+            context["relative_y_position"] == 0.5
+        )  # Only word, middle position
         assert context["line_word_count"] == 1
         assert context["same_line_text"] == ""  # No other words
         assert context["line_position"] == 0
@@ -217,11 +225,15 @@ class TestPatternDetector:
     def test_find_nearby_words(self, detector, sample_words):
         """Test finding nearby words."""
         word = sample_words[2]  # Middle word
-        nearby = detector._find_nearby_words(word, sample_words, max_distance=100)
+        nearby = detector._find_nearby_words(
+            word, sample_words, max_distance=100
+        )
 
         # Should find other words sorted by distance
         assert len(nearby) > 0
-        assert all(w[0].word_id != word.word_id for w in nearby)  # Excludes self
+        assert all(
+            w[0].word_id != word.word_id for w in nearby
+        )  # Excludes self
 
         # Check sorting by distance
         distances = [dist for _, dist in nearby]
@@ -230,20 +242,24 @@ class TestPatternDetector:
     def test_find_nearby_words_max_distance(self, detector, sample_words):
         """Test max distance filtering."""
         word = sample_words[0]
-        
+
         # Very small distance - should find few or no words
-        nearby_close = detector._find_nearby_words(word, sample_words, max_distance=10)
-        
+        nearby_close = detector._find_nearby_words(
+            word, sample_words, max_distance=10
+        )
+
         # Large distance - should find more words
-        nearby_far = detector._find_nearby_words(word, sample_words, max_distance=200)
-        
+        nearby_far = detector._find_nearby_words(
+            word, sample_words, max_distance=200
+        )
+
         assert len(nearby_far) >= len(nearby_close)
 
     def test_find_nearby_words_empty_list(self, detector, sample_words):
         """Test finding nearby words with empty word list."""
         word = sample_words[0]
         nearby = detector._find_nearby_words(word, [], max_distance=100)
-        
+
         assert nearby == []
 
     def test_position_context_bottom_detection(self, detector):

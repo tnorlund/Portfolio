@@ -1,12 +1,12 @@
 """Tests for quantity pattern detection."""
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection import (
-    QuantityPatternDetector,
     PatternType,
+    QuantityPatternDetector,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestQuantityPatternDetector:
@@ -55,7 +55,9 @@ class TestQuantityPatternDetector:
             ("1.5 @ $3.00", PatternType.QUANTITY_AT, 1.5, 3.00, 4.50),
         ]
 
-        for i, (text, expected_type, qty, unit_price, total) in enumerate(test_cases):
+        for i, (text, expected_type, qty, unit_price, total) in enumerate(
+            test_cases
+        ):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
 
@@ -80,7 +82,9 @@ class TestQuantityPatternDetector:
             ("10x$0.99", PatternType.QUANTITY_TIMES, 10.0, 0.99, 9.90),
         ]
 
-        for i, (text, expected_type, qty, unit_price, total) in enumerate(test_cases):
+        for i, (text, expected_type, qty, unit_price, total) in enumerate(
+            test_cases
+        ):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
 
@@ -104,7 +108,9 @@ class TestQuantityPatternDetector:
             ("10 for $25.99", PatternType.QUANTITY_FOR, 10.0, 2.599, 25.99),
         ]
 
-        for i, (text, expected_type, qty, unit_price, total) in enumerate(test_cases):
+        for i, (text, expected_type, qty, unit_price, total) in enumerate(
+            test_cases
+        ):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
 
@@ -128,7 +134,9 @@ class TestQuantityPatternDetector:
             ("4 / 12.00", PatternType.QUANTITY, 4.0, 3.00, 12.00),
         ]
 
-        for i, (text, expected_type, qty, unit_price, total) in enumerate(test_cases):
+        for i, (text, expected_type, qty, unit_price, total) in enumerate(
+            test_cases
+        ):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
 
@@ -190,15 +198,21 @@ class TestQuantityPatternDetector:
             assert match.metadata["format"] == "with_unit"
 
     @pytest.mark.asyncio
-    async def test_plain_number_quantity_detection(self, detector, create_word):
+    async def test_plain_number_quantity_detection(
+        self, detector, create_word
+    ):
         """Test detection of plain numbers as quantities based on context."""
         # Create a receipt context with product and price
         receipt_words = [
             create_word("BURGER", word_id=0, x_pos=0, y_pos=100),
-            create_word("2", word_id=1, x_pos=0, y_pos=120),  # Quantity at line start
+            create_word(
+                "2", word_id=1, x_pos=0, y_pos=120
+            ),  # Quantity at line start
             create_word("$5.99", word_id=2, x_pos=100, y_pos=120),
             create_word("FRIES", word_id=3, x_pos=0, y_pos=140),
-            create_word("1", word_id=4, x_pos=0, y_pos=160),  # Another quantity
+            create_word(
+                "1", word_id=4, x_pos=0, y_pos=160
+            ),  # Another quantity
             create_word("$2.99", word_id=5, x_pos=100, y_pos=160),
         ]
 
@@ -206,16 +220,14 @@ class TestQuantityPatternDetector:
 
         # Should detect the plain numbers as quantities
         quantity_matches = [
-            m for m in matches 
-            if m.metadata.get("format") == "plain_number"
+            m for m in matches if m.metadata.get("format") == "plain_number"
         ]
-        
+
         assert len(quantity_matches) >= 2
-        
+
         # Check the "2" was detected
         two_match = next(
-            (m for m in quantity_matches if m.extracted_value == 2.0), 
-            None
+            (m for m in quantity_matches if m.extracted_value == 2.0), None
         )
         assert two_match is not None
         assert two_match.pattern_type == PatternType.QUANTITY
@@ -251,13 +263,10 @@ class TestQuantityPatternDetector:
         ]
 
         matches = await detector.detect(words)
-        
+
         # Find the quantity match
-        qty_match = next(
-            (m for m in matches if "@" in m.matched_text),
-            None
-        )
-        
+        qty_match = next((m for m in matches if "@" in m.matched_text), None)
+
         assert qty_match is not None
         assert "relative_y_position" in qty_match.metadata
         assert "line_word_count" in qty_match.metadata
@@ -285,14 +294,18 @@ class TestQuantityPatternDetector:
             if text == "2":
                 words = [
                     word,
-                    create_word("$5.99", word_id=i+100, x_pos=100, y_pos=100)
+                    create_word(
+                        "$5.99", word_id=i + 100, x_pos=100, y_pos=100
+                    ),
                 ]
                 matches = await detector.detect(words)
             else:
                 matches = await detector.detect([word])
 
             if matches:
-                assert matches[0].confidence >= min_confidence * 0.9  # Allow some variance
+                assert (
+                    matches[0].confidence >= min_confidence * 0.9
+                )  # Allow some variance
 
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector, create_word):
@@ -314,16 +327,15 @@ class TestQuantityPatternDetector:
         ]
 
         matches = await detector.detect(words)
-        
+
         # Should detect "2" as quantity since it's at line start with price
         plain_matches = [
-            m for m in matches 
-            if m.metadata.get("format") == "plain_number"
+            m for m in matches if m.metadata.get("format") == "plain_number"
         ]
-        
+
         assert len(plain_matches) == 1
         assert plain_matches[0].extracted_value == 2.0
-        
+
         # Verify line position was considered
         metadata = plain_matches[0].metadata
         assert metadata.get("line_position") == 0  # First word in line
