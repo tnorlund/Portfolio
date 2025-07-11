@@ -5,12 +5,12 @@ import time
 from unittest.mock import Mock, patch
 
 import pytest
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection import (
     ParallelPatternOrchestrator,
     PatternType,
 )
-
-from receipt_dynamo.entities import ReceiptWord
 
 
 class TestParallelPatternOrchestrator:

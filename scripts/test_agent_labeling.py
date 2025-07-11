@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
-from receipt_label.agent import ReceiptLabelerAgent
+from receipt_label.agent.receipt_labeler_agent import ReceiptLabelerAgent
 from receipt_label.utils.client_manager import ClientConfig, ClientManager
 
 logging.basicConfig(

@@ -4,6 +4,7 @@ Receipt Label - A package for labeling and validating receipt data.
 
 import logging
 
+from .agent.receipt_labeler_agent import ReceiptLabelerAgent
 from .core.labeler import LabelingResult, ReceiptLabeler
 from .data.places_api import BatchPlacesProcessor
 from .models.line_item import LineItem, LineItemAnalysis, Price, Quantity
@@ -22,6 +23,7 @@ logging.getLogger("__main__").setLevel(logging.INFO)
 
 __all__ = [
     "ReceiptLabeler",
+    "ReceiptLabelerAgent",
     "LabelingResult",
     "Receipt",
     "ReceiptWord",

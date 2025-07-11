@@ -1,21 +1,21 @@
 """
-Pattern detector orchestrator for parallel pattern detection.
+Pattern detector adapter for agent-based labeling system.
 
-This module coordinates multiple pattern detectors to run in parallel
-and aggregates their results for the receipt labeling pipeline.
+This module adapts Epic #190's ParallelPatternOrchestrator for use
+in the agent-based receipt labeling pipeline.
 """
 
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
+
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.constants import CORE_LABELS
-from receipt_label.data.pattern_analyzer import enhanced_analyzer
-from receipt_label.patterns import (
-    ContactPatternDetector,
-    DatePatternDetector,
-    QuantityPatternDetector,
+from receipt_label.pattern_detection import (
+    ParallelPatternOrchestrator,
+    PatternMatch,
+    PatternType,
 )
 from receipt_label.utils.client_manager import ClientManager
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class PatternDetector:
-    """Orchestrates parallel pattern detection for receipt labeling."""
+    """Adapts Epic #190's pattern detection for agent-based labeling."""
 
     def __init__(self, client_manager: ClientManager):
         """
@@ -33,36 +33,41 @@ class PatternDetector:
             client_manager: Client manager for accessing external services
         """
         self.client_manager = client_manager
+        self.orchestrator = ParallelPatternOrchestrator(
+            timeout=0.2
+        )  # 200ms for agent usage
 
-        # Initialize pattern detectors and set their labels
-        self.date_detector = DatePatternDetector()
-        self.date_detector.DATE_LABEL = CORE_LABELS["DATE"]
-
-        self.contact_detector = ContactPatternDetector()
-        self.contact_detector.PHONE_NUMBER_LABEL = CORE_LABELS["PHONE_NUMBER"]
-        self.contact_detector.EMAIL_LABEL = CORE_LABELS["EMAIL"]
-        self.contact_detector.WEBSITE_LABEL = CORE_LABELS["WEBSITE"]
-
-        self.quantity_detector = QuantityPatternDetector()
-        self.quantity_detector.QUANTITY_LABEL = CORE_LABELS["QUANTITY"]
-        self.quantity_detector.UNIT_PRICE_LABEL = CORE_LABELS["UNIT_PRICE"]
-
-        # Currency analyzer is already initialized as singleton
-        self.currency_analyzer = enhanced_analyzer
+        # Map PatternType to CORE_LABELS
+        self.pattern_to_label_map = {
+            PatternType.GRAND_TOTAL: CORE_LABELS["GRAND_TOTAL"],
+            PatternType.SUBTOTAL: CORE_LABELS["SUBTOTAL"],
+            PatternType.TAX: CORE_LABELS["TAX"],
+            PatternType.DISCOUNT: CORE_LABELS["DISCOUNT"],
+            PatternType.LINE_TOTAL: CORE_LABELS["LINE_TOTAL"],
+            PatternType.UNIT_PRICE: CORE_LABELS["UNIT_PRICE"],
+            PatternType.DATE: CORE_LABELS["DATE"],
+            PatternType.TIME: CORE_LABELS["TIME"],
+            PatternType.PHONE_NUMBER: CORE_LABELS["PHONE_NUMBER"],
+            PatternType.EMAIL: CORE_LABELS["EMAIL"],
+            PatternType.WEBSITE: CORE_LABELS["WEBSITE"],
+            PatternType.QUANTITY: CORE_LABELS["QUANTITY"],
+        }
 
     async def detect_all_patterns(
         self,
-        receipt_words: List[Dict],
+        receipt_words: List[ReceiptWord],
         receipt_lines: List[Dict],
         merchant_name: Optional[str] = None,
+        merchant_patterns: Optional[Dict] = None,
     ) -> Dict[str, List[Dict]]:
         """
         Run all pattern detectors in parallel.
 
         Args:
-            receipt_words: List of word dictionaries
-            receipt_lines: List of line dictionaries
+            receipt_words: List of ReceiptWord entities
+            receipt_lines: List of line dictionaries (unused but kept for compatibility)
             merchant_name: Optional merchant name for pattern queries
+            merchant_patterns: Optional merchant-specific patterns from Epic #189
 
         Returns:
             Dictionary with pattern type as key and detected patterns as value
@@ -71,263 +76,86 @@ class PatternDetector:
             f"Running parallel pattern detection on {len(receipt_words)} words"
         )
 
-        # Prepare word format for detectors
-        word_dicts = self._prepare_word_dicts(receipt_words)
+        # Filter out noise words if they have is_noise attribute
+        filtered_words = [
+            word
+            for word in receipt_words
+            if not getattr(word, "is_noise", False)
+        ]
 
-        # Run pattern detectors in parallel
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            # Submit all detection tasks
-            date_future = loop.run_in_executor(
-                executor, self.date_detector.detect, word_dicts
-            )
-            contact_future = loop.run_in_executor(
-                executor, self.contact_detector.detect, word_dicts
-            )
-            quantity_future = loop.run_in_executor(
-                executor, self.quantity_detector.detect, word_dicts
-            )
-            currency_future = loop.run_in_executor(
-                executor,
-                self._detect_currency_patterns,
-                receipt_words,
-                receipt_lines,
-            )
-            merchant_future = loop.run_in_executor(
-                executor,
-                self._query_merchant_patterns,
-                merchant_name,
-                receipt_words,
-            )
+        # Run Epic #190's orchestrator
+        pattern_results = await self.orchestrator.detect_all_patterns(
+            filtered_words, merchant_patterns
+        )
 
-            # Wait for all to complete
-            date_patterns = await date_future
-            contact_patterns = await contact_future
-            quantity_patterns = await quantity_future
-            currency_patterns = await currency_future
-            merchant_patterns = await merchant_future
-
-        # Aggregate results
-        results = {
-            "date": date_patterns,
-            "contact": contact_patterns,
-            "quantity": quantity_patterns,
-            "currency": currency_patterns,
-            "merchant": merchant_patterns,
-        }
+        # Convert PatternMatch objects to our format
+        converted_results = self._convert_pattern_matches(pattern_results)
 
         # Log summary
-        total_patterns = sum(len(patterns) for patterns in results.values())
+        total_patterns = sum(
+            len(patterns)
+            for name, patterns in converted_results.items()
+            if name != "_metadata"
+        )
         logger.info(f"Detected {total_patterns} patterns across all detectors")
 
-        return results
+        return converted_results
 
-    def _prepare_word_dicts(self, receipt_words: List) -> List[Dict]:
-        """Convert receipt word objects to dictionaries for pattern detectors."""
-        word_dicts = []
-        for word in receipt_words:
-            # Handle both dictionary and object formats
-            if isinstance(word, dict):
-                word_dicts.append(word)
-            else:
-                # Assume it's a ReceiptWord object
-                word_dicts.append(
-                    {
-                        "word_id": getattr(word, "word_id", None),
-                        "text": getattr(word, "text", ""),
-                        "line_id": getattr(word, "line_id", None),
-                        "x": getattr(word, "x", 0),
-                        "y": getattr(word, "y", 0),
-                    }
-                )
-        return word_dicts
+    def _convert_pattern_matches(
+        self, pattern_results: Dict[str, List[PatternMatch]]
+    ) -> Dict[str, List[Dict]]:
+        """Convert Epic #190's PatternMatch objects to our dictionary format."""
+        converted = {}
 
-    def _detect_currency_patterns(
-        self, receipt_words: List, receipt_lines: List
-    ) -> List[Dict]:
-        """
-        Detect and classify currency patterns.
+        for detector_name, matches in pattern_results.items():
+            if detector_name == "_metadata":
+                converted[detector_name] = matches
+                continue
 
-        Returns list of patterns with classification (line_item, tax, total, etc.)
-        """
-        # Extract currency contexts from words
-        currency_contexts = self._extract_currency_contexts(
-            receipt_words, receipt_lines
-        )
-
-        if not currency_contexts:
-            return []
-
-        # Use enhanced analyzer to classify
-        result, _, _ = self.currency_analyzer.analyze_spatial_currency(
-            receipt=None,  # Not needed for pattern analysis
-            receipt_lines=receipt_lines,
-            receipt_words=receipt_words,
-            currency_contexts=currency_contexts,
-        )
-
-        # Convert to pattern format
-        patterns = []
-
-        # Process classified currency amounts
-        for item in result.get("currency_amounts", []):
-            classification = item.get("classification", "unknown")
-
-            # Map classification to CORE_LABELS
-            label_map = {
-                "line_item": CORE_LABELS.get("LINE_TOTAL"),
-                "subtotal": CORE_LABELS.get("SUBTOTAL"),
-                "tax": CORE_LABELS.get("TAX"),
-                "total": CORE_LABELS.get("GRAND_TOTAL"),
-                "discount": CORE_LABELS.get("DISCOUNT"),
-            }
-
-            label = label_map.get(classification)
-            if label:
-                patterns.append(
-                    {
-                        "word_id": item.get("word_id"),
-                        "text": str(item.get("amount", "")),
-                        "label": label,
-                        "confidence": item.get("confidence", 0.75),
-                        "pattern_type": f"currency_{classification}",
-                        "classification": classification,
-                        "amount": item.get("amount"),
-                    }
-                )
-
-        return patterns
-
-    def _extract_currency_contexts(
-        self, receipt_words: List, receipt_lines: List
-    ) -> List[Dict]:
-        """Extract currency amounts with their contexts."""
-        contexts = []
-        currency_pattern = r"\$?[\d,]+\.?\d*"
-
-        for word in receipt_words:
-            text = (
-                getattr(word, "text", "")
-                if hasattr(word, "text")
-                else word.get("text", "")
-            )
-
-            # Check if word contains currency
-            import re
-
-            if re.match(currency_pattern, text):
-                try:
-                    # Extract amount
-                    amount_str = re.sub(r"[^\d.]", "", text)
-                    amount = float(amount_str)
-
-                    # Get context from same line
-                    line_id = (
-                        getattr(word, "line_id", None)
-                        if hasattr(word, "line_id")
-                        else word.get("line_id")
+            converted_patterns = []
+            for match in matches:
+                # Get the appropriate label for this pattern type
+                label = self.pattern_to_label_map.get(match.pattern_type)
+                if not label:
+                    logger.warning(
+                        f"No label mapping for pattern type: {match.pattern_type}"
                     )
-                    full_line = self._get_line_text(line_id, receipt_lines)
-
-                    contexts.append(
-                        {
-                            "word_id": (
-                                getattr(word, "word_id", None)
-                                if hasattr(word, "word_id")
-                                else word.get("word_id")
-                            ),
-                            "amount": amount,
-                            "text": text,
-                            "line_id": line_id,
-                            "full_line": full_line,
-                            "left_text": self._get_left_text(
-                                word, receipt_words
-                            ),
-                            "x_position": (
-                                getattr(word, "x", 0)
-                                if hasattr(word, "x")
-                                else word.get("x", 0)
-                            ),
-                            "y_position": (
-                                getattr(word, "y", 0)
-                                if hasattr(word, "y")
-                                else word.get("y", 0)
-                            ),
-                        }
-                    )
-                except (ValueError, AttributeError):
                     continue
 
-        return contexts
+                pattern_dict = {
+                    "word_id": match.word.word_id,
+                    "text": match.matched_text,
+                    "label": label,
+                    "confidence": match.confidence,
+                    "pattern_type": match.pattern_type.name.lower(),
+                    "extracted_value": match.extracted_value,
+                    "metadata": match.metadata,
+                }
 
-    def _get_line_text(self, line_id: int, receipt_lines: List) -> str:
-        """Get full text of a line."""
-        for line in receipt_lines:
-            if hasattr(line, "line_id") and line.line_id == line_id:
-                return getattr(line, "text", "")
-            elif isinstance(line, dict) and line.get("line_id") == line_id:
-                return line.get("text", "")
-        return ""
+                # Add pattern-specific fields
+                if match.pattern_type in [
+                    PatternType.GRAND_TOTAL,
+                    PatternType.SUBTOTAL,
+                    PatternType.TAX,
+                    PatternType.DISCOUNT,
+                    PatternType.LINE_TOTAL,
+                    PatternType.UNIT_PRICE,
+                ]:
+                    pattern_dict["amount"] = match.extracted_value
+                    pattern_dict["classification"] = (
+                        match.pattern_type.name.lower()
+                    )
 
-    def _get_left_text(self, target_word, receipt_words: List) -> str:
-        """Get text to the left of target word on same line."""
-        target_line_id = (
-            getattr(target_word, "line_id", None)
-            if hasattr(target_word, "line_id")
-            else target_word.get("line_id")
-        )
-        target_x = (
-            getattr(target_word, "x", 0)
-            if hasattr(target_word, "x")
-            else target_word.get("x", 0)
-        )
+                converted_patterns.append(pattern_dict)
 
-        left_words = []
-        for word in receipt_words:
-            word_line_id = (
-                getattr(word, "line_id", None)
-                if hasattr(word, "line_id")
-                else word.get("line_id")
-            )
-            word_x = (
-                getattr(word, "x", 0)
-                if hasattr(word, "x")
-                else word.get("x", 0)
-            )
+            converted[detector_name] = converted_patterns
 
-            if word_line_id == target_line_id and word_x < target_x:
-                word_text = (
-                    getattr(word, "text", "")
-                    if hasattr(word, "text")
-                    else word.get("text", "")
-                )
-                left_words.append((word_x, word_text))
-
-        # Sort by x position and join
-        left_words.sort(key=lambda x: x[0])
-        return " ".join(text for _, text in left_words)
-
-    def _query_merchant_patterns(
-        self, merchant_name: Optional[str], receipt_words: List
-    ) -> List[Dict]:
-        """
-        Query Pinecone for merchant-specific patterns.
-
-        This is a placeholder for the full implementation that will
-        query validated labels from similar merchant receipts.
-        """
-        if not merchant_name:
-            return []
-
-        # TODO: Implement Pinecone query for merchant patterns
-        # For now, return empty list
-        logger.info(
-            f"Merchant pattern query for '{merchant_name}' - not yet implemented"
-        )
-        return []
+        return converted
 
     def apply_patterns(
-        self, receipt_words: List, pattern_results: Dict[str, List[Dict]]
+        self,
+        receipt_words: List[ReceiptWord],
+        pattern_results: Dict[str, List[Dict]],
     ) -> Dict[int, Dict]:
         """
         Apply detected patterns to receipt words.
@@ -343,6 +171,9 @@ class PatternDetector:
 
         # Process each pattern type
         for pattern_type, patterns in pattern_results.items():
+            if pattern_type == "_metadata":
+                continue
+
             for pattern in patterns:
                 word_id = pattern.get("word_id")
                 if word_id is not None:
@@ -360,3 +191,59 @@ class PatternDetector:
                         }
 
         return word_labels
+
+    async def get_essential_fields_status(
+        self, pattern_results: Dict[str, List[Dict]]
+    ) -> Dict[str, bool]:
+        """
+        Check if essential fields were found in patterns.
+
+        Essential fields for smart GPT decision:
+        - MERCHANT_NAME (from metadata/merchant patterns)
+        - DATE
+        - GRAND_TOTAL
+        - At least one PRODUCT (from merchant patterns or quantity)
+
+        Args:
+            pattern_results: Results from detect_all_patterns
+
+        Returns:
+            Dictionary indicating which essential fields were found
+        """
+        # Check for each essential field
+        has_date = any(
+            p.get("label") == CORE_LABELS["DATE"]
+            for patterns in pattern_results.values()
+            if isinstance(patterns, list)
+            for p in patterns
+        )
+
+        has_total = any(
+            p.get("label") == CORE_LABELS["GRAND_TOTAL"]
+            for patterns in pattern_results.values()
+            if isinstance(patterns, list)
+            for p in patterns
+        )
+
+        has_merchant = bool(
+            pattern_results.get("merchant")
+            and len(pattern_results["merchant"]) > 0
+        )
+
+        # Product can be inferred from quantity patterns or merchant patterns
+        has_product = False
+        if pattern_results.get("quantity"):
+            has_product = True
+        elif pattern_results.get("merchant"):
+            # Check if any merchant patterns are for products
+            has_product = any(
+                p.get("metadata", {}).get("label") == "PRODUCT_NAME"
+                for p in pattern_results["merchant"]
+            )
+
+        return {
+            "has_date": has_date,
+            "has_total": has_total,
+            "has_merchant": has_merchant,
+            "has_product": has_product,
+        }

@@ -4,6 +4,8 @@ import asyncio
 import time
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.pattern_detection.contact import ContactPatternDetector
 from receipt_label.pattern_detection.currency import CurrencyPatternDetector
@@ -12,7 +14,6 @@ from receipt_label.pattern_detection.datetime_patterns import (
 )
 from receipt_label.pattern_detection.quantity import QuantityPatternDetector
 
-from receipt_dynamo.entities import ReceiptWord
 
 class ParallelPatternOrchestrator:
     """Orchestrates parallel execution of pattern detectors for optimal performance."""
