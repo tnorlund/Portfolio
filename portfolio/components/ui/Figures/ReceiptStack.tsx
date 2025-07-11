@@ -308,10 +308,16 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   // Load remaining receipts after initial set
   useEffect(() => {
     const loadRemainingReceipts = async () => {
-      if (!formatSupport || !loadingRemaining || receipts.length >= maxReceipts || !lastEvaluatedKey) return;
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey) return;
 
       try {
-        const remainingNeeded = maxReceipts - receipts.length;
+        const currentReceiptsCount = receipts.length;
+        if (currentReceiptsCount >= maxReceipts) {
+          setLoadingRemaining(false);
+          return;
+        }
+
+        const remainingNeeded = maxReceipts - currentReceiptsCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
         // Use the stored lastEvaluatedKey from initial fetch
@@ -339,8 +345,10 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         }
 
         // Combine with existing receipts and trim to maxReceipts
-        const combinedReceipts = [...receipts, ...allNewReceipts].slice(0, maxReceipts);
-        setReceipts(combinedReceipts);
+        setReceipts(prevReceipts => {
+          const combinedReceipts = [...prevReceipts, ...allNewReceipts].slice(0, maxReceipts);
+          return combinedReceipts;
+        });
         setLoadingRemaining(false);
       } catch (error) {
         console.error("Error loading remaining receipts:", error);
@@ -348,12 +356,13 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
       }
     };
 
-    if (loadingRemaining) {
+    if (loadingRemaining && lastEvaluatedKey) {
       // Delay loading remaining receipts until after initial render
       const timer = setTimeout(loadRemainingReceipts, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, receipts, maxReceipts, pageSize, lastEvaluatedKey]);
+  }, [formatSupport, loadingRemaining, maxReceipts, pageSize, lastEvaluatedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: receipts.length is intentionally NOT included to prevent infinite loop
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {

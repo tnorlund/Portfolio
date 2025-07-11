@@ -301,10 +301,16 @@ const ImageStack: React.FC<ImageStackProps> = ({
   // Load remaining images after initial set
   useEffect(() => {
     const loadRemainingImages = async () => {
-      if (!formatSupport || !loadingRemaining || images.length >= maxImages || !lastEvaluatedKey) return;
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey) return;
 
       try {
-        const remainingNeeded = maxImages - images.length;
+        const currentImagesCount = images.length;
+        if (currentImagesCount >= maxImages) {
+          setLoadingRemaining(false);
+          return;
+        }
+
+        const remainingNeeded = maxImages - currentImagesCount;
         const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
         
         // Use the stored lastEvaluatedKey from initial fetch
@@ -332,8 +338,10 @@ const ImageStack: React.FC<ImageStackProps> = ({
         }
 
         // Combine with existing images and trim to maxImages
-        const combinedImages = [...images, ...allNewImages].slice(0, maxImages);
-        setImages(combinedImages);
+        setImages(prevImages => {
+          const combinedImages = [...prevImages, ...allNewImages].slice(0, maxImages);
+          return combinedImages;
+        });
         setLoadingRemaining(false);
       } catch (error) {
         console.error("Error loading remaining images:", error);
@@ -341,12 +349,13 @@ const ImageStack: React.FC<ImageStackProps> = ({
       }
     };
 
-    if (loadingRemaining) {
+    if (loadingRemaining && lastEvaluatedKey) {
       // Delay loading remaining images until after initial render
       const timer = setTimeout(loadRemainingImages, 100);
       return () => clearTimeout(timer);
     }
-  }, [formatSupport, loadingRemaining, images, maxImages, pageSize, lastEvaluatedKey]);
+  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: images.length is intentionally NOT included to prevent infinite loop
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
