@@ -4,8 +4,6 @@ import asyncio
 import time
 from typing import Dict, List, Optional
 
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.pattern_detection.contact import ContactPatternDetector
 from receipt_label.pattern_detection.currency import CurrencyPatternDetector
@@ -13,6 +11,8 @@ from receipt_label.pattern_detection.datetime_patterns import (
     DateTimePatternDetector,
 )
 from receipt_label.pattern_detection.quantity import QuantityPatternDetector
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class ParallelPatternOrchestrator:
@@ -64,7 +64,7 @@ class ParallelPatternOrchestrator:
 
         # Track detector names in order to ensure correct mapping
         detector_names = list(tasks.keys())
-        
+
         # Wait for all tasks with timeout
         try:
             results = await asyncio.wait_for(
@@ -80,7 +80,9 @@ class ParallelPatternOrchestrator:
                         results.append(task.result())
                     except Exception as e:
                         # Log the exception for debugging
-                        print(f"Error collecting result from detector task: {type(e).__name__}: {e}")
+                        print(
+                            f"Error collecting result from detector task: {type(e).__name__}: {e}"
+                        )
                         results.append([])
                 else:
                     task.cancel()
@@ -112,11 +114,15 @@ class ParallelPatternOrchestrator:
             return await detector.detect(words)
         except (asyncio.TimeoutError, asyncio.CancelledError) as e:
             # Expected timeout/cancellation errors
-            print(f"Timeout/cancellation in {detector.__class__.__name__}: {e}")
+            print(
+                f"Timeout/cancellation in {detector.__class__.__name__}: {e}"
+            )
             return []
         except Exception as e:
             # Catch any other unexpected exceptions to prevent orchestrator crash
-            print(f"Unexpected error in {detector.__class__.__name__}: {type(e).__name__}: {e}")
+            print(
+                f"Unexpected error in {detector.__class__.__name__}: {type(e).__name__}: {e}"
+            )
             return []
 
     async def _apply_merchant_patterns(
