@@ -86,13 +86,15 @@ const ImageItem = React.memo<ImageItemProps>(
             position: "absolute",
             width: "150px",
             left: `${leftPercent}%`,
-            top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+            top: `${topOffset}px`,
             border: "1px solid #ccc",
             backgroundColor: "var(--background-color)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            transform: `rotate(${rotation}deg)`,
+            transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
             opacity: shouldAnimate && imageLoaded ? 1 : 0,
-            transition: `all 0.6s ease-out ${
+            transition: `transform 0.6s ease-out ${
+              shouldAnimate ? index * fadeDelay : 0
+            }ms, opacity 0.6s ease-out ${
               shouldAnimate ? index * fadeDelay : 0
             }ms`,
             display: "flex",
@@ -113,16 +115,18 @@ const ImageItem = React.memo<ImageItemProps>(
           position: "absolute",
           width: "150px",
           left: `${leftPercent}%`,
-          top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+          top: `${topOffset}px`,
           border: "1px solid #ccc",
           backgroundColor: "var(--background-color)",
           boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          transform: `rotate(${rotation}deg)`,
+          transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
           opacity: shouldAnimate && imageLoaded ? 1 : 0,
-          transition: `all 0.6s ease-out ${
+          transition: `transform 0.6s ease-out ${
+            shouldAnimate ? index * fadeDelay : 0
+          }ms, opacity 0.6s ease-out ${
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
-          willChange: "top, opacity, transform",
+          willChange: "transform, opacity",
           overflow: "hidden",
         }}
       >
@@ -141,7 +145,6 @@ const ImageItem = React.memo<ImageItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
-            unoptimized={image.width > 3000 || image.height > 3000}
           />
         )}
       </div>
@@ -155,12 +158,14 @@ interface ImageStackProps {
   maxImages?: number;
   pageSize?: number;
   fadeDelay?: number; // Delay between each image fade in (ms)
+  initialCount?: number; // Number of images to load immediately
 }
 
 const ImageStack: React.FC<ImageStackProps> = ({
   maxImages = 20,
   pageSize = 20,
   fadeDelay = 50,
+  initialCount = 6,
 }) => {
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
@@ -189,6 +194,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
+  const [loadingRemaining, setLoadingRemaining] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -257,35 +264,29 @@ const ImageStack: React.FC<ImageStackProps> = ({
   }, []);
 
   useEffect(() => {
-    const loadImages = async () => {
+    const loadInitialImages = async () => {
       if (!formatSupport) return;
 
       try {
-        let allImages: Image[] = [];
-        let lastEvaluatedKey: any = undefined;
+        // Load just the initial subset first for faster rendering
+        const response: ImagesApiResponse = await api.fetchImages(
+          Math.min(initialCount, maxImages)
+        );
 
-        // Fetch images in pages until we have enough
-        while (allImages.length < maxImages) {
-          const response: ImagesApiResponse = await api.fetchImages(
-            pageSize,
-            lastEvaluatedKey
-          );
-
-          if (!response || !response.images) {
-            throw new Error("Invalid response");
-          }
-
-          allImages = [...allImages, ...response.images];
-
-          if (!response.lastEvaluatedKey || allImages.length >= maxImages) {
-            break;
-          }
-          lastEvaluatedKey = response.lastEvaluatedKey;
+        if (!response || !response.images) {
+          throw new Error("Invalid response");
         }
 
-        setImages(allImages.slice(0, maxImages));
+        setImages(response.images.slice(0, initialCount));
+        // Store the lastEvaluatedKey for pagination
+        setLastEvaluatedKey(response.lastEvaluatedKey);
+
+        // If we need more images and more data is available, load them after initial render
+        if (initialCount < maxImages && response.lastEvaluatedKey) {
+          setLoadingRemaining(true);
+        }
       } catch (error) {
-        console.error("Error loading images:", error);
+        console.error("Error loading initial images:", error);
         setError(
           error instanceof Error ? error.message : "Failed to load images"
         );
@@ -293,9 +294,68 @@ const ImageStack: React.FC<ImageStackProps> = ({
     };
 
     if (formatSupport) {
-      loadImages();
+      loadInitialImages();
     }
-  }, [formatSupport, maxImages, pageSize]);
+  }, [formatSupport, initialCount, maxImages]);
+
+  // Load remaining images after initial set
+  useEffect(() => {
+    const loadRemainingImages = async () => {
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey) return;
+
+      try {
+        const currentImagesCount = images.length;
+        if (currentImagesCount >= maxImages) {
+          setLoadingRemaining(false);
+          return;
+        }
+
+        const remainingNeeded = maxImages - currentImagesCount;
+        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
+        
+        // Use the stored lastEvaluatedKey from initial fetch
+        const firstPageResponse = await api.fetchImages(pageSize, lastEvaluatedKey);
+        if (!firstPageResponse || !firstPageResponse.images) {
+          throw new Error("Invalid response");
+        }
+
+        let allNewImages: Image[] = firstPageResponse.images;
+        let currentKey = firstPageResponse.lastEvaluatedKey;
+
+        // If we need more pages, fetch them in parallel batches
+        if (pagesNeeded > 1 && currentKey) {
+          // For simplicity, fetch remaining pages sequentially
+          // (parallel would require knowing all cursor keys in advance)
+          for (let i = 1; i < pagesNeeded && currentKey; i++) {
+            const response = await api.fetchImages(pageSize, currentKey);
+            if (response && response.images) {
+              allNewImages = [...allNewImages, ...response.images];
+              currentKey = response.lastEvaluatedKey;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Combine with existing images and trim to maxImages
+        setImages(prevImages => {
+          const combinedImages = [...prevImages, ...allNewImages].slice(0, maxImages);
+          return combinedImages;
+        });
+        setLoadingRemaining(false);
+      } catch (error) {
+        console.error("Error loading remaining images:", error);
+        setLoadingRemaining(false);
+      }
+    };
+
+    if (loadingRemaining && lastEvaluatedKey) {
+      // Delay loading remaining images until after initial render
+      const timer = setTimeout(loadRemainingImages, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: images.length is intentionally NOT included to prevent infinite loop
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
