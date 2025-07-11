@@ -78,7 +78,9 @@ class ParallelPatternOrchestrator:
                 if task.done() and not task.cancelled():
                     try:
                         results.append(task.result())
-                    except (asyncio.CancelledError, RuntimeError):
+                    except Exception as e:
+                        # Log the exception for debugging
+                        print(f"Error collecting result from detector task: {type(e).__name__}: {e}")
                         results.append([])
                 else:
                     task.cancel()
@@ -110,8 +112,11 @@ class ParallelPatternOrchestrator:
             return await detector.detect(words)
         except (asyncio.TimeoutError, asyncio.CancelledError) as e:
             # Expected timeout/cancellation errors
-            # Log error but don't fail entire detection
-            print(f"Error in {detector.__class__.__name__}: {e}")
+            print(f"Timeout/cancellation in {detector.__class__.__name__}: {e}")
+            return []
+        except Exception as e:
+            # Catch any other unexpected exceptions to prevent orchestrator crash
+            print(f"Unexpected error in {detector.__class__.__name__}: {type(e).__name__}: {e}")
             return []
 
     async def _apply_merchant_patterns(
