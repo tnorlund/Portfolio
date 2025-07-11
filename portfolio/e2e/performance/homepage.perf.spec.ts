@@ -116,7 +116,7 @@ test.describe('Homepage Performance', () => {
     // Track image load times
     page.on('response', async (response) => {
       if (response.request().resourceType() === 'image') {
-        const timing = await response.timing();
+        const timing = await response.request().timing();
         if (timing) {
           imageLoadTimes.push(timing.responseEnd);
         }

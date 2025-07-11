@@ -1,0 +1,18 @@
+<testsuites id="" name="" tests="1" failures="0" skipped="0" errors="0" time="5.757908">
+<testsuite name="performance/homepage.perf.spec.ts" timestamp="2025-07-11T06:59:31.683Z" hostname="performance" tests="1" failures="0" skipped="0" time="3.686" errors="0">
+<testcase name="Homepage Performance › should meet Core Web Vitals thresholds" classname="performance/homepage.perf.spec.ts" time="3.686">
+<system-out>
+<![CDATA[Performance Metrics: {
+  domContentLoaded: [33m377[39m,
+  loadComplete: [33m377[39m,
+  fcp: [33m412[39m,
+  lcp: [1mnull[22m,
+  cls: [33m0[39m,
+  ttfb: [33m208[39m,
+  memory: { usedJSHeapSize: [33m42[39m, totalJSHeapSize: [33m46[39m, jsHeapSizeLimit: [33m4096[39m }
+}
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

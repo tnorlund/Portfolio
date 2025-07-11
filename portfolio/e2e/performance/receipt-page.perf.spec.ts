@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Helper to measure component render performance
 async function measureComponentPerformance(page: any, componentSelector: string) {
-  return await page.evaluate((selector) => {
+  return await page.evaluate((selector: string) => {
     return new Promise((resolve) => {
       const observer = new PerformanceObserver((list) => {
         const entries = list.getEntries();
@@ -28,12 +28,12 @@ async function measureComponentPerformance(page: any, componentSelector: string)
 test.describe('Receipt Page Performance', () => {
   test.beforeEach(async ({ page }) => {
     // Enable performance observer
-    await page.evaluateOnNewDocument(() => {
-      window.__performanceMarks = [];
-      const originalMark = performance.mark;
-      performance.mark = function(...args) {
-        window.__performanceMarks.push({ type: 'mark', args, time: performance.now() });
-        return originalMark.apply(performance, args);
+    await page.addInitScript(() => {
+      (window as any).__performanceMarks = [];
+      const originalMark = performance.mark.bind(performance);
+      performance.mark = function(markName: string, markOptions?: PerformanceMarkOptions) {
+        (window as any).__performanceMarks.push({ type: 'mark', args: [markName, markOptions], time: performance.now() });
+        return originalMark(markName, markOptions);
       };
     });
   });
@@ -44,7 +44,7 @@ test.describe('Receipt Page Performance', () => {
     // Track image loads
     page.on('response', async (response) => {
       if (response.request().resourceType() === 'image' && response.status() === 200) {
-        const timing = await response.timing();
+        const timing = await response.request().timing();
         if (timing) {
           imageLoadTimes.push({
             src: response.url(),
@@ -167,7 +167,7 @@ test.describe('Receipt Page Performance', () => {
     // Intercept API calls
     page.on('response', async (response) => {
       if (response.url().includes('api.tylernorlund.com')) {
-        const timing = await response.timing();
+        const timing = await response.request().timing();
         if (timing) {
           apiCalls.push({
             url: response.url(),
