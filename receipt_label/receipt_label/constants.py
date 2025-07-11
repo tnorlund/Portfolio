@@ -4,8 +4,9 @@ CORE_LABELS: dict[str, str] = {
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
     "PHONE_NUMBER": "Telephone number printed on the receipt "
     "(store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt "
-    "(e.g., sprouts.com).",
+    "WEBSITE": "Web address printed on the receipt " "(e.g., sprouts.com).",
+    "EMAIL": "Email address printed on the receipt "
+    "(e.g., support@store.com).",
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
     # ── Location / address ──────────────────────────────────────
     "ADDRESS_LINE": "Full address line (street + city etc.) printed on "
