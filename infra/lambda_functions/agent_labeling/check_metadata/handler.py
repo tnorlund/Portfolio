@@ -5,13 +5,11 @@ This handler verifies if a receipt has necessary metadata (merchant, location)
 before proceeding with labeling.
 """
 
-import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -22,7 +20,7 @@ table_name = os.environ["DYNAMO_TABLE_NAME"]
 table = dynamodb.Table(table_name)
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Check if receipt has necessary metadata for labeling.
 
@@ -39,14 +37,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         receipt_id = event["receipt_id"]
-        logger.info(f"Checking metadata for receipt: {receipt_id}")
+        logger.info("Checking metadata for receipt: %s", receipt_id)
 
         # Query for receipt metadata
         response = table.get_item(
             Key={"PK": f"RECEIPT#{receipt_id}", "SK": f"METADATA#{receipt_id}"}
         )
 
-        result = {
+        result: Dict[str, Any] = {
             "found": False,
             "merchant_name": None,
             "location": None,
@@ -61,25 +59,31 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if "merchant_name" in item:
                 result["merchant_name"] = item["merchant_name"]
             else:
-                result["missing_fields"].append("merchant_name")
+                missing_fields = result.get("missing_fields", [])
+                if isinstance(missing_fields, list):
+                    missing_fields.append("merchant_name")
                 result["found"] = False
 
             if "location" in item:
                 result["location"] = item["location"]
             else:
-                result["missing_fields"].append("location")
+                missing_fields = result.get("missing_fields", [])
+                if isinstance(missing_fields, list):
+                    missing_fields.append("location")
                 # Location is optional, so don't set found to False
 
             # Check if merchant has been validated
             if "merchant_validated" in item and not item["merchant_validated"]:
                 result["found"] = False
-                result["missing_fields"].append("merchant_validation")
+                missing_fields = result.get("missing_fields", [])
+                if isinstance(missing_fields, list):
+                    missing_fields.append("merchant_validation")
         else:
             result["missing_fields"] = ["metadata_not_found"]
 
-        logger.info(f"Metadata check result: {result}")
+        logger.info("Metadata check result: %s", result)
         return result
 
     except Exception as e:
-        logger.error(f"Error checking metadata: {str(e)}")
+        logger.error("Error checking metadata: %s", str(e))
         raise

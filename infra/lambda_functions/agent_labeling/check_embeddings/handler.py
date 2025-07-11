@@ -5,10 +5,9 @@ This handler verifies that receipt word embeddings exist in Pinecone
 before proceeding with merchant-specific pattern matching.
 """
 
-import json
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pinecone import Pinecone
 
@@ -21,7 +20,7 @@ index_name = os.environ["PINECONE_INDEX_NAME"]
 index = pc.Index(index_name)
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Check if receipt has embeddings in Pinecone.
 
@@ -39,7 +38,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         receipt_id = event["receipt_id"]
         merchant_name = event.get("metadata", {}).get("merchant_name")
 
-        logger.info(f"Checking embeddings for receipt: {receipt_id}")
+        logger.info("Checking embeddings for receipt: %s", receipt_id)
 
         # Check if receipt embeddings exist
         # Namespace format: receipt_{receipt_id}
@@ -53,7 +52,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             has_embeddings = embedding_count > 0
         except Exception as e:
-            logger.warning(f"Error checking namespace stats: {e}")
+            logger.warning("Error checking namespace stats: %s", e)
             has_embeddings = False
             embedding_count = 0
 
@@ -70,7 +69,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # This would typically use the merchant's embedding space
                 # For now, we'll return a placeholder
                 logger.info(
-                    f"Searching for patterns for merchant: {merchant_name}"
+                    "Searching for patterns for merchant: %s", merchant_name
                 )
 
                 # In production, this would query a merchant-specific namespace
@@ -88,11 +87,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     },
                 ]
             except Exception as e:
-                logger.warning(f"Error searching merchant patterns: {e}")
+                logger.warning("Error searching merchant patterns: %s", e)
 
-        logger.info(f"Embedding check result: {result}")
+        logger.info("Embedding check result: %s", result)
         return result
 
     except Exception as e:
-        logger.error(f"Error checking embeddings: {str(e)}")
+        logger.error("Error checking embeddings: %s", str(e))
         raise

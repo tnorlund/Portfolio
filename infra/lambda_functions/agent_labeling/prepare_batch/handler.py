@@ -85,7 +85,7 @@ Words to label:
     return prompt
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Prepare batch data for GPT processing.
 
@@ -105,7 +105,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         labeling_results = event.get("labeling", {})
         metadata = event.get("metadata", {})
 
-        logger.info(f"Preparing batch for receipt: {receipt_id}")
+        logger.info("Preparing batch for receipt: %s", receipt_id)
 
         # Generate batch ID
         batch_id = f"batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -189,10 +189,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
         logger.info(
-            f"Batch prepared: {batch_id} with {estimated_tokens} estimated tokens"
+            "Batch prepared: %s with %d estimated tokens",
+            batch_id,
+            estimated_tokens,
         )
         return result
 
     except Exception as e:
-        logger.error(f"Error preparing batch: {str(e)}")
+        logger.error("Error preparing batch: %s", str(e))
         raise

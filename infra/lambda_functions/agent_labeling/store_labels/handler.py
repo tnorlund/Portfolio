@@ -70,7 +70,7 @@ def batch_write_labels(items: List[Dict[str, Any]]) -> Dict[str, Any]:
                     batch_writer.put_item(Item=item)
                 success_count += len(batch)
         except ClientError as e:
-            logger.error(f"Error writing batch: {e}")
+            logger.error("Error writing batch: %s", e)
             error_count += len(batch)
 
     return {
@@ -80,7 +80,7 @@ def batch_write_labels(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Store labels in DynamoDB.
 
@@ -100,7 +100,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         gpt_labels = event.get("gpt_labels", {})
         batch_info = event.get("batch", {})
 
-        logger.info(f"Storing labels for receipt: {receipt_id}")
+        logger.info("Storing labels for receipt: %s", receipt_id)
 
         items_to_write = []
         label_summary = {}
@@ -188,9 +188,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "gpt_labels": len(gpt_labels),
         }
 
-        logger.info(f"Label storage complete: {json.dumps(result)}")
+        logger.info("Label storage complete: %s", json.dumps(result))
         return result
 
     except Exception as e:
-        logger.error(f"Error storing labels: {str(e)}")
+        logger.error("Error storing labels: %s", str(e))
         raise

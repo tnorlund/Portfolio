@@ -5,6 +5,7 @@ This is the core handler that orchestrates pattern detection,
 makes smart GPT decisions, and applies labels to receipt words.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -17,9 +18,9 @@ from boto3.dynamodb.conditions import Key
 # Import agent components from receipt_label package
 from receipt_label.agent import (
     BatchProcessor,
+    DecisionEngine,
     LabelApplicator,
     PatternDetector,
-    SmartDecisionEngine,
 )
 from receipt_label.client_manager import ClientManager
 from receipt_label.constants import CORE_LABELS
@@ -61,7 +62,7 @@ def get_receipt_lines(receipt_id: str) -> List[Dict[str, Any]]:
     return response.get("Items", [])
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Run agent-based labeling on a receipt.
 
@@ -84,26 +85,29 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         metadata = event.get("metadata", {})
         embeddings_info = event.get("embeddings", {})
 
-        logger.info(f"Running agent labeling for receipt: {receipt_id}")
+        logger.info("Running agent labeling for receipt: %s", receipt_id)
 
         # Initialize agent components
         pattern_detector = PatternDetector(client_manager)
-        decision_engine = SmartDecisionEngine()
-        label_applicator = LabelApplicator()
+        decision_engine = DecisionEngine()
+        label_applicator = LabelApplicator(client_manager.dynamo_client)
 
         # Get receipt data
         words = get_receipt_words(receipt_id)
         lines = get_receipt_lines(receipt_id)
 
         if not words:
-            logger.warning(f"No words found for receipt: {receipt_id}")
+            logger.warning("No words found for receipt: %s", receipt_id)
             return {
                 "pattern_labels": {},
                 "gpt_required": False,
                 "essential_labels_found": [],
-                "missing_essential_labels": list(
-                    decision_engine.essential_labels
-                ),
+                "missing_essential_labels": [
+                    "MERCHANT_NAME",
+                    "DATE",
+                    "GRAND_TOTAL",
+                    "PRODUCT_NAME",
+                ],
                 "unlabeled_count": 0,
                 "processing_time_ms": 0,
             }
@@ -138,54 +142,65 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Run pattern detection
         logger.info("Running pattern detection...")
-        pattern_matches = pattern_detector.detect_patterns(
-            receipt_id=receipt_id,
-            words=word_data,
-            lines=line_data,
-            metadata=metadata,
+        # Run async pattern detection in sync context
+        pattern_matches = asyncio.run(
+            pattern_detector.detect_all_patterns(
+                receipt_words=word_data,
+                receipt_lines=line_data,
+            )
         )
 
-        # Apply pattern-based labels
-        pattern_labels = label_applicator.apply_pattern_labels(
-            words=word_data, pattern_matches=pattern_matches
+        # Apply pattern-based labels using pattern detector
+        pattern_labels = pattern_detector.apply_patterns(
+            word_data, pattern_matches
         )
 
         # Count pattern labels by type
-        pattern_label_counts = {}
+        pattern_label_counts: Dict[str, int] = {}
         for word_id, label_info in pattern_labels.items():
             label = label_info["label"]
             pattern_label_counts[label] = (
                 pattern_label_counts.get(label, 0) + 1
             )
 
-        logger.info(f"Pattern detection found: {pattern_label_counts}")
+        logger.info("Pattern detection found: %s", pattern_label_counts)
 
         # Check which essential labels were found
+        essential_labels = [
+            "MERCHANT_NAME",
+            "DATE",
+            "GRAND_TOTAL",
+            "PRODUCT_NAME",
+        ]
         essential_labels_found = []
         missing_essential_labels = []
 
-        for label_key, label_info in decision_engine.essential_labels.items():
-            if label_info["label"] in pattern_label_counts:
-                essential_labels_found.append(label_key)
+        for label in essential_labels:
+            if label in pattern_label_counts:
+                essential_labels_found.append(label)
             else:
-                missing_essential_labels.append(label_key)
+                missing_essential_labels.append(label)
 
         # Make GPT decision
-        gpt_decision = decision_engine.should_use_gpt(
-            pattern_matches=pattern_matches, confidence_threshold=0.8
+        should_call_gpt, reason, unlabeled_words = (
+            decision_engine.should_call_gpt(
+                receipt_words=word_data,
+                labeled_words=pattern_labels,
+                receipt_metadata=metadata,
+            )
         )
 
         # Count unlabeled words
         labeled_word_ids = set(pattern_labels.keys())
         all_word_ids = {w["word_id"] for w in word_data}
-        unlabeled_count = len(all_word_ids - labeled_word_ids)
+        unlabeled_count = len(unlabeled_words)
 
         processing_time_ms = int((time.time() - start_time) * 1000)
 
         result = {
             "pattern_labels": pattern_labels,
-            "gpt_required": gpt_decision["use_gpt"],
-            "gpt_reason": gpt_decision.get("reason", ""),
+            "gpt_required": should_call_gpt,
+            "gpt_reason": reason,
             "essential_labels_found": essential_labels_found,
             "missing_essential_labels": missing_essential_labels,
             "unlabeled_count": unlabeled_count,
@@ -194,10 +209,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
         logger.info(
-            f"Agent labeling result: {json.dumps(result, default=str)}"
+            "Agent labeling result: %s", json.dumps(result, default=str)
         )
         return result
 
     except Exception as e:
-        logger.error(f"Error in agent labeling: {str(e)}")
+        logger.error("Error in agent labeling: %s", str(e))
         raise
