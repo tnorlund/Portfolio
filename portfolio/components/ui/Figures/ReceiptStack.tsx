@@ -86,13 +86,15 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             position: "absolute",
             width: "100px",
             left: `${leftPercent}%`,
-            top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+            top: `${topOffset}px`,
             border: "1px solid #ccc",
             backgroundColor: "var(--background-color)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            transform: `rotate(${rotation}deg)`,
+            transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
             opacity: shouldAnimate && imageLoaded ? 1 : 0,
-            transition: `all 0.6s ease-out ${
+            transition: `transform 0.6s ease-out ${
+              shouldAnimate ? index * fadeDelay : 0
+            }ms, opacity 0.6s ease-out ${
               shouldAnimate ? index * fadeDelay : 0
             }ms`,
             display: "flex",
@@ -113,16 +115,18 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
           position: "absolute",
           width: "100px",
           left: `${leftPercent}%`,
-          top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+          top: `${topOffset}px`,
           border: "1px solid #ccc",
           backgroundColor: "var(--background-color)",
           boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          transform: `rotate(${rotation}deg)`,
+          transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
           opacity: shouldAnimate && imageLoaded ? 1 : 0,
-          transition: `all 0.6s ease-out ${
+          transition: `transform 0.6s ease-out ${
+            shouldAnimate ? index * fadeDelay : 0
+          }ms, opacity 0.6s ease-out ${
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
-          willChange: "top, opacity, transform",
+          willChange: "transform, opacity",
           overflow: "hidden",
         }}
       >
@@ -141,7 +145,6 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
-            unoptimized={receipt.width > 3000 || receipt.height > 3000}
           />
         )}
       </div>
@@ -155,12 +158,14 @@ interface ReceiptStackProps {
   maxReceipts?: number;
   pageSize?: number;
   fadeDelay?: number;
+  initialCount?: number; // Number of receipts to load immediately
 }
 
 const ReceiptStack: React.FC<ReceiptStackProps> = ({
   maxReceipts = 40,
   pageSize = 20,
   fadeDelay = 25,
+  initialCount = 6,
 }) => {
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
@@ -189,6 +194,7 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
+  const [loadingRemaining, setLoadingRemaining] = useState(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -257,35 +263,27 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   }, []);
 
   useEffect(() => {
-    const loadReceipts = async () => {
+    const loadInitialReceipts = async () => {
       if (!formatSupport) return;
 
       try {
-        let allReceipts: Receipt[] = [];
-        let lastEvaluatedKey: any = undefined;
+        // Load just the initial subset first for faster rendering
+        const response: ReceiptApiResponse = await api.fetchReceipts(
+          Math.min(initialCount, maxReceipts)
+        );
 
-        // Fetch receipts in pages until we have enough
-        while (allReceipts.length < maxReceipts) {
-          const response: ReceiptApiResponse = await api.fetchReceipts(
-            pageSize,
-            lastEvaluatedKey
-          );
-
-          if (!response || !response.receipts) {
-            throw new Error("Invalid response");
-          }
-
-          allReceipts = [...allReceipts, ...response.receipts];
-
-          if (!response.lastEvaluatedKey || allReceipts.length >= maxReceipts) {
-            break;
-          }
-          lastEvaluatedKey = response.lastEvaluatedKey;
+        if (!response || !response.receipts) {
+          throw new Error("Invalid response");
         }
 
-        setReceipts(allReceipts.slice(0, maxReceipts));
+        setReceipts(response.receipts.slice(0, initialCount));
+
+        // If we need more receipts, load them after initial render
+        if (initialCount < maxReceipts && response.receipts.length === initialCount) {
+          setLoadingRemaining(true);
+        }
       } catch (error) {
-        console.error("Error loading receipts:", error);
+        console.error("Error loading initial receipts:", error);
         setError(
           error instanceof Error ? error.message : "Failed to load receipts"
         );
@@ -293,9 +291,69 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     };
 
     if (formatSupport) {
-      loadReceipts();
+      loadInitialReceipts();
     }
-  }, [formatSupport, maxReceipts, pageSize]);
+  }, [formatSupport, initialCount, maxReceipts]);
+
+  // Load remaining receipts after initial set
+  useEffect(() => {
+    const loadRemainingReceipts = async () => {
+      if (!formatSupport || !loadingRemaining || receipts.length >= maxReceipts) return;
+
+      try {
+        const remainingNeeded = maxReceipts - receipts.length;
+        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
+        
+        // First, get the cursor position after initial receipts
+        let firstPageKey: any = undefined;
+        if (receipts.length > 0) {
+          const response: ReceiptApiResponse = await api.fetchReceipts(
+            receipts.length,
+            undefined
+          );
+          firstPageKey = response.lastEvaluatedKey;
+        }
+
+        // Fetch the first page to get initial cursor
+        const firstPageResponse = await api.fetchReceipts(pageSize, firstPageKey);
+        if (!firstPageResponse || !firstPageResponse.receipts) {
+          throw new Error("Invalid response");
+        }
+
+        let allNewReceipts: Receipt[] = firstPageResponse.receipts;
+        let currentKey = firstPageResponse.lastEvaluatedKey;
+
+        // If we need more pages, fetch them in parallel batches
+        if (pagesNeeded > 1 && currentKey) {
+          // For simplicity, fetch remaining pages sequentially
+          // (parallel would require knowing all cursor keys in advance)
+          for (let i = 1; i < pagesNeeded && currentKey; i++) {
+            const response = await api.fetchReceipts(pageSize, currentKey);
+            if (response && response.receipts) {
+              allNewReceipts = [...allNewReceipts, ...response.receipts];
+              currentKey = response.lastEvaluatedKey;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Combine with existing receipts and trim to maxReceipts
+        const combinedReceipts = [...receipts, ...allNewReceipts].slice(0, maxReceipts);
+        setReceipts(combinedReceipts);
+        setLoadingRemaining(false);
+      } catch (error) {
+        console.error("Error loading remaining receipts:", error);
+        setLoadingRemaining(false);
+      }
+    };
+
+    if (loadingRemaining) {
+      // Delay loading remaining receipts until after initial render
+      const timer = setTimeout(loadRemainingReceipts, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [formatSupport, loadingRemaining, receipts, maxReceipts, pageSize]);
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
