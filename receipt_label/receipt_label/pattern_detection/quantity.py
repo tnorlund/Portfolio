@@ -1,9 +1,7 @@
 """Quantity pattern detection for receipt line items."""
 
 import re
-from typing import Dict, List, Optional, Tuple
-
-from receipt_dynamo.entities import ReceiptWord
+from typing import Dict, List, Optional
 
 from receipt_label.pattern_detection.base import (
     PatternDetector,
@@ -11,6 +9,7 @@ from receipt_label.pattern_detection.base import (
     PatternType,
 )
 
+from receipt_dynamo.entities import ReceiptWord
 
 class QuantityPatternDetector(PatternDetector):
     """Detects quantity patterns in receipt text."""
@@ -272,7 +271,7 @@ class QuantityPatternDetector(PatternDetector):
         self,
         word: ReceiptWord,
         all_words: List[ReceiptWord],
-        word_index: int,
+        word_index: int,  # pylint: disable=unused-argument
         value: int,
     ) -> bool:
         """Determine if a plain number is likely a quantity based on context."""
@@ -289,7 +288,7 @@ class QuantityPatternDetector(PatternDetector):
         has_price_nearby = False
         has_product_nearby = False
 
-        for nearby_word, distance in nearby_words[:5]:
+        for nearby_word, _ in nearby_words[:5]:
             text_lower = nearby_word.text.lower()
 
             # Check for currency symbols
@@ -307,11 +306,16 @@ class QuantityPatternDetector(PatternDetector):
         # Check position - quantities usually appear at start of line
         context = self._calculate_position_context(word, all_words)
         is_line_start = (
-            context.get("line_word_count", 1) > 2
-        )  # Line has multiple words
+            context.get("line_position", 1) == 0
+            and context.get("line_word_count", 1) > 1
+        )  # First word in a multi-word line
 
-        # High confidence if we have both price and product context
-        return (has_price_nearby or has_product_nearby) and value <= 20
+        # High confidence if we have context indicators and appropriate position
+        return (
+            (has_price_nearby or has_product_nearby)
+            and value <= 20
+            and (is_line_start or has_price_nearby)
+        )
 
     def _create_match(
         self,

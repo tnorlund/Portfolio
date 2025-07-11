@@ -145,10 +145,10 @@ async def test_pattern_detection():
     results = await orchestrator.detect_all_patterns(words)
 
     elapsed_time = (time.time() - start_time) * 1000
-    print(f"\\nPattern detection completed in {elapsed_time:.2f}ms")
+    print(f"\nPattern detection completed in {elapsed_time:.2f}ms")
 
     # Display results
-    print("\\nDetected patterns:")
+    print("\nDetected patterns:")
     print("-" * 50)
 
     for detector_name, matches in results.items():
@@ -156,7 +156,7 @@ async def test_pattern_detection():
             continue
 
         if matches:
-            print(f"\\n{detector_name.upper()} detector found {len(matches)} matches:")
+            print(f"\n{detector_name.upper()} detector found {len(matches)} matches:")
             for match in matches:
                 print(
                     f"  - '{match.matched_text}' → {match.pattern_type.name} (confidence: {match.confidence:.2f})"
@@ -164,14 +164,14 @@ async def test_pattern_detection():
 
     # Check performance
     metadata = results["_metadata"]
-    print(f"\\nPerformance metrics:")
+    print(f"\nPerformance metrics:")
     print(f"  - Execution time: {metadata['execution_time_ms']:.2f}ms")
     print(f"  - Word count: {metadata['word_count']}")
     print(f"  - Timeout occurred: {metadata['timeout_occurred']}")
 
     # Aggregate results
     aggregated = orchestrator.aggregate_patterns(results)
-    print(f"\\nAggregated pattern summary:")
+    print(f"\nAggregated pattern summary:")
     for pattern_type, info in aggregated.items():
         print(
             f"  - {pattern_type}: {info['count']} matches ({info['high_confidence_count']} high confidence)"
@@ -179,15 +179,15 @@ async def test_pattern_detection():
 
     # Check essential fields
     essential = orchestrator.get_essential_fields_status(results)
-    print(f"\\nEssential fields status:")
+    print(f"\nEssential fields status:")
     for field, status in essential.items():
         print(f"  - {field}: {'✓' if status else '✗'}")
 
     # Performance target check
     if elapsed_time < 100:
-        print(f"\\n✅ Performance target MET: {elapsed_time:.2f}ms < 100ms")
+        print(f"\n✅ Performance target MET: {elapsed_time:.2f}ms < 100ms")
     else:
-        print(f"\\n❌ Performance target MISSED: {elapsed_time:.2f}ms >= 100ms")
+        print(f"\n❌ Performance target MISSED: {elapsed_time:.2f}ms >= 100ms")
 
 
 if __name__ == "__main__":

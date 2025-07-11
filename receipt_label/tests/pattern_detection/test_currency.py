@@ -1,16 +1,12 @@
 """Tests for currency pattern detection."""
 
-import sys
-
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
-sys.path.insert(0, "/Users/tnorlund/claude/Portfolio/receipt_label")
-
 from receipt_label.pattern_detection import (
     CurrencyPatternDetector,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestCurrencyPatternDetector:
@@ -174,9 +170,11 @@ class TestCurrencyPatternDetector:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                is_noise=True,  # Marked as noise
             )
         ]
+
+        # Mark word as noise
+        words[0].is_noise = True
 
         matches = await detector.detect(words)
         assert len(matches) == 0  # Should skip noise word
