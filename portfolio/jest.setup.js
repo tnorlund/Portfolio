@@ -62,3 +62,40 @@ HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
 HTMLCanvasElement.prototype.toDataURL = jest.fn(
   () => "data:image/png;base64,test"
 );
+
+// Polyfill performance API for tests
+if (typeof global.performance === 'undefined') {
+  global.performance = {
+    now: () => Date.now(),
+    mark: jest.fn(),
+    measure: jest.fn(),
+    clearMarks: jest.fn(),
+    clearMeasures: jest.fn(),
+    getEntriesByName: jest.fn(() => [{ duration: 10 }]),
+    getEntriesByType: jest.fn(() => []),
+    timing: {
+      navigationStart: Date.now(),
+      loadEventEnd: Date.now() + 100,
+    },
+  };
+} else {
+  // Add missing methods if performance exists but methods don't
+  if (!global.performance.mark) {
+    global.performance.mark = jest.fn();
+  }
+  if (!global.performance.measure) {
+    global.performance.measure = jest.fn();
+  }
+  if (!global.performance.clearMarks) {
+    global.performance.clearMarks = jest.fn();
+  }
+  if (!global.performance.clearMeasures) {
+    global.performance.clearMeasures = jest.fn();
+  }
+  if (!global.performance.getEntriesByName) {
+    global.performance.getEntriesByName = jest.fn(() => [{ duration: 10 }]);
+  }
+  if (!global.performance.getEntriesByType) {
+    global.performance.getEntriesByType = jest.fn(() => []);
+  }
+}

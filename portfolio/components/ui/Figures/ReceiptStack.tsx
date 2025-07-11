@@ -7,6 +7,7 @@ import {
   detectImageFormatSupport,
   getBestImageUrl,
 } from "../../../utils/imageFormat";
+import { usePerformanceMonitor } from "../../../hooks/usePerformanceMonitor";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -167,6 +168,12 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   fadeDelay = 25,
   initialCount = 6,
 }) => {
+  // Add performance monitoring
+  const { trackAPICall, trackImageLoad } = usePerformanceMonitor({
+    componentName: 'ReceiptStack',
+    trackRender: true,
+  });
+
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
