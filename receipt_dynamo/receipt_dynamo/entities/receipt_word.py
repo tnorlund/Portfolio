@@ -55,6 +55,7 @@ class ReceiptWord(DynamoDBEntity):
     confidence: float
     extracted_data: Optional[Dict[str, Any]] = None
     embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
+    is_noise: bool = False
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -118,6 +119,13 @@ class ReceiptWord(DynamoDBEntity):
                 "embedding_status must be a string or EmbeddingStatus enum"
             )
 
+        # Validate is_noise field
+        if not isinstance(self.is_noise, bool):
+            raise ValueError(
+                f"is_noise must be a boolean, got {type(self.is_noise).__name__}"
+            )
+
+    @property
     def key(self) -> Dict[str, Any]:
         """
         Generates the primary key for the receipt word.
@@ -197,7 +205,7 @@ class ReceiptWord(DynamoDBEntity):
             dict: A dictionary representing the ReceiptWord object as a DynamoDB item.
         """
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             **self.gsi3_key(),
@@ -253,6 +261,7 @@ class ReceiptWord(DynamoDBEntity):
                 else {"NULL": True}
             ),
             "embedding_status": {"S": self.embedding_status},
+            "is_noise": {"BOOL": self.is_noise},
         }
 
     def warp_transform(
@@ -387,7 +396,8 @@ class ReceiptWord(DynamoDBEntity):
             f"angle_degrees={self.angle_degrees}, "
             f"angle_radians={self.angle_radians}, "
             f"confidence={self.confidence}, "
-            f"embedding_status='{self.embedding_status}'"
+            f"embedding_status='{self.embedding_status}', "
+            f"is_noise={self.is_noise}"
             f")"
         )
 
@@ -501,6 +511,7 @@ class ReceiptWord(DynamoDBEntity):
                     else None
                 ),
                 self.embedding_status,
+                self.is_noise,
             )
         )
 
@@ -586,6 +597,7 @@ def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
                 }
             ),
             embedding_status=es_val,
+            is_noise=item.get("is_noise", {}).get("BOOL", False),
         )
     except (KeyError, ValueError) as e:
         raise ValueError("Error converting item to ReceiptWord") from e

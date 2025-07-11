@@ -1,28 +1,26 @@
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo import Line, item_to_line
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBThroughputError,
-    OperationError,
 )
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -30,7 +28,12 @@ from receipt_dynamo.data.shared_exceptions import (
 CHUNK_SIZE = 25
 
 
-class _Line(DynamoClientProtocol):
+class _Line(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     A class used to represent a Line in the database.
 
@@ -38,9 +41,25 @@ class _Line(DynamoClientProtocol):
     -------
     add_line(line: Line)
         Adds a line to the database.
-
+    add_lines(lines: list[Line])
+        Adds multiple lines to the database.
+    update_line(line: Line)
+        Updates a line in the database.
+    update_lines(lines: list[Line])
+        Updates multiple lines in the database.
+    delete_line(image_id: str, line_id: int)
+        Deletes a line from the database.
+    delete_lines(lines: list[Line])
+        Deletes multiple lines from the database.
+    get_line(image_id: str, line_id: int) -> Line
+        Gets a line from the database.
+    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]
+        Lists all lines from the database.
+    list_lines_from_image(image_id: str) -> list[Line]
+        Lists all lines from a specific image.
     """
 
+    @handle_dynamodb_errors("add_line")
     def add_line(self, line: Line):
         """Adds a line to the database
 
@@ -48,107 +67,71 @@ class _Line(DynamoClientProtocol):
             line (Line): The line to add to the database
 
         Raises:
-            ValueError: When a line with the same ID already
+            ValueError: When a line with the same ID already exists
         """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=line.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError:
-            raise ValueError(f"Line with ID {line.line_id} already exists")
+        self._validate_entity(line, Line, "line")
+        self._add_entity(line)
 
-    def add_lines(self, lines: list[Line]):
+    @handle_dynamodb_errors("add_lines")
+    def add_lines(self, lines: List[Line]):
         """Adds a list of lines to the database
 
         Args:
             lines (list[Line]): The lines to add to the database
 
         Raises:
-            ValueError: When a line with the same ID already
+            ValueError: When validation fails or lines cannot be added
         """
-        try:
-            for i in range(0, len(lines), CHUNK_SIZE):
-                chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=line.to_item())
-                    )
-                    for line in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError:
-            raise ValueError("Could not add lines to the database")
+        self._validate_entity_list(lines, Line, "lines")
 
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=line.to_item())
+            )
+            for line in lines
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_line")
     def update_line(self, line: Line):
         """Updates a line in the database
 
         Args:
             line (Line): The line to update in the database
-        """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=line.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Line with ID {line.line_id} not found"
-                ) from e
-            else:
-                raise OperationError(f"Error updating line: {e}") from e
 
-    def update_lines(self, lines: list[Line]):
+        Raises:
+            ValueError: When a line with the same ID does not exist
+        """
+        self._validate_entity(line, Line, "line")
+        self._update_entity(line)
+
+    @handle_dynamodb_errors("update_lines")
+    def update_lines(self, lines: List[Line]):
         """Updates a list of lines in the database
 
         Args:
             lines (list[Line]): The lines to update in the database
-        """
-        if lines is None:
-            raise ValueError("lines parameter is required and cannot be None.")
-        if not isinstance(lines, list):
-            raise ValueError("lines must be a list of Line instances.")
-        if not all(isinstance(line, Line) for line in lines):
-            raise ValueError("All lines must be instances of the Line class.")
-        for i in range(0, len(lines), CHUNK_SIZE):
-            chunk = lines[i : i + CHUNK_SIZE]
-            transact_items = [
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": line.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                }
-                for line in chunk
-            ]
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)  # type: ignore[arg-type]
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more lines do not exist") from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        "Provisioned throughput exceeded"
-                    ) from e
 
+        Raises:
+            ValueError: When validation fails or lines don't exist
+        """
+        self._validate_entity_list(lines, Line, "lines")
+
+        transact_items = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": line.to_item(),
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            }
+            for line in lines
+        ]
+
+        self._transact_write_with_chunking(transact_items)
+
+    @handle_dynamodb_errors("delete_line")
     def delete_line(self, image_id: str, line_id: int):
         """Deletes a line from the database
 
@@ -156,122 +139,145 @@ class _Line(DynamoClientProtocol):
             image_id (str): The UUID of the image the line belongs to
             line_id (int): The ID of the line to delete
         """
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"},
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            raise ValueError(f"Line with ID {line_id} not found") from e
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"LINE#{line_id:05d}"},
+            },
+            ConditionExpression="attribute_exists(PK)",
+        )
 
-    def delete_lines(self, lines: list[Line]):
+    @handle_dynamodb_errors("delete_lines")
+    def delete_lines(self, lines: List[Line]):
         """Deletes a list of lines from the database
 
         Args:
             lines (list[Line]): The lines to delete
         """
-        try:
-            for i in range(0, len(lines), CHUNK_SIZE):
-                chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=line.key())
-                    )
-                    for line in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError:
-            raise ValueError("Could not delete lines from the database")
+        self._validate_entity_list(lines, Line, "lines")
 
+        request_items = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=line.key)
+            )
+            for line in lines
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("delete_lines_from_image")
     def delete_lines_from_image(self, image_id: str):
         """Deletes all lines from an image
 
         Args:
-            image_id (int): The ID of the image to delete lines from
+            image_id (str): The ID of the image to delete lines from
         """
         lines = self.list_lines_from_image(image_id)
-        self.delete_lines(lines)
+        if lines:
+            self.delete_lines(lines)
 
+    @handle_dynamodb_errors("get_line")
     def get_line(self, image_id: str, line_id: int) -> Line:
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}"},
-                },
-            )
-            return item_to_line(response["Item"])
-        except KeyError as e:
-            raise ValueError(f"Line with ID {line_id} not found") from e
+        """Gets a line from the database
 
+        Args:
+            image_id (str): The UUID of the image the line belongs to
+            line_id (int): The ID of the line to get
+
+        Returns:
+            Line: The line object
+
+        Raises:
+            ValueError: When the line is not found
+        """
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"LINE#{line_id:05d}"},
+            },
+        )
+        if "Item" not in response:
+            raise ValueError(f"Line with ID {line_id} not found")
+        return item_to_line(response["Item"])
+
+    @handle_dynamodb_errors("list_lines")
     def list_lines(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
-    ) -> Tuple[list[Line], Optional[Dict]]:
-        """Lists all lines in the database"""
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[List[Line], Optional[Dict]]:
+        """Lists all lines in the database
+
+        Args:
+            limit: Maximum number of items to return
+            last_evaluated_key: Key to start from for pagination
+
+        Returns:
+            Tuple of lines list and last evaluated key for pagination
+        """
         lines = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "LINE"}},
-                "ScanIndexForward": True,  # Sorts the results in ascending order by PK
-            }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {":val": {"S": "LINE"}},
+            "ScanIndexForward": True,  # Sorts the results in ascending order by PK
+        }
 
-            if limit is not None:
-                query_params["Limit"] = limit
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
 
-            response = self._client.query(**query_params)
-            lines.extend([item_to_line(item) for item in response["Items"]])
+        response = self._client.query(**query_params)
+        lines.extend([item_to_line(item) for item in response["Items"]])
 
-            if limit is None:
-                # If no limit is provided, paginate until all items are
-                # retrieved
-                while (
-                    "LastEvaluatedKey" in response
-                    and response["LastEvaluatedKey"]
-                ):
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    lines.extend(
-                        [item_to_line(item) for item in response["Items"]]
-                    )
-                last_evaluated_key = None
-            else:
-                # If a limit is provided, capture the LastEvaluatedKey (if any)
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
+        if limit is None:
+            # If no limit is provided, paginate until all items are retrieved
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+                response = self._client.query(**query_params)
+                lines.extend(
+                    [item_to_line(item) for item in response["Items"]]
+                )
+            last_evaluated_key = None
+        else:
+            # If a limit is provided, capture the LastEvaluatedKey (if any)
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
 
-            return lines, last_evaluated_key
+        return lines, last_evaluated_key
 
-        except ClientError as e:
-            raise ValueError("Could not list lines from the database") from e
+    @handle_dynamodb_errors("list_lines_from_image")
+    def list_lines_from_image(self, image_id: str) -> List[Line]:
+        """Lists all lines from an image
 
-    def list_lines_from_image(self, image_id: str) -> list[Line]:
-        """Lists all lines from an image"""
+        Args:
+            image_id: The UUID of the image
+
+        Returns:
+            List of Line objects from the specified image
+        """
         lines = []
-        try:
+        response = self._client.query(
+            TableName=self.table_name,
+            IndexName="GSI1",
+            KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+            ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
+            ExpressionAttributeValues={
+                ":pk_val": {"S": f"IMAGE#{image_id}"},
+                ":sk_val": {"S": "LINE#"},
+            },
+        )
+        lines.extend([item_to_line(item) for item in response["Items"]])
+
+        while "LastEvaluatedKey" in response:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSI1",
@@ -279,29 +285,10 @@ class _Line(DynamoClientProtocol):
                 ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": f"LINE#"},
+                    ":sk_val": {"S": "LINE#"},
                 },
+                ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             lines.extend([item_to_line(item) for item in response["Items"]])
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSI1",
-                    KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
-                    ExpressionAttributeNames={
-                        "#pk": "GSI1PK",
-                        "#sk": "GSI1SK",
-                    },
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {"S": f"LINE#"},
-                    },
-                    ExclusiveStartKey=response.get("LastEvaluatedKey", None),  # type: ignore[arg-type]
-                )
-                lines.extend(
-                    [item_to_line(item) for item in response["Items"]]
-                )
-            return lines
-        except ClientError as e:
-            raise ValueError("Could not list lines from the database") from e
+        return lines

@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -35,7 +39,11 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobResource(DynamoClientProtocol):
+class _JobResource(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+):
+    @handle_dynamodb_errors("add_job_resource")
     def add_job_resource(self, job_resource: JobResource):
         """Adds a job resource to the database
 
@@ -80,6 +88,7 @@ class _JobResource(DynamoClientProtocol):
                     f"Could not add job resource to DynamoDB: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_job_resource")
     def get_job_resource(self, job_id: str, resource_id: str) -> JobResource:
         """Gets a specific job resource by job ID and resource ID
 
@@ -219,7 +228,7 @@ class _JobResource(DynamoClientProtocol):
         self,
         job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve resources for a job from the database.
@@ -227,7 +236,7 @@ class _JobResource(DynamoClientProtocol):
         Parameters:
             job_id (str): The ID of the job to get resources for.
             limit (int, optional): The maximum number of resources to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -246,10 +255,10 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         resources: List[JobResource] = []
         try:
@@ -263,8 +272,8 @@ class _JobResource(DynamoClientProtocol):
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -315,7 +324,7 @@ class _JobResource(DynamoClientProtocol):
         self,
         resource_type: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
         Retrieve all resources of a specific type across all jobs.
@@ -323,7 +332,7 @@ class _JobResource(DynamoClientProtocol):
         Parameters:
             resource_type (str): The type of resource to search for.
             limit (int, optional): The maximum number of resources to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -343,10 +352,10 @@ class _JobResource(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         resources: List[JobResource] = []
         try:
@@ -362,8 +371,8 @@ class _JobResource(DynamoClientProtocol):
                 "ScanIndexForward": True,  # Ascending order by default
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

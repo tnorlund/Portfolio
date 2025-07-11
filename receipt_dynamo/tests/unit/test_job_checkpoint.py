@@ -473,7 +473,7 @@ def test_job_checkpoint_init_invalid_is_best():
 @pytest.mark.unit
 def test_job_checkpoint_key(example_job_checkpoint):
     """Test that a JobCheckpoint generates the correct key"""
-    key = example_job_checkpoint.key()
+    key = example_job_checkpoint.key
     assert key["PK"]["S"] == f"JOB#{example_job_checkpoint.job_id}"
     assert key["SK"]["S"] == f"CHECKPOINT#{example_job_checkpoint.timestamp}"
 

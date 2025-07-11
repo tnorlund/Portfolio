@@ -309,8 +309,8 @@ def test_job_resource_init_invalid_resource_config():
 
 @pytest.mark.unit
 def test_job_resource_key(example_job_resource):
-    """Test the JobResource.key() method."""
-    assert example_job_resource.key() == {
+    """Test the JobResource.key method."""
+    assert example_job_resource.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RESOURCE#5e63804c-3abd-4f11-83d9-c694eb3b9de4"},
     }

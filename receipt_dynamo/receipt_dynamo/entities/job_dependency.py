@@ -69,6 +69,7 @@ class JobDependency:
             raise ValueError("condition must be a string")
         self.condition: Optional[str] = condition
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job dependency.
 
@@ -113,7 +114,7 @@ class JobDependency:
             dict: A dictionary representing the JobDependency object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "JOB_DEPENDENCY"},

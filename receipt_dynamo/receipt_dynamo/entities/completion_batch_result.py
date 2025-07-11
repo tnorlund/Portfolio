@@ -59,11 +59,12 @@ class CompletionBatchResult:
             raise ValueError(
                 format_type_error("status", status, (str, BatchStatus))
             )
-        if isinstance(status, str) and not status in [
+        if isinstance(status, str) and status not in [
             s.value for s in BatchStatus
         ]:
             raise ValueError(
-                f"status must be one of: {', '.join(status.value for status in BatchStatus)}"
+                "status must be one of: "
+                + ", ".join(s.value for s in BatchStatus)
             )
         if isinstance(status, BatchStatus):
             status_str = status.value
@@ -74,6 +75,7 @@ class CompletionBatchResult:
         assert_type("validated_at", validated_at, datetime, ValueError)
         self.validated_at = validated_at
 
+    @property
     def key(self) -> Dict[str, Any]:
         """
         The key for the completion batch result is a composite key that consists of the batch id and the receipt id, line id, and word id.
@@ -91,18 +93,21 @@ class CompletionBatchResult:
             },
         }
 
+    @property
     def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"LABEL#{self.original_label}"},
             "GSI1SK": {"S": f"STATUS#{self.status}"},
         }
 
+    @property
     def gsi2_key(self) -> Dict[str, Any]:
         return {
             "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
             "GSI2SK": {"S": f"STATUS#{self.status}"},
         }
 
+    @property
     def gsi3_key(self) -> Dict[str, Any]:
         return {
             "GSI3PK": {
@@ -116,10 +121,10 @@ class CompletionBatchResult:
         Converts the completion batch result to an item for DynamoDB.
         """
         return {
-            **self.key(),
-            **self.gsi1_key(),
-            **self.gsi2_key(),
-            **self.gsi3_key(),
+            **self.key,
+            **self.gsi1_key,
+            **self.gsi2_key,
+            **self.gsi3_key,
             "TYPE": {"S": "COMPLETION_BATCH_RESULT"},
             "original_label": {"S": self.original_label},
             "gpt_suggested_label": (
@@ -215,7 +220,8 @@ def item_to_completion_batch_result(
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         batch_id = item["PK"]["S"].split("#")[1]  # From PK="BATCH#{batch_id}"
@@ -246,4 +252,4 @@ def item_to_completion_batch_result(
     except Exception as e:
         raise ValueError(
             f"Error converting item to CompletionBatchResult: {e}"
-        )
+        ) from e

@@ -603,6 +603,7 @@ class ReceiptStructureAnalysis:
         """
         return self.sections
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         """
         Get the primary key for the DynamoDB table.
@@ -753,7 +754,7 @@ class ReceiptStructureAnalysis:
 
         # Create the item with properly formatted values
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "RECEIPT_STRUCTURE_ANALYSIS"},
             "receipt_id": {"N": str(self.receipt_id)},

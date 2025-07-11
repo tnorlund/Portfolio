@@ -254,8 +254,8 @@ def test_instance_init_invalid_health_status():
 
 @pytest.mark.unit
 def test_instance_key(example_instance):
-    """Test the Instance.key() method."""
-    assert example_instance.key() == {
+    """Test the Instance.key method."""
+    assert example_instance.key == {
         "PK": {"S": "INSTANCE#i-09ee977b7e1673d46"},
         "SK": {"S": "INSTANCE"},
     }

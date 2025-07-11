@@ -201,8 +201,8 @@ def test_queue_init_invalid_job_count():
 
 @pytest.mark.unit
 def test_queue_key(example_queue):
-    """Queue.key() method returns the correct primary key."""
-    key = example_queue.key()
+    """Queue.key method returns the correct primary key."""
+    key = example_queue.key
     assert key["PK"] == {"S": "QUEUE#test-queue"}
     assert key["SK"] == {"S": "QUEUE"}
 

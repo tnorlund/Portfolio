@@ -2,7 +2,16 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.entities.job_dependency import (
+    JobDependency,
+    item_to_job_dependency,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -17,19 +26,32 @@ from receipt_dynamo.data._base import (
     PutRequestTypeDef,
     WriteRequestTypeDef,
 )
-from receipt_dynamo.entities.job_dependency import (
-    JobDependency,
-    item_to_job_dependency,
-)
 
 
-class _JobDependency(DynamoClientProtocol):
+class _JobDependency(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+):
     """
     Provides methods for accessing job dependency data in DynamoDB.
 
     This class offers methods to add, get, list, and delete job dependencies.
+    Methods
+    -------
+    add_job_dependency(job_dependency: JobDependency)
+        Adds a job dependency to the database.
+    get_job_dependency(dependent_job_id: str, dependency_job_id: str) -> JobDependency
+        Gets a job dependency from the database.
+    list_job_dependencies(dependent_job_id: str) -> List[JobDependency]
+        Lists all dependencies for a specific job.
+    delete_job_dependency(job_dependency: JobDependency)
+        Deletes a job dependency from the database.
+    delete_job_dependencies(job_dependencies: List[JobDependency])
+        Deletes multiple job dependencies from the database.
     """
 
+    @handle_dynamodb_errors("add_job_dependency")
     def add_job_dependency(self, job_dependency: JobDependency):
         """Adds a job dependency to the DynamoDB table.
 
@@ -40,29 +62,13 @@ class _JobDependency(DynamoClientProtocol):
             ValueError: If job_dependency is None or not a JobDependency instance.
             ClientError: If a DynamoDB error occurs.
         """
-        if job_dependency is None:
-            raise ValueError("job_dependency cannot be None")
-        if not isinstance(job_dependency, JobDependency):
-            raise ValueError(
-                f"job_dependency must be a JobDependency instance, got {type(job_dependency)}"
-            )
+        self._validate_entity(job_dependency, JobDependency, "job_dependency")
+        self._add_entity(
+            job_dependency,
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job_dependency.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} already exists"
-                )
-            raise
-
+    @handle_dynamodb_errors("get_job_dependency")
     def get_job_dependency(
         self, dependent_job_id: str, dependency_job_id: str
     ) -> JobDependency:
@@ -100,18 +106,19 @@ class _JobDependency(DynamoClientProtocol):
 
         return item_to_job_dependency(item)
 
+    @handle_dynamodb_errors("list_dependencies")
     def list_dependencies(
         self,
         dependent_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all dependencies for a specific job.
 
         Args:
             dependent_job_id (str): The ID of the job to list dependencies for.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
@@ -141,8 +148,8 @@ class _JobDependency(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)
@@ -155,18 +162,19 @@ class _JobDependency(DynamoClientProtocol):
 
         return job_dependencies, last_evaluated_key
 
+    @handle_dynamodb_errors("list_dependents")
     def list_dependents(
         self,
         dependency_job_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[JobDependency], Optional[Dict]]:
         """Lists all jobs that depend on a specific job.
 
         Args:
             dependency_job_id (str): The ID of the job that others depend on.
             limit (int, optional): The maximum number of items to return.
-            lastEvaluatedKey (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination from.
 
         Returns:
             Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
@@ -200,8 +208,8 @@ class _JobDependency(DynamoClientProtocol):
         if limit is not None:
             query_params["Limit"] = limit
 
-        if lastEvaluatedKey is not None:
-            query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
         # Execute query
         response = self._client.query(**query_params)
@@ -214,6 +222,7 @@ class _JobDependency(DynamoClientProtocol):
 
         return job_dependencies, last_evaluated_key
 
+    @handle_dynamodb_errors("delete_job_dependency")
     def delete_job_dependency(self, job_dependency: JobDependency):
         """Deletes a job dependency from the DynamoDB table.
 
@@ -224,34 +233,10 @@ class _JobDependency(DynamoClientProtocol):
             ValueError: If job_dependency is None or not a JobDependency instance.
             ClientError: If a DynamoDB error occurs.
         """
-        if job_dependency is None:
-            raise ValueError("job_dependency cannot be None")
-        if not isinstance(job_dependency, JobDependency):
-            raise ValueError(
-                f"job_dependency must be a JobDependency instance, got {type(job_dependency)}"
-            )
+        self._validate_entity(job_dependency, JobDependency, "job_dependency")
+        self._delete_entity(job_dependency)
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_dependency.dependent_job_id}"},
-                    "SK": {
-                        "S": f"DEPENDS_ON#{job_dependency.dependency_job_id}"
-                    },
-                },
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Dependency between {job_dependency.dependent_job_id} and {job_dependency.dependency_job_id} not found"
-                )
-            raise
-
+    @handle_dynamodb_errors("delete_all_dependencies")
     def delete_all_dependencies(self, dependent_job_id: str):
         """Deletes all dependencies for a specific job.
 

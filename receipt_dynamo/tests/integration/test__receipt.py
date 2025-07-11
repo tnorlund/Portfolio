@@ -1878,7 +1878,7 @@ def test_listReceipts_with_starting_LEK(
 
     # Call listReceipts with limit=5 and starting LEK.
     receipts, returned_lek = client.list_receipts(
-        limit=5, lastEvaluatedKey=start_lek
+        limit=5, last_evaluated_key=start_lek
     )
 
     # Expect two calls: one for the first page, one for the second.
@@ -1969,14 +1969,14 @@ def test_listReceipts_invalid_limit(dynamodb_table):
         },
     ],
 )
-def test_listReceipts_invalid_lastEvaluatedKey(dynamodb_table, invalid_lek):
+def test_listReceipts_invalid_last_evaluated_key(dynamodb_table, invalid_lek):
     """
-    Verifies that listReceipts raises a ValueError when lastEvaluatedKey is
+    Verifies that listReceipts raises a ValueError when last_evaluated_key is
     invalid.
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(ValueError, match="LastEvaluatedKey"):
-        client.list_receipts(lastEvaluatedKey=invalid_lek)
+        client.list_receipts(last_evaluated_key=invalid_lek)
 
 
 @pytest.mark.integration

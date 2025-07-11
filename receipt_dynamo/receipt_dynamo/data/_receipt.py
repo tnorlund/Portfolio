@@ -314,7 +314,7 @@ class _Receipt(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=receipt.key(),
+                Key=receipt.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -376,7 +376,7 @@ class _Receipt(DynamoClientProtocol):
                         TransactWriteItemTypeDef(
                             Delete=DeleteTypeDef(
                                 TableName=self.table_name,
-                                Key=receipt.key(),
+                                Key=receipt.key,
                                 ConditionExpression="attribute_exists(PK)",
                             )
                         )
@@ -531,7 +531,9 @@ class _Receipt(DynamoClientProtocol):
             raise ValueError(f"Error getting receipt details: {e}") from e
 
     def list_receipts(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Receipt], dict | None]:
         """
         Retrieve receipt records from the database with support for precise pagination.
@@ -543,7 +545,7 @@ class _Receipt(DynamoClientProtocol):
 
         Parameters:
             limit (int, optional): The maximum number of receipt items to return. If set to None, all receipts are fetched.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query, used to continue a
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query, used to continue a
                 previous pagination session.
 
         Returns:
@@ -553,7 +555,7 @@ class _Receipt(DynamoClientProtocol):
 
         Raises:
             ValueError: If the limit is not an integer or is less than or equal to 0.
-            ValueError: If the lastEvaluatedKey is not a dictionary.
+            ValueError: If the last_evaluated_key is not a dictionary.
             Exception: If the underlying database query fails.
 
         Notes:
@@ -566,10 +568,10 @@ class _Receipt(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         receipts: List[Receipt] = []
         try:
@@ -580,8 +582,8 @@ class _Receipt(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 # If a limit is provided, adjust the query's Limit to only
@@ -677,7 +679,7 @@ class _Receipt(DynamoClientProtocol):
     def list_receipt_details(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[
         Dict[
             str,
@@ -694,7 +696,7 @@ class _Receipt(DynamoClientProtocol):
 
         Args:
             limit (Optional[int], optional): The maximum number of receipt details to return. Defaults to None.
-            lastEvaluatedKey (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
+            last_evaluated_key (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
@@ -716,8 +718,8 @@ class _Receipt(DynamoClientProtocol):
                 "ScanIndexForward": True,
             }
 
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             payload: Dict[str, Any] = {}
             current_receipt = None

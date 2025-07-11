@@ -155,7 +155,7 @@ def test_addReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -363,7 +363,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptValidationResults to the database",
+            "Table not found for operation add_receipt_validation_results",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -377,7 +377,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -388,7 +388,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add ReceiptValidationResults to the database",
+            "Unknown error in add_receipt_validation_results",
         ),
     ],
 )
@@ -528,7 +528,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -718,14 +718,14 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResults in the database",
+            "Table not found for operation update_receipt_validation_results",
             None,
             DynamoDBError,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more ReceiptValidationResults do not exist",
+            "One or more entities do not exist or conditions failed",
             [{"Code": "ConditionalCheckFailed"}],
             ValueError,
         ),
@@ -745,7 +745,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             None,
             DynamoDBValidationError,
@@ -760,7 +760,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResults in the database",
+            "Unknown error in update_receipt_validation_results",
             None,
             DynamoDBError,
         ),
@@ -895,7 +895,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationResult from the database",
+            "Could not delete receipt validation result from the database",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -909,14 +909,14 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationResult from the database",
+            "Could not delete receipt validation result from the database",
         ),
     ],
 )
@@ -1004,7 +1004,7 @@ def test_deleteReceiptValidationResults_success(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -1052,7 +1052,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptValidationResults from the database",
+            "Table not found for operation delete_receipt_validation_results",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1066,7 +1066,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1077,7 +1077,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptValidationResults from the database",
+            "Unknown error in delete_receipt_validation_results",
         ),
     ],
 )
@@ -1212,7 +1212,7 @@ def test_deleteReceiptValidationResults_with_large_batch(
             Key={
                 "PK": {"S": f"IMAGE#{result.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
+                    "S": f"RECEIPT#{result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result.field_name}#RESULT#{result.result_index}"
                 },
             },
         )
@@ -1369,7 +1369,7 @@ def test_getReceiptValidationResult_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error",
         ),
         (
@@ -1551,7 +1551,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get second page
     page2_results, pagination_key2 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key1
+        limit=3, last_evaluated_key=pagination_key1
     )
 
     # Check pagination info from second page
@@ -1560,7 +1560,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get third page
     page3_results, pagination_key3 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key2
+        limit=3, last_evaluated_key=pagination_key2
     )
 
     # Check pagination info from third page
@@ -1569,7 +1569,7 @@ def test_listReceiptValidationResults_with_pagination(
 
     # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = client.list_receipt_validation_results(
-        limit=3, lastEvaluatedKey=pagination_key3
+        limit=3, last_evaluated_key=pagination_key3
     )
 
     # Check pagination info from fourth page
@@ -1646,7 +1646,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1882,7 +1882,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get second page
     page2_results, pagination_key2 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key1
+            result_type="error", limit=3, last_evaluated_key=pagination_key1
         )
     )
 
@@ -1893,7 +1893,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get third page
     page3_results, pagination_key3 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key2
+            result_type="error", limit=3, last_evaluated_key=pagination_key2
         )
     )
 
@@ -1904,7 +1904,7 @@ def test_listReceiptValidationResultsByType_pagination(
     # Get fourth page (should be last with just 1 item)
     page4_results, pagination_key4 = (
         client.list_receipt_validation_results_by_type(
-            result_type="error", limit=3, lastEvaluatedKey=pagination_key3
+            result_type="error", limit=3, last_evaluated_key=pagination_key3
         )
     )
 
@@ -2011,7 +2011,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -2115,7 +2115,7 @@ def test_listReceiptValidationResultsForField_success(
     }
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2131,12 +2131,14 @@ def test_listReceiptValidationResultsForField_success(
     # Verify query parameters
     mock_query.assert_called_once_with(
         TableName=dynamodb_table,
-        KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+        KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+        ExpressionAttributeNames={
+            "#pk": "PK",
+            "#sk": "SK",
+        },
         ExpressionAttributeValues={
-            ":pkVal": {
-                "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
-            },
-            ":skPrefix": {
+            ":pk": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+            ":sk_prefix": {
                 "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
             },
         },
@@ -2170,7 +2172,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
                     "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
                 },
                 "SK": {
-                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
+                    "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
                 "receipt_id": {
                     "N": str(sample_receipt_validation_result.receipt_id)
@@ -2208,7 +2210,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
         "LastEvaluatedKey": {
             "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
+                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
             },
         },
     }
@@ -2219,7 +2221,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
             {
                 "PK": {"S": f"IMAGE#{result2.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{result2.receipt_id}#ANALYSIS#VALIDATION#CATEGORY#{result2.field_name}#RESULT#1"
+                    "S": f"RECEIPT#{result2.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{result2.field_name}#RESULT#1"
                 },
                 "receipt_id": {"N": str(result2.receipt_id)},
                 "image_id": {"S": result2.image_id},
@@ -2249,7 +2251,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     mock_query.side_effect = [first_response, second_response]
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=sample_receipt_validation_result.receipt_id,
         image_id=sample_receipt_validation_result.image_id,
         field_name=sample_receipt_validation_result.field_name,
@@ -2270,7 +2272,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     assert first_call_args["TableName"] == dynamodb_table
     assert (
         first_call_args["KeyConditionExpression"]
-        == "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
     )
 
     # Second call with ExclusiveStartKey
@@ -2278,7 +2280,7 @@ def test_listReceiptValidationResultsForField_with_pagination(
     assert second_call_args["TableName"] == dynamodb_table
     assert (
         second_call_args["KeyConditionExpression"]
-        == "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
     )
     assert (
         second_call_args["ExclusiveStartKey"]
@@ -2306,7 +2308,7 @@ def test_listReceiptValidationResultsForField_empty_results(
     }
 
     # Execute
-    results = client.list_receipt_validation_results_for_field(
+    results, _ = client.list_receipt_validation_results_for_field(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         field_name="total_amount",
@@ -2403,7 +2405,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (

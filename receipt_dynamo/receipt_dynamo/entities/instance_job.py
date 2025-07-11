@@ -74,6 +74,7 @@ class InstanceJob:
             raise ValueError("resource_utilization must be a dictionary")
         self.resource_utilization = resource_utilization or {}
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the instance-job relationship.
 
@@ -103,7 +104,7 @@ class InstanceJob:
             dict: A dictionary representing the InstanceJob object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "INSTANCE_JOB"},
             "assigned_at": {"S": self.assigned_at},

@@ -1,15 +1,17 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo import Word, item_to_word
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
         BatchGetItemInputTypeDef,
-        GetItemInputTypeDef,
-        KeysAndAttributesTypeDef,
         QueryInputTypeDef,
     )
 
@@ -21,21 +23,18 @@ from receipt_dynamo.data._base import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
 
-class _Word(DynamoClientProtocol):
+class _Word(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     A class used to represent a Word in the database.
 
@@ -43,9 +42,27 @@ class _Word(DynamoClientProtocol):
     -------
     add_word(word: Word)
         Adds a word to the database.
-
+    add_words(words: list[Word])
+        Adds multiple words to the database.
+    update_word(word: Word)
+        Updates a word in the database.
+    update_words(words: list[Word])
+        Updates multiple words in the database.
+    delete_word(image_id: str, line_id: int, word_id: int)
+        Deletes a word from the database.
+    delete_words(words: list[Word])
+        Deletes multiple words from the database.
+    get_word(image_id: str, line_id: int, word_id: int) -> Word
+        Gets a word from the database.
+    get_words(keys: list[dict]) -> list[Word]
+        Gets multiple words from the database.
+    list_words(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Word], Optional[Dict[str, Any]]]
+        Lists all words from the database.
+    list_words_from_line(image_id: str, line_id: int) -> list[Word]
+        Lists all words from a specific line.
     """
 
+    @handle_dynamodb_errors("add_word")
     def add_word(self, word: Word):
         """Adds a word to the database
 
@@ -53,49 +70,33 @@ class _Word(DynamoClientProtocol):
             word (Word): The word to add to the database
 
         Raises:
-            ValueError: When a word with the same ID already
+            ValueError: When a word with the same ID already exists
         """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=word.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError:
-            raise ValueError(f"Word with ID {word.word_id} already exists")
+        self._validate_entity(word, Word, "word")
+        self._add_entity(word)
 
-    def add_words(self, words: list[Word]):
+    @handle_dynamodb_errors("add_words")
+    def add_words(self, words: List[Word]):
         """Adds a list of words to the database
 
         Args:
             words (list[Word]): The words to add to the database
 
         Raises:
-            ValueError: When a word with the same ID already
+            ValueError: When validation fails or words cannot be added
         """
-        try:
-            for i in range(0, len(words), CHUNK_SIZE):
-                chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=word.to_item())
-                    )
-                    for word in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError:
-            raise ValueError("Could not add words to the database")
+        self._validate_entity_list(words, Word, "words")
 
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=word.to_item())
+            )
+            for word in words
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_word")
     def update_word(self, word: Word):
         """Updates a word in the database
 
@@ -105,31 +106,17 @@ class _Word(DynamoClientProtocol):
         Raises:
             ValueError: When a word with the same ID does not exist
         """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=word.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Word with ID {word.word_id} not found"
-                ) from e
-            else:
-                raise OperationError(f"Error updating word: {e}") from e
+        self._validate_entity(word, Word, "word")
+        self._update_entity(word)
 
-    def update_words(self, words: list[Word]):
+    @handle_dynamodb_errors("update_words")
+    def update_words(self, words: List[Word]):
         """
         Updates multiple Word items in the database.
 
         This method validates that the provided parameter is a list of Word
         instances. It uses DynamoDB's transact_write_items operation, which can
-        handle up to 25 items per transaction. Any unprocessed items are
-        automatically retried until no unprocessed items remain.
+        handle up to 25 items per transaction.
 
         Parameters
         ----------
@@ -138,64 +125,25 @@ class _Word(DynamoClientProtocol):
 
         Raises
         ------
-        ValueError: When given a bad parameter.
-        Exception: For underlying DynamoDB errors such as:
-            - ProvisionedThroughputExceededException (exceeded capacity)
-            - InternalServerError (server-side error)
-            - ValidationException (invalid parameters)
-            - AccessDeniedException (permission issues)
-            - or any other unexpected errors.
+        ValueError: When given a bad parameter or words don't exist.
+        Exception: For underlying DynamoDB errors.
         """
-        if words is None:
-            raise ValueError("Words parameter is required and cannot be None.")
-        if not isinstance(words, list):
-            raise ValueError("Words must be provided as a list.")
-        if not all(isinstance(word, Word) for word in words):
-            raise ValueError(
-                "All items in the words list must be instances of the Word "
-                "class."
-            )
+        self._validate_entity_list(words, Word, "words")
 
-        for i in range(0, len(words), CHUNK_SIZE):
-            chunk = words[i : i + CHUNK_SIZE]
-            transact_items = []
-            for word in chunk:
-                transact_items.append(
-                    TransactWriteItemTypeDef(
-                        Put=PutTypeDef(
-                            TableName=self.table_name,
-                            Item=word.to_item(),
-                            ConditionExpression="attribute_exists(PK)",
-                        )
-                    )
-                )
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more words do not exist") from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
-                elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
-                elif error_code == "ValidationException":
-                    raise DynamoDBValidationError(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise DynamoDBAccessError(f"Access denied: {e}") from e
-                elif error_code == "ResourceNotFoundException":
-                    raise ValueError(f"Error updating words: {e}") from e
-                else:
-                    raise DynamoDBError(
-                        f"Could not update words in the database: {e}"
-                    ) from e
+        transact_items = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": word.to_item(),
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            }
+            for word in words
+        ]
 
+        self._transact_write_with_chunking(transact_items)
+
+    @handle_dynamodb_errors("delete_word")
     def delete_word(self, image_id: str, line_id: int, word_id: int):
         """Deletes a word from the database
 
@@ -204,67 +152,68 @@ class _Word(DynamoClientProtocol):
             line_id (int): The ID of the line the word belongs to
             word_id (int): The ID of the word to delete
         """
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            raise ValueError(f"Word with ID {word_id} not found") from e
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
+            },
+            ConditionExpression="attribute_exists(PK)",
+        )
 
-    def delete_words(self, words: list[Word]):
+    @handle_dynamodb_errors("delete_words")
+    def delete_words(self, words: List[Word]):
         """Deletes a list of words from the database"""
-        try:
-            for i in range(0, len(words), CHUNK_SIZE):
-                chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=word.key())
-                    )
-                    for word in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError:
-            raise ValueError("Could not delete words from the database")
+        self._validate_entity_list(words, Word, "words")
 
+        request_items = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=word.key)
+            )
+            for word in words
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("delete_words_from_line")
     def delete_words_from_line(self, image_id: str, line_id: int):
         """Deletes all words from a line
 
         Args:
-            image_id (int): The ID of the image the line belongs to
+            image_id (str): The ID of the image the line belongs to
             line_id (int): The ID of the line to delete words from
         """
         words = self.list_words_from_line(image_id, line_id)
         self.delete_words(words)
 
+    @handle_dynamodb_errors("get_word")
     def get_word(self, image_id: str, line_id: int, word_id: int) -> Word:
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-                },
-            )
-            return item_to_word(response["Item"])
-        except KeyError:
-            raise ValueError(f"Word with ID {word_id} not found")
+        """Gets a word from the database
 
-    def get_words(self, keys: list[dict]) -> list[Word]:
+        Args:
+            image_id (str): The UUID of the image the word belongs to
+            line_id (int): The ID of the line the word belongs to
+            word_id (int): The ID of the word to get
+
+        Returns:
+            Word: The word object
+
+        Raises:
+            ValueError: When the word is not found
+        """
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
+            },
+        )
+        if "Item" not in response:
+            raise ValueError(f"Word with ID {word_id} not found")
+        return item_to_word(response["Item"])
+
+    @handle_dynamodb_errors("get_words")
+    def get_words(self, keys: List[Dict]) -> List[Word]:
         """Get a list of words using a list of keys"""
         # Check the validity of the keys
         for key in keys:
@@ -286,8 +235,6 @@ class _Word(DynamoClientProtocol):
             request: BatchGetItemInputTypeDef = {
                 "RequestItems": {self.table_name: {"Keys": chunk}}
             }
-            # (Optional) "ProjectionExpression": "..." if you only want
-            # certain attributes
 
             # Perform BatchGet
             response = self._client.batch_get_item(**request)
@@ -310,43 +257,54 @@ class _Word(DynamoClientProtocol):
 
         return [item_to_word(result) for result in results]
 
+    @handle_dynamodb_errors("list_words")
     def list_words(
         self,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]:
-        words = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "WORD"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-            response = self._client.query(**query_params)
-            words.extend([item_to_word(item) for item in response["Items"]])
-            if limit is None:
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    words.extend(
-                        [item_to_word(item) for item in response["Items"]]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-            return words, last_evaluated_key
-        except ClientError as e:
-            raise ValueError("Could not list words from the database") from e
+    ) -> Tuple[List[Word], Optional[Dict[str, Any]]]:
+        """Lists all words from the database
 
-    def list_words_from_line(self, image_id: str, line_id: int) -> list[Word]:
+        Args:
+            limit: Maximum number of items to return
+            last_evaluated_key: Key to start from for pagination
+
+        Returns:
+            Tuple of words list and last evaluated key for pagination
+        """
+        words = []
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {":val": {"S": "WORD"}},
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        words.extend([item_to_word(item) for item in response["Items"]])
+
+        if limit is None:
+            while "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+                response = self._client.query(**query_params)
+                words.extend(
+                    [item_to_word(item) for item in response["Items"]]
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+        return words, last_evaluated_key
+
+    @handle_dynamodb_errors("list_words_from_line")
+    def list_words_from_line(self, image_id: str, line_id: int) -> List[Word]:
         """List all words from a specific line in an image.
 
         Args:
@@ -357,7 +315,19 @@ class _Word(DynamoClientProtocol):
             List of Word objects from the specified line
         """
         words = []
-        try:
+        response = self._client.query(
+            TableName=self.table_name,
+            KeyConditionExpression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
+            ExpressionAttributeValues={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
+            },
+        )
+        words.extend([item_to_word(item) for item in response["Items"]])
+
+        while "LastEvaluatedKey" in response:
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression=(
@@ -367,23 +337,8 @@ class _Word(DynamoClientProtocol):
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
                 },
+                ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             words.extend([item_to_word(item) for item in response["Items"]])
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression=(
-                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                    ),
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                words.extend(
-                    [item_to_word(item) for item in response["Items"]]
-                )
-            return words
-        except ClientError as e:
-            raise ValueError("Could not list words from the database") from e
+
+        return words

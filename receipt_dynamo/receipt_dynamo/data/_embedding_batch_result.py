@@ -226,7 +226,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=embedding_batch_result.key(),
+                Key=embedding_batch_result.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -268,7 +268,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 TransactWriteItemTypeDef(
                     Delete=DeleteTypeDef(
                         TableName=self.table_name,
-                        Key=r.key(),
+                        Key=r.key,
                         ConditionExpression="attribute_exists(PK)",
                     )
                 )
@@ -325,17 +325,17 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
     def list_embedding_batch_results(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         List all EmbeddingBatchResults, paginated.
         """
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer.")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[EmbeddingBatchResult] = []
         try:
@@ -348,8 +348,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     ":val": {"S": "EMBEDDING_BATCH_RESULT"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -387,7 +387,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         Query EmbeddingBatchResults by status using GSI2.
@@ -401,10 +401,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer.")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[EmbeddingBatchResult] = []
         try:
@@ -416,8 +416,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     ":sk": {"S": f"STATUS#{status}"}
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:
@@ -456,7 +456,7 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         image_id: str,
         receipt_id: int,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
@@ -466,10 +466,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             raise ValueError("receipt_id must be a positive integer.")
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise ValueError("Limit must be a positive integer.")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         results: List[EmbeddingBatchResult] = []
         try:
@@ -492,8 +492,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     ":pk": template_embedding_batch_result.gsi3_key()["GSI3PK"]
                 },
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
 
             while True:
                 if limit is not None:

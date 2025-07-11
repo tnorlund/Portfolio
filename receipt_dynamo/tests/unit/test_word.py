@@ -396,7 +396,7 @@ def test_word_init_invalid_extracted_data():
 @pytest.mark.unit
 def test_word_key(example_word):
     """Test the Word key method"""
-    assert example_word.key() == {
+    assert example_word.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "LINE#00002#WORD#00003"},
     }

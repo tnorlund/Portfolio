@@ -96,6 +96,7 @@ class Word(DynamoDBEntity):
                 "extracted_data", self.extracted_data, dict, ValueError
             )
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the Word.
 
@@ -127,7 +128,7 @@ class Word(DynamoDBEntity):
             dict: A dictionary representing the Word object as a DynamoDB item.
         """
         item: Dict[str, Any] = {
-            **self.key(),
+            **self.key,
             **self.gsi2_key(),
             "TYPE": {"S": "WORD"},
             "text": {"S": self.text},

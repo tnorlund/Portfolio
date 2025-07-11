@@ -5,6 +5,20 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import ReceiptLine, item_to_receipt_line
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    OperationError,
+)
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -20,8 +34,6 @@ if TYPE_CHECKING:
     )
 
 # These are used at runtime, not just for type checking
-from typing import TYPE_CHECKING, Dict, Optional
-
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
@@ -29,18 +41,16 @@ from receipt_dynamo.data._base import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    OperationError,
-)
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 CHUNK_SIZE = 25
 
 
-class _ReceiptLine(DynamoClientProtocol):
+class _ReceiptLine(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     A class used to represent a ReceiptLine in the database (similar to _line.py).
 
@@ -64,172 +74,74 @@ class _ReceiptLine(DynamoClientProtocol):
         Returns all lines under a specific receipt/image.
     """
 
-    def add_receipt_line(self, line: ReceiptLine):
+    @handle_dynamodb_errors("add_receipt_line")
+    def add_receipt_line(self, line: ReceiptLine) -> None:
         """Adds a single ReceiptLine to DynamoDB."""
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=line.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} already exists"
-                )
-            else:
-                raise DynamoDBError(
-                    f"Could not add receipt line to database: {e}"
-                )
+        self._validate_entity(line, ReceiptLine, "line")
+        self._add_entity(line)
 
-    def add_receipt_lines(self, lines: list[ReceiptLine]):
+    @handle_dynamodb_errors("add_receipt_lines")
+    def add_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Adds multiple ReceiptLines to DynamoDB in batches of CHUNK_SIZE."""
-        if lines is None:
-            raise ValueError("lines parameter is required and cannot be None.")
-        if not isinstance(lines, list):
-            raise ValueError("lines must be a list of ReceiptLine instances.")
-        if not all(isinstance(ln, ReceiptLine) for ln in lines):
-            raise ValueError(
-                "All lines must be instances of the ReceiptLine class."
-            )
-        try:
-            for i in range(0, len(lines), CHUNK_SIZE):
-                chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=ln.to_item())
-                    )
-                    for ln in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(
-                "Could not add ReceiptLines to the database"
-            ) from e
+        self._validate_entity_list(lines, ReceiptLine, "lines")
 
-    def update_receipt_line(self, line: ReceiptLine):
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=ln.to_item())
+            )
+            for ln in lines
+        ]
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_receipt_line")
+    def update_receipt_line(self, line: ReceiptLine) -> None:
         """Updates an existing ReceiptLine in DynamoDB."""
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=line.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptLine with ID {line.line_id} does not exist"
-                )
-            else:
-                raise DynamoDBError(
-                    f"Could not update receipt line in database: {e}"
-                )
+        self._validate_entity(line, ReceiptLine, "line")
+        self._update_entity(line)
 
-    def update_receipt_lines(self, lines: list[ReceiptLine]):
+    @handle_dynamodb_errors("update_receipt_lines")
+    def update_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Updates multiple existing ReceiptLines in DynamoDB."""
-        if lines is None:
-            raise ValueError("lines parameter is required and cannot be None.")
-        if not isinstance(lines, list):
-            raise ValueError("lines must be a list of ReceiptLine instances.")
-        if not all(isinstance(ln, ReceiptLine) for ln in lines):
-            raise ValueError(
-                "All lines must be instances of the ReceiptLine class."
-            )
-        for i in range(0, len(lines), CHUNK_SIZE):
-            chunk = lines[i : i + CHUNK_SIZE]
-            transact_items = [
-                TransactWriteItemTypeDef(
-                    Put=PutTypeDef(
-                        TableName=self.table_name,
-                        Item=ln.to_item(),
-                        ConditionExpression="attribute_exists(PK)",
-                    )
-                )
-                for ln in chunk
-            ]
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more ReceiptLines do not exist")
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise ValueError("Provisioned throughput exceeded")
-                elif error_code == "InternalServerError":
-                    raise ValueError("Internal server error")
-                elif error_code == "ValidationException":
-                    raise ValueError(
-                        "One or more parameters given were invalid"
-                    )
-                elif error_code == "AccessDeniedException":
-                    raise ValueError("Access denied")
-                else:
-                    raise ValueError(
-                        f"Could not update ReceiptLines in the database: {e}"
-                    ) from e
+        self._validate_entity_list(lines, ReceiptLine, "lines")
 
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=ln.to_item(),
+                    ConditionExpression="attribute_exists(PK)",
+                )
+            )
+            for ln in lines
+        ]
+        self._transact_write_with_chunking(transact_items)
+
+    @handle_dynamodb_errors("delete_receipt_line")
     def delete_receipt_line(
         self, receipt_id: int, image_id: str, line_id: int
-    ):
+    ) -> None:
         """Deletes a single ReceiptLine by IDs."""
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                    },
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(f"ReceiptLine with ID {line_id} not found")
-            else:
-                raise
+        # Direct key-based deletion is more efficient than creating dummy objects
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
+        }
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key=key,
+            ConditionExpression="attribute_exists(PK)",
+        )
 
-    def delete_receipt_lines(self, lines: list[ReceiptLine]):
+    @handle_dynamodb_errors("delete_receipt_lines")
+    def delete_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Deletes multiple ReceiptLines in batch."""
-        try:
-            for i in range(0, len(lines), CHUNK_SIZE):
-                chunk = lines[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=ln.key())
-                    )
-                    for ln in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(
-                "Could not delete ReceiptLines from the database"
-            ) from e
+        self._validate_entity_list(lines, ReceiptLine, "lines")
+
+        request_items = [
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=ln.key))
+            for ln in lines
+        ]
+        self._batch_write_with_retry(request_items)
 
     def get_receipt_line(
         self, receipt_id: int, image_id: str, line_id: int

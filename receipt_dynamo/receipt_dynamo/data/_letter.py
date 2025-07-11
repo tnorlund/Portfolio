@@ -1,9 +1,12 @@
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo import Letter, item_to_letter
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -20,7 +23,11 @@ from receipt_dynamo.data._base import (
 CHUNK_SIZE = 25
 
 
-class _Letter(DynamoClientProtocol):
+class _Letter(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+):
     """
     A class used to represent a Letter in the database.
 
@@ -28,8 +35,23 @@ class _Letter(DynamoClientProtocol):
     -------
     add_letter(letter: Letter)
         Adds a letter to the database.
+    add_letters(letters: list[Letter])
+        Adds multiple letters to the database.
+    update_letter(letter: Letter)
+        Updates a letter in the database.
+    delete_letter(image_id: str, line_id: int, word_id: int, letter_id: int)
+        Deletes a letter from the database.
+    delete_letters(letters: list[Letter])
+        Deletes multiple letters from the database.
+    get_letter(image_id: str, line_id: int, word_id: int, letter_id: int) -> Letter
+        Gets a letter from the database.
+    list_letters(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
+        Lists all letters from the database.
+    list_letters_from_word(image_id: str, line_id: int, word_id: int) -> list[Letter]
+        Lists all letters from a specific word.
     """
 
+    @handle_dynamodb_errors("add_letter")
     def add_letter(self, letter: Letter):
         """Adds a letter to the database
 
@@ -39,48 +61,31 @@ class _Letter(DynamoClientProtocol):
         Raises:
             ValueError: When a letter with the same ID already exists
         """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=letter.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError:
-            raise ValueError(
-                f"Letter with ID {letter.letter_id} already exists"
-            )
+        self._validate_entity(letter, Letter, "letter")
+        self._add_entity(letter)
 
-    def add_letters(self, letters: list[Letter]):
+    @handle_dynamodb_errors("add_letters")
+    def add_letters(self, letters: List[Letter]):
         """Adds a list of letters to the database
 
         Args:
             letters (list[Letter]): The letters to add to the database
 
         Raises:
-            ValueError: When a letter with the same ID already exists
+            ValueError: When validation fails or letters cannot be added
         """
-        try:
-            for i in range(0, len(letters), CHUNK_SIZE):
-                chunk = letters[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=letter.to_item())
-                    )
-                    for letter in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-        except ClientError:
-            raise ValueError("Could not add letters to the database")
+        self._validate_entity_list(letters, Letter, "letters")
 
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=letter.to_item())
+            )
+            for letter in letters
+        ]
+
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_letter")
     def update_letter(self, letter: Letter):
         """Updates a letter in the database
 
@@ -90,56 +95,51 @@ class _Letter(DynamoClientProtocol):
         Raises:
             ValueError: When the letter does not exist
         """
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=letter.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError:
-            raise ValueError(f"Letter with ID {letter.letter_id} not found")
+        self._validate_entity(letter, Letter, "letter")
+        self._update_entity(letter)
 
+    @handle_dynamodb_errors("delete_letter")
     def delete_letter(
         self, image_id: str, line_id: int, word_id: int, letter_id: int
     ):
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                    },
+        """Deletes a letter from the database
+
+        Args:
+            image_id (str): The UUID of the image the letter belongs to
+            line_id (int): The ID of the line the letter belongs to
+            word_id (int): The ID of the word the letter belongs to
+            letter_id (int): The ID of the letter to delete
+        """
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {
+                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
                 },
-                ConditionExpression="attribute_exists(PK)",
+            },
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    @handle_dynamodb_errors("delete_letters")
+    def delete_letters(self, letters: List[Letter]):
+        """Deletes a list of letters from the database
+
+        Args:
+            letters (list[Letter]): The letters to delete
+        """
+        self._validate_entity_list(letters, Letter, "letters")
+
+        request_items = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=letter.key)
             )
-        except ClientError:
-            raise ValueError(f"Letter with ID {letter_id} not found")
+            for letter in letters
+        ]
 
-    def delete_letters(self, letters: list[Letter]):
-        """Deletes a list of letters from the database"""
-        try:
-            for i in range(0, len(letters), CHUNK_SIZE):
-                chunk = letters[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=letter.key())
-                    )
-                    for letter in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-        except ClientError:
-            raise ValueError("Could not delete letters from the database")
+        self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("delete_letters_from_word")
     def delete_letters_from_word(
         self, image_id: str, line_id: int, word_id: int
     ):
@@ -151,71 +151,118 @@ class _Letter(DynamoClientProtocol):
             word_id (int): The ID of the word to delete letters from
         """
         letters = self.list_letters_from_word(image_id, line_id, word_id)
-        self.delete_letters(letters)
+        if letters:
+            self.delete_letters(letters)
 
+    @handle_dynamodb_errors("get_letter")
     def get_letter(
         self, image_id: str, line_id: int, word_id: int, letter_id: int
     ) -> Letter:
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                    },
-                },
-            )
-            return item_to_letter(response["Item"])
-        except KeyError:
-            raise ValueError(f"Letter with ID {letter_id} not found")
+        """Gets a letter from the database
 
+        Args:
+            image_id (str): The UUID of the image the letter belongs to
+            line_id (int): The ID of the line the letter belongs to
+            word_id (int): The ID of the word the letter belongs to
+            letter_id (int): The ID of the letter to get
+
+        Returns:
+            Letter: The letter object
+
+        Raises:
+            ValueError: When the letter is not found
+        """
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {
+                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                },
+            },
+        )
+        if "Item" not in response:
+            raise ValueError(f"Letter with ID {letter_id} not found")
+        return item_to_letter(response["Item"])
+
+    @handle_dynamodb_errors("list_letters")
     def list_letters(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
-    ) -> Tuple[list[Letter], Optional[Dict]]:
-        """Lists all letters in the database"""
+        last_evaluated_key: Optional[Dict] = None,
+    ) -> Tuple[List[Letter], Optional[Dict]]:
+        """Lists all letters in the database
+
+        Args:
+            limit: Maximum number of items to return
+            last_evaluated_key: Key to start from for pagination
+
+        Returns:
+            Tuple of letters list and last evaluated key for pagination
+        """
         letters = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
-                "ScanIndexForward": True,
-            }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
-            if limit is not None:
-                query_params["Limit"] = limit
-            response = self._client.query(**query_params)
-            letters.extend(
-                [item_to_letter(item) for item in response["Items"]]
-            )
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
+            "ScanIndexForward": True,
+        }
 
-            if limit is None:
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    letters.extend(
-                        [item_to_letter(item) for item in response["Items"]]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-            return letters, last_evaluated_key
-        except ClientError as e:
-            raise ValueError("Could not list letters from the database") from e
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+        if limit is not None:
+            query_params["Limit"] = limit
 
+        response = self._client.query(**query_params)
+        letters.extend([item_to_letter(item) for item in response["Items"]])
+
+        if limit is None:
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+                response = self._client.query(**query_params)
+                letters.extend(
+                    [item_to_letter(item) for item in response["Items"]]
+                )
+            last_evaluated_key = None
+        else:
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+        return letters, last_evaluated_key
+
+    @handle_dynamodb_errors("list_letters_from_word")
     def list_letters_from_word(
         self, image_id: str, line_id: int, word_id: int
-    ) -> list[Letter]:
+    ) -> List[Letter]:
+        """List all letters from a specific word.
+
+        Args:
+            image_id: The UUID of the image
+            line_id: The ID of the line
+            word_id: The ID of the word
+
+        Returns:
+            List of Letter objects from the specified word
+        """
         letters = []
-        try:
+        response = self._client.query(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            ExpressionAttributeValues={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {
+                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
+                },
+            },
+        )
+        letters.extend([item_to_letter(item) for item in response["Items"]])
+
+        while "LastEvaluatedKey" in response:
             response = self._client.query(
                 TableName=self.table_name,
                 KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
@@ -225,27 +272,10 @@ class _Letter(DynamoClientProtocol):
                         "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
                     },
                 },
+                ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             letters.extend(
                 [item_to_letter(item) for item in response["Items"]]
             )
 
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {
-                            "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                letters.extend(
-                    [item_to_letter(item) for item in response["Items"]]
-                )
-
-            return letters
-        except ClientError as e:
-            raise ValueError("Could not list letters from word") from e
+        return letters

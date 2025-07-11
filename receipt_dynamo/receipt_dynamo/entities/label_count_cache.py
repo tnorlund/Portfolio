@@ -51,12 +51,13 @@ class LabelCountCache:
         self.last_updated = last_updated
         self.time_to_live = time_to_live
 
+    @property
     def key(self) -> Dict[str, Dict[str, str]]:
         return {"PK": {"S": "LABEL_CACHE"}, "SK": {"S": f"LABEL#{self.label}"}}
 
     def to_item(self) -> Dict[str, Dict[str, Any]]:
         item = {
-            **self.key(),
+            **self.key,
             "TYPE": {"S": "LABEL_COUNT_CACHE"},
             "label": {"S": self.label},
             "valid_count": {"N": str(self.valid_count)},

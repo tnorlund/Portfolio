@@ -406,7 +406,7 @@ def test_listQueues_with_limit(queue_dynamo):
     # Verify the queues were limited
     assert len(result_queues) == 2
 
-    # If there are more results, there should be a lastEvaluatedKey
+    # If there are more results, there should be a last_evaluated_key
     if len(queues) > 2:
         assert last_evaluated_key is not None
 
@@ -433,7 +433,7 @@ def test_listQueues_with_pagination(queue_dynamo):
     # If there's a last_evaluated_key, get the next page
     if last_evaluated_key:
         result_queues2, _ = queue_dynamo.list_queues(
-            limit=2, lastEvaluatedKey=last_evaluated_key
+            limit=2, last_evaluated_key=last_evaluated_key
         )
 
         # Verify the second page has different queues
@@ -445,11 +445,11 @@ def test_listQueues_with_pagination(queue_dynamo):
 @pytest.mark.integration
 def test_listQueues_with_invalid_last_evaluated_key(queue_dynamo):
     """
-    Test that listing queues with an invalid lastEvaluatedKey raises
+    Test that listing queues with an invalid last_evaluated_key raises
     a ValueError.
     """
     with pytest.raises(ValueError):
-        queue_dynamo.list_queues(lastEvaluatedKey={"wrong_key": "value"})
+        queue_dynamo.list_queues(last_evaluated_key={"wrong_key": "value"})
 
 
 @pytest.mark.integration
@@ -637,7 +637,7 @@ def test_listJobsInQueue_with_limit(queue_dynamo, sample_queue, sample_job):
     # Verify the jobs were limited
     assert len(result_jobs) == 2
 
-    # If there are more results, there should be a lastEvaluatedKey
+    # If there are more results, there should be a last_evaluated_key
     assert last_evaluated_key is not None
 
 
@@ -753,7 +753,7 @@ def test_findQueuesForJob_with_limit(queue_dynamo, sample_job):
     # Verify the results were limited
     assert len(result_queue_jobs) == 2
 
-    # If there are more results, there should be a lastEvaluatedKey
+    # If there are more results, there should be a last_evaluated_key
     assert last_evaluated_key is not None
 
 
@@ -791,7 +791,7 @@ def test_findQueuesForJob_with_no_queues(queue_dynamo, sample_job):
 
 @pytest.mark.integration
 def test_validate_last_evaluated_key_valid():
-    """Test that valid lastEvaluatedKey passes validation."""
+    """Test that valid last_evaluated_key passes validation."""
     valid_lek = {"PK": {"S": "QUEUE#test-queue"}, "SK": {"S": "QUEUE"}}
 
     # This should not raise an exception
@@ -801,7 +801,7 @@ def test_validate_last_evaluated_key_valid():
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_none():
     """
-    Test that None lastEvaluatedKey passes validation (treated as not
+    Test that None last_evaluated_key passes validation (treated as not
     provided).
     """
     # This should not raise an exception, so we just call it directly
@@ -811,7 +811,7 @@ def test_validate_last_evaluated_key_invalid_none():
 
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_missing_key():
-    """Test that lastEvaluatedKey with missing key raises ValueError."""
+    """Test that last_evaluated_key with missing key raises ValueError."""
     # This is missing the SK key
     invalid_lek = {"PK": {"S": "QUEUE#test-queue"}}
 
@@ -823,7 +823,7 @@ def test_validate_last_evaluated_key_invalid_missing_key():
 
 @pytest.mark.integration
 def test_validate_last_evaluated_key_invalid_format():
-    """Test that lastEvaluatedKey with invalid format raises ValueError."""
+    """Test that last_evaluated_key with invalid format raises ValueError."""
     invalid_lek = {
         "PK": "QUEUE#test-queue",  # Not in DynamoDB format
         "SK": {"S": "QUEUE"},

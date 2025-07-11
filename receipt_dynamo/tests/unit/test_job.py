@@ -317,8 +317,8 @@ def test_job_init_invalid_tags():
 
 @pytest.mark.unit
 def test_job_key(example_job):
-    """Test the Job.key() method."""
-    assert example_job.key() == {
+    """Test the Job.key method."""
+    assert example_job.key == {
         "PK": {"S": "JOB#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "JOB"},
     }

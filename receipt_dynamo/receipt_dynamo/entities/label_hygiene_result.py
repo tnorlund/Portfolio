@@ -61,6 +61,7 @@ class LabelHygieneResult:
             raise ValueError("timestamp must be a datetime object")
         self.timestamp: datetime = timestamp
 
+    @property
     def key(self) -> Dict[str, Any]:
         return {
             "PK": {"S": f"LABEL_HYGIENE#{self.hygiene_id}"},
@@ -81,7 +82,7 @@ class LabelHygieneResult:
 
     def to_item(self) -> Dict[str, Any]:
         return {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "LABEL_HYGIENE_RESULT"},

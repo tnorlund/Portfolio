@@ -540,7 +540,7 @@ def test_listInstances_with_limit(instance_dynamo, sample_instance):
     # List the next page
     if last_evaluated_key:
         more_instances, _ = instance_dynamo.list_instances(
-            limit=1, lastEvaluatedKey=last_evaluated_key
+            limit=1, last_evaluated_key=last_evaluated_key
         )
         assert len(more_instances) == 1
 

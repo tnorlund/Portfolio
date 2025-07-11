@@ -2,7 +2,27 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBResourceNotFoundError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    OperationError,
+)
+from receipt_dynamo.entities.job import Job, item_to_job
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -22,20 +42,6 @@ from receipt_dynamo.data._base import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBResourceNotFoundError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    OperationError,
-)
-from receipt_dynamo.entities.job import Job, item_to_job
-from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -51,7 +57,42 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _Job(DynamoClientProtocol):
+class _Job(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
+    """
+    A class used to represent a Job in the database.
+
+    Methods
+    -------
+    add_job(job: Job)
+        Adds a job to the database.
+    add_jobs(jobs: list[Job])
+        Adds multiple jobs to the database.
+    update_job(job: Job)
+        Updates a job in the database.
+    update_jobs(jobs: list[Job])
+        Updates multiple jobs in the database.
+    delete_job(job: Job)
+        Deletes a job from the database.
+    delete_jobs(jobs: list[Job])
+        Deletes multiple jobs from the database.
+    get_job(job_id: str) -> Job
+        Gets a job from the database.
+    get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
+        Gets a job with all its status updates.
+    list_jobs(limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+        Lists all jobs from the database.
+    list_jobs_by_status(status: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+        Lists jobs filtered by status.
+    list_jobs_by_user(user_id: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+        Lists jobs created by a specific user.
+    """
+
+    @handle_dynamodb_errors("add_job")
     def add_job(self, job: Job):
         """Adds a job to the database
 
@@ -61,37 +102,10 @@ class _Job(DynamoClientProtocol):
         Raises:
             ValueError: When a job with the same ID already exists
         """
-        if job is None:
-            raise ValueError("Job parameter is required and cannot be None.")
-        if not isinstance(job, Job):
-            raise ValueError("job must be an instance of the Job class.")
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBResourceNotFoundError(
-                    f"Could not add job to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(job, Job, "job")
+        self._add_entity(job)
 
+    @handle_dynamodb_errors("add_jobs")
     def add_jobs(self, jobs: list[Job]):
         """Adds a list of jobs to the database
 
@@ -99,51 +113,19 @@ class _Job(DynamoClientProtocol):
             jobs (list[Job]): The jobs to add to the database
 
         Raises:
-            ValueError: When a job with the same ID already exists
+            ValueError: When validation fails or jobs cannot be added
         """
-        if jobs is None:
-            raise ValueError("Jobs parameter is required and cannot be None.")
-        if not isinstance(jobs, list):
-            raise ValueError("jobs must be a list of Job instances.")
-        if not all(isinstance(job, Job) for job in jobs):
-            raise ValueError("All jobs must be instances of the Job class.")
-        try:
-            for i in range(0, len(jobs), 25):
-                chunk = jobs[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=job.to_item())
-                    )
-                    for job in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(f"Error adding jobs: {e}") from e
+        self._validate_entity_list(jobs, Job, "jobs")
 
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=job.to_item())
+            )
+            for job in jobs
+        ]
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_job")
     def update_job(self, job: Job):
         """Updates a job in the database
 
@@ -153,38 +135,10 @@ class _Job(DynamoClientProtocol):
         Raises:
             ValueError: When the job does not exist
         """
-        if job is None:
-            raise ValueError("Job parameter is required and cannot be None.")
-        if not isinstance(job, Job):
-            raise ValueError("job must be an instance of the Job class.")
+        self._validate_entity(job, Job, "job")
+        self._update_entity(job)
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise EntityNotFoundError(
-                    f"Job with ID {job.job_id} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(f"Error updating job: {e}") from e
-
+    @handle_dynamodb_errors("update_jobs")
     def update_jobs(self, jobs: list[Job]):
         """
         Updates a list of jobs in the database using transactions.
@@ -201,39 +155,21 @@ class _Job(DynamoClientProtocol):
             ValueError: When given a bad parameter.
             Exception: For underlying DynamoDB errors.
         """
-        if jobs is None:
-            raise ValueError("Jobs parameter is required and cannot be None.")
-        if not isinstance(jobs, list):
-            raise ValueError("jobs must be a list of Job instances.")
-        if not all(isinstance(job, Job) for job in jobs):
-            raise ValueError("All jobs must be instances of the Job class.")
+        self._validate_entity_list(jobs, Job, "jobs")
 
-        # Process jobs in chunks of 25 because transact_write_items supports a
-        # maximum of 25 operations.
-        for i in range(0, len(jobs), 25):
-            chunk = jobs[i : i + 25]
-            transact_items = []
-            for job in chunk:
-                transact_items.append(
-                    TransactWriteItemTypeDef(
-                        Put=PutTypeDef(
-                            TableName=self.table_name,
-                            Item=job.to_item(),
-                            ConditionExpression="attribute_exists(PK)",
-                        )
-                    )
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=job.to_item(),
+                    ConditionExpression="attribute_exists(PK)",
                 )
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError("One or more jobs do not exist") from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
+            )
+            for job in jobs
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("delete_job")
     def delete_job(self, job: Job):
         """Deletes a job from the database
 
@@ -243,37 +179,10 @@ class _Job(DynamoClientProtocol):
         Raises:
             ValueError: When the job does not exist
         """
-        if job is None:
-            raise ValueError("Job parameter is required and cannot be None.")
-        if not isinstance(job, Job):
-            raise ValueError("job must be an instance of the Job class.")
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=job.key(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Job with ID {job.job_id} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error deleting job: {e}") from e
+        self._validate_entity(job, Job, "job")
+        self._delete_entity(job)
 
+    @handle_dynamodb_errors("delete_jobs")
     def delete_jobs(self, jobs: list[Job]):
         """
         Deletes a list of jobs from the database using transactions.
@@ -285,50 +194,21 @@ class _Job(DynamoClientProtocol):
         Raises:
             ValueError: When a job does not exist or if another error occurs.
         """
-        if jobs is None:
-            raise ValueError("Jobs parameter is required and cannot be None.")
-        if not isinstance(jobs, list):
-            raise ValueError("jobs must be a list of Job instances.")
-        if not all(isinstance(job, Job) for job in jobs):
-            raise ValueError("All jobs must be instances of the Job class.")
+        self._validate_entity_list(jobs, Job, "jobs")
 
-        try:
-            # Process jobs in chunks of 25 items (the maximum allowed per
-            # transaction)
-            for i in range(0, len(jobs), 25):
-                chunk = jobs[i : i + 25]
-                transact_items = []
-                for job in chunk:
-                    transact_items.append(
-                        TransactWriteItemTypeDef(
-                            Delete=DeleteTypeDef(
-                                TableName=self.table_name,
-                                Key=job.key(),
-                                ConditionExpression="attribute_exists(PK)",
-                            )
-                        )
-                    )
-                # Execute the transaction for this chunk.
-                self._client.transact_write_items(TransactItems=transact_items)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("One or more jobs do not exist") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error deleting jobs: {e}") from e
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Delete=DeleteTypeDef(
+                    TableName=self.table_name,
+                    Key=job.key,
+                    ConditionExpression="attribute_exists(PK)",
+                )
+            )
+            for job in jobs
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("get_job")
     def get_job(self, job_id: str) -> Job:
         """
         Retrieves a job from the database.
@@ -349,35 +229,19 @@ class _Job(DynamoClientProtocol):
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": "JOB"},
-                },
-            )
-            if "Item" in response:
-                return item_to_job(response["Item"])
-            else:
-                raise EntityNotFoundError(
-                    f"Job with ID {job_id} does not exist."
-                )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(f"Error getting job: {e}") from e
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": "JOB"},
+            },
+        )
+        if "Item" in response:
+            return item_to_job(response["Item"])
+        else:
+            raise EntityNotFoundError(f"Job with ID {job_id} does not exist.")
 
+    @handle_dynamodb_errors("get_job_with_status")
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
         """Get a job with all its status updates
 
@@ -393,54 +257,39 @@ class _Job(DynamoClientProtocol):
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
 
-        try:
-            # Get the job first
-            job = self.get_job(job_id)
+        # Get the job first
+        job = self.get_job(job_id)
 
-            # Get the job status updates
-            status_response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "STATUS#"},
-                },
-            )
+        # Get the job status updates
+        status_response = self._client.query(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues={
+                ":pk": {"S": f"JOB#{job_id}"},
+                ":sk": {"S": "STATUS#"},
+            },
+        )
 
-            statuses = []
-            if "Items" in status_response:
-                # Convert DynamoDB items to JobStatus objects
-                for item in status_response["Items"]:
-                    statuses.append(item_to_job_status(item))
+        statuses = []
+        if "Items" in status_response:
+            # Convert DynamoDB items to JobStatus objects
+            for item in status_response["Items"]:
+                statuses.append(item_to_job_status(item))
 
-            return job, statuses
+        return job, statuses
 
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting job with status: {e}"
-                ) from e
-
+    @handle_dynamodb_errors("list_jobs")
     def list_jobs(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records from the database with support for pagination.
 
         Parameters:
             limit (int, optional): The maximum number of job items to return. If None, all jobs are fetched.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -455,77 +304,57 @@ class _Job(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(lastEvaluatedKey)
+            validate_last_evaluated_key(last_evaluated_key)
 
         jobs: List[Job] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "JOB"}},
-            }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {":val": {"S": "JOB"}},
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                # If a limit is provided, adjust the query's Limit to only
-                # fetch what is needed.
-                if limit is not None:
-                    remaining = limit - len(jobs)
-                    query_params["Limit"] = remaining
+        while True:
+            # If a limit is provided, adjust the query's Limit to only
+            # fetch what is needed.
+            if limit is not None:
+                remaining = limit - len(jobs)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                jobs.extend([item_to_job(item) for item in response["Items"]])
+            response = self._client.query(**query_params)
+            jobs.extend([item_to_job(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and
-                # break.
-                if limit is not None and len(jobs) >= limit:
-                    jobs = jobs[:limit]  # ensure we return exactly the limit
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
+            # If we have reached or exceeded the limit, trim the list and
+            # break.
+            if limit is not None and len(jobs) >= limit:
+                jobs = jobs[:limit]  # ensure we return exactly the limit
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                break
 
-                # Continue paginating if there's more data; otherwise, we're
-                # done.
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return jobs, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            # Continue paginating if there's more data; otherwise, we're
+            # done.
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                raise DynamoDBError(
-                    f"Could not list jobs from the database: {e}"
-                ) from e
+                last_evaluated_key = None
+                break
 
+        return jobs, last_evaluated_key
+
+    @handle_dynamodb_errors("list_jobs_by_status")
     def list_jobs_by_status(
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records filtered by status from the database.
@@ -533,7 +362,7 @@ class _Job(DynamoClientProtocol):
         Parameters:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of job items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -559,87 +388,68 @@ class _Job(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+                k in last_evaluated_key
+                for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
                 )
 
         jobs: List[Job] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :status",
-                "ExpressionAttributeValues": {
-                    ":status": {"S": f"STATUS#{status.lower()}"},
-                    ":job_type": {"S": "JOB"},
-                },
-                "FilterExpression": "#type = :job_type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},
-            }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI1",
+            "KeyConditionExpression": "GSI1PK = :status",
+            "ExpressionAttributeValues": {
+                ":status": {"S": f"STATUS#{status.lower()}"},
+                ":job_type": {"S": "JOB"},
+            },
+            "FilterExpression": "#type = :job_type",
+            "ExpressionAttributeNames": {"#type": "TYPE"},
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                # If a limit is provided, adjust the query's Limit to only
-                # fetch what is needed.
-                if limit is not None:
-                    remaining = limit - len(jobs)
-                    query_params["Limit"] = remaining
+        while True:
+            # If a limit is provided, adjust the query's Limit to only
+            # fetch what is needed.
+            if limit is not None:
+                remaining = limit - len(jobs)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                jobs.extend([item_to_job(item) for item in response["Items"]])
+            response = self._client.query(**query_params)
+            jobs.extend([item_to_job(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and
-                # break.
-                if limit is not None and len(jobs) >= limit:
-                    jobs = jobs[:limit]  # ensure we return exactly the limit
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
+            # If we have reached or exceeded the limit, trim the list and
+            # break.
+            if limit is not None and len(jobs) >= limit:
+                jobs = jobs[:limit]  # ensure we return exactly the limit
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                break
 
-                # Continue paginating if there's more data; otherwise, we're
-                # done.
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return jobs, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list jobs by status from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            # Continue paginating if there's more data; otherwise, we're
+            # done.
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                raise DynamoDBError(
-                    f"Could not list jobs by status from the database: {e}"
-                ) from e
+                last_evaluated_key = None
+                break
 
+        return jobs, last_evaluated_key
+
+    @handle_dynamodb_errors("list_jobs_by_user")
     def list_jobs_by_user(
         self,
         user_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: dict | None = None,
+        last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
         Retrieve job records created by a specific user from the database.
@@ -647,7 +457,7 @@ class _Job(DynamoClientProtocol):
         Parameters:
             user_id (str): The ID of the user who created the jobs.
             limit (int, optional): The maximum number of job items to return.
-            lastEvaluatedKey (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
 
         Returns:
             tuple:
@@ -665,81 +475,58 @@ class _Job(DynamoClientProtocol):
             raise ValueError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise ValueError("Limit must be greater than 0")
-        if lastEvaluatedKey is not None:
-            if not isinstance(lastEvaluatedKey, dict):
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
-                k in lastEvaluatedKey for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+                k in last_evaluated_key
+                for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise ValueError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
                 )
 
         jobs: List[Job] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :user",
-                "ExpressionAttributeValues": {
-                    ":user": {"S": f"USER#{user_id}"},
-                },
-                "FilterExpression": "#type = :job_type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":user": {"S": f"USER#{user_id}"},
-                    ":job_type": {"S": "JOB"},
-                },
-            }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI2",
+            "KeyConditionExpression": "GSI2PK = :user",
+            "ExpressionAttributeValues": {
+                ":user": {"S": f"USER#{user_id}"},
+                ":job_type": {"S": "JOB"},
+            },
+            "FilterExpression": "#type = :job_type",
+            "ExpressionAttributeNames": {"#type": "TYPE"},
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                # If a limit is provided, adjust the query's Limit to only
-                # fetch what is needed.
-                if limit is not None:
-                    remaining = limit - len(jobs)
-                    query_params["Limit"] = remaining
+        while True:
+            # If a limit is provided, adjust the query's Limit to only
+            # fetch what is needed.
+            if limit is not None:
+                remaining = limit - len(jobs)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                jobs.extend([item_to_job(item) for item in response["Items"]])
+            response = self._client.query(**query_params)
+            jobs.extend([item_to_job(item) for item in response["Items"]])
 
-                # If we have reached or exceeded the limit, trim the list and
-                # break.
-                if limit is not None and len(jobs) >= limit:
-                    jobs = jobs[:limit]  # ensure we return exactly the limit
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
+            # If we have reached or exceeded the limit, trim the list and
+            # break.
+            if limit is not None and len(jobs) >= limit:
+                jobs = jobs[:limit]  # ensure we return exactly the limit
+                last_evaluated_key = response.get("LastEvaluatedKey", None)
+                break
 
-                # Continue paginating if there's more data; otherwise, we're
-                # done.
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return jobs, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list jobs by user from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+            # Continue paginating if there's more data; otherwise, we're
+            # done.
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                raise DynamoDBError(
-                    f"Could not list jobs by user from the database: {e}"
-                ) from e
+                last_evaluated_key = None
+                break
+
+        return jobs, last_evaluated_key

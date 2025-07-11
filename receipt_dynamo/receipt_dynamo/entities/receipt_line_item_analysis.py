@@ -180,6 +180,7 @@ class ReceiptLineItemAnalysis:
                 )
         raise ValueError(f"{field_name} must be a Decimal, string, or None")
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the receipt line item analysis.
 
@@ -222,7 +223,7 @@ class ReceiptLineItemAnalysis:
             dict: A dictionary representing the ReceiptLineItemAnalysis object as a DynamoDB item.
         """
         item: Dict[str, Any] = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
             "TYPE": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"},

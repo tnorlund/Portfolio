@@ -45,7 +45,7 @@ def test_word_add_no_tags(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=word.key(),
+        Key=word.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == word.to_item()
@@ -78,14 +78,14 @@ def test_word_add_all(dynamodb_table: Literal["MyMockedTable"]):
     # Assert
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=word1.key(),
+        Key=word1.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == word1.to_item()
 
     response = boto3.client("dynamodb", region_name="us-east-1").get_item(
         TableName=dynamodb_table,
-        Key=word2.key(),
+        Key=word2.key,
     )
     assert "Item" in response, f"Item not found. response: {response}"
     assert response["Item"] == word2.to_item()
@@ -176,7 +176,7 @@ def test_word_get_all(dynamodb_table: Literal["MyMockedTable"]):
     client.add_words(words)
 
     # Act
-    words_retrieved = client.get_words([words[0].key(), words[1].key()])
+    words_retrieved = client.get_words([words[0].key, words[1].key])
 
     # Assert
     assert words_retrieved == words
@@ -271,7 +271,7 @@ def test_updateWords_success(dynamodb_table):
     client.update_words([word1, word2])
 
     # Verify updates
-    retrieved_words = client.get_words([word1.key(), word2.key()])
+    retrieved_words = client.get_words([word1.key, word2.key])
     assert len(retrieved_words) == 2
     for word in retrieved_words:
         if word.word_id == word1.word_id:
@@ -315,8 +315,7 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
     word = Word(**correct_word_params)
     with pytest.raises(
         ValueError,
-        match="All items in the words list must be instances of the Word "
-        "class.",
+        match="All words must be instances of the Word class.",
     ):
         client.update_words([word, "not-a-word"])  # type: ignore
 
@@ -344,7 +343,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="One or more words do not exist"):
+    with pytest.raises(ValueError, match="Entity does not exist"):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -484,6 +483,8 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="Error updating words"):
+    from receipt_dynamo.data.shared_exceptions import DynamoDBError
+
+    with pytest.raises(DynamoDBError, match="Table not found"):
         client.update_words([word])
     mock_transact.assert_called_once()

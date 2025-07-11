@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.data.shared_exceptions import DynamoDBError
 from receipt_dynamo.entities.job_dependency import JobDependency
 
 
@@ -125,11 +126,10 @@ def test_addJobDependency_raises_resource_not_found(
     )
 
     # Attempt to add the job dependency
-    with pytest.raises(ClientError) as excinfo:
+    with pytest.raises(
+        DynamoDBError, match="Table not found for operation add_job_dependency"
+    ):
         job_dependency_dynamo.add_job_dependency(sample_job_dependency)
-    assert (
-        excinfo.value.response["Error"]["Code"] == "ResourceNotFoundException"
-    )
 
 
 @pytest.mark.integration
@@ -259,7 +259,7 @@ def test_listDependencies_with_limit(
             job_dependency_dynamo.list_dependencies(
                 dependent_job_id=dependent_job_id,
                 limit=limit,
-                lastEvaluatedKey=last_key,
+                last_evaluated_key=last_key,
             )
         )
 
@@ -382,7 +382,7 @@ def test_listDependents_with_limit(job_dependency_dynamo):
         next_dependents, next_last_key = job_dependency_dynamo.list_dependents(
             dependency_job_id=dependency_job_id,
             limit=limit,
-            lastEvaluatedKey=last_key,
+            last_evaluated_key=last_key,
         )
 
         # Check that we got more dependents
@@ -481,7 +481,7 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     does not exist.
     """
     # Try to delete a job dependency that doesn't exist
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ValueError, match="Entity does not exist"):
         job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
 

@@ -119,6 +119,7 @@ class Job:
             raise ValueError("tags must be a dictionary")
         self.tags: Dict[str, str] = tags or {}
 
+    @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job.
 
@@ -145,7 +146,7 @@ class Job:
             dict: A dictionary representing the Job object as a DynamoDB item.
         """
         item = {
-            **self.key(),
+            **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "JOB"},
             "name": {"S": self.name},

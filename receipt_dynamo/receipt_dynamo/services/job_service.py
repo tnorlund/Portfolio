@@ -104,28 +104,28 @@ class JobService(
     def list_jobs(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List all jobs."""
-        return super().list_jobs(limit, lastEvaluatedKey)
+        return super().list_jobs(limit, last_evaluated_key)
 
     def list_jobs_by_status(
         self,
         status: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List jobs by status."""
-        return super().list_jobs_by_status(status, limit, lastEvaluatedKey)
+        return super().list_jobs_by_status(status, limit, last_evaluated_key)
 
     def list_jobs_by_user(
         self,
         user_id: str,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict[str, Any]] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
         """List jobs by user."""
-        return super().list_jobs_by_user(user_id, limit, lastEvaluatedKey)
+        return super().list_jobs_by_user(user_id, limit, last_evaluated_key)
 
     def check_job_dependencies(
         self, job_id: str

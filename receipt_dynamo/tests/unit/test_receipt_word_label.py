@@ -219,7 +219,7 @@ def test_receipt_word_label_init_invalid_timestamp():
 @pytest.mark.unit
 def test_receipt_word_label_key_generation(example_receipt_word_label):
     """Test that the primary key is correctly generated."""
-    assert example_receipt_word_label.key() == {
+    assert example_receipt_word_label.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#BUSINESS_NAME"},
     }

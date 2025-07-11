@@ -231,7 +231,7 @@ def test_receipt_field_init_invalid_timestamp():
 @pytest.mark.unit
 def test_receipt_field_key_generation(example_receipt_field):
     """Test that the primary key is correctly generated."""
-    assert example_receipt_field.key() == {
+    assert example_receipt_field.key == {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
         "SK": {
             "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"

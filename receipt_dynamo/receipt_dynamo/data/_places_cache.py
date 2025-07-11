@@ -159,7 +159,7 @@ class _PlacesCache(DynamoClientProtocol):
             # Update the item's attributes
             response = self._client.update_item(
                 TableName=self.table_name,
-                Key=item.key(),
+                Key=item.key,
                 UpdateExpression="SET query_count = if_not_exists(query_count, :zero) + :inc, last_updated = :now",
                 ExpressionAttributeValues={
                     ":inc": {"N": "1"},
@@ -197,7 +197,7 @@ class _PlacesCache(DynamoClientProtocol):
         try:
             self._client.delete_item(
                 TableName=self.table_name,
-                Key=item.key(),
+                Key=item.key,
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
@@ -235,7 +235,7 @@ class _PlacesCache(DynamoClientProtocol):
                 TransactWriteItemTypeDef(
                     Delete=DeleteTypeDef(
                         TableName=self.table_name,
-                        Key=item.key(),
+                        Key=item.key,
                         # ConditionExpression="attribute_exists(PK)",
                     )
                 )
@@ -301,7 +301,7 @@ class _PlacesCache(DynamoClientProtocol):
         try:
             response = self._client.get_item(
                 TableName=self.table_name,
-                Key=temp_cache.key(),
+                Key=temp_cache.key,
             )
             if "Item" not in response:
                 return None
@@ -346,7 +346,7 @@ class _PlacesCache(DynamoClientProtocol):
     def list_places_caches(
         self,
         limit: Optional[int] = None,
-        lastEvaluatedKey: Optional[Dict] = None,
+        last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[PlacesCache], Optional[Dict]]:
         """
         Lists PlacesCache items from the database using GSI2 (LAST_USED index).
@@ -354,17 +354,19 @@ class _PlacesCache(DynamoClientProtocol):
 
         Args:
             limit (Optional[int]): Maximum number of items to return.
-            lastEvaluatedKey (Optional[Dict]): Key to continue from a previous query.
+            last_evaluated_key (Optional[Dict]): Key to continue from a previous query.
 
         Returns:
             Tuple[List[PlacesCache], Optional[Dict]]: List of items and last evaluated key.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         places_caches = []
         try:
@@ -375,8 +377,8 @@ class _PlacesCache(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "PLACES_CACHE"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
 

@@ -5,6 +5,22 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import ReceiptWord, item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    OperationError,
+)
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -20,8 +36,6 @@ if TYPE_CHECKING:
     )
 
 # These are used at runtime, not just for type checking
-from typing import TYPE_CHECKING, Dict, Optional
-
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
@@ -29,21 +43,17 @@ from receipt_dynamo.data._base import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-)
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptWord(DynamoClientProtocol):
+class _ReceiptWord(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     A class used to represent a ReceiptWord in the database.
 
@@ -70,209 +80,65 @@ class _ReceiptWord(DynamoClientProtocol):
     list_receipt_words_from_line(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
     list_receipt_words_from_receipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
-        Returns all ReceiptWords that match the given receiptadd_receipt_word
+        Returns all ReceiptWords that match the given receipt.
     """
 
-    def add_receipt_word(self, word: ReceiptWord):
+    @handle_dynamodb_errors("add_receipt_word")
+    def add_receipt_word(self, word: ReceiptWord) -> None:
         """Adds a single ReceiptWord to DynamoDB."""
-        if word is None:
-            raise ValueError("word parameter is required and cannot be None.")
-        if not isinstance(word, ReceiptWord):
-            raise ValueError(
-                "word must be an instance of the ReceiptWord class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=word.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} already exists"
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    "Could not add ReceiptWords to DynamoDB: "
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    "One or more parameters given were invalid"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add ReceiptWords to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(word, ReceiptWord, "word")
+        self._add_entity(word)
 
-    def add_receipt_words(self, words: list[ReceiptWord]):
+    @handle_dynamodb_errors("add_receipt_words")
+    def add_receipt_words(self, words: list[ReceiptWord]) -> None:
         """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
-        if words is None:
-            raise ValueError("words parameter is required and cannot be None.")
-        if not isinstance(words, list):
-            raise ValueError("words must be a list of ReceiptWord instances.")
-        if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError(
-                "All words must be instances of the ReceiptWord class."
-            )
-        try:
-            for i in range(0, len(words), CHUNK_SIZE):
-                chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=w.to_item())
-                    )
-                    for w in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("already exists") from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    "Could not add receipt word to DynamoDB"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError("Internal server error") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    "One or more parameters given were invalid"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add receipt word to DynamoDB: {e}"
-                ) from e
+        self._validate_entity_list(words, ReceiptWord, "words")
 
-    def update_receipt_word(self, word: ReceiptWord):
+        request_items = [
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=w.to_item()))
+            for w in words
+        ]
+        self._batch_write_with_retry(request_items)
+
+    @handle_dynamodb_errors("update_receipt_word")
+    def update_receipt_word(self, word: ReceiptWord) -> None:
         """Updates an existing ReceiptWord in DynamoDB."""
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=word.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} does not exist"
-                )
-            else:
-                raise DynamoDBError(
-                    f"Could not update ReceiptWord in the database: {e}"
-                ) from e
+        self._validate_entity(word, ReceiptWord, "word")
+        self._update_entity(word)
 
-    def update_receipt_words(self, words: list[ReceiptWord]):
+    @handle_dynamodb_errors("update_receipt_words")
+    def update_receipt_words(self, words: list[ReceiptWord]) -> None:
         """Updates multiple existing ReceiptWords in DynamoDB."""
-        if words is None:
-            raise ValueError("words parameter is required and cannot be None.")
-        if not isinstance(words, list):
-            raise ValueError("words must be a list of ReceiptWord instances.")
-        if not all(isinstance(w, ReceiptWord) for w in words):
-            raise ValueError(
-                "All words must be instances of the ReceiptWord class."
-            )
-        for i in range(0, len(words), 25):
-            chunk = words[i : i + 25]
-            transact_items = [
-                TransactWriteItemTypeDef(
-                    Put=PutTypeDef(
-                        TableName=self.table_name,
-                        Item=w.to_item(),
-                        ConditionExpression="attribute_exists(PK)",
-                    )
-                )
-                for w in chunk
-            ]
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more ReceiptWords do not exist"
-                    ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        "Provisioned throughput exceeded"
-                    ) from e
+        self._validate_entity_list(words, ReceiptWord, "words")
 
-    def delete_receipt_word(self, word: ReceiptWord):
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=w.to_item(),
+                    ConditionExpression="attribute_exists(PK)",
+                )
+            )
+            for w in words
+        ]
+        self._transact_write_with_chunking(transact_items)
+
+    @handle_dynamodb_errors("delete_receipt_word")
+    def delete_receipt_word(self, word: ReceiptWord) -> None:
         """Deletes a single ReceiptWord by IDs."""
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{word.image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
-                    },
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"ReceiptWord with ID {word.word_id} not found"
-                ) from e
-            else:
-                raise ValueError(
-                    "Could not delete ReceiptWord from the database"
-                )
+        self._validate_entity(word, ReceiptWord, "word")
+        self._delete_entity(word)
 
-    def delete_receipt_words(self, words: list[ReceiptWord]):
+    @handle_dynamodb_errors("delete_receipt_words")
+    def delete_receipt_words(self, words: list[ReceiptWord]) -> None:
         """Deletes multiple ReceiptWords in batch."""
-        try:
-            for i in range(0, len(words), CHUNK_SIZE):
-                chunk = words[i : i + CHUNK_SIZE]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=w.key())
-                    )
-                    for w in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            raise ValueError(
-                f"Could not delete ReceiptWords from the database: {e}"
-            ) from e
+        self._validate_entity_list(words, ReceiptWord, "words")
+
+        request_items = [
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=w.key))
+            for w in words
+        ]
+        self._batch_write_with_retry(request_items)
 
     def delete_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
@@ -401,15 +267,19 @@ class _ReceiptWord(DynamoClientProtocol):
             ) from e
 
     def list_receipt_words(
-        self, limit: Optional[int] = None, lastEvaluatedKey: dict | None = None
+        self,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
     ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
-        if lastEvaluatedKey is not None and not isinstance(
-            lastEvaluatedKey, dict
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
         ):
-            raise ValueError("lastEvaluatedKey must be a dictionary or None.")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None."
+            )
 
         receipt_words = []
         try:
@@ -420,8 +290,8 @@ class _ReceiptWord(DynamoClientProtocol):
                 "ExpressionAttributeNames": {"#t": "TYPE"},
                 "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}},
             }
-            if lastEvaluatedKey is not None:
-                query_params["ExclusiveStartKey"] = lastEvaluatedKey
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
             if limit is not None:
                 query_params["Limit"] = limit
             response = self._client.query(**query_params)
