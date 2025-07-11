@@ -187,7 +187,7 @@ class CurrencyPatternDetector(PatternDetector):
 
         return {}
 
-    def _classify_currency(
+    def _classify_currency(  # pylint: disable=too-many-return-statements
         self, word: ReceiptWord, all_words: List[ReceiptWord]
     ) -> PatternType:
         """Classify currency based on context and position."""
@@ -282,7 +282,7 @@ class CurrencyPatternDetector(PatternDetector):
         self, word: ReceiptWord, all_words: List[ReceiptWord]
     ) -> bool:
         """Check if there's a quantity pattern near this currency amount."""
-        # Simple check for now - will be enhanced when QuantityDetector is implemented
+        # Simple check for now - enhanced when QuantityDetector is implemented
         nearby_words = self._find_nearby_words(
             word, all_words, max_distance=50
         )

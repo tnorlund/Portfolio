@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from receipt_dynamo.entities import ReceiptWord
 
@@ -75,7 +75,7 @@ class ParallelPatternOrchestrator:
                 if task.done() and not task.cancelled():
                     try:
                         results.append(task.result())
-                    except Exception:
+                    except (asyncio.CancelledError, RuntimeError, AttributeError):
                         results.append([])
                 else:
                     task.cancel()
@@ -105,7 +105,7 @@ class ParallelPatternOrchestrator:
         """Run a single detector with error handling."""
         try:
             return await detector.detect(words)
-        except Exception as e:
+        except (asyncio.TimeoutError, RuntimeError, AttributeError, ValueError) as e:
             # Log error but don't fail entire detection
             print(f"Error in {detector.__class__.__name__}: {e}")
             return []

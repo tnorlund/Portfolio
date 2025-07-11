@@ -143,7 +143,7 @@ def pattern_type_to_label(pattern_type) -> str:
 def make_smart_gpt_decision(
     labeled_words: List[Dict],
     essential_status: Dict,
-    aggregated_patterns: Dict,
+    aggregated_patterns: Dict,  # pylint: disable=unused-argument
 ) -> Dict:
     """Make smart decision about GPT processing (Epic #191 logic).
 
@@ -185,7 +185,7 @@ def make_smart_gpt_decision(
             "reasoning": "All essential fields found via patterns",
             "unlabeled_words": unlabeled_count,
         }
-    elif essential_status["has_date"] and essential_status["has_total"]:
+    if essential_status["has_date"] and essential_status["has_total"]:
         return {
             "action": "BATCH",
             "confidence": 0.8,

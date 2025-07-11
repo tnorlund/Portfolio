@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from receipt_dynamo.entities import ReceiptWord
 
@@ -187,7 +187,7 @@ class DateTimePatternDetector(PatternDetector):
                 return self._create_date_match(
                     match.group(0), int(year), second, first, "DMY"
                 )
-            elif second > 12:  # Must be day
+            if second > 12:  # Must be day
                 return self._create_date_match(
                     match.group(0), int(year), first, second, "MDY"
                 )
@@ -262,7 +262,7 @@ class DateTimePatternDetector(PatternDetector):
 
         return None
 
-    def _create_date_match(
+    def _create_date_match(  # pylint: disable=too-many-arguments
         self,
         matched_text: str,
         year: int,
@@ -299,7 +299,10 @@ class DateTimePatternDetector(PatternDetector):
         return self.MONTHS.get(month_lower)
 
     def _calculate_date_confidence(
-        self, date_match: Dict, word: ReceiptWord, all_words: List[ReceiptWord]
+        self,
+        date_match: Dict,
+        word: ReceiptWord,  # pylint: disable=unused-argument
+        all_words: List[ReceiptWord],  # pylint: disable=unused-argument
     ) -> float:
         """Calculate confidence for date detection."""
         confidence = 0.7  # Base confidence for valid date
@@ -318,7 +321,7 @@ class DateTimePatternDetector(PatternDetector):
                 confidence += 0.1
             elif days_diff > 365 * 5:  # More than 5 years
                 confidence -= 0.2
-        except:
+        except (ValueError, TypeError):
             pass
 
         return max(0.1, min(confidence, 1.0))

@@ -1,7 +1,7 @@
 """Quantity pattern detection for receipt line items."""
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from receipt_dynamo.entities import ReceiptWord
 
@@ -272,7 +272,7 @@ class QuantityPatternDetector(PatternDetector):
         self,
         word: ReceiptWord,
         all_words: List[ReceiptWord],
-        word_index: int,
+        word_index: int,  # pylint: disable=unused-argument
         value: int,
     ) -> bool:
         """Determine if a plain number is likely a quantity based on context."""
@@ -289,7 +289,7 @@ class QuantityPatternDetector(PatternDetector):
         has_price_nearby = False
         has_product_nearby = False
 
-        for nearby_word, distance in nearby_words[:5]:
+        for nearby_word, _ in nearby_words[:5]:
             text_lower = nearby_word.text.lower()
 
             # Check for currency symbols

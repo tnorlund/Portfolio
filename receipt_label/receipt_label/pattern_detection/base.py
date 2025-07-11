@@ -120,7 +120,7 @@ class PatternDetector(ABC):
 
         # Sort words by x-coordinate to determine line position
         same_line_words.sort(key=lambda w: w.bounding_box["x"])
-        
+
         # Find the current word's position in the line
         line_position = 0
         for i, w in enumerate(same_line_words):
@@ -129,7 +129,9 @@ class PatternDetector(ABC):
                 break
 
         # Get text from other words on the same line
-        other_line_words = [w for w in same_line_words if w.word_id != word.word_id]
+        other_line_words = [
+            w for w in same_line_words if w.word_id != word.word_id
+        ]
         nearby_text = " ".join([w.text for w in other_line_words])
 
         return {
