@@ -1,11 +1,7 @@
 """Tests for currency pattern detection."""
 
-import sys
-
 import pytest
 from receipt_dynamo.entities import ReceiptWord
-
-sys.path.insert(0, "/Users/tnorlund/claude/Portfolio/receipt_label")
 
 from receipt_label.pattern_detection import (
     CurrencyPatternDetector,
