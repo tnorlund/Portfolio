@@ -41,7 +41,6 @@ class TestDateTimePatternDetector:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                is_noise=False,
             )
 
         return _create_word
@@ -297,4 +296,4 @@ class TestDateTimePatternDetector:
         assert metadata["year"] == 2024
         assert metadata["month"] == 1
         assert metadata["day"] == 15
-        assert metadata["format"] == "month_name"
+        assert metadata["format"] == "MONTH_NAME"

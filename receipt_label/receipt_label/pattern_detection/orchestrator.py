@@ -62,6 +62,9 @@ class ParallelPatternOrchestrator:
                 self._apply_merchant_patterns(words, merchant_patterns)
             )
 
+        # Track detector names in order to ensure correct mapping
+        detector_names = list(tasks.keys())
+        
         # Wait for all tasks with timeout
         try:
             results = await asyncio.wait_for(
@@ -75,15 +78,15 @@ class ParallelPatternOrchestrator:
                 if task.done() and not task.cancelled():
                     try:
                         results.append(task.result())
-                    except (asyncio.CancelledError, RuntimeError, AttributeError):
+                    except (asyncio.CancelledError, RuntimeError):
                         results.append([])
                 else:
                     task.cancel()
                     results.append([])
 
-        # Map results back to detector names
+        # Map results back to detector names using the preserved order
         pattern_results = {}
-        for i, (name, task) in enumerate(tasks.items()):
+        for i, name in enumerate(detector_names):
             if i < len(results) and isinstance(results[i], list):
                 pattern_results[name] = results[i]
             else:
@@ -105,7 +108,8 @@ class ParallelPatternOrchestrator:
         """Run a single detector with error handling."""
         try:
             return await detector.detect(words)
-        except (asyncio.TimeoutError, RuntimeError, AttributeError, ValueError) as e:
+        except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+            # Expected timeout/cancellation errors
             # Log error but don't fail entire detection
             print(f"Error in {detector.__class__.__name__}: {e}")
             return []

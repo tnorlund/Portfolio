@@ -41,7 +41,6 @@ class TestContactPatternDetector:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                is_noise=False,
             )
 
         return _create_word

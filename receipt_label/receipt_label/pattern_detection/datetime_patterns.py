@@ -99,6 +99,10 @@ class DateTimePatternDetector(PatternDetector):
                     metadata={
                         "format": date_match["format"],
                         "normalized_date": date_match["normalized"],
+                        "year": date_match["year"],
+                        "month": date_match["month"],
+                        "day": date_match["day"],
+                        "is_ambiguous": date_match.get("is_ambiguous", False),
                         **self._calculate_position_context(word, words),
                     },
                 )
@@ -161,9 +165,12 @@ class DateTimePatternDetector(PatternDetector):
         # Try ISO format first (most unambiguous)
         if match := self._compiled_patterns["date_iso"].search(text):
             year, month, day = match.groups()
-            return self._create_date_match(
+            date_dict = self._create_date_match(
                 match.group(0), int(year), int(month), int(day), "ISO"
             )
+            if date_dict:
+                date_dict["is_ambiguous"] = False
+            return date_dict
 
         # Try month name patterns
         if match := self._compiled_patterns["date_month_name"].search(text):
@@ -175,28 +182,41 @@ class DateTimePatternDetector(PatternDetector):
 
             month = self._parse_month_name(month_str)
             if month:
-                return self._create_date_match(
+                date_dict = self._create_date_match(
                     match.group(0), int(year), month, int(day), "MONTH_NAME"
                 )
+                if date_dict:
+                    date_dict["is_ambiguous"] = False
+                return date_dict
 
         # Try numeric patterns (MDY/DMY ambiguous)
         if match := self._compiled_patterns["date_mdy"].search(text):
             first, second, year = map(int, match.groups())
             # Use heuristics to determine format
             if first > 12:  # Must be day
-                return self._create_date_match(
+                date_dict = self._create_date_match(
                     match.group(0), int(year), second, first, "DMY"
                 )
+                if date_dict:
+                    date_dict["is_ambiguous"] = False
+                return date_dict
             if second > 12:  # Must be day
-                return self._create_date_match(
+                date_dict = self._create_date_match(
                     match.group(0), int(year), first, second, "MDY"
                 )
+                if date_dict:
+                    date_dict["is_ambiguous"] = False
+                return date_dict
             else:
                 # Ambiguous - assume MDY for US receipts
                 # Could be enhanced with locale detection
-                return self._create_date_match(
+                date_dict = self._create_date_match(
                     match.group(0), int(year), first, second, "MDY"
                 )
+                if date_dict:
+                    # Mark as ambiguous when both values could be month or day
+                    date_dict["is_ambiguous"] = (first <= 12 and second <= 12 and first != second)
+                return date_dict
 
         return None
 
@@ -288,6 +308,9 @@ class DateTimePatternDetector(PatternDetector):
                 "parsed_date": date_obj.strftime("%Y-%m-%d"),
                 "normalized": date_obj.strftime("%Y-%m-%d"),
                 "format": format_type,
+                "year": year,
+                "month": month,
+                "day": day,
             }
         except ValueError:
             # Invalid date
@@ -306,6 +329,10 @@ class DateTimePatternDetector(PatternDetector):
     ) -> float:
         """Calculate confidence for date detection."""
         confidence = 0.7  # Base confidence for valid date
+
+        # Lower confidence for ambiguous dates
+        if date_match.get("is_ambiguous", False):
+            confidence = 0.5
 
         # Boost for unambiguous formats
         if date_match["format"] in ["ISO", "MONTH_NAME"]:

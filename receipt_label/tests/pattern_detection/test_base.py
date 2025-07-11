@@ -30,7 +30,6 @@ class TestPatternMatch:
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.95,
-            is_noise=False,
         )
 
     def test_pattern_match_creation(self, sample_word):
@@ -206,7 +205,6 @@ class TestPatternDetector:
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.95,
-            is_noise=False,
         )
 
         context = detector._calculate_position_context(word, [word])
