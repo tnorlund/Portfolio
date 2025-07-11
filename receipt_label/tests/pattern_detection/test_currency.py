@@ -1,12 +1,12 @@
 """Tests for currency pattern detection."""
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection import (
     CurrencyPatternDetector,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestCurrencyPatternDetector:
@@ -172,7 +172,7 @@ class TestCurrencyPatternDetector:
                 confidence=0.95,
             )
         ]
-        
+
         # Mark word as noise
         words[0].is_noise = True
 
