@@ -408,7 +408,10 @@ class TestAIUsagePerformanceIntegration:
 
                 # Measure memory before load
                 gc.collect()
-                import psutil
+                try:
+                    import psutil
+                except ImportError:
+                    pytest.skip("psutil not installed")
 
                 process = psutil.Process()
                 memory_before = process.memory_info().rss / 1024 / 1024  # MB
