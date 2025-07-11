@@ -6,6 +6,7 @@ import {
   ImageCountApiResponse,
   ImagesApiResponse,
 } from "../../types/api";
+import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
 // Helper function to get the API URL based on environment
 const getAPIUrl = () => {
@@ -22,7 +23,7 @@ const fetchConfig = {
 };
 
 // API calls that go directly to external APIs
-export const api = {
+const baseApi = {
   async fetchImageCount(): Promise<ImageCountApiResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(`${apiUrl}/image_count`, fetchConfig);
@@ -159,3 +160,8 @@ export const api = {
     return response.json();
   },
 };
+
+// Export the API with performance tracking in development
+export const api = process.env.NODE_ENV === 'development' 
+  ? withPerformanceTrackingForAPI(baseApi, 'api')
+  : baseApi;
