@@ -72,7 +72,20 @@ if (typeof global.performance === 'undefined') {
     clearMarks: jest.fn(),
     clearMeasures: jest.fn(),
     getEntriesByName: jest.fn(() => [{ duration: 10 }]),
-    getEntriesByType: jest.fn(() => []),
+    getEntriesByType: jest.fn((type) => {
+      // Mock modern PerformanceNavigationTiming API
+      if (type === 'navigation') {
+        return [{
+          startTime: 0,
+          fetchStart: 10,
+          responseStart: 100,
+          loadEventEnd: 200,
+          domContentLoadedEventEnd: 180,
+        }];
+      }
+      return [];
+    }),
+    // Keep deprecated timing for backward compatibility in tests
     timing: {
       navigationStart: Date.now(),
       loadEventEnd: Date.now() + 100,
@@ -96,6 +109,18 @@ if (typeof global.performance === 'undefined') {
     global.performance.getEntriesByName = jest.fn(() => [{ duration: 10 }]);
   }
   if (!global.performance.getEntriesByType) {
-    global.performance.getEntriesByType = jest.fn(() => []);
+    global.performance.getEntriesByType = jest.fn((type) => {
+      // Mock modern PerformanceNavigationTiming API
+      if (type === 'navigation') {
+        return [{
+          startTime: 0,
+          fetchStart: 10,
+          responseStart: 100,
+          loadEventEnd: 200,
+          domContentLoadedEventEnd: 180,
+        }];
+      }
+      return [];
+    });
   }
 }
