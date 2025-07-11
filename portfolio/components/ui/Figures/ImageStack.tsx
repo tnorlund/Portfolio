@@ -49,31 +49,70 @@ const ImageItem = React.memo<ImageItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      // Try progressively larger sizes if thumbnail fails
+      // Determine current size from URL
+      let currentSize: 'thumbnail' | 'small' | 'medium' | 'full' = 'full';
       if (currentSrc.includes("_thumbnail")) {
-        // Try small size
-        const smallUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'small');
-        if (smallUrl && smallUrl !== currentSrc) {
-          setCurrentSrc(smallUrl);
-          return;
-        }
+        currentSize = 'thumbnail';
       } else if (currentSrc.includes("_small")) {
-        // Try medium size
-        const mediumUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'medium');
-        if (mediumUrl && mediumUrl !== currentSrc) {
-          setCurrentSrc(mediumUrl);
+        currentSize = 'small';
+      } else if (currentSrc.includes("_medium")) {
+        currentSize = 'medium';
+      }
+
+      // Determine current format from URL
+      let currentFormat: 'avif' | 'webp' | 'jpeg' = 'jpeg';
+      if (currentSrc.includes(".avif")) {
+        currentFormat = 'avif';
+      } else if (currentSrc.includes(".webp")) {
+        currentFormat = 'webp';
+      }
+
+      // Try fallback strategies:
+      // 1. First try different formats at the same size
+      // 2. Then try larger sizes with the preferred format
+      // 3. Finally try larger sizes with fallback formats
+
+      const formats: Array<'avif' | 'webp' | 'jpeg'> = ['avif', 'webp', 'jpeg'];
+      const sizes: Array<'thumbnail' | 'small' | 'medium' | 'full'> = ['thumbnail', 'small', 'medium', 'full'];
+      
+      // Remove the current format from the list to try others first
+      const otherFormats = formats.filter(f => f !== currentFormat);
+      const orderedFormats = [currentFormat, ...otherFormats];
+      
+      // Find the index of current size
+      const currentSizeIndex = sizes.indexOf(currentSize);
+      
+      // Try other formats at the current size first
+      for (const format of otherFormats) {
+        const support = formatSupport || { supportsAVIF: false, supportsWebP: false };
+        // Skip unsupported formats
+        if (format === 'avif' && !support.supportsAVIF) continue;
+        if (format === 'webp' && !support.supportsWebP) continue;
+        
+        // Create a temporary format support that only allows the specific format
+        const tempSupport = {
+          supportsAVIF: format === 'avif',
+          supportsWebP: format === 'webp'
+        };
+        
+        const url = getBestImageUrl(image, tempSupport, currentSize);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
           return;
         }
-      } else if (currentSrc.includes("_medium")) {
-        // Try full size
-        const fullUrl = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, 'full');
-        if (fullUrl && fullUrl !== currentSrc) {
-          setCurrentSrc(fullUrl);
+      }
+      
+      // Try larger sizes with all supported formats
+      for (let i = currentSizeIndex + 1; i < sizes.length; i++) {
+        const size = sizes[i];
+        const url = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, size);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
           return;
         }
       }
 
-      // If all sizes fail, mark as errored
+      // If all attempts fail, mark as errored
       setHasErrored(true);
       setImageLoaded(true);
       onLoad();
