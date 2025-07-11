@@ -288,8 +288,8 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
         // Store the lastEvaluatedKey for pagination
         setLastEvaluatedKey(response.lastEvaluatedKey);
 
-        // If we need more receipts, load them after initial render
-        if (initialCount < maxReceipts && response.receipts.length === initialCount) {
+        // If we need more receipts and more data is available, load them after initial render
+        if (initialCount < maxReceipts && response.lastEvaluatedKey) {
           setLoadingRemaining(true);
         }
       } catch (error) {

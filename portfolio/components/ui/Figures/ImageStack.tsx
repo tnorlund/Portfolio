@@ -281,8 +281,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
         // Store the lastEvaluatedKey for pagination
         setLastEvaluatedKey(response.lastEvaluatedKey);
 
-        // If we need more images, load them after initial render
-        if (initialCount < maxImages && response.images.length === initialCount) {
+        // If we need more images and more data is available, load them after initial render
+        if (initialCount < maxImages && response.lastEvaluatedKey) {
           setLoadingRemaining(true);
         }
       } catch (error) {
