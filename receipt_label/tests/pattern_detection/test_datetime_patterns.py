@@ -1,12 +1,12 @@
 """Tests for datetime pattern detection."""
 
 import pytest
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.pattern_detection import (
     DateTimePatternDetector,
     PatternType,
 )
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 class TestDateTimePatternDetector:
@@ -113,9 +113,17 @@ class TestDateTimePatternDetector:
         """Test detection of combined date and time patterns."""
         test_cases = [
             # Date and time in one string
-            ("01/15/2024 2:30 PM", PatternType.DATETIME, "2024-01-15T14:30:00"),
+            (
+                "01/15/2024 2:30 PM",
+                PatternType.DATETIME,
+                "2024-01-15T14:30:00",
+            ),
             ("2024-01-15 14:30", PatternType.DATETIME, "2024-01-15T14:30:00"),
-            ("Jan 15, 2024 2:30PM", PatternType.DATETIME, "2024-01-15T14:30:00"),
+            (
+                "Jan 15, 2024 2:30PM",
+                PatternType.DATETIME,
+                "2024-01-15T14:30:00",
+            ),
             # Date and time as separate but adjacent words
             ("01/15/2024", "2:30 PM", "2024-01-15", "14:30:00"),
             ("2024-01-15", "14:30:00", "2024-01-15", "14:30:00"),
@@ -133,7 +141,10 @@ class TestDateTimePatternDetector:
                 m for m in matches if m.pattern_type == PatternType.DATETIME
             ]
             if datetime_matches:
-                assert datetime_matches[0].metadata.get("normalized_datetime") == expected_value
+                assert (
+                    datetime_matches[0].metadata.get("normalized_datetime")
+                    == expected_value
+                )
 
     @pytest.mark.asyncio
     async def test_two_digit_year_handling(self, detector, create_word):
@@ -174,7 +185,9 @@ class TestDateTimePatternDetector:
 
             # Detector might still match the pattern but should indicate invalidity
             if matches:
-                assert matches[0].confidence < 0.8  # Lower confidence for invalid dates
+                assert (
+                    matches[0].confidence < 0.8
+                )  # Lower confidence for invalid dates
 
     @pytest.mark.asyncio
     async def test_invalid_times(self, detector, create_word):
@@ -238,8 +251,12 @@ class TestDateTimePatternDetector:
         # Should detect date and time
         assert len(matches) == 2
 
-        date_matches = [m for m in matches if m.pattern_type == PatternType.DATE]
-        time_matches = [m for m in matches if m.pattern_type == PatternType.TIME]
+        date_matches = [
+            m for m in matches if m.pattern_type == PatternType.DATE
+        ]
+        time_matches = [
+            m for m in matches if m.pattern_type == PatternType.TIME
+        ]
 
         assert len(date_matches) == 1
         assert len(time_matches) == 1
@@ -269,7 +286,9 @@ class TestDateTimePatternDetector:
             matches = await detector.detect([word])
 
             assert len(matches) > 0, f"Failed to detect date in: {text}"
-            assert matches[0].confidence >= expected_min_confidence * 0.9  # Allow some variance
+            assert (
+                matches[0].confidence >= expected_min_confidence * 0.9
+            )  # Allow some variance
 
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector, create_word):
