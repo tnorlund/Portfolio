@@ -45,6 +45,7 @@ class TestContactPatternDetector:
 
         return _create_word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_phone_number_formats(self, detector, create_word):
         """Test detection of various phone number formats."""
@@ -79,6 +80,7 @@ class TestContactPatternDetector:
             assert match.metadata["normalized"] == expected_value
             assert match.confidence >= 0.8
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_email_detection(self, detector, create_word):
         """Test email address detection."""
@@ -100,6 +102,7 @@ class TestContactPatternDetector:
             assert match.extracted_value == email.lower()
             assert match.confidence >= 0.9
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_invalid_emails(self, detector, create_word):
         """Test that invalid emails are not detected."""
@@ -119,6 +122,7 @@ class TestContactPatternDetector:
                 len(matches) == 0
             ), f"Should not detect invalid email: {text}"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_website_detection(self, detector, create_word):
         """Test website URL detection."""
@@ -148,6 +152,7 @@ class TestContactPatternDetector:
             assert match.metadata["domain"] == expected_domain
             assert match.confidence >= 0.8
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_multiple_patterns_in_receipt(self, detector, create_word):
         """Test detection of multiple contact patterns in a receipt."""
@@ -190,6 +195,7 @@ class TestContactPatternDetector:
         assert len(email_matches) == 1
         assert email_matches[0].extracted_value == "info@acmestore.com"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_phone_edge_cases(self, detector, create_word):
         """Test edge cases for phone number detection."""
@@ -215,6 +221,7 @@ class TestContactPatternDetector:
             else:
                 assert len(matches) == 0, f"Should not detect: {text}"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_international_phone_formats(self, detector, create_word):
         """Test international phone number formats."""
@@ -243,6 +250,7 @@ class TestContactPatternDetector:
             else:
                 assert len(matches) == 0, f"Should not detect: {text}"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_confidence_scoring(self, detector, create_word):
         """Test confidence scoring for different patterns."""
@@ -267,6 +275,7 @@ class TestContactPatternDetector:
                 matches[0].confidence >= min_confidence
             ), f"Confidence too low for: {text}"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector, create_word):
         """Test that noise words are skipped."""
@@ -276,6 +285,7 @@ class TestContactPatternDetector:
         matches = await detector.detect([word])
         assert len(matches) == 0  # Should skip noise word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_domain_extraction(self, detector, create_word):
         """Test domain extraction from various URL formats."""

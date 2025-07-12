@@ -32,6 +32,7 @@ class TestPatternMatch:
             confidence=0.95,
         )
 
+    @pytest.mark.unit
     def test_pattern_match_creation(self, sample_word):
         """Test creating a valid PatternMatch."""
         match = PatternMatch(
@@ -50,6 +51,7 @@ class TestPatternMatch:
         assert match.extracted_value == 5.99
         assert match.metadata["currency_symbol"] == "$"
 
+    @pytest.mark.unit
     def test_pattern_match_confidence_validation(self, sample_word):
         """Test that confidence is validated to be between 0 and 1."""
         # Test invalid confidence values
@@ -77,6 +79,7 @@ class TestPatternMatch:
                 metadata={},
             )
 
+    @pytest.mark.unit
     def test_pattern_match_edge_confidence(self, sample_word):
         """Test edge cases for confidence values."""
         # Test boundary values
@@ -152,11 +155,13 @@ class TestPatternDetector:
             words.append(word)
         return words
 
+    @pytest.mark.unit
     def test_detector_initialization(self, detector):
         """Test that detector initializes patterns on creation."""
         assert hasattr(detector, "_compiled_patterns")
         assert detector._compiled_patterns == {"test": "pattern"}
 
+    @pytest.mark.unit
     def test_abstract_methods_required(self):
         """Test that abstract methods must be implemented."""
 
@@ -169,6 +174,7 @@ class TestPatternDetector:
         with pytest.raises(TypeError):
             IncompleteDetector()
 
+    @pytest.mark.unit
     def test_calculate_position_context(self, detector, sample_words):
         """Test position context calculation."""
         word = sample_words[2]  # Middle word
@@ -186,6 +192,7 @@ class TestPatternDetector:
         assert context["line_word_count"] == 2  # Two words on same line
         assert context["line_position"] in [0, 1]  # Position in line
 
+    @pytest.mark.unit
     def test_calculate_position_context_empty_words(
         self, detector, sample_words
     ):
@@ -195,6 +202,7 @@ class TestPatternDetector:
 
         assert context == {}  # Should return empty dict
 
+    @pytest.mark.unit
     def test_calculate_position_context_single_word(self, detector):
         """Test position context with single word."""
         word = ReceiptWord(
@@ -222,6 +230,7 @@ class TestPatternDetector:
         assert context["same_line_text"] == ""  # No other words
         assert context["line_position"] == 0
 
+    @pytest.mark.unit
     def test_find_nearby_words(self, detector, sample_words):
         """Test finding nearby words."""
         word = sample_words[2]  # Middle word
@@ -239,6 +248,7 @@ class TestPatternDetector:
         distances = [dist for _, dist in nearby]
         assert distances == sorted(distances)
 
+    @pytest.mark.unit
     def test_find_nearby_words_max_distance(self, detector, sample_words):
         """Test max distance filtering."""
         word = sample_words[0]
@@ -255,6 +265,7 @@ class TestPatternDetector:
 
         assert len(nearby_far) >= len(nearby_close)
 
+    @pytest.mark.unit
     def test_find_nearby_words_empty_list(self, detector, sample_words):
         """Test finding nearby words with empty word list."""
         word = sample_words[0]
@@ -262,6 +273,7 @@ class TestPatternDetector:
 
         assert nearby == []
 
+    @pytest.mark.unit
     def test_position_context_bottom_detection(self, detector):
         """Test bottom 20% detection in position context."""
         # Create words spread vertically
@@ -292,6 +304,7 @@ class TestPatternDetector:
         bottom_context = detector._calculate_position_context(words[9], words)
         assert bottom_context["is_bottom_20_percent"]
 
+    @pytest.mark.unit
     def test_line_position_ordering(self, detector):
         """Test that line position is correctly ordered by x-coordinate."""
         # Create words on same line with different x positions
