@@ -87,9 +87,9 @@ class QuantityPatternDetector(PatternDetector):
                 r"(?:qty:?\s*)?(\d+(?:\.\d+)?)\s*[xX]\s*(?:\$)?(\d+(?:\.\d+)?)",
                 re.IGNORECASE,
             ),
-            # "2/$10.00" or "2 / $10"
+            # "2/$10.00" or "2 / $10" or "3 / $15"
             "quantity_slash": re.compile(
-                r"(\d+)\s*/\s*(?:\$)?(\d+(?:\.\d+)?)", re.IGNORECASE
+                r"(\d+)\s*/\s*(?:\$\s*)?(\d+(?:\.\d+)?)", re.IGNORECASE
             ),
             # "3 for $15.00" or "3 FOR 15"
             "quantity_for": re.compile(
@@ -111,9 +111,16 @@ class QuantityPatternDetector(PatternDetector):
         """Detect quantity patterns in receipt words."""
         matches = []
 
+        # First pass: try to detect multi-word quantity patterns
+        self._detect_multi_word_quantities(words, matches)
+
         # Process words with context
         for i, word in enumerate(words):
             if word.is_noise:
+                continue
+
+            # Skip if already matched as part of multi-word quantity
+            if any(match.word.word_id == word.word_id for match in matches):
                 continue
 
             # Check for explicit quantity patterns
@@ -201,12 +208,30 @@ class QuantityPatternDetector(PatternDetector):
         """Match '2/$10.00' pattern."""
         if match := self._compiled_patterns["quantity_slash"].search(text):
             quantity, total = match.groups()
-            qty_float = float(quantity)
+            
+            # Exclude date patterns (MM/DD, DD/MM format)
+            qty_int = int(quantity)
             total_float = float(total)
+            
+            # Only exclude very obvious date patterns like "01/15" or "12/25"
+            # Be conservative - only exclude if it has leading zero (indicating date formatting)
+            # or if it's a very common date pattern
+            original_qty = match.group(1)  # Get original text with leading zeros
+            is_obvious_date = (
+                qty_int <= 12 and total_float <= 31 and 
+                "$" not in text and "." not in total and 
+                len(total) <= 2 and
+                (original_qty.startswith("0") or  # Leading zero suggests date
+                 (qty_int == 1 and total_float == 1))  # 1/1 is definitely a date
+            )
+            
+            if is_obvious_date:
+                return None
+                
             return {
                 "matched_text": match.group(0),
-                "quantity": qty_float,
-                "unit_price": total_float / qty_float if qty_float > 0 else 0,
+                "quantity": float(quantity),
+                "unit_price": total_float / float(quantity) if float(quantity) > 0 else 0,
                 "total": total_float,
                 "format": "slash_notation",
             }
@@ -373,3 +398,107 @@ class QuantityPatternDetector(PatternDetector):
         adjustment = format_adjustments.get(match_info.get("format", ""), 0)
 
         return min(base_confidence + adjustment, 1.0)
+
+    def _detect_multi_word_quantities(self, words: List[ReceiptWord], matches: List[PatternMatch]) -> None:
+        """Detect quantity patterns that span multiple words on the same line."""
+        for i in range(len(words) - 2):  # Need at least 3 words for "2 @ $3.99"
+            word1 = words[i]
+            word2 = words[i + 1]
+            word3 = words[i + 2]
+            
+            # Skip if any word is noise
+            if word1.is_noise or word2.is_noise or word3.is_noise:
+                continue
+                
+            # Check if words are on the same line (similar y coordinates)
+            y_tolerance = 5
+            if (abs(word1.bounding_box["y"] - word2.bounding_box["y"]) > y_tolerance or
+                abs(word2.bounding_box["y"] - word3.bounding_box["y"]) > y_tolerance):
+                continue
+                
+            # Check if words are reasonably close horizontally
+            word1_right = word1.bounding_box["x"] + word1.bounding_box["width"]
+            word2_left = word2.bounding_box["x"]
+            word2_right = word2.bounding_box["x"] + word2.bounding_box["width"]
+            word3_left = word3.bounding_box["x"]
+            
+            max_gap = 30  # Max 30px gap between words
+            if (word2_left - word1_right > max_gap or word3_left - word2_right > max_gap):
+                continue
+                
+            # Try combining the words for "quantity @ price" pattern
+            combined_text = f"{word1.text} {word2.text} {word3.text}"
+            match_info = self._match_quantity_at(combined_text)
+            
+            if match_info:
+                # Create match using the first word as primary
+                match = self._create_match(
+                    word1, PatternType.QUANTITY_AT, match_info, words
+                )
+                # Update metadata to indicate multi-word span
+                match.metadata.update({
+                    "spans_multiple_words": True,
+                    "word_ids": [word1.word_id, word2.word_id, word3.word_id],
+                })
+                matches.append(match)
+                
+                # Add placeholder matches for the other words to mark them as used
+                for word in [word2, word3]:
+                    placeholder_match = PatternMatch(
+                        word=word,
+                        pattern_type=PatternType.QUANTITY_AT,
+                        confidence=0.0,  # Low confidence placeholder
+                        matched_text="",
+                        extracted_value="",
+                        metadata={"placeholder": True},
+                    )
+                    matches.append(placeholder_match)
+                continue
+                
+            # Also try "quantity x price" pattern for 2-word combinations
+            for j in range(i, len(words) - 1):
+                if j >= i + 2:  # Don't overlap with 3-word check above
+                    break
+                    
+                wordA = words[j]
+                wordB = words[j + 1]
+                
+                if wordA.is_noise or wordB.is_noise:
+                    continue
+                    
+                # Check same line and proximity
+                if abs(wordA.bounding_box["y"] - wordB.bounding_box["y"]) > y_tolerance:
+                    continue
+                    
+                wordA_right = wordA.bounding_box["x"] + wordA.bounding_box["width"]
+                wordB_left = wordB.bounding_box["x"]
+                if wordB_left - wordA_right > max_gap:
+                    continue
+                    
+                combined_text = f"{wordA.text} {wordB.text}"
+                
+                # Try various 2-word patterns
+                for pattern_method, pattern_type in [
+                    (self._match_quantity_times, PatternType.QUANTITY_TIMES),
+                    (self._match_quantity_for, PatternType.QUANTITY_FOR),
+                ]:
+                    match_info = pattern_method(combined_text)
+                    if match_info:
+                        match = self._create_match(wordA, pattern_type, match_info, words)
+                        match.metadata.update({
+                            "spans_multiple_words": True,
+                            "word_ids": [wordA.word_id, wordB.word_id],
+                        })
+                        matches.append(match)
+                        
+                        # Add placeholder for second word
+                        placeholder_match = PatternMatch(
+                            word=wordB,
+                            pattern_type=pattern_type,
+                            confidence=0.0,
+                            matched_text="",
+                            extracted_value="",
+                            metadata={"placeholder": True},
+                        )
+                        matches.append(placeholder_match)
+                        break  # Found a match, don't try other patterns
