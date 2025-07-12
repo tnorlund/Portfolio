@@ -31,10 +31,17 @@
 - [ ] No critical issues found
 
 ### Claude Code Review
-- [ ] Waiting for Claude architectural analysis
+- [ ] Automatic review triggered (or comment `@claude review` to request)
 - [ ] Architecture recommendations reviewed
 - [ ] Performance implications assessed
 - [ ] Test strategy validated
+- [ ] Package boundary adherence verified
+
+> **💡 Claude Review Tips:**
+> - Reviews automatically trigger for non-draft PRs under 1000 lines
+> - Use `@claude` to ask specific questions about your code
+> - Add `skip-claude-review` label to skip automatic reviews
+> - Claude focuses on performance, architecture, and CI optimization patterns
 
 ## ✅ Checklist
 - [ ] My code follows this project's style guidelines

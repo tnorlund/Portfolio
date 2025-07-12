@@ -547,3 +547,10 @@ jobs:
           echo "fast-checks: ${{ needs.fast-checks.result }}"
           echo "test-python: ${{ needs.test-python.result }}"
           echo "test-typescript: ${{ needs.test-typescript.result }}"
+          
+          echo ""
+          echo "🤖 Claude Code Review available:"
+          echo "   - Automatic reviews for PRs under 1000 lines"
+          echo "   - Interactive help with @claude comments"
+          echo "   - Focus on performance and architecture patterns"
+          echo "   - See .github/CLAUDE.md for details"

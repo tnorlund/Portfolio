@@ -4,22 +4,40 @@ This document provides guidelines and best practices for using Claude AI workflo
 
 ## Overview
 
-We use Claude AI for automated code reviews and interactive assistance to improve code quality and developer productivity. This document outlines how to effectively use these tools while managing costs.
+We use Claude AI for automated code reviews and interactive assistance to improve code quality and developer productivity. This system is fully integrated with our optimized CI pipeline, leveraging self-hosted runners and cost-effective triggering strategies.
+
+## Integration with Optimized CI
+
+Our Claude integration builds on the existing cost-optimized CI infrastructure:
+- **Self-hosted runners**: Leverages your existing ARM64 macOS runners for ~50% cost reduction
+- **Selective triggering**: Only activates when needed, preserving your $2-5/month CI target
+- **Fast-checks integration**: Complements existing fast-checks → test-python workflow pattern
+- **Performance focus**: Specifically trained on your CI optimization patterns and performance bottlenecks
 
 ## Available Claude Workflows
 
 ### 1. Automated Code Review (`claude-review.yml`)
-Automatically reviews pull requests for code quality, bugs, and best practices.
+Automatically reviews pull requests with focus on architecture, performance, and CI optimization patterns.
 
 **Triggers:**
-- PR marked as "ready for review"
+- Non-draft PRs under 1000 lines (automatic)
 - PR labeled with `claude-review-requested`
-- Manual: Comment `/claude review` on any PR
+- Manual: Comment `@claude review` on any PR
+- Interactive: `@claude` for specific questions
 
-**Cost Optimization:**
-- Automatically skips PRs over 1000 lines (unless explicitly requested)
-- Ignores non-code files (.md, .json, .yaml, etc.)
-- Add `skip-claude-review` label to bypass review
+**Cost Optimization Features:**
+- **Size limits**: Automatically skips PRs over 1000 lines
+- **Self-hosted runners**: Uses your existing ARM64 macOS infrastructure
+- **Smart filtering**: Ignores documentation-only changes
+- **Conversation limits**: Max 3 turns to prevent runaway costs
+- **Selective triggering**: Only on meaningful code changes
+
+**Review Focus Areas:**
+- Performance implications (especially test timeouts and CI optimization)
+- Pattern detection logic (overlapping matches, race conditions)
+- Package boundary adherence (receipt_dynamo vs receipt_label separation)
+- Architecture alignment with your CI optimization patterns
+- Security and maintainability
 
 ### 2. Interactive Assistant (`claude.yml`)
 Provides on-demand AI assistance for questions and code help.
