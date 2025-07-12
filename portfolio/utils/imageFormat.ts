@@ -146,8 +146,6 @@ export const getBestImageUrl = (
       ? "https://dev.tylernorlund.com"
       : "https://www.tylernorlund.com";
 
-  const browserName = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome') ? 'Safari' : 'Chrome';
-
   // Helper to get the appropriate key based on size and format
   const getKey = (format: 'jpeg' | 'webp' | 'avif'): string | undefined => {
     switch (size) {
@@ -171,45 +169,28 @@ export const getBestImageUrl = (
     }
   };
 
-  console.log(`[${browserName}] Format support:`, formatSupport);
-  console.log(`[${browserName}] Available keys:`, {
-    avif: getKey('avif'),
-    webp: getKey('webp'),
-    jpeg: getKey('jpeg'),
-  });
-
   // Try AVIF first if supported
   if (formatSupport.supportsAVIF) {
     const avifKey = getKey('avif');
     if (avifKey) {
-      console.log(`[${browserName}] Selected format: AVIF (${size})`);
-      console.log(`[${browserName}] URL: ${baseUrl}/${avifKey}`);
       return `${baseUrl}/${avifKey}`;
     }
-    console.log(`[${browserName}] AVIF supported but no key available`);
   }
 
   // Try WebP if supported
   if (formatSupport.supportsWebP) {
     const webpKey = getKey('webp');
     if (webpKey) {
-      console.log(`[${browserName}] Selected format: WebP (${size})`);
-      console.log(`[${browserName}] URL: ${baseUrl}/${webpKey}`);
       return `${baseUrl}/${webpKey}`;
     }
-    console.log(`[${browserName}] WebP supported but no key available`);
   }
 
   // Fallback to JPEG
   const jpegKey = getKey('jpeg');
   if (jpegKey) {
-    console.log(`[${browserName}] Selected format: JPEG (${size})`);
-    console.log(`[${browserName}] URL: ${baseUrl}/${jpegKey}`);
     return `${baseUrl}/${jpegKey}`;
   }
 
   // Ultimate fallback to full-size JPEG if specific size not available
-  console.log(`[${browserName}] Selected format: JPEG (full fallback)`);
-  console.log(`[${browserName}] URL: ${baseUrl}/${image.cdn_s3_key}`);
   return `${baseUrl}/${image.cdn_s3_key}`;
 };
