@@ -194,46 +194,46 @@ class CurrencyPatternDetector(PatternDetector):
         context = self._calculate_position_context(word, all_words)
         same_line_text = context.get("same_line_text", "").lower()
 
-        # Check for nearby keywords
+        # Check for nearby keywords (within same line and close proximity)
         nearby_words = self._find_nearby_words(
             word, all_words, max_distance=100
         )
         nearby_text = " ".join([w[0].text.lower() for w in nearby_words[:5]])
+        combined_context = same_line_text + " " + nearby_text
 
-        # Check for specific classifications
-        if self._has_keywords(
-            same_line_text + " " + nearby_text, self.TOTAL_KEYWORDS
-        ):
+        # Check for specific classifications - order matters for priority
+        if self._has_keywords(combined_context, self.TOTAL_KEYWORDS):
             return PatternType.GRAND_TOTAL
 
-        if self._has_keywords(
-            same_line_text + " " + nearby_text, self.TAX_KEYWORDS
-        ):
+        if self._has_keywords(combined_context, self.TAX_KEYWORDS):
             return PatternType.TAX
 
-        if self._has_keywords(
-            same_line_text + " " + nearby_text, self.SUBTOTAL_KEYWORDS
-        ):
+        if self._has_keywords(combined_context, self.SUBTOTAL_KEYWORDS):
             return PatternType.SUBTOTAL
 
-        if self._has_keywords(
-            same_line_text + " " + nearby_text, self.DISCOUNT_KEYWORDS
-        ):
+        if self._has_keywords(combined_context, self.DISCOUNT_KEYWORDS):
             return PatternType.DISCOUNT
 
-        # Position-based classification
+        # Enhanced position-based classification for GRAND_TOTAL
+        extracted_value = self._extract_numeric_value(word.text)
+        
+        # If this is in the bottom section and is the largest amount, likely grand total
         if context.get("is_bottom_20_percent", False):
-            # Bottom section likely contains totals
-            return PatternType.GRAND_TOTAL
+            if self._is_likely_grand_total(word, all_words, extracted_value):
+                return PatternType.GRAND_TOTAL
+
+        # If this appears to be the largest currency amount overall, could be grand total
+        if self._is_largest_currency_amount(word, all_words, extracted_value):
+            # Additional validation - should be in lower half of receipt
+            if context.get("relative_y_position", 0) > 0.5:
+                return PatternType.GRAND_TOTAL
 
         # Check if there's a quantity pattern nearby (indicates line item)
         if self._has_quantity_pattern_nearby(word, all_words):
             # Determine if it's unit price or line total based on position
             # If quantity is before the price, it's likely unit price
             # If quantity is after or far away, it's likely line total
-            return (
-                PatternType.UNIT_PRICE
-            )  # Will refine this with QuantityDetector
+            return PatternType.UNIT_PRICE  # Will refine this with QuantityDetector
 
         # Default to generic currency
         return PatternType.CURRENCY
@@ -312,3 +312,38 @@ class CurrencyPatternDetector(PatternDetector):
             return -value if is_negative else value
         except ValueError:
             return 0.0
+
+    def _is_likely_grand_total(
+        self, word: ReceiptWord, all_words: List[ReceiptWord], amount: float
+    ) -> bool:
+        """Check if this currency amount is likely the grand total."""
+        # Grand total should be one of the larger amounts
+        all_currency_amounts = []
+        for w in all_words:
+            if w.is_noise:
+                continue
+            match_info = self._match_currency_pattern(w.text)
+            if match_info:
+                all_currency_amounts.append(match_info.get("value", 0))
+        
+        if not all_currency_amounts:
+            return False
+        
+        # Should be in top 3 largest amounts
+        sorted_amounts = sorted(all_currency_amounts, reverse=True)
+        return amount in sorted_amounts[:3]
+
+    def _is_largest_currency_amount(
+        self, word: ReceiptWord, all_words: List[ReceiptWord], amount: float
+    ) -> bool:
+        """Check if this is the largest currency amount on the receipt."""
+        max_amount = amount
+        for w in all_words:
+            if w.is_noise or w.word_id == word.word_id:
+                continue
+            match_info = self._match_currency_pattern(w.text)
+            if match_info:
+                other_amount = match_info.get("value", 0)
+                if other_amount > max_amount:
+                    return False
+        return True

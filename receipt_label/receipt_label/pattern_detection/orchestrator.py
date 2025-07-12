@@ -1,6 +1,7 @@
 """Orchestrates parallel pattern detection for high performance."""
 
 import asyncio
+import logging
 import time
 from typing import Dict, List, Optional
 
@@ -13,16 +14,21 @@ from receipt_label.pattern_detection.datetime_patterns import (
     DateTimePatternDetector,
 )
 from receipt_label.pattern_detection.quantity import QuantityPatternDetector
+from receipt_label.pattern_detection.semantic_mapper import SemanticMapper
+from receipt_label.pattern_detection.merchant_patterns import MerchantPatternDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class ParallelPatternOrchestrator:
     """Orchestrates parallel execution of pattern detectors for optimal performance."""
 
-    def __init__(self, timeout: float = 0.1):  # 100ms timeout
+    def __init__(self, timeout: float = 0.1, pinecone_client=None):  # 100ms timeout
         """Initialize the orchestrator.
 
         Args:
             timeout: Maximum time in seconds to wait for pattern detection
+            pinecone_client: Optional Pinecone client for merchant patterns
         """
         self.timeout = timeout
         self._detectors = {
@@ -31,6 +37,8 @@ class ParallelPatternOrchestrator:
             "contact": ContactPatternDetector(),
             "quantity": QuantityPatternDetector(),
         }
+        self.semantic_mapper = SemanticMapper()
+        self.merchant_pattern_db = MerchantPatternDatabase(pinecone_client)
 
     async def detect_all_patterns(
         self,
@@ -105,6 +113,94 @@ class ParallelPatternOrchestrator:
         }
 
         return pattern_results
+
+    async def detect_and_map_to_labels(
+        self,
+        words: List[ReceiptWord],
+        merchant_patterns: Optional[Dict] = None,
+    ) -> Dict[int, Dict]:
+        """
+        Enhanced method that detects patterns and maps them to semantic business labels.
+        
+        This is the recommended method for integration with the decision engine.
+        
+        Args:
+            words: List of receipt words to analyze
+            merchant_patterns: Optional merchant-specific patterns from Pinecone
+            
+        Returns:
+            Dictionary mapping word_id to semantic label information
+        """
+        # Step 1: Run pattern detection
+        pattern_results = await self.detect_all_patterns(words, merchant_patterns)
+        
+        # Step 2: Collect all pattern matches
+        all_matches = []
+        for detector_name, matches in pattern_results.items():
+            if detector_name != "_metadata":
+                all_matches.extend(matches)
+        
+        # Step 3: Consolidate overlapping matches (keep best match per word)
+        consolidated_matches = self.semantic_mapper.consolidate_overlapping_matches(all_matches)
+        
+        # Step 4: Map patterns to semantic business labels
+        labeled_words = self.semantic_mapper.map_patterns_to_labels(consolidated_matches)
+        
+        # Step 5: Enhance with merchant patterns if available
+        if merchant_patterns and "word_patterns" in merchant_patterns:
+            labeled_words = self.semantic_mapper.enhance_merchant_patterns(
+                labeled_words, merchant_patterns["word_patterns"]
+            )
+        
+        return labeled_words
+
+    async def detect_with_merchant_enhancement(
+        self,
+        words: List[ReceiptWord],
+        merchant_name: Optional[str] = None,
+        receipt_metadata: Optional[Dict] = None,
+    ) -> Dict[int, Dict]:
+        """
+        Enhanced pattern detection with automatic merchant pattern retrieval.
+        
+        This method automatically retrieves merchant-specific patterns from the
+        merchant pattern database and applies them during detection for improved
+        accuracy and coverage.
+        
+        Args:
+            words: List of receipt words to analyze
+            merchant_name: Name of the merchant (optional)
+            receipt_metadata: Optional receipt metadata containing merchant info
+            
+        Returns:
+            Dictionary mapping word_id to semantic label information with
+            enhanced merchant-specific pattern detection
+        """
+        # Extract merchant name from various sources
+        if not merchant_name and receipt_metadata:
+            merchant_name = (
+                receipt_metadata.get("merchant_name") or
+                receipt_metadata.get("canonical_merchant_name") or
+                receipt_metadata.get("business_name")
+            )
+        
+        enhanced_patterns = None
+        
+        # Retrieve merchant-specific patterns if merchant identified
+        if merchant_name:
+            try:
+                enhanced_patterns = await self.merchant_pattern_db.get_enhanced_patterns_for_receipt(
+                    merchant_name=merchant_name,
+                    receipt_words=[{"text": w.text, "word_id": w.word_id} for w in words],
+                    context=receipt_metadata
+                )
+                logger.info(f"Retrieved enhanced patterns for {merchant_name}: "
+                          f"{len(enhanced_patterns.get('word_patterns', {}))} keywords")
+            except Exception as e:
+                logger.warning(f"Failed to retrieve merchant patterns for {merchant_name}: {e}")
+        
+        # Use enhanced detect_and_map_to_labels with merchant patterns
+        return await self.detect_and_map_to_labels(words, enhanced_patterns)
 
     async def _run_detector_with_timeout(
         self, detector, words: List[ReceiptWord]

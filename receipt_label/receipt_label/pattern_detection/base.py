@@ -35,6 +35,12 @@ class PatternType(Enum):
     QUANTITY_AT = auto()  # e.g., "2 @ $5.99"
     QUANTITY_TIMES = auto()  # e.g., "3 x $4.50"
     QUANTITY_FOR = auto()  # e.g., "3 for $15.00"
+    
+    # Business entity patterns
+    MERCHANT_NAME = auto()      # Store/business name
+    PRODUCT_NAME = auto()       # Item/product description
+    STORE_ADDRESS = auto()      # Business address
+    STORE_PHONE = auto()        # Business phone number
 
 
 @dataclass
