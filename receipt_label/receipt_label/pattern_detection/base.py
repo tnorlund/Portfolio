@@ -36,6 +36,10 @@ class PatternType(Enum):
     QUANTITY_TIMES = auto()  # e.g., "3 x $4.50"
     QUANTITY_FOR = auto()  # e.g., "3 for $15.00"
 
+    # Merchant patterns (Epic #189)
+    MERCHANT_NAME = auto()
+    PRODUCT_NAME = auto()
+
 
 @dataclass
 class PatternMatch:

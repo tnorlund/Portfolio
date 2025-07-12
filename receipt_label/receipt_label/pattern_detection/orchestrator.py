@@ -187,6 +187,8 @@ class ParallelPatternOrchestrator:
             "EMAIL": PatternType.EMAIL,
             "WEBSITE": PatternType.WEBSITE,
             "QUANTITY": PatternType.QUANTITY,
+            "MERCHANT_NAME": PatternType.MERCHANT_NAME,
+            "PRODUCT_NAME": PatternType.PRODUCT_NAME,
         }
         return label_mapping.get(label)
 

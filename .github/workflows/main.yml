@@ -124,7 +124,7 @@ jobs:
 
   # Stage 2: Tests (parallel)
   test-python:
-    name: Python Tests (${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
+    name: Python Tests (${{ matrix.package }})
     needs: fast-checks
     runs-on: [self-hosted, macOS, ARM64]
     if: |
@@ -134,37 +134,7 @@ jobs:
       github.event_name == 'schedule'
     strategy:
       matrix:
-        include:
-          # receipt_dynamo unit tests
-          - package: receipt_dynamo
-            test_type: unit
-            test_path: tests/unit
-          # Split receipt_dynamo integration tests into 4 parallel groups
-          - package: receipt_dynamo
-            test_type: integration
-            test_group: group-1
-            test_path: tests/integration/test__receipt_word_label.py tests/integration/test__receipt.py tests/integration/test__receipt_validation_category.py tests/integration/test__geometry.py tests/integration/test__job_metric.py tests/integration/test__receipt_structure_analysis.py tests/integration/test__line.py tests/integration/test__receipt_line.py tests/integration/test__pulumi.py tests/integration/test__cluster.py
-          - package: receipt_dynamo
-            test_type: integration
-            test_group: group-2
-            test_path: tests/integration/test__receipt_field.py tests/integration/test__receipt_chatgpt_validation.py tests/integration/test__receipt_validation_summary.py tests/integration/test__job_checkpoint.py tests/integration/test__word.py tests/integration/test__letter.py tests/integration/test__label_count_cache.py tests/integration/test_dynamo_client.py
-          - package: receipt_dynamo
-            test_type: integration
-            test_group: group-3
-            test_path: tests/integration/test__receipt_letter.py tests/integration/test__receipt_line_item_analysis.py tests/integration/test__queue.py tests/integration/test__instance.py tests/integration/test__receipt_word.py tests/integration/test__job_dependency.py tests/integration/test__ocr_job.py tests/integration/test__batch_summary.py tests/integration/test__receipt_section.py tests/integration/test__export_and_import.py
-          - package: receipt_dynamo
-            test_type: integration
-            test_group: group-4
-            test_path: tests/integration/test__receipt_validation_result.py tests/integration/test__receipt_label_analysis.py tests/integration/test__job.py tests/integration/test__job_resource.py tests/integration/test__image.py tests/integration/test__job_log.py tests/integration/test__places_cache.py tests/integration/test__ocr.py
-          # receipt_label tests (marker-based, not directory-based)
-          - package: receipt_label
-            test_type: unit
-            test_path: tests
-            test_markers: "-m unit"
-          - package: receipt_label
-            test_type: integration
-            test_path: tests
-            test_markers: "-m integration"
+        package: [receipt_dynamo, receipt_label]
     steps:
       - uses: actions/checkout@v4
 
@@ -221,7 +191,7 @@ jobs:
       - name: Setup virtual environment and install packages
         run: |
           # Create isolated virtual environment for this job to prevent collisions
-          VENV_PATH=".venv-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}"
+          VENV_PATH=".venv-${{ matrix.package }}"
           echo "Creating virtual environment: $VENV_PATH"
           
           # Always create fresh virtual environment to ensure we test against PR code
@@ -269,7 +239,7 @@ jobs:
             python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
           fi
 
-      - name: Run tests (${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }})
+      - name: Run tests (all types unified)
         if: |
           (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
           (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
@@ -278,37 +248,71 @@ jobs:
         env:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
-          # Use smart test runner that can skip unchanged tests
-          echo "🔍 Analyzing test dependencies and changes..."
-
-          # First, try smart test selection (skip if no meaningful changes)
-          python scripts/smart_test_runner.py \
-            ${{ matrix.package }} \
-            ${{ matrix.test_path }} \
-            --dry-run
-
-          # Then run with the optimized test runner
-          # Handle marker-based testing for receipt_label
-          if [[ "${{ matrix.package }}" == "receipt_label" && -n "${{ matrix.test_markers || '' }}" ]]; then
-            echo "Using marker-based test selection: ${{ matrix.test_markers }}"
-            cd ${{ matrix.package }}
-            python -m pytest ${{ matrix.test_path }} ${{ matrix.test_markers }} -n auto --timeout=600 --tb=short
+          echo "🚀 Running unified test suite for ${{ matrix.package }} with -n auto parallelization"
+          
+          # Run all tests together with optimal parallelization
+          cd ${{ matrix.package }}
+          
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            # receipt_label: Run unit tests first (fast feedback), then integration tests
+            echo "🚀 Running receipt_label unit tests with optimized timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              -m "unit and not end_to_end and not slow" \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+            
+            echo "🚀 Running receipt_label integration tests with extended timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=300 \
+              --tb=short \
+              --maxfail=3 \
+              --durations=10 \
+              -m "integration and not end_to_end and not slow" \
+              --cov-append \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
           else
-            python scripts/smart_test_runner.py \
-              ${{ matrix.package }} \
-              ${{ matrix.test_path }} || \
-            python scripts/run_tests_optimized.py \
-              ${{ matrix.package }} \
-              ${{ matrix.test_path }} \
-              --test-type ${{ matrix.test_type }} \
-              --coverage \
-              --timeout 600
+            # receipt_dynamo: Run unit tests first (fast feedback), then integration tests
+            echo "🚀 Running receipt_dynamo unit tests with optimized timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              --dist=loadfile \
+              -m "unit and not end_to_end and not slow" \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+            
+            echo "🚀 Running receipt_dynamo integration tests with extended timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=300 \
+              --tb=short \
+              --maxfail=3 \
+              --durations=10 \
+              --dist=loadfile \
+              -m "integration and not end_to_end and not slow" \
+              --cov-append \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
           fi
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.package }}-${{ matrix.test_type }}${{ matrix.test_group && format('-{0}', matrix.test_group) || '' }}
+          name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
@@ -509,7 +513,7 @@ jobs:
       - name: Run E2E tests
         working-directory: receipt_dynamo
         run: |
-          pytest -m end_to_end --tb=short
+          pytest -m end_to_end --timeout=600 --tb=short
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
