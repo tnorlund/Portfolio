@@ -82,6 +82,7 @@ class TestParallelPatternOrchestrator:
 
         return words
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_parallel_detection(
         self, orchestrator, sample_receipt_words
@@ -105,6 +106,7 @@ class TestParallelPatternOrchestrator:
         assert results["_metadata"]["execution_time_ms"] < 150
         assert results["_metadata"]["word_count"] == len(sample_receipt_words)
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_pattern_detection_results(
         self, orchestrator, sample_receipt_words
@@ -139,6 +141,7 @@ class TestParallelPatternOrchestrator:
         assert len(quantity_matches) > 0
         # Should detect "2 @" pattern
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_aggregation(self, orchestrator, sample_receipt_words):
         """Test pattern aggregation functionality."""
@@ -158,6 +161,7 @@ class TestParallelPatternOrchestrator:
         assert "high_confidence_count" in total_info
         assert total_info["count"] >= 1
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_essential_fields_check(
         self, orchestrator, sample_receipt_words
@@ -173,6 +177,7 @@ class TestParallelPatternOrchestrator:
         )  # No merchant patterns provided
         assert essential["has_product"] is True  # We have quantity patterns
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_merchant_patterns_integration(
         self, orchestrator, sample_receipt_words
@@ -201,6 +206,7 @@ class TestParallelPatternOrchestrator:
         assert "MERCHANT_NAME" in matched_labels
         assert "PRODUCT_NAME" in matched_labels
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_timeout_handling(self, orchestrator):
         """Test that timeout is properly handled."""
@@ -242,6 +248,7 @@ class TestParallelPatternOrchestrator:
         assert elapsed_time < 0.15  # Should timeout at 100ms
         assert results["_metadata"]["timeout_occurred"] is True
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_error_handling(self, orchestrator):
         """Test that errors in one detector don't crash the whole system."""
@@ -283,6 +290,7 @@ class TestParallelPatternOrchestrator:
         # But datetime should still work
         assert len(results["datetime"]) > 0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_performance_benchmark(self, orchestrator):
         """Test the performance benchmarking functionality."""
@@ -303,6 +311,7 @@ class TestParallelPatternOrchestrator:
         for key, metrics in results.items():
             assert metrics["execution_time_ms"] < 100  # 100ms timeout
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_performance_target(
         self, orchestrator, sample_receipt_words

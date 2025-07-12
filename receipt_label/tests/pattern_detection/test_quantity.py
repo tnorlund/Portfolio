@@ -45,6 +45,7 @@ class TestQuantityPatternDetector:
 
         return _create_word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_at_pattern(self, detector, create_word):
         """Test detection of '@ symbol' quantity patterns."""
@@ -71,6 +72,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["format"] == "at_symbol"
             assert match.confidence >= 0.95
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_times_pattern(self, detector, create_word):
         """Test detection of 'x/times symbol' quantity patterns."""
@@ -98,6 +100,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["format"] == "times_symbol"
             assert match.confidence >= 0.95
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_for_pattern(self, detector, create_word):
         """Test detection of 'for' pricing patterns."""
@@ -124,6 +127,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["format"] == "for_notation"
             assert match.confidence >= 0.9
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_slash_pattern(self, detector, create_word):
         """Test detection of slash notation patterns."""
@@ -149,6 +153,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["total"] == total
             assert match.metadata["format"] == "slash_notation"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_label_pattern(self, detector, create_word):
         """Test detection of labeled quantity patterns."""
@@ -171,6 +176,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["quantity"] == qty
             assert match.metadata["format"] == "labeled"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_with_units(self, detector, create_word):
         """Test detection of quantities with units."""
@@ -197,6 +203,7 @@ class TestQuantityPatternDetector:
             assert match.metadata["unit"] == unit.lower()
             assert match.metadata["format"] == "with_unit"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_plain_number_quantity_detection(
         self, detector, create_word
@@ -233,6 +240,7 @@ class TestQuantityPatternDetector:
         assert two_match.pattern_type == PatternType.QUANTITY
         assert two_match.metadata["quantity"] == 2.0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_plain_number_not_quantity(self, detector, create_word):
         """Test that not all plain numbers are detected as quantities."""
@@ -251,6 +259,7 @@ class TestQuantityPatternDetector:
             if matches:
                 assert matches[0].metadata.get("format") != "plain_number"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_position_context_in_metadata(self, detector, create_word):
         """Test that position context is included in metadata."""
@@ -272,6 +281,7 @@ class TestQuantityPatternDetector:
         assert "line_word_count" in qty_match.metadata
         assert "line_position" in qty_match.metadata
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_confidence_scoring(self, detector, create_word):
         """Test confidence scoring for different quantity patterns."""
@@ -307,6 +317,7 @@ class TestQuantityPatternDetector:
                     matches[0].confidence >= min_confidence * 0.9
                 )  # Allow some variance
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector, create_word):
         """Test that noise words are skipped."""
@@ -316,6 +327,7 @@ class TestQuantityPatternDetector:
         matches = await detector.detect([word])
         assert len(matches) == 0  # Should skip noise word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_line_position_logic(self, detector, create_word):
         """Test the line position logic for plain number detection."""

@@ -67,6 +67,7 @@ class TestCurrencyPatternDetector:
 
         return words
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_detect_currency_formats(self, detector, sample_words):
         """Test detection of various currency formats."""
@@ -85,6 +86,7 @@ class TestCurrencyPatternDetector:
         assert "($2.00)" in matched_texts
         assert "1,234.56" in matched_texts
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_currency_classification(self, detector, sample_words):
         """Test smart classification of currency types."""
@@ -102,6 +104,7 @@ class TestCurrencyPatternDetector:
         assert tax_match.confidence >= 0.8
         assert total_match.confidence >= 0.8
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_negative_amounts(self, detector, sample_words):
         """Test detection of negative/discount amounts."""
@@ -115,6 +118,7 @@ class TestCurrencyPatternDetector:
         assert negative_match.metadata["is_negative"] is True
         assert negative_match.extracted_value == -2.0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_position_context(self, detector, sample_words):
         """Test position-based classification."""
@@ -127,6 +131,7 @@ class TestCurrencyPatternDetector:
         # But it should still be classified as GRAND_TOTAL due to keyword
         assert total_match.pattern_type == PatternType.GRAND_TOTAL
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_quantity_context(self, detector, sample_words):
         """Test detection near quantity patterns."""
@@ -140,6 +145,7 @@ class TestCurrencyPatternDetector:
         # Should have high confidence due to clear pattern
         assert unit_price_match.confidence >= 0.5
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_plain_number_detection(self, detector, sample_words):
         """Test detection of plain numbers as currency."""
@@ -152,6 +158,7 @@ class TestCurrencyPatternDetector:
         assert plain_match is not None
         assert plain_match.extracted_value == 5.99
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector):
         """Test that noise words are skipped."""
@@ -179,6 +186,7 @@ class TestCurrencyPatternDetector:
         matches = await detector.detect(words)
         assert len(matches) == 0  # Should skip noise word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_currency_symbols(self, detector):
         """Test various currency symbols."""
