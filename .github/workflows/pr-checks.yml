@@ -120,6 +120,10 @@ jobs:
           # Upgrade pip
           python3 -m pip install --upgrade pip --disable-pip-version-check
 
+          # Install build dependencies offline to avoid network issues
+          echo "Pre-installing build dependencies..."
+          python3 -m pip install hatchling --disable-pip-version-check
+
           # Install package with test dependencies from PR source
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_dynamo dependency from PR source first"
