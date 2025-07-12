@@ -364,8 +364,11 @@ class GeometryMixin:
         flip_y: bool = False,
     ):
         """
-        Maps Vision (bottom-left) normalized coords in the 'warped' image
-        back to Vision (bottom-left) normalized coords in the 'original' image.
+        Vision-specific inverse perspective transform from warped space back to original space.
+
+        This implementation uses the inverse perspective algorithm optimized for Vision
+        coordinate systems (bottom-left origin). Receipt classes should override this
+        method with their own 2x2 linear system implementation.
 
         Args:
             a, b, c, d, e, f, g, h (float): The perspective coefficients
@@ -375,8 +378,8 @@ class GeometryMixin:
             src_height (int): The original (old) image height in pixels.
             dst_width (int): The new (warped) image width in pixels.
             dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, we treat the coordinate system as
-                flipped in Y. Defaults to False.
+            flip_y (bool): If True, treat input coordinates as having Y=0 at top
+                instead of bottom. Defaults to False (Y=0 at bottom).
         """
         corners = [
             self.top_left,
@@ -386,97 +389,51 @@ class GeometryMixin:
         ]
         corner_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
-        if flip_y:
-            # Receipt classes use different coordinate system
-            for corner in corners:
-                # 1) Convert normalized new coords -> pixel coords in the 'new'
-                # (warped) image
-                x_new_px = corner["x"] * dst_width
-                y_new_px = corner["y"] * dst_height
+        # Vision coordinate system algorithm (inverse perspective)
+        for corner, name in zip(corners, corner_names):
+            # 1) Handle Y-coordinate orientation based on flip_y
+            x_vision_warped = corner["x"]  # 0..1
+            y_vision_warped = corner["y"]  # 0..1
 
-                # If the new system's Y=0 was at the top, then from the
-                # perspective of a typical "bottom=0" system, we flip:
-                y_new_px = dst_height - y_new_px
+            if flip_y:
+                # Input coordinates have Y=0 at top, convert to bottom-left
+                y_vision_warped = 1.0 - y_vision_warped
 
-                # 2) Solve the perspective equations for old pixel coords
-                # (X_old, Y_old). We have the system:
-                #   x_new_px = (a*X_old + b*Y_old + c) /
-                #              (1 + g*X_old + h*Y_old)
-                #   y_new_px = (d*X_old + e*Y_old + f) /
-                #              (1 + g*X_old + h*Y_old)
-                #
-                # Put it in the form:
-                #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old =
-                #    c - x_new_px
-                #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old =
-                #    f - y_new_px
+            # Convert to top-left orientation for perspective calculation
+            y_top_left_warped = 1.0 - y_vision_warped
 
-                a11 = g * x_new_px - a
-                a12 = h * x_new_px - b
-                b1 = c - x_new_px
+            # 2) Scale to pixel coordinates in the *warped* image
+            x_warped_px = x_vision_warped * dst_width
+            y_warped_px = y_top_left_warped * dst_height
 
-                a21 = g * y_new_px - d
-                a22 = h * y_new_px - e
-                b2 = f - y_new_px
+            # 3) Apply the *inverse* perspective (already inverted) to
+            # get original top-left px
+            denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
+            if abs(denom) < 1e-12:
+                raise ValueError(
+                    "Inverse warp denominator ~ 0 at corner: " + name
+                )
 
-                # Solve the 2×2 linear system via determinant
-                det = a11 * a22 - a12 * a21
-                if abs(det) < 1e-12:
-                    # Degenerate or singular. You can raise an exception
-                    # or skip. For robust code, handle it gracefully:
-                    raise ValueError(
-                        "Inverse perspective transform is singular for "
-                        "this corner."
-                    )
+            x_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
+            y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
 
-                x_old_px = (b1 * a22 - b2 * a12) / det
-                y_old_px = (a11 * b2 - a21 * b1) / det
+            # 4) Convert to normalized coordinates in top-left of the
+            # *original* image
+            x_old_norm_tl = x_old_px / src_width
+            y_old_norm_tl = y_old_px / src_height
 
-                # 3) Convert old pixel coords -> old normalized coords
-                # in [0..1]
-                corner["x"] = x_old_px / src_width
-                corner["y"] = y_old_px / src_height
+            # 5) Convert back to bottom-left Vision coordinates
+            x_old_vision = x_old_norm_tl
+            y_old_vision = 1.0 - y_old_norm_tl
 
-                # If the old/original system also had Y=0 at top, do the final
-                # flip:
-                corner["y"] = 1.0 - corner["y"]
-        else:
-            # Vision coordinate system (non-receipt classes)
-            for corner, name in zip(corners, corner_names):
-                # 1) Flip Y from bottom-left to top-left
-                # Because the perspective transform code uses top-left
-                # orientation
-                x_vision_warped = corner["x"]  # 0..1
-                y_vision_warped = corner["y"]  # 0..1, bottom=0
-                y_top_left_warped = 1.0 - y_vision_warped
+            # 6) Apply final Y-flip if requested
+            if flip_y:
+                # Output coordinates should have Y=0 at top
+                y_old_vision = 1.0 - y_old_vision
 
-                # 2) Scale to pixel coordinates in the *warped* image
-                x_warped_px = x_vision_warped * dst_width
-                y_warped_px = y_top_left_warped * dst_height
-
-                # 3) Apply the *inverse* perspective (already inverted) to
-                # get original top-left px
-                denom = (g * x_warped_px) + (h * y_warped_px) + 1.0
-                if abs(denom) < 1e-12:
-                    raise ValueError(
-                        "Inverse warp denominator ~ 0 at corner: " + name
-                    )
-
-                x_old_px = (a * x_warped_px + b * y_warped_px + c) / denom
-                y_old_px = (d * x_warped_px + e * y_warped_px + f) / denom
-
-                # 4) Convert to normalized coordinates in top-left of the
-                # *original* image
-                x_old_norm_tl = x_old_px / src_width
-                y_old_norm_tl = y_old_px / src_height
-
-                # 5) Flip Y back to bottom-left for Vision
-                x_old_vision = x_old_norm_tl
-                y_old_vision = 1.0 - y_old_norm_tl
-
-                # Update the corner
-                corner["x"] = x_old_vision
-                corner["y"] = y_old_vision
+            # Update the corner
+            corner["x"] = x_old_vision
+            corner["y"] = y_old_vision
 
         # 4) Recompute bounding box + angle
         xs = [pt["x"] for pt in corners]
