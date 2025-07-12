@@ -187,7 +187,7 @@ class TestPerformanceTarget:
         # Run multiple times to get more stable measurements
         parallel_times = []
         sequential_times = []
-        
+
         for _ in range(3):
             parallel_start = time.time()
             await orchestrator.detect_all_patterns(words)
