@@ -6,6 +6,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
 import { usePerformanceMonitor } from "../../../hooks/usePerformanceMonitor";
 
@@ -37,7 +38,8 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
 
     useEffect(() => {
       if (formatSupport) {
-        const bestUrl = getBestImageUrl(receipt, formatSupport);
+        // Use thumbnail size for ReceiptStack since receipts are displayed at 100px
+        const bestUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
     }, [formatSupport, receipt]); // currentSrc removed to prevent infinite loop
@@ -48,34 +50,73 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
+      // Determine current size from URL
+      let currentSize: 'thumbnail' | 'small' | 'medium' | 'full' = 'full';
+      if (currentSrc.includes("_thumbnail")) {
+        currentSize = 'thumbnail';
+      } else if (currentSrc.includes("_small")) {
+        currentSize = 'small';
+      } else if (currentSrc.includes("_medium")) {
+        currentSize = 'medium';
+      }
 
-      let fallbackUrl = "";
-
+      // Determine current format from URL
+      let currentFormat: 'avif' | 'webp' | 'jpeg' = 'jpeg';
       if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && receipt.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_webp_s3_key}`;
-        } else if (receipt.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
-        }
-      } else if (currentSrc.includes(".webp") && receipt.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
-        return;
+        currentFormat = 'avif';
+      } else if (currentSrc.includes(".webp")) {
+        currentFormat = 'webp';
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
+      // Try fallback strategies:
+      // 1. First try different formats at the same size
+      // 2. Then try larger sizes with the preferred format
+      // 3. Finally try larger sizes with fallback formats
+
+      const formats: Array<'avif' | 'webp' | 'jpeg'> = ['avif', 'webp', 'jpeg'];
+      const sizes: Array<'thumbnail' | 'small' | 'medium' | 'full'> = ['thumbnail', 'small', 'medium', 'full'];
+      
+      // Remove the current format from the list to try others first
+      const otherFormats = formats.filter(f => f !== currentFormat);
+      const orderedFormats = [currentFormat, ...otherFormats];
+      
+      // Find the index of current size
+      const currentSizeIndex = sizes.indexOf(currentSize);
+      
+      // Try other formats at the current size first
+      for (const format of otherFormats) {
+        const support = formatSupport || { supportsAVIF: false, supportsWebP: false };
+        // Skip unsupported formats
+        if (format === 'avif' && !support.supportsAVIF) continue;
+        if (format === 'webp' && !support.supportsWebP) continue;
+        
+        // Create a temporary format support that only allows the specific format
+        const tempSupport = {
+          supportsAVIF: format === 'avif',
+          supportsWebP: format === 'webp'
+        };
+        
+        const url = getBestImageUrl(receipt, tempSupport, currentSize);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
       }
+      
+      // Try larger sizes with all supported formats
+      for (let i = currentSizeIndex + 1; i < sizes.length; i++) {
+        const size = sizes[i];
+        const url = getBestImageUrl(receipt, formatSupport || { supportsAVIF: false, supportsWebP: false }, size);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
+      }
+
+      // If all attempts fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;
