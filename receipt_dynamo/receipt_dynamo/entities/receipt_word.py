@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from math import atan2, pi
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.geometry_base import GeometryMixin
 from receipt_dynamo.entities.util import (
     _format_float,
     assert_valid_bounding_box,
@@ -13,7 +14,7 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptWord(DynamoDBEntity):
+class ReceiptWord(GeometryMixin, DynamoDBEntity):
     """
     Represents a receipt word and its associated metadata stored in a DynamoDB table.
 
@@ -281,7 +282,10 @@ class ReceiptWord(DynamoDBEntity):
         flip_y: bool = False,
     ):
         """
-        Inverse perspective transform from 'new' space back to 'old' space.
+        Receipt-specific inverse perspective transform from 'new' space back to 'old' space.
+
+        This implementation uses the 2x2 linear system approach optimized for receipt
+        coordinate systems, independent of the GeometryMixin's vision-based implementation.
 
         Args:
             a, b, c, d, e, f, g, h (float): The perspective coefficients that mapped
@@ -330,16 +334,16 @@ class ReceiptWord(DynamoDBEntity):
             #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
             #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
 
-            A11 = g * x_new_px - a
-            A12 = h * x_new_px - b
-            B1 = c - x_new_px
+            a11 = g * x_new_px - a
+            a12 = h * x_new_px - b
+            b1 = c - x_new_px
 
-            A21 = g * y_new_px - d
-            A22 = h * y_new_px - e
-            B2 = f - y_new_px
+            a21 = g * y_new_px - d
+            a22 = h * y_new_px - e
+            b2 = f - y_new_px
 
             # Solve the 2×2 linear system via determinant
-            det = A11 * A22 - A12 * A21
+            det = a11 * a22 - a12 * a21
             if abs(det) < 1e-12:
                 # Degenerate or singular.  You can raise an exception or skip.
                 # For robust code, handle it gracefully:
@@ -347,12 +351,12 @@ class ReceiptWord(DynamoDBEntity):
                     "Inverse perspective transform is singular for this corner."
                 )
 
-            X_old_px = (B1 * A22 - B2 * A12) / det
-            Y_old_px = (A11 * B2 - A21 * B1) / det
+            x_old_px = (b1 * a22 - b2 * a12) / det
+            y_old_px = (a11 * b2 - a21 * b1) / det
 
             # 3) Convert old pixel coords -> old normalized coords in [0..1]
-            corner["x"] = X_old_px / src_width
-            corner["y"] = Y_old_px / src_height
+            corner["x"] = x_old_px / src_width
+            corner["y"] = y_old_px / src_height
 
             if flip_y:
                 # If the old/original system also had Y=0 at top, do the final
@@ -401,27 +405,6 @@ class ReceiptWord(DynamoDBEntity):
             f")"
         )
 
-    def calculate_centroid(self) -> Tuple[float, float]:
-        """
-        Calculates the centroid of the receipt word.
-
-        Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid.
-        """
-        x = (
-            self.top_right["x"]
-            + self.top_left["x"]
-            + self.bottom_right["x"]
-            + self.bottom_left["x"]
-        ) / 4
-        y = (
-            self.top_right["y"]
-            + self.top_left["y"]
-            + self.bottom_right["y"]
-            + self.bottom_left["y"]
-        ) / 4
-        return x, y
-
     def distance_and_angle_from__receipt_word(
         self, other: "ReceiptWord"
     ) -> Tuple[float, float]:
@@ -439,25 +422,6 @@ class ReceiptWord(DynamoDBEntity):
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
-
-    def is_point_in_bounding_box(self, x: float, y: float) -> bool:
-        """Determines if a point (x,y) is inside the bounding box of the line.
-
-        Args:
-            x (float): The x-coordinate of the point.
-            y (float): The y-coordinate of the point.
-
-        Returns:
-            bool: True if the point is inside the bounding box, False otherwise.
-        """
-        return bool(
-            self.bounding_box["x"]
-            <= x
-            <= self.bounding_box["x"] + self.bounding_box["width"]
-            and self.bounding_box["y"]
-            <= y
-            <= self.bounding_box["y"] + self.bounding_box["height"]
-        )
 
     def diff(self, other: "ReceiptWord") -> Dict[str, Any]:
         """
