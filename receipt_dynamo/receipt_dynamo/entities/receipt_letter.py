@@ -1,6 +1,7 @@
 from math import atan2, pi
 from typing import Any, Dict, Generator, Tuple
 
+from receipt_dynamo.entities.geometry_base import GeometryMixin
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -10,7 +11,7 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class ReceiptLetter:
+class ReceiptLetter(GeometryMixin):
     """
     Represents a receipt letter and its associated metadata stored in a DynamoDB table.
 

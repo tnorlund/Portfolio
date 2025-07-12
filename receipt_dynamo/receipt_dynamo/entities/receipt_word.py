@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from math import atan2, pi
+from math import atan2, degrees, pi, sqrt
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.geometry_base import GeometryMixin
 from receipt_dynamo.entities.util import (
     _format_float,
     assert_valid_bounding_box,
@@ -13,7 +14,7 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptWord(DynamoDBEntity):
+class ReceiptWord(GeometryMixin, DynamoDBEntity):
     """
     Represents a receipt word and its associated metadata stored in a DynamoDB table.
 
@@ -401,27 +402,6 @@ class ReceiptWord(DynamoDBEntity):
             f")"
         )
 
-    def calculate_centroid(self) -> Tuple[float, float]:
-        """
-        Calculates the centroid of the receipt word.
-
-        Returns:
-            Tuple[float, float]: The x and y coordinates of the centroid.
-        """
-        x = (
-            self.top_right["x"]
-            + self.top_left["x"]
-            + self.bottom_right["x"]
-            + self.bottom_left["x"]
-        ) / 4
-        y = (
-            self.top_right["y"]
-            + self.top_left["y"]
-            + self.bottom_right["y"]
-            + self.bottom_left["y"]
-        ) / 4
-        return x, y
-
     def distance_and_angle_from__receipt_word(
         self, other: "ReceiptWord"
     ) -> Tuple[float, float]:
@@ -439,25 +419,6 @@ class ReceiptWord(DynamoDBEntity):
         distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
-
-    def is_point_in_bounding_box(self, x: float, y: float) -> bool:
-        """Determines if a point (x,y) is inside the bounding box of the line.
-
-        Args:
-            x (float): The x-coordinate of the point.
-            y (float): The y-coordinate of the point.
-
-        Returns:
-            bool: True if the point is inside the bounding box, False otherwise.
-        """
-        return bool(
-            self.bounding_box["x"]
-            <= x
-            <= self.bounding_box["x"] + self.bounding_box["width"]
-            and self.bounding_box["y"]
-            <= y
-            <= self.bounding_box["y"] + self.bounding_box["height"]
-        )
 
     def diff(self, other: "ReceiptWord") -> Dict[str, Any]:
         """

@@ -3,6 +3,7 @@ from math import atan2, pi
 from typing import Any, Dict, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.geometry_base import GeometryMixin
 from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -14,7 +15,7 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptLine(DynamoDBEntity):
+class ReceiptLine(GeometryMixin, DynamoDBEntity):
     """
     Represents a receipt line and its associated metadata stored in a DynamoDB table.
 
@@ -228,46 +229,6 @@ class ReceiptLine(DynamoDBEntity):
                 self.confidence,
                 self.embedding_status,
             )
-        )
-
-    def calculate_centroid(self) -> Tuple[float, float]:
-        """Calculates the centroid of the line.
-
-        Returns:
-            Tuple[float, float]: The (x, y) coordinates of the centroid.
-        """
-        x = (
-            self.top_right["x"]
-            + self.top_left["x"]
-            + self.bottom_right["x"]
-            + self.bottom_left["x"]
-        ) / 4
-        y = (
-            self.top_right["y"]
-            + self.top_left["y"]
-            + self.bottom_right["y"]
-            + self.bottom_left["y"]
-        ) / 4
-        return x, y
-
-    def is_point_in_bounding_box(self, x: float, y: float) -> bool:
-        """Determines if a point (x,y) is inside the bounding box of the line.
-
-        Args:
-            x (float): The x-coordinate of the point.
-            y (float): The y-coordinate of the point.
-
-        Returns:
-            bool: True if the point is inside the bounding box, False
-                otherwise.
-        """
-        return bool(
-            self.bounding_box["x"]
-            <= x
-            <= self.bounding_box["x"] + self.bounding_box["width"]
-            and self.bounding_box["y"]
-            <= y
-            <= self.bounding_box["y"] + self.bounding_box["height"]
         )
 
     def warp_transform(
