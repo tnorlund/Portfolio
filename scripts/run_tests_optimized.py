@@ -81,23 +81,18 @@ def run_tests(
     # Add test paths
     cmd.extend(test_paths)
 
-    # Optimize for test type
-    if test_type == "unit":
-        # Unit tests: maximum parallelization
-        workers = get_optimal_worker_count()
-        cmd.extend(["-n", str(workers)])
-        cmd.extend(["--timeout", "30"])  # Shorter timeout for unit tests
-    elif test_type == "integration":
-        # Integration tests: moderate parallelization
-        workers = min(get_optimal_worker_count(), 3)  # Limit for DB operations
-        cmd.extend(["-n", str(workers)])
-        cmd.extend(["--timeout", str(timeout)])
-        cmd.extend(
-            ["--dist", "loadfile"]
-        )  # Distribute by file for better load balancing
-    else:
-        # End-to-end tests: sequential execution
+    # Optimize for test type - use auto parallelization for all except e2e
+    if test_type == "end_to_end":
+        # End-to-end tests: sequential execution (real AWS resources)
         cmd.extend(["--timeout", str(timeout * 2)])
+    else:
+        # All other tests: use pytest-xdist auto parallelization
+        # This lets pytest-xdist determine optimal worker count and load balancing
+        cmd.extend(["-n", "auto"])
+        cmd.extend(["--timeout", str(timeout)])
+        if test_type == "integration":
+            # Use loadfile distribution for integration tests for better balance
+            cmd.extend(["--dist", "loadfile"])
 
     # Add common options
     cmd.extend(
@@ -132,15 +127,11 @@ def run_tests(
     print(f"Working directory: {os.getcwd()}")
     print(f"Test type: {test_type}")
 
-    # Handle workers variable for all test types
-    if test_type == "unit":
-        workers = get_optimal_worker_count()
-    elif test_type == "integration":
-        workers = min(get_optimal_worker_count(), 3)
+    # Display parallelization info
+    if test_type == "end_to_end":
+        print("Workers: 1 (sequential execution for E2E tests)")
     else:
-        workers = 1  # Sequential for end-to-end tests
-
-    print(f"Workers: {workers}")
+        print("Workers: auto (pytest-xdist will determine optimal count)")
     print("-" * 50)
 
     # Run tests
