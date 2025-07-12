@@ -383,6 +383,18 @@ def test_receipt_to_item(example_receipt):
         "cdn_s3_key": {"NULL": True},
         "cdn_webp_s3_key": {"NULL": True},
         "cdn_avif_s3_key": {"NULL": True},
+        # Thumbnail versions
+        "cdn_thumbnail_s3_key": {"NULL": True},
+        "cdn_thumbnail_webp_s3_key": {"NULL": True},
+        "cdn_thumbnail_avif_s3_key": {"NULL": True},
+        # Small versions
+        "cdn_small_s3_key": {"NULL": True},
+        "cdn_small_webp_s3_key": {"NULL": True},
+        "cdn_small_avif_s3_key": {"NULL": True},
+        # Medium versions
+        "cdn_medium_s3_key": {"NULL": True},
+        "cdn_medium_webp_s3_key": {"NULL": True},
+        "cdn_medium_avif_s3_key": {"NULL": True},
     }
 
 
@@ -406,7 +418,16 @@ def test_receipt_repr(example_receipt):
         "cdn_s3_bucket=None, "
         "cdn_s3_key=None, "
         "cdn_webp_s3_key=None, "
-        "cdn_avif_s3_key=None"
+        "cdn_avif_s3_key=None, "
+        "cdn_thumbnail_s3_key=None, "
+        "cdn_thumbnail_webp_s3_key=None, "
+        "cdn_thumbnail_avif_s3_key=None, "
+        "cdn_small_s3_key=None, "
+        "cdn_small_webp_s3_key=None, "
+        "cdn_small_avif_s3_key=None, "
+        "cdn_medium_s3_key=None, "
+        "cdn_medium_webp_s3_key=None, "
+        "cdn_medium_avif_s3_key=None"
         ")"
     )
 
@@ -431,6 +452,15 @@ def test_receipt_iter(example_receipt):
         "cdn_s3_key": None,
         "cdn_webp_s3_key": None,
         "cdn_avif_s3_key": None,
+        "cdn_thumbnail_s3_key": None,
+        "cdn_thumbnail_webp_s3_key": None,
+        "cdn_thumbnail_avif_s3_key": None,
+        "cdn_small_s3_key": None,
+        "cdn_small_webp_s3_key": None,
+        "cdn_small_avif_s3_key": None,
+        "cdn_medium_s3_key": None,
+        "cdn_medium_webp_s3_key": None,
+        "cdn_medium_avif_s3_key": None,
     }
     assert Receipt(**dict(example_receipt)) == example_receipt
 
