@@ -14,16 +14,16 @@ Our Claude integration builds on the existing cost-optimized CI infrastructure:
 - **Fast-checks integration**: Complements existing fast-checks → test-python workflow pattern
 - **Performance focus**: Specifically trained on your CI optimization patterns and performance bottlenecks
 
-## Available Claude Workflows
+## Claude Integration Workflow
 
-### 1. Automated Code Review (`claude-review.yml`)
-Automatically reviews pull requests with focus on architecture, performance, and CI optimization patterns.
+### Single Unified Workflow (`claude-review.yml`)
+Provides both automated PR reviews and interactive assistance in one optimized workflow.
 
 **Triggers:**
-- Non-draft PRs under 1000 lines (automatic)
-- PR labeled with `claude-review-requested`
-- Manual: Comment `@claude review` on any PR
-- Interactive: `@claude` for specific questions
+- **Automatic**: Non-draft PRs under 1000 lines
+- **Interactive**: `@claude` mentions in PR/issue comments
+- **Manual**: `claude-review-requested` label to force reviews
+- **Conditional**: Skips documentation-only changes and large PRs
 
 **Cost Optimization Features:**
 - **Size limits**: Automatically skips PRs over 1000 lines
@@ -39,20 +39,20 @@ Automatically reviews pull requests with focus on architecture, performance, and
 - Architecture alignment with your CI optimization patterns
 - Security and maintainability
 
-### 2. Interactive Assistant (`claude.yml`)
-Provides on-demand AI assistance for questions and code help.
+### Interactive Features
+The unified workflow provides comprehensive interactive assistance:
 
-**Usage:**
-- Mention `@claude` in any issue or PR comment
-- Example: `@claude can you explain how this function works?`
+**Usage Examples:**
+- `@claude can you explain how this function works?`
+- `@claude review this change for performance implications`
+- `@claude help me understand the pattern detection logic`
 
-### 3. Enhanced Review (`claude-review-enhanced.yml`)
-Advanced review features with comment management and cleanup.
-
-**Features:**
-- Collapses outdated reviews automatically
-- Provides review summaries
-- Cleans up after PR merge
+**Capabilities:**
+- Code explanation and analysis
+- Architecture recommendations
+- Performance optimization suggestions
+- Bug identification and fixes
+- Test strategy validation
 
 ## Cost Management
 
@@ -160,9 +160,9 @@ All Claude API usage is tracked in DynamoDB via `track-ai-usage.yml`. Monitor co
 ## Configuration
 
 ### Environment Variables
-- `ANTHROPIC_API_KEY` - Set in repository secrets
-- `CLAUDE_MODEL` - Currently using `claude-3-opus`
-- `MAX_PR_SIZE` - Default 1000 lines
+- `CLAUDE_CODE_OAUTH_TOKEN` - Set in repository secrets (uses subscription)
+- `GITHUB_TOKEN` - Automatically provided by GitHub Actions
+- `MAX_PR_SIZE` - Default 1000 lines (configurable in workflow)
 
 ### Customization
 Workflow behavior can be customized by editing the workflow files in `.github/workflows/`. Always test changes in a separate branch first.

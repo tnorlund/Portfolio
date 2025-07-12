@@ -49,8 +49,9 @@ ci-success (summary + claude notification)  ↓
 ### 1. GitHub Secrets
 Add to repository secrets:
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 ```
+Note: Uses Claude Code subscription (no additional API costs)
 
 ### 2. Runner Labels (Already Configured)
 The integration uses your existing runner:
@@ -59,10 +60,12 @@ runs-on: [self-hosted, macOS, ARM64]
 ```
 
 ### 3. Workflow Files
-- ✅ `.github/workflows/claude-review.yml` - Main Claude workflow
+- ✅ `.github/workflows/claude-review.yml` - Single unified Claude workflow
 - ✅ `.github/workflows/main.yml` - Updated with Claude awareness
 - ✅ `.github/pull_request_template.md` - Enhanced with Claude section
 - ✅ `.github/CLAUDE.md` - Configuration and usage guide
+
+**Note**: Previous implementation had 3 conflicting workflows. Simplified to single workflow per Claude's recommendation.
 
 ## Usage Patterns
 
