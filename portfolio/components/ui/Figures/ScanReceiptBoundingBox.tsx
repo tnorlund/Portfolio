@@ -119,11 +119,13 @@ const ImageBoundingBox: React.FC = () => {
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
 
+
   // Get the optimal image URL based on browser support and available formats
+  // Use medium size for ScanBoundingBox to balance quality and performance
   // Use fallback URL during SSR/initial render to prevent hydration mismatch
   const cdnUrl =
     firstImage && formatSupport && isClient
-      ? getBestImageUrl(firstImage, formatSupport)
+      ? getBestImageUrl(firstImage, formatSupport, 'medium')
       : firstImage
       ? `${
           isDevelopment
@@ -131,6 +133,7 @@ const ImageBoundingBox: React.FC = () => {
             : "https://www.tylernorlund.com"
         }/${firstImage.cdn_s3_key}`
       : "";
+
 
   // When imageDetails is loaded, compute these values;
   // otherwise, fall back on default dimensions.
