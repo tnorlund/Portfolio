@@ -68,7 +68,7 @@ class LabelCountCache:
             "last_updated": {"S": self.last_updated},
         }
         if self.time_to_live is not None:
-            item["time_to_live"] = {"N": str(self.time_to_live)}
+            item["TimeToLive"] = {"N": str(self.time_to_live)}
         return item
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
@@ -133,7 +133,12 @@ def item_to_label_count_cache(
     needs_review_count = int(item["needs_review_count"]["N"])
     none_count = int(item["none_count"]["N"])
     last_updated = item["last_updated"]["S"]
-    ttl = int(item["time_to_live"]["N"]) if "time_to_live" in item else None
+    # Support both field names for backward compatibility during migration
+    ttl = None
+    if "TimeToLive" in item:
+        ttl = int(item["TimeToLive"]["N"])
+    elif "time_to_live" in item:
+        ttl = int(item["time_to_live"]["N"])
     return LabelCountCache(
         label=label,
         valid_count=valid_count,
