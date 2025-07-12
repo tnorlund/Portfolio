@@ -4,37 +4,55 @@ This document provides guidelines and best practices for using Claude AI workflo
 
 ## Overview
 
-We use Claude AI for automated code reviews and interactive assistance to improve code quality and developer productivity. This document outlines how to effectively use these tools while managing costs.
+We use Claude AI for automated code reviews and interactive assistance to improve code quality and developer productivity. This system is fully integrated with our optimized CI pipeline, leveraging self-hosted runners and cost-effective triggering strategies.
 
-## Available Claude Workflows
+## Integration with Optimized CI
 
-### 1. Automated Code Review (`claude-review.yml`)
-Automatically reviews pull requests for code quality, bugs, and best practices.
+Our Claude integration builds on the existing cost-optimized CI infrastructure:
+- **Self-hosted runners**: Leverages your existing ARM64 macOS runners for ~50% cost reduction
+- **Selective triggering**: Only activates when needed, preserving your $2-5/month CI target
+- **Fast-checks integration**: Complements existing fast-checks → test-python workflow pattern
+- **Performance focus**: Specifically trained on your CI optimization patterns and performance bottlenecks
+
+## Claude Integration Workflow
+
+### Single Unified Workflow (`claude-review.yml`)
+Provides both automated PR reviews and interactive assistance in one optimized workflow.
 
 **Triggers:**
-- PR marked as "ready for review"
-- PR labeled with `claude-review-requested`
-- Manual: Comment `/claude review` on any PR
+- **Automatic**: Non-draft PRs under 1000 lines
+- **Interactive**: `@claude` mentions in PR/issue comments
+- **Manual**: `claude-review-requested` label to force reviews
+- **Conditional**: Skips documentation-only changes and large PRs
 
-**Cost Optimization:**
-- Automatically skips PRs over 1000 lines (unless explicitly requested)
-- Ignores non-code files (.md, .json, .yaml, etc.)
-- Add `skip-claude-review` label to bypass review
+**Cost Optimization Features:**
+- **Size limits**: Automatically skips PRs over 1000 lines
+- **Self-hosted runners**: Uses your existing ARM64 macOS infrastructure
+- **Smart filtering**: Ignores documentation-only changes
+- **Conversation limits**: Max 3 turns to prevent runaway costs
+- **Selective triggering**: Only on meaningful code changes
 
-### 2. Interactive Assistant (`claude.yml`)
-Provides on-demand AI assistance for questions and code help.
+**Review Focus Areas:**
+- Performance implications (especially test timeouts and CI optimization)
+- Pattern detection logic (overlapping matches, race conditions)
+- Package boundary adherence (receipt_dynamo vs receipt_label separation)
+- Architecture alignment with your CI optimization patterns
+- Security and maintainability
 
-**Usage:**
-- Mention `@claude` in any issue or PR comment
-- Example: `@claude can you explain how this function works?`
+### Interactive Features
+The unified workflow provides comprehensive interactive assistance:
 
-### 3. Enhanced Review (`claude-review-enhanced.yml`)
-Advanced review features with comment management and cleanup.
+**Usage Examples:**
+- `@claude can you explain how this function works?`
+- `@claude review this change for performance implications`
+- `@claude help me understand the pattern detection logic`
 
-**Features:**
-- Collapses outdated reviews automatically
-- Provides review summaries
-- Cleans up after PR merge
+**Capabilities:**
+- Code explanation and analysis
+- Architecture recommendations
+- Performance optimization suggestions
+- Bug identification and fixes
+- Test strategy validation
 
 ## Cost Management
 
@@ -142,9 +160,9 @@ All Claude API usage is tracked in DynamoDB via `track-ai-usage.yml`. Monitor co
 ## Configuration
 
 ### Environment Variables
-- `ANTHROPIC_API_KEY` - Set in repository secrets
-- `CLAUDE_MODEL` - Currently using `claude-3-opus`
-- `MAX_PR_SIZE` - Default 1000 lines
+- `CLAUDE_CODE_OAUTH_TOKEN` - Set in repository secrets (uses subscription)
+- `GITHUB_TOKEN` - Automatically provided by GitHub Actions
+- `MAX_PR_SIZE` - Default 1000 lines (configurable in workflow)
 
 ### Customization
 Workflow behavior can be customized by editing the workflow files in `.github/workflows/`. Always test changes in a separate branch first.
