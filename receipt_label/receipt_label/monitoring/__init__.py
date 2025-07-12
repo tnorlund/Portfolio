@@ -75,6 +75,13 @@ A/B Testing Example:
     ```
 """
 
+from .token_ledger import (
+    TokenLedger,
+    ModelTier,
+    TokenUsageType,
+    TokenUsageRecord
+)
+
 from .production_monitor import (
     ProductionMonitor,
     LabelingMethod,
@@ -92,6 +99,12 @@ from .ab_testing import (
     GuardrailMetric
 )
 
+from .shadow_testing import (
+    ShadowTestManager,
+    ShadowTestMode,
+    ShadowTestResult
+)
+
 from .integration import (
     MonitoredLabelingSystem,
     MonitoredSession
@@ -107,6 +120,12 @@ from .production_config import (
 )
 
 __all__ = [
+    # Token usage tracking
+    "TokenLedger",
+    "ModelTier",
+    "TokenUsageType", 
+    "TokenUsageRecord",
+    
     # Core monitoring
     "ProductionMonitor",
     "LabelingMethod", 
@@ -121,6 +140,11 @@ __all__ = [
     "SignificanceTest", 
     "ABTestResult",
     "GuardrailMetric",
+    
+    # Shadow testing
+    "ShadowTestManager",
+    "ShadowTestMode",
+    "ShadowTestResult",
     
     # Integration
     "MonitoredLabelingSystem",

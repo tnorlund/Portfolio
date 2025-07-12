@@ -1,0 +1,366 @@
+# Merchant Pattern Configuration
+# This file contains merchant-specific patterns organized by category
+# Used for enhanced pattern detection to reduce GPT dependency
+
+# Restaurant patterns
+restaurant:
+  PRODUCT_NAME:
+    # Fast food items
+    - big mac
+    - whopper
+    - quarter pounder
+    - baconator
+    - dave's single
+    - crispy chicken
+    - spicy chicken
+    - grilled chicken
+    - chicken nuggets
+    - french fries
+    - onion rings
+    - mozzarella sticks
+    - chicken strips
+    - milkshake
+    - soft drink
+    - coca cola
+    - pepsi
+    - sprite
+    - dr pepper
+    
+    # Pizza items
+    - pepperoni pizza
+    - cheese pizza
+    - supreme pizza
+    - margherita pizza
+    - hawaiian pizza
+    - meat lovers
+    - veggie pizza
+    - breadsticks
+    - garlic bread
+    
+    # Coffee/Bakery
+    - latte
+    - cappuccino
+    - macchiato
+    - americano
+    - espresso
+    - frappuccino
+    - croissant
+    - muffin
+    - bagel
+    - danish
+    - donut
+    - cookie
+    - scone
+    
+    # Casual dining
+    - appetizer
+    - salad
+    - soup
+    - burger
+    - sandwich
+    - wrap
+    - pasta
+    - steak
+    - chicken breast
+    - salmon
+    - dessert
+    - ice cream
+    - cake
+    
+  TAX:
+    - sales tax
+    - tax
+    - state tax
+    - local tax
+    - city tax
+    - meal tax
+    
+  DISCOUNT:
+    - discount
+    - coupon
+    - promotion
+    - employee discount
+    - senior discount
+    - student discount
+    - military discount
+    - loyalty reward
+    - points redemption
+
+# Grocery store patterns  
+grocery:
+  PRODUCT_NAME:
+    # Fresh produce
+    - bananas
+    - apples
+    - oranges
+    - grapes
+    - strawberries
+    - blueberries
+    - lettuce
+    - tomatoes
+    - onions
+    - potatoes
+    - carrots
+    - broccoli
+    - avocados
+    - lemons
+    - limes
+    - spinach
+    - bell peppers
+    
+    # Packaged goods
+    - milk
+    - eggs
+    - bread
+    - butter
+    - cheese
+    - yogurt
+    - cereal
+    - pasta
+    - rice
+    - flour
+    - sugar
+    - olive oil
+    - chicken breast
+    - ground beef
+    - salmon
+    - tuna
+    - peanut butter
+    - jelly
+    
+    # Beverages
+    - orange juice
+    - apple juice
+    - soda
+    - water
+    - coffee
+    - tea
+    - energy drink
+    - sports drink
+    - wine
+    - beer
+    
+    # Household items
+    - toilet paper
+    - paper towels
+    - dish soap
+    - laundry detergent
+    - shampoo
+    - conditioner
+    - toothpaste
+    - deodorant
+    - tissues
+    
+  QUANTITY:
+    - lb
+    - lbs
+    - oz
+    - kg
+    - each
+    - ea
+    - ct
+    - count
+    - pack
+    - case
+
+# Retail store patterns
+retail:
+  PRODUCT_NAME:
+    # Electronics
+    - iphone
+    - samsung galaxy
+    - laptop
+    - tablet
+    - headphones
+    - speaker
+    - charger
+    - cable
+    - battery
+    - mouse
+    - keyboard
+    - monitor
+    - tv
+    - smart watch
+    - airpods
+    - case
+    - screen protector
+    
+    # Clothing
+    - shirt
+    - pants
+    - jeans
+    - dress
+    - jacket
+    - sweater
+    - hoodie
+    - shoes
+    - sneakers
+    - boots
+    - sandals
+    - socks
+    - underwear
+    - hat
+    - belt
+    - purse
+    - wallet
+    - backpack
+    
+    # Home goods
+    - pillow
+    - blanket
+    - sheets
+    - towel
+    - candle
+    - lamp
+    - picture frame
+    - vase
+    - plant
+    - storage box
+    - organizer
+    
+  PAYMENT_METHOD:
+    - visa
+    - mastercard
+    - american express
+    - discover
+    - debit
+    - credit card
+    - cash
+    - gift card
+    - store credit
+    - apple pay
+    - google pay
+    - samsung pay
+    - paypal
+    - venmo
+
+# Pharmacy patterns
+pharmacy:
+  PRODUCT_NAME:
+    - prescription
+    - medication
+    - pills
+    - tablets
+    - capsules
+    - vitamins
+    - supplements
+    - pain reliever
+    - allergy medicine
+    - cold medicine
+    - cough drops
+    - bandages
+    - first aid
+    - thermometer
+    - blood pressure monitor
+    - test strips
+
+# Gas station patterns
+gas_station:
+  PRODUCT_NAME:
+    - regular gas
+    - premium gas
+    - diesel
+    - unleaded
+    - gasoline
+    - car wash
+    - windshield washer
+    - motor oil
+    - energy drink
+    - coffee
+    - hot dog
+    - nachos
+    - chips
+    - candy
+    - gum
+
+# Merchant category detection keywords
+merchant_categories:
+  restaurant:
+    - restaurant
+    - cafe
+    - coffee
+    - pizza
+    - burger
+    - chicken
+    - taco
+    - mcdonald
+    - burger king
+    - kfc
+    - taco bell
+    - subway
+    - chipotle
+    - starbucks
+    - dunkin
+    - domino
+    - papa john
+    - wendy
+    - arby
+    - dairy queen
+    - sonic
+    - ihop
+    - denny
+    - applebee
+    - olive garden
+    
+  grocery:
+    - grocery
+    - market
+    - supermarket
+    - walmart
+    - target
+    - kroger
+    - safeway
+    - albertsons
+    - publix
+    - wegmans
+    - whole foods
+    - trader joes
+    - costco
+    - sams club
+    - aldi
+    - food lion
+    - giant
+    - stop shop
+    
+  retail:
+    - store
+    - shop
+    - retail
+    - mall
+    - outlet
+    - amazon
+    - best buy
+    - home depot
+    - lowes
+    - macys
+    - nordstrom
+    - tj maxx
+    - ross
+    - marshalls
+    - old navy
+    - gap
+    - american eagle
+    - forever 21
+    
+  pharmacy:
+    - pharmacy
+    - drug
+    - cvs
+    - walgreens
+    - rite aid
+    - care pharmacy
+    
+  gas_station:
+    - gas
+    - fuel
+    - shell
+    - exxon
+    - bp
+    - chevron
+    - mobil
+    - sunoco
+    - circle k
+    - 7-eleven
+    - wawa
+    - speedway
+    - marathon

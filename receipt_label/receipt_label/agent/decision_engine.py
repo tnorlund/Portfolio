@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum
 
 from receipt_label.constants import CORE_LABELS
+from receipt_label.config import decision_engine_config
 from receipt_label.utils.noise_detection import is_noise_word
 from receipt_label.agent.merchant_essential_labels import MerchantEssentialLabels
 
@@ -41,8 +42,8 @@ class DecisionEngine:
     # All essential labels (for backward compatibility)
     ESSENTIAL_LABELS = CORE_ESSENTIAL_LABELS | SECONDARY_ESSENTIAL_LABELS
 
-    # Threshold for meaningful unlabeled words
-    UNLABELED_THRESHOLD = 5
+    # Threshold for meaningful unlabeled words (now configurable)
+    UNLABELED_THRESHOLD = decision_engine_config.MEANINGFUL_UNLABELED_WORDS_THRESHOLD
 
     def __init__(self):
         """Initialize the decision engine."""

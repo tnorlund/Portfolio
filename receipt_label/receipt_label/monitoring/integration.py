@@ -15,6 +15,7 @@ from receipt_label.monitoring.production_monitor import (
     ProductionMonitor, LabelingMethod, LabelingSession
 )
 from receipt_label.monitoring.ab_testing import ABTestManager
+from receipt_label.monitoring.shadow_testing import ShadowTestManager, ShadowTestMode
 from receipt_label.agent.decision_engine import DecisionEngine, GPTDecision
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,9 @@ class MonitoredLabelingSystem:
         decision_engine: DecisionEngine,
         pattern_orchestrator: Any,
         storage_backend: Optional[Any] = None,
-        enable_ab_testing: bool = True
+        enable_ab_testing: bool = True,
+        enable_shadow_testing: bool = True,
+        shadow_sampling_rate: float = 0.05
     ):
         """
         Initialize monitored labeling system.
@@ -43,6 +46,8 @@ class MonitoredLabelingSystem:
             pattern_orchestrator: Pattern detection orchestrator
             storage_backend: Optional storage backend for persistence
             enable_ab_testing: Whether to enable A/B testing
+            enable_shadow_testing: Whether to enable shadow testing for validation
+            shadow_sampling_rate: Percentage of receipts to shadow test (0.0-1.0)
         """
         self.decision_engine = decision_engine
         self.pattern_orchestrator = pattern_orchestrator
@@ -52,6 +57,12 @@ class MonitoredLabelingSystem:
         
         # Initialize A/B testing if enabled
         self.ab_test_manager = ABTestManager(self.monitor) if enable_ab_testing else None
+        
+        # Initialize shadow testing if enabled
+        self.shadow_test_manager = ShadowTestManager(
+            mode=ShadowTestMode.SKIP_VALIDATION,
+            sampling_rate=shadow_sampling_rate
+        ) if enable_shadow_testing else None
         
         # Default labeling method
         self.default_method = LabelingMethod.AGENT_BASED
@@ -166,6 +177,12 @@ class MonitoredLabelingSystem:
             
             # Time pattern detection
             pattern_start = time.time()
+            pinecone_start = None
+            pinecone_time_ms = 0.0
+            
+            # Track Pinecone timing separately if merchant name is available
+            if merchant_name:
+                pinecone_start = time.time()
             
             # Run pattern detection with merchant enhancement
             labeled_words = await self.pattern_orchestrator.detect_with_merchant_enhancement(
@@ -174,8 +191,23 @@ class MonitoredLabelingSystem:
                 receipt_metadata=receipt_metadata
             )
             
-            pattern_time_ms = (time.time() - pattern_start) * 1000
-            session.update_timing(pattern_detection_time_ms=pattern_time_ms)
+            pattern_total_time_ms = (time.time() - pattern_start) * 1000
+            
+            # Calculate Pinecone time if merchant patterns were fetched
+            if pinecone_start:
+                pinecone_time_ms = (time.time() - pinecone_start) * 1000
+                # Pattern time is total minus Pinecone time
+                pattern_time_ms = pattern_total_time_ms - pinecone_time_ms
+            else:
+                # No Pinecone query, all time is pattern detection
+                pattern_time_ms = pattern_total_time_ms
+            
+            # Update timing with latency buckets
+            session.update_timing(
+                pattern_detection_time_ms=pattern_total_time_ms,  # Legacy metric
+                pattern_time_ms=pattern_time_ms,  # New bucketed metric
+                pinecone_time_ms=pinecone_time_ms  # New bucketed metric
+            )
             
             # Run decision engine
             decision, reason, unlabeled_words, missing_fields = self.decision_engine.make_smart_gpt_decision(
@@ -212,7 +244,11 @@ class MonitoredLabelingSystem:
                 gpt_labels_count = len(missing_fields)
                 estimated_cost = gpt_tokens * 0.00002  # Estimated cost per token
                 
-                session.update_timing(gpt_processing_time_ms=gpt_time_ms)
+                # Update timing with both legacy and new metrics
+                session.update_timing(
+                    gpt_processing_time_ms=gpt_time_ms,  # Legacy metric
+                    gpt_time_ms=gpt_time_ms  # New bucketed metric
+                )
                 session.update_cost(gpt_tokens_used=gpt_tokens, estimated_cost_usd=estimated_cost)
                 
             elif decision == GPTDecision.BATCH:
@@ -228,6 +264,28 @@ class MonitoredLabelingSystem:
                 essential_labels_coverage=essential_coverage
             )
             
+            # Run shadow testing if enabled and appropriate
+            shadow_result = None
+            if (self.shadow_test_manager and 
+                decision in [GPTDecision.SKIP, GPTDecision.BATCH]):
+                
+                # Create agent labels dict from labeled_words
+                agent_labels = {
+                    info.get("label", ""): info.get("text", "") 
+                    for info in labeled_words.values() 
+                    if info.get("label")
+                }
+                
+                shadow_result = self.shadow_test_manager.run_shadow_test(
+                    receipt_id=receipt_metadata.get("receipt_id", "unknown"),
+                    image_id=receipt_metadata.get("image_id", "unknown"),
+                    words=words,
+                    agent_decision=decision.value,
+                    agent_labels=agent_labels,
+                    merchant_name=receipt_metadata.get("merchant_name"),
+                    gpt_processor=None  # Would be actual GPT processor in production
+                )
+            
             # Compile results
             results = {
                 "labeled_words": labeled_words,
@@ -236,14 +294,21 @@ class MonitoredLabelingSystem:
                 "missing_fields": missing_fields,
                 "unlabeled_words_count": len(unlabeled_words),
                 "metrics": {
-                    "pattern_detection_time_ms": pattern_time_ms,
+                    # Legacy timing metrics
+                    "pattern_detection_time_ms": pattern_total_time_ms,
                     "gpt_processing_time_ms": gpt_time_ms,
+                    # New latency bucketing metrics
+                    "pattern_time_ms": pattern_time_ms,
+                    "pinecone_time_ms": pinecone_time_ms,
+                    "gpt_time_ms": gpt_time_ms,
+                    # Other metrics
                     "essential_coverage": essential_coverage,
                     "estimated_cost_usd": estimated_cost,
                     "gpt_tokens_used": gpt_tokens
                 },
                 "session_id": session.session_id,
-                "labeling_method": session.method.value
+                "labeling_method": session.method.value,
+                "shadow_test_result": shadow_result.receipt_id if shadow_result else None
             }
             
             self.stats["receipts_processed"] += 1
@@ -355,6 +420,10 @@ class MonitoredLabelingSystem:
         if self.ab_test_manager:
             dashboard["ab_testing"] = self.ab_test_manager.get_active_tests_summary()
         
+        # Add shadow testing data if available
+        if self.shadow_test_manager:
+            dashboard["shadow_testing"] = self.shadow_test_manager.get_validation_summary()
+        
         return dashboard
     
     def get_test_results(self, test_name: str) -> Dict[str, Any]:
@@ -363,6 +432,13 @@ class MonitoredLabelingSystem:
             return {"error": "A/B testing not enabled"}
         
         return self.ab_test_manager.export_test_results(test_name)
+    
+    def get_shadow_testing_report(self) -> str:
+        """Get human-readable shadow testing validation report."""
+        if not self.shadow_test_manager:
+            return "Shadow testing not enabled"
+        
+        return self.shadow_test_manager.generate_validation_report()
     
     def flush_monitoring_data(self):
         """Flush monitoring data to persistent storage."""
@@ -387,13 +463,19 @@ class MonitoredSession:
     def update_timing(
         self,
         pattern_detection_time_ms: Optional[float] = None,
-        gpt_processing_time_ms: Optional[float] = None
+        gpt_processing_time_ms: Optional[float] = None,
+        pattern_time_ms: Optional[float] = None,
+        pinecone_time_ms: Optional[float] = None,
+        gpt_time_ms: Optional[float] = None
     ):
         """Update timing metrics."""
         self.monitor.update_session_timing(
             self.session_id,
-            pattern_detection_time_ms,
-            gpt_processing_time_ms
+            pattern_detection_time_ms=pattern_detection_time_ms,
+            gpt_processing_time_ms=gpt_processing_time_ms,
+            pattern_time_ms=pattern_time_ms,
+            pinecone_time_ms=pinecone_time_ms,
+            gpt_time_ms=gpt_time_ms
         )
     
     def update_quality(

@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
+import yaml
+from pathlib import Path
 
 from receipt_label.constants import CORE_LABELS
 
@@ -49,19 +51,24 @@ class MerchantPatternDatabase:
     pattern detection accuracy and reduce dependency on GPT for common patterns.
     """
     
-    def __init__(self, pinecone_client=None, namespace_prefix: str = "merchant_patterns"):
+    def __init__(self, pinecone_client=None, namespace_prefix: str = "merchant_patterns", patterns_file: Optional[str] = None):
         """
         Initialize merchant pattern database.
         
         Args:
             pinecone_client: Pinecone index client
             namespace_prefix: Prefix for Pinecone namespaces
+            patterns_file: Path to YAML file containing merchant patterns (optional)
         """
         self.pinecone_client = pinecone_client
         self.namespace_prefix = namespace_prefix
         
-        # Common merchant patterns by category
-        self.common_patterns = self._initialize_common_patterns()
+        # Load merchant patterns from YAML file or use defaults
+        self.patterns_file = patterns_file
+        self.common_patterns = self._load_patterns_from_file() if patterns_file else self._initialize_common_patterns()
+        
+        # Load merchant category keywords
+        self.merchant_category_keywords = self._load_merchant_category_keywords()
         
         # Statistics
         self.stats = {
@@ -71,8 +78,102 @@ class MerchantPatternDatabase:
             "merchants_indexed": 0,
         }
 
+    def _load_patterns_from_file(self) -> Dict[str, Dict[str, List[str]]]:
+        """Load merchant patterns from YAML file."""
+        try:
+            # If no specific file provided, use default location
+            if not self.patterns_file:
+                current_dir = Path(__file__).parent
+                default_file = current_dir / "merchant_patterns.yaml"
+                if default_file.exists():
+                    self.patterns_file = str(default_file)
+                else:
+                    logger.warning(f"Default patterns file not found at {default_file}")
+                    return self._initialize_common_patterns()
+            
+            # Load YAML file
+            with open(self.patterns_file, 'r') as f:
+                data = yaml.safe_load(f)
+            
+            # Extract patterns (exclude merchant_categories section)
+            patterns = {}
+            for category, labels in data.items():
+                if category != "merchant_categories":
+                    patterns[category] = {}
+                    for label_type, keywords in labels.items():
+                        # Map label names to CORE_LABELS constants
+                        if label_type in CORE_LABELS.values():
+                            patterns[category][label_type] = keywords
+                        else:
+                            # Try to map by key name
+                            for core_key, core_value in CORE_LABELS.items():
+                                if core_key == label_type:
+                                    patterns[category][core_value] = keywords
+                                    break
+            
+            logger.info(f"Loaded patterns from {self.patterns_file}: {len(patterns)} categories")
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"Failed to load patterns from file: {e}")
+            return self._initialize_common_patterns()
+    
+    def _load_merchant_category_keywords(self) -> Dict[str, List[str]]:
+        """Load merchant category detection keywords from YAML file."""
+        try:
+            if self.patterns_file:
+                with open(self.patterns_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                
+                if "merchant_categories" in data:
+                    logger.info(f"Loaded merchant category keywords from {self.patterns_file}")
+                    return data["merchant_categories"]
+            
+            # Fall back to default keywords
+            return self._get_default_category_keywords()
+            
+        except Exception as e:
+            logger.error(f"Failed to load merchant category keywords: {e}")
+            return self._get_default_category_keywords()
+    
+    def _get_default_category_keywords(self) -> Dict[str, List[str]]:
+        """Get default merchant category keywords."""
+        return {
+            "restaurant": [
+                "restaurant", "cafe", "coffee", "pizza", "burger", "chicken", "taco",
+                "mcdonald", "burger king", "kfc", "taco bell", "subway", "chipotle",
+                "starbucks", "dunkin", "domino", "papa john", "wendy", "arby",
+                "dairy queen", "sonic", "ihop", "denny", "applebee", "olive garden"
+            ],
+            "grocery": [
+                "grocery", "market", "supermarket", "walmart", "target", "kroger",
+                "safeway", "albertsons", "publix", "wegmans", "whole foods", "trader joes",
+                "costco", "sams club", "aldi", "food lion", "giant", "stop shop"
+            ],
+            "retail": [
+                "store", "shop", "retail", "mall", "outlet", "amazon", "best buy",
+                "home depot", "lowes", "macys", "nordstrom", "tj maxx", "ross",
+                "marshalls", "old navy", "gap", "american eagle", "forever 21"
+            ],
+            "pharmacy": [
+                "pharmacy", "drug", "cvs", "walgreens", "rite aid", "care pharmacy"
+            ],
+            "gas_station": [
+                "gas", "fuel", "shell", "exxon", "bp", "chevron", "mobil", "sunoco",
+                "circle k", "7-eleven", "wawa", "speedway", "marathon"
+            ]
+        }
+    
     def _initialize_common_patterns(self) -> Dict[str, Dict[str, List[str]]]:
         """Initialize database with common merchant patterns by category."""
+        # Try to load from default YAML file first
+        current_dir = Path(__file__).parent
+        default_file = current_dir / "merchant_patterns.yaml"
+        if default_file.exists():
+            self.patterns_file = str(default_file)
+            return self._load_patterns_from_file()
+        
+        # Fall back to hardcoded patterns
         return {
             "restaurant": {
                 CORE_LABELS["PRODUCT_NAME"]: [
@@ -283,52 +384,19 @@ class MerchantPatternDatabase:
         """Detect merchant category based on name."""
         merchant_lower = merchant_name.lower()
         
-        # Restaurant indicators
-        restaurant_keywords = [
-            "restaurant", "cafe", "coffee", "pizza", "burger", "chicken", "taco",
-            "mcdonald", "burger king", "kfc", "taco bell", "subway", "chipotle",
-            "starbucks", "dunkin", "domino", "papa john", "wendy", "arby",
-            "dairy queen", "sonic", "ihop", "denny", "applebee", "olive garden"
-        ]
-        
-        # Grocery indicators
-        grocery_keywords = [
-            "grocery", "market", "supermarket", "walmart", "target", "kroger",
-            "safeway", "albertsons", "publix", "wegmans", "whole foods", "trader joes",
-            "costco", "sams club", "aldi", "food lion", "giant", "stop shop"
-        ]
-        
-        # Retail indicators
-        retail_keywords = [
-            "store", "shop", "retail", "mall", "outlet", "amazon", "best buy",
-            "home depot", "lowes", "macys", "nordstrom", "tj maxx", "ross",
-            "marshalls", "old navy", "gap", "american eagle", "forever 21"
-        ]
-        
-        # Pharmacy indicators
-        pharmacy_keywords = [
-            "pharmacy", "drug", "cvs", "walgreens", "rite aid", "care pharmacy"
-        ]
-        
-        # Gas station indicators
-        gas_keywords = [
-            "gas", "fuel", "shell", "exxon", "bp", "chevron", "mobil", "sunoco",
-            "circle k", "7-eleven", "wawa", "speedway", "marathon"
-        ]
+        # Use loaded category keywords or defaults
+        category_keywords = self.merchant_category_keywords
         
         # Check categories in order of specificity
-        if any(keyword in merchant_lower for keyword in pharmacy_keywords):
-            return "pharmacy"
-        elif any(keyword in merchant_lower for keyword in gas_keywords):
-            return "gas_station"
-        elif any(keyword in merchant_lower for keyword in restaurant_keywords):
-            return "restaurant"
-        elif any(keyword in merchant_lower for keyword in grocery_keywords):
-            return "grocery"
-        elif any(keyword in merchant_lower for keyword in retail_keywords):
-            return "retail"
-        else:
-            return "retail"  # Default category
+        category_order = ["pharmacy", "gas_station", "restaurant", "grocery", "retail"]
+        
+        for category in category_order:
+            if category in category_keywords:
+                keywords = category_keywords[category]
+                if any(keyword in merchant_lower for keyword in keywords):
+                    return category
+        
+        return "retail"  # Default category
 
     def _get_common_patterns_by_category(
         self, 
@@ -337,9 +405,13 @@ class MerchantPatternDatabase:
     ) -> Dict[str, List[str]]:
         """Get common patterns for a merchant category."""
         if category not in self.common_patterns:
-            category = "retail"  # Default fallback
+            # Check if it's available as a default category
+            if category == "retail" and "retail" not in self.common_patterns:
+                # Return empty patterns if retail not available
+                return {}
+            category = "retail" if "retail" in self.common_patterns else list(self.common_patterns.keys())[0]  # Default fallback
         
-        patterns = self.common_patterns[category].copy()
+        patterns = self.common_patterns.get(category, {}).copy()
         
         if label_types:
             # Filter to requested label types
@@ -518,3 +590,71 @@ class MerchantPatternDatabase:
             "cache_hits": 0,
             "merchants_indexed": 0,
         }
+    
+    def reload_patterns(self, patterns_file: Optional[str] = None) -> bool:
+        """
+        Reload patterns from YAML file.
+        
+        Args:
+            patterns_file: Optional new patterns file path
+            
+        Returns:
+            True if reload successful
+        """
+        try:
+            if patterns_file:
+                self.patterns_file = patterns_file
+            
+            # Reload patterns
+            self.common_patterns = self._load_patterns_from_file()
+            self.merchant_category_keywords = self._load_merchant_category_keywords()
+            
+            logger.info(f"Successfully reloaded patterns from {self.patterns_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reload patterns: {e}")
+            return False
+    
+    def export_patterns_to_yaml(self, output_file: str) -> bool:
+        """
+        Export current patterns to YAML file.
+        
+        Args:
+            output_file: Path to output YAML file
+            
+        Returns:
+            True if export successful
+        """
+        try:
+            # Prepare data for export
+            export_data = {}
+            
+            # Add pattern categories
+            for category, patterns in self.common_patterns.items():
+                export_data[category] = {}
+                for label_type, keywords in patterns.items():
+                    # Map back to simple label names for readability
+                    label_name = label_type
+                    for core_key, core_value in CORE_LABELS.items():
+                        if core_value == label_type:
+                            label_name = core_key
+                            break
+                    export_data[category][label_name] = sorted(keywords)
+            
+            # Add merchant category keywords
+            export_data["merchant_categories"] = {
+                cat: sorted(keywords) 
+                for cat, keywords in self.merchant_category_keywords.items()
+            }
+            
+            # Write to file
+            with open(output_file, 'w') as f:
+                yaml.dump(export_data, f, default_flow_style=False, sort_keys=True)
+            
+            logger.info(f"Exported patterns to {output_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to export patterns: {e}")
+            return False

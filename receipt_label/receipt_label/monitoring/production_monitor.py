@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 import uuid
 
+from receipt_label.monitoring.token_ledger import TokenLedger, ModelTier, TokenUsageType
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,6 +52,11 @@ class LabelingSession:
     pattern_detection_time_ms: Optional[float] = None
     gpt_processing_time_ms: Optional[float] = None
     total_time_ms: Optional[float] = None
+    
+    # Latency bucketing metrics
+    pattern_time_ms: Optional[float] = None  # Pattern detection latency
+    pinecone_time_ms: Optional[float] = None  # Pinecone query latency
+    gpt_time_ms: Optional[float] = None  # GPT processing latency
     
     # Quality metrics
     labels_found: int = 0
@@ -151,6 +158,9 @@ class ProductionMonitor:
         self.metrics_buffer: List[PerformanceMetric] = []
         self.ab_tests: Dict[str, ABTestConfig] = {}
         
+        # Initialize token ledger for detailed cost tracking
+        self.token_ledger = TokenLedger(storage_backend)
+        
         # Performance tracking
         self.stats = {
             "sessions_started": 0,
@@ -215,7 +225,10 @@ class ProductionMonitor:
         self,
         session_id: str,
         pattern_detection_time_ms: Optional[float] = None,
-        gpt_processing_time_ms: Optional[float] = None
+        gpt_processing_time_ms: Optional[float] = None,
+        pattern_time_ms: Optional[float] = None,
+        pinecone_time_ms: Optional[float] = None,
+        gpt_time_ms: Optional[float] = None
     ):
         """Update timing metrics for a session."""
         if session_id not in self.active_sessions:
@@ -223,10 +236,20 @@ class ProductionMonitor:
             return
         
         session = self.active_sessions[session_id]
+        
+        # Legacy timing metrics (kept for backward compatibility)
         if pattern_detection_time_ms is not None:
             session.pattern_detection_time_ms = pattern_detection_time_ms
         if gpt_processing_time_ms is not None:
             session.gpt_processing_time_ms = gpt_processing_time_ms
+        
+        # Latency bucketing metrics
+        if pattern_time_ms is not None:
+            session.pattern_time_ms = pattern_time_ms
+        if pinecone_time_ms is not None:
+            session.pinecone_time_ms = pinecone_time_ms
+        if gpt_time_ms is not None:
+            session.gpt_time_ms = gpt_time_ms
     
     def update_session_quality(
         self,
@@ -263,6 +286,85 @@ class ProductionMonitor:
         session = self.active_sessions[session_id]
         session.gpt_tokens_used = gpt_tokens_used
         session.estimated_cost_usd = estimated_cost_usd
+    
+    def log_token_usage(
+        self,
+        session_id: str,
+        model_tier: ModelTier,
+        usage_type: TokenUsageType,
+        prompt_tokens: int,
+        completion_tokens: int,
+        agent_decision: str,
+        missing_fields: Optional[List[str]] = None,
+        batch_id: Optional[str] = None,
+        labels_extracted: int = 0,
+        essential_labels_found: int = 0,
+        accuracy_score: Optional[float] = None,
+        retry_count: int = 0,
+        error_message: Optional[str] = None
+    ) -> str:
+        """
+        Log detailed token usage for cost tracking.
+        
+        Args:
+            session_id: Monitoring session ID
+            model_tier: GPT model used
+            usage_type: Type of usage (immediate, batch, shadow test)
+            prompt_tokens: Number of prompt tokens
+            completion_tokens: Number of completion tokens
+            agent_decision: Original agent decision
+            missing_fields: Fields that were missing and requested
+            batch_id: Batch identifier for batch processing
+            labels_extracted: Number of labels extracted by GPT
+            essential_labels_found: Number of essential labels found
+            accuracy_score: Quality score if available
+            retry_count: Number of retries for this request
+            error_message: Error message if request failed
+            
+        Returns:
+            Token usage record ID
+        """
+        if session_id not in self.active_sessions:
+            logger.warning(f"Session {session_id} not found for token usage logging")
+            return ""
+        
+        session = self.active_sessions[session_id]
+        
+        # Log to token ledger
+        record_id = self.token_ledger.log_token_usage(
+            session_id=session_id,
+            receipt_id=session.receipt_id,
+            image_id=session.image_id,
+            model_tier=model_tier,
+            usage_type=usage_type,
+            agent_decision=agent_decision,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            missing_fields=missing_fields,
+            merchant_name=session.merchant_name,
+            merchant_category=session.merchant_category,
+            batch_id=batch_id,
+            labels_extracted=labels_extracted,
+            essential_labels_found=essential_labels_found,
+            accuracy_score=accuracy_score,
+            retry_count=retry_count,
+            error_message=error_message
+        )
+        
+        # Update session cost metrics
+        total_tokens = prompt_tokens + completion_tokens
+        cost_breakdown = self.token_ledger.calculate_cost(
+            model_tier, prompt_tokens, completion_tokens
+        )
+        
+        session.gpt_tokens_used += total_tokens
+        session.estimated_cost_usd += cost_breakdown["total_cost"]
+        
+        # Update global statistics
+        self.stats["total_gpt_tokens"] += total_tokens
+        self.stats["total_cost_usd"] += cost_breakdown["total_cost"]
+        
+        return record_id
     
     def update_session_decision(
         self,
@@ -520,6 +622,9 @@ class ProductionMonitor:
                         "max": max(values)
                     }
         
+        # Add token usage summary
+        summary["token_usage"] = self.token_ledger.get_statistics()
+        
         return summary
     
     def get_ab_test_results(self, test_name: str) -> Dict[str, Any]:
@@ -588,10 +693,55 @@ class ProductionMonitor:
                 
             except Exception as e:
                 logger.error(f"Failed to flush metrics to storage: {e}")
+        
+        # Also flush token usage records
+        if self.token_ledger:
+            try:
+                self.token_ledger.flush_to_storage()
+            except Exception as e:
+                logger.error(f"Failed to flush token usage records: {e}")
+    
+    def get_token_usage_summary(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        usage_type: Optional[TokenUsageType] = None,
+        model_tier: Optional[ModelTier] = None
+    ) -> Dict[str, Any]:
+        """
+        Get detailed token usage summary.
+        
+        Args:
+            start_date: Start date for filtering
+            end_date: End date for filtering  
+            usage_type: Filter by usage type
+            model_tier: Filter by model tier
+            
+        Returns:
+            Token usage summary
+        """
+        return self.token_ledger.get_usage_summary(
+            start_date=start_date,
+            end_date=end_date,
+            usage_type=usage_type,
+            model_tier=model_tier
+        )
+    
+    def generate_cost_report(self, days: int = 30) -> str:
+        """
+        Generate human-readable cost report.
+        
+        Args:
+            days: Number of days to include in report
+            
+        Returns:
+            Formatted cost report
+        """
+        return self.token_ledger.generate_cost_report(days=days)
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive monitoring statistics."""
-        return {
+        stats = {
             "global_stats": self.stats.copy(),
             "method_stats": self.method_stats.copy(),
             "active_sessions": len(self.active_sessions),
@@ -599,3 +749,9 @@ class ProductionMonitor:
             "ab_tests": len(self.ab_tests),
             "active_ab_tests": len([t for t in self.ab_tests.values() if t.is_active()])
         }
+        
+        # Add token usage statistics
+        if self.token_ledger:
+            stats["token_usage"] = self.token_ledger.get_statistics()
+        
+        return stats

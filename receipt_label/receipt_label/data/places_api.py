@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+from receipt_label.utils.pii_masker import PIIMasker, create_receipt_masker
 
 from receipt_dynamo.entities.places_cache import PlacesCache
 
@@ -40,17 +41,22 @@ class PlacesAPI:
 
     BASE_URL = "https://maps.googleapis.com/maps/api/place"
 
-    def __init__(self, api_key: str, client_manager: ClientManager = None):
+    def __init__(self, api_key: str, client_manager: ClientManager = None, pii_masker: Optional[PIIMasker] = None):
         """Initialize the Places API client.
 
         Args:
             api_key (str): Your Google Places API key
             client_manager (ClientManager): Client manager for external services
+            pii_masker (PIIMasker): Optional PII masker for scrubbing sensitive data
         """
         self.api_key = api_key
         if client_manager is None:
             client_manager = get_client_manager()
         self.client_manager = client_manager
+        
+        # Initialize PII masker - configured for receipt processing
+        self.pii_masker = pii_masker or create_receipt_masker()
+        
         logger.debug(
             f"Initializing Places API with key: {api_key[:6] if api_key else 'None'}..."
         )  # Only show first 6 chars for security
@@ -427,11 +433,22 @@ class PlacesAPI:
                 logger.debug("Found cached result for address: %s", address)
                 return cached_result
 
+            # Mask PII before sending to API
+            masked_address, pii_matches = self.pii_masker.mask_text(
+                address, 
+                context={"api_type": "places", "preserve_business": True}
+            )
+            
+            if pii_matches:
+                logger.info(f"Masked {len(pii_matches)} PII items before Places API call")
+                for match in pii_matches:
+                    logger.debug(f"Masked {match.pii_type.value}: {match.original_text} -> {match.masked_text}")
+            
             url = f"{self.BASE_URL}/findplacefromtext/json"
 
             # Include geometry to get location coordinates
             params = {
-                "input": address,
+                "input": masked_address,
                 "inputtype": "textquery",
                 "fields": "formatted_address,name,place_id,types,geometry",
                 "key": self.api_key,
@@ -454,8 +471,14 @@ class PlacesAPI:
                             break
 
                 if business_name:
-                    # Add business name to search query
-                    params["input"] = f"{business_name} {address}"
+                    # Add business name to search query with masked address
+                    combined_query = f"{business_name} {masked_address}"
+                    # Mask the combined query
+                    masked_query, _ = self.pii_masker.mask_text(
+                        combined_query,
+                        context={"api_type": "places", "preserve_business": True}
+                    )
+                    params["input"] = masked_query
                     logger.debug(
                         f"Using business name in search: {business_name}"
                     )
@@ -735,9 +758,18 @@ class PlacesAPI:
         """
         Public text search for a business by free-form query, with optional lat/lng bias.
         """
+        # Mask PII before sending to API
+        masked_query, pii_matches = self.pii_masker.mask_text(
+            query,
+            context={"api_type": "places", "preserve_business": True}
+        )
+        
+        if pii_matches:
+            logger.info(f"Masked {len(pii_matches)} PII items in text search query")
+        
         url = f"{self.BASE_URL}/textsearch/json"
         params = {
-            "query": query,
+            "query": masked_query,
             "key": self.api_key,
             "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
         }
@@ -774,14 +806,15 @@ class ValidationResult:
 class BatchPlacesProcessor:
     """Handles batch processing of receipts through Places API with validation and fallback strategies."""
 
-    def __init__(self, api_key: str, client_manager: ClientManager = None):
+    def __init__(self, api_key: str, client_manager: ClientManager = None, pii_masker: Optional[PIIMasker] = None):
         """Initialize the batch processor.
 
         Args:
             api_key (str): Google Places API key
             client_manager (ClientManager): Client manager for external services
+            pii_masker (PIIMasker): Optional PII masker for scrubbing sensitive data
         """
-        self.places_api = PlacesAPI(api_key, client_manager)
+        self.places_api = PlacesAPI(api_key, client_manager, pii_masker)
         self.logger = logging.getLogger(__name__)
 
     def process_receipt_batch(self, receipts_data: List[Dict]) -> List[Dict]:
