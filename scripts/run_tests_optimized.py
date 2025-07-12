@@ -54,7 +54,7 @@ def run_tests(
     verbose: bool = False,
     coverage: bool = False,
     fail_fast: bool = False,
-    timeout: int = 600,
+    timeout: int = 30,
 ) -> bool:
     """
     Run tests with optimal configuration.
@@ -81,23 +81,19 @@ def run_tests(
     # Add test paths
     cmd.extend(test_paths)
 
-    # Optimize for test type
-    if test_type == "unit":
-        # Unit tests: maximum parallelization
-        workers = get_optimal_worker_count()
-        cmd.extend(["-n", str(workers)])
-        cmd.extend(["--timeout", "30"])  # Shorter timeout for unit tests
+    # Optimize for test type with appropriate timeouts
+    if test_type == "end_to_end":
+        # End-to-end tests: sequential execution (real AWS resources)
+        cmd.extend(["--timeout", "600"])  # 10 minutes for E2E
     elif test_type == "integration":
-        # Integration tests: moderate parallelization
-        workers = min(get_optimal_worker_count(), 3)  # Limit for DB operations
-        cmd.extend(["-n", str(workers)])
-        cmd.extend(["--timeout", str(timeout)])
-        cmd.extend(
-            ["--dist", "loadfile"]
-        )  # Distribute by file for better load balancing
+        # Integration tests: parallel with extended timeout
+        cmd.extend(["-n", "auto"])
+        cmd.extend(["--timeout", "300"])  # 5 minutes for integration
+        cmd.extend(["--dist", "loadfile"])  # Better load balance for integration
     else:
-        # End-to-end tests: sequential execution
-        cmd.extend(["--timeout", str(timeout * 2)])
+        # Unit tests: parallel with optimized timeout
+        cmd.extend(["-n", "auto"])
+        cmd.extend(["--timeout", str(timeout)])  # 30 seconds for unit tests
 
     # Add common options
     cmd.extend(
@@ -132,15 +128,11 @@ def run_tests(
     print(f"Working directory: {os.getcwd()}")
     print(f"Test type: {test_type}")
 
-    # Handle workers variable for all test types
-    if test_type == "unit":
-        workers = get_optimal_worker_count()
-    elif test_type == "integration":
-        workers = min(get_optimal_worker_count(), 3)
+    # Display parallelization info
+    if test_type == "end_to_end":
+        print("Workers: 1 (sequential execution for E2E tests)")
     else:
-        workers = 1  # Sequential for end-to-end tests
-
-    print(f"Workers: {workers}")
+        print("Workers: auto (pytest-xdist will determine optimal count)")
     print("-" * 50)
 
     # Run tests
@@ -199,7 +191,7 @@ def main():
         "--fail-fast", "-x", action="store_true", help="Stop on first failure"
     )
     parser.add_argument(
-        "--timeout", type=int, default=600, help="Per-test timeout in seconds"
+        "--timeout", type=int, default=30, help="Per-test timeout in seconds (30s for unit, 300s for integration, 600s for e2e)"
     )
 
     args = parser.parse_args()

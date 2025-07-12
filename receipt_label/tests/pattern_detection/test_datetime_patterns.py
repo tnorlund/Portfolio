@@ -45,6 +45,7 @@ class TestDateTimePatternDetector:
 
         return _create_word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_date_formats(self, detector, create_word):
         """Test detection of various date formats."""
@@ -79,6 +80,7 @@ class TestDateTimePatternDetector:
             assert match.metadata["normalized_date"] == expected_value
             assert match.confidence > 0.5
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_time_formats(self, detector, create_word):
         """Test detection of various time formats."""
@@ -108,6 +110,7 @@ class TestDateTimePatternDetector:
             assert match.metadata["normalized_time"] == expected_value
             assert match.confidence >= 0.8
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_datetime_combinations(self, detector, create_word):
         """Test detection of combined date and time patterns."""
@@ -146,6 +149,7 @@ class TestDateTimePatternDetector:
                     == expected_value
                 )
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_two_digit_year_handling(self, detector, create_word):
         """Test handling of 2-digit years."""
@@ -167,6 +171,7 @@ class TestDateTimePatternDetector:
             assert matches[0].pattern_type == PatternType.DATE
             # Note: The actual year interpretation may vary based on implementation
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_invalid_dates(self, detector, create_word):
         """Test that invalid dates are handled properly."""
@@ -189,6 +194,7 @@ class TestDateTimePatternDetector:
                     matches[0].confidence < 0.8
                 )  # Lower confidence for invalid dates
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_invalid_times(self, detector, create_word):
         """Test that invalid times are not detected or have low confidence."""
@@ -208,6 +214,7 @@ class TestDateTimePatternDetector:
             if matches:
                 assert matches[0].confidence < 0.7
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_ambiguous_dates(self, detector, create_word):
         """Test handling of ambiguous date formats."""
@@ -228,6 +235,7 @@ class TestDateTimePatternDetector:
             # Should indicate ambiguity in metadata
             assert matches[0].metadata.get("is_ambiguous", False)
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_receipt_context(self, detector, create_word):
         """Test datetime detection in receipt context."""
@@ -265,6 +273,7 @@ class TestDateTimePatternDetector:
         assert date_matches[0].metadata["normalized_date"] == "2024-01-15"
         assert time_matches[0].metadata["normalized_time"] == "14:30:00"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_confidence_by_format(self, detector, create_word):
         """Test that confidence varies by format clarity."""
@@ -290,6 +299,7 @@ class TestDateTimePatternDetector:
                 matches[0].confidence >= expected_min_confidence * 0.9
             )  # Allow some variance
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_skip_noise_words(self, detector, create_word):
         """Test that noise words are skipped."""
@@ -299,6 +309,7 @@ class TestDateTimePatternDetector:
         matches = await detector.detect([word])
         assert len(matches) == 0  # Should skip noise word
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_date_extraction_metadata(self, detector, create_word):
         """Test that metadata contains useful date components."""
