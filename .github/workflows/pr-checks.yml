@@ -157,14 +157,14 @@ jobs:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
 
-          # Run only fast unit tests
+          # Run only fast unit tests with 30-second timeout
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             # receipt_label uses marker-based test organization
-            pytest tests -n auto -m "unit and not slow" --tb=short -q -o addopts=""
+            pytest tests -n auto --timeout=30 -m "unit and not slow" --tb=short -q -o addopts=""
           else
             # receipt_dynamo uses directory-based test organization
-            pytest tests/unit -n auto -m "not slow" --tb=short -q -o addopts=""
+            pytest tests/unit -n auto --timeout=30 -m "not slow" --tb=short -q -o addopts=""
           fi
 
   # TypeScript tests on GitHub-hosted
