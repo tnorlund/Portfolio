@@ -291,6 +291,7 @@ class TestParallelPatternOrchestrator:
         assert len(results["datetime"]) > 0
 
     @pytest.mark.unit
+    @pytest.mark.performance
     @pytest.mark.asyncio
     async def test_performance_benchmark(self, orchestrator):
         """Test the performance benchmarking functionality."""
@@ -312,6 +313,7 @@ class TestParallelPatternOrchestrator:
             assert metrics["execution_time_ms"] < 100  # 100ms timeout
 
     @pytest.mark.unit
+    @pytest.mark.performance
     @pytest.mark.asyncio
     async def test_performance_target(
         self, orchestrator, sample_receipt_words

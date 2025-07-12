@@ -10,6 +10,7 @@ from receipt_label.pattern_detection import ParallelPatternOrchestrator
 from receipt_dynamo.entities import ReceiptWord
 
 
+@pytest.mark.performance
 class TestPerformanceTarget:
     """Test that pattern detection meets performance targets."""
 
