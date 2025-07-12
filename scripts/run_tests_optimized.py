@@ -89,7 +89,9 @@ def run_tests(
         # Integration tests: parallel with extended timeout
         cmd.extend(["-n", "auto"])
         cmd.extend(["--timeout", "300"])  # 5 minutes for integration
-        cmd.extend(["--dist", "loadfile"])  # Better load balance for integration
+        cmd.extend(
+            ["--dist", "loadfile"]
+        )  # Better load balance for integration
     else:
         # Unit tests: parallel with optimized timeout
         cmd.extend(["-n", "auto"])
@@ -191,7 +193,10 @@ def main():
         "--fail-fast", "-x", action="store_true", help="Stop on first failure"
     )
     parser.add_argument(
-        "--timeout", type=int, default=30, help="Per-test timeout in seconds (30s for unit, 300s for integration, 600s for e2e)"
+        "--timeout",
+        type=int,
+        default=30,
+        help="Per-test timeout in seconds (30s for unit, 300s for integration, 600s for e2e)",
     )
 
     args = parser.parse_args()

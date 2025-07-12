@@ -72,7 +72,9 @@ class CurrencyPatternDetector(PatternDetector):
 
         # Number pattern: handles separated (1,000.00) and unseparated (1000.00) numbers
         # Use alternation: either formatted with commas OR plain digits
-        number_pattern = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"
+        number_pattern = (
+            r"(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"
+        )
 
         # Main currency patterns
         self._compiled_patterns = {
@@ -203,23 +205,23 @@ class CurrencyPatternDetector(PatternDetector):
 
         # Check for specific classifications - prioritize same-line context first
         # This ensures exact context matches take precedence over nearby matches
-        
+
         # Check same line first for more specific matches
         if self._has_keywords(same_line_text, self.TAX_KEYWORDS):
             return PatternType.TAX
-            
+
         if self._has_keywords(same_line_text, self.SUBTOTAL_KEYWORDS):
             return PatternType.SUBTOTAL
-            
+
         if self._has_keywords(same_line_text, self.DISCOUNT_KEYWORDS):
             return PatternType.DISCOUNT
-            
+
         if self._has_keywords(same_line_text, self.TOTAL_KEYWORDS):
             return PatternType.GRAND_TOTAL
 
         # Then check same line + nearby context for broader matches
         combined_text = same_line_text + " " + nearby_text
-        
+
         if self._has_keywords(combined_text, self.TAX_KEYWORDS):
             return PatternType.TAX
 
@@ -228,7 +230,7 @@ class CurrencyPatternDetector(PatternDetector):
 
         if self._has_keywords(combined_text, self.DISCOUNT_KEYWORDS):
             return PatternType.DISCOUNT
-            
+
         if self._has_keywords(combined_text, self.TOTAL_KEYWORDS):
             return PatternType.GRAND_TOTAL
 
@@ -262,18 +264,24 @@ class CurrencyPatternDetector(PatternDetector):
 
         # Boost confidence for clear keyword matches on same line
         same_line_text = context.get("same_line_text", "").lower()
-        
+
         if pattern_type == PatternType.GRAND_TOTAL:
-            if any(keyword in same_line_text for keyword in self.TOTAL_KEYWORDS):
+            if any(
+                keyword in same_line_text for keyword in self.TOTAL_KEYWORDS
+            ):
                 confidence += 0.3
         elif pattern_type == PatternType.TAX:
             if any(keyword in same_line_text for keyword in self.TAX_KEYWORDS):
                 confidence += 0.3
         elif pattern_type == PatternType.SUBTOTAL:
-            if any(keyword in same_line_text for keyword in self.SUBTOTAL_KEYWORDS):
+            if any(
+                keyword in same_line_text for keyword in self.SUBTOTAL_KEYWORDS
+            ):
                 confidence += 0.3
         elif pattern_type == PatternType.DISCOUNT:
-            if any(keyword in same_line_text for keyword in self.DISCOUNT_KEYWORDS):
+            if any(
+                keyword in same_line_text for keyword in self.DISCOUNT_KEYWORDS
+            ):
                 confidence += 0.3
 
         # Boost confidence for expected positions

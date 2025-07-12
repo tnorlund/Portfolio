@@ -242,15 +242,19 @@ class DateTimePatternDetector(PatternDetector):
             # Validate time values
             if hour > 23 or minute > 59 or second > 59:
                 return None  # Invalid time
-            
+
             # Additional validation for 12-hour format edge cases
-            original_hour = int(match.groups()[0])  # Get original hour before conversion
+            original_hour = int(
+                match.groups()[0]
+            )  # Get original hour before conversion
             if ampm:
-                if original_hour == 0:  # 0:xx AM/PM is invalid (should be 12:xx)
+                if (
+                    original_hour == 0
+                ):  # 0:xx AM/PM is invalid (should be 12:xx)
                     return None
-                if original_hour > 12:  # 13:xx PM etc. is invalid  
+                if original_hour > 12:  # 13:xx PM etc. is invalid
                     return None
-                
+
             return {
                 "matched_text": match.group(0),
                 "parsed_time": f"{hour:02d}:{minute:02d}:{second:02d}",
@@ -269,7 +273,7 @@ class DateTimePatternDetector(PatternDetector):
             # Validate time values
             if hour > 23 or minute > 59 or second > 59:
                 return None  # Invalid time
-                
+
             return {
                 "matched_text": match.group(0),
                 "parsed_time": f"{hour:02d}:{minute:02d}:{second:02d}",
@@ -360,7 +364,9 @@ class DateTimePatternDetector(PatternDetector):
         # But don't boost ambiguous dates as they're already uncertain
         if not date_match.get("is_ambiguous", False):
             try:
-                date_obj = datetime.strptime(date_match["parsed_date"], "%Y-%m-%d")
+                date_obj = datetime.strptime(
+                    date_match["parsed_date"], "%Y-%m-%d"
+                )
                 now = datetime.now()
                 days_diff = abs((date_obj - now).days)
 

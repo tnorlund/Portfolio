@@ -208,30 +208,38 @@ class QuantityPatternDetector(PatternDetector):
         """Match '2/$10.00' pattern."""
         if match := self._compiled_patterns["quantity_slash"].search(text):
             quantity, total = match.groups()
-            
+
             # Exclude date patterns (MM/DD, DD/MM format)
             qty_int = int(quantity)
             total_float = float(total)
-            
+
             # Only exclude very obvious date patterns like "01/15" or "12/25"
             # Be conservative - only exclude if it has leading zero (indicating date formatting)
             # or if it's a very common date pattern
-            original_qty = match.group(1)  # Get original text with leading zeros
+            original_qty = match.group(
+                1
+            )  # Get original text with leading zeros
             is_obvious_date = (
-                qty_int <= 12 and total_float <= 31 and 
-                "$" not in text and "." not in total and 
-                len(total) <= 2 and
-                (original_qty.startswith("0") or  # Leading zero suggests date
-                 (qty_int == 1 and total_float == 1))  # 1/1 is definitely a date
+                qty_int <= 12
+                and total_float <= 31
+                and "$" not in text
+                and "." not in total
+                and len(total) <= 2
+                and (
+                    original_qty.startswith("0")  # Leading zero suggests date
+                    or (qty_int == 1 and total_float == 1)
+                )  # 1/1 is definitely a date
             )
-            
+
             if is_obvious_date:
                 return None
-                
+
             return {
                 "matched_text": match.group(0),
                 "quantity": float(quantity),
-                "unit_price": total_float / float(quantity) if float(quantity) > 0 else 0,
+                "unit_price": (
+                    total_float / float(quantity) if float(quantity) > 0 else 0
+                ),
                 "total": total_float,
                 "format": "slash_notation",
             }
@@ -399,81 +407,111 @@ class QuantityPatternDetector(PatternDetector):
 
         return min(base_confidence + adjustment, 1.0)
 
-    def _detect_multi_word_quantities(self, words: List[ReceiptWord], matches: List[PatternMatch]) -> None:
+    def _detect_multi_word_quantities(
+        self, words: List[ReceiptWord], matches: List[PatternMatch]
+    ) -> None:
         """Detect quantity patterns that span multiple words on the same line."""
         # Track word IDs that are already part of multi-word matches to prevent overlaps
         used_word_ids = set()
-        
+
         # First pass: Check for 3-word patterns (highest priority)
         for i in range(len(words) - 2):
             word1 = words[i]
             word2 = words[i + 1]
             word3 = words[i + 2]
-            
+
             # Skip if any word is already used or is noise
-            if (word1.word_id in used_word_ids or word2.word_id in used_word_ids or 
-                word3.word_id in used_word_ids or word1.is_noise or word2.is_noise or word3.is_noise):
+            if (
+                word1.word_id in used_word_ids
+                or word2.word_id in used_word_ids
+                or word3.word_id in used_word_ids
+                or word1.is_noise
+                or word2.is_noise
+                or word3.is_noise
+            ):
                 continue
-                
+
             # Check if words are on the same line (similar y coordinates)
             y_tolerance = 5
-            if (abs(word1.bounding_box["y"] - word2.bounding_box["y"]) > y_tolerance or
-                abs(word2.bounding_box["y"] - word3.bounding_box["y"]) > y_tolerance):
+            if (
+                abs(word1.bounding_box["y"] - word2.bounding_box["y"])
+                > y_tolerance
+                or abs(word2.bounding_box["y"] - word3.bounding_box["y"])
+                > y_tolerance
+            ):
                 continue
-                
+
             # Check if words are reasonably close horizontally
             word1_right = word1.bounding_box["x"] + word1.bounding_box["width"]
             word2_left = word2.bounding_box["x"]
             word2_right = word2.bounding_box["x"] + word2.bounding_box["width"]
             word3_left = word3.bounding_box["x"]
-            
+
             max_gap = 30  # Max 30px gap between words
-            if (word2_left - word1_right > max_gap or word3_left - word2_right > max_gap):
+            if (
+                word2_left - word1_right > max_gap
+                or word3_left - word2_right > max_gap
+            ):
                 continue
-                
+
             # Try combining the words for "quantity @ price" pattern
             combined_text = f"{word1.text} {word2.text} {word3.text}"
             match_info = self._match_quantity_at(combined_text)
-            
+
             if match_info:
                 # Create match using the first word as primary
                 match = self._create_match(
                     word1, PatternType.QUANTITY_AT, match_info, words
                 )
                 # Update metadata to indicate multi-word span
-                match.metadata.update({
-                    "spans_multiple_words": True,
-                    "word_ids": [word1.word_id, word2.word_id, word3.word_id],
-                })
+                match.metadata.update(
+                    {
+                        "spans_multiple_words": True,
+                        "word_ids": [
+                            word1.word_id,
+                            word2.word_id,
+                            word3.word_id,
+                        ],
+                    }
+                )
                 matches.append(match)
-                
+
                 # Mark all words as used to prevent overlapping matches
-                used_word_ids.update([word1.word_id, word2.word_id, word3.word_id])
+                used_word_ids.update(
+                    [word1.word_id, word2.word_id, word3.word_id]
+                )
                 continue
-                
+
         # Second pass: Check for 2-word patterns (only for unused words)
         for i in range(len(words) - 1):
             word1 = words[i]
             word2 = words[i + 1]
-            
+
             # Skip if any word is already used or is noise
-            if (word1.word_id in used_word_ids or word2.word_id in used_word_ids or 
-                word1.is_noise or word2.is_noise):
+            if (
+                word1.word_id in used_word_ids
+                or word2.word_id in used_word_ids
+                or word1.is_noise
+                or word2.is_noise
+            ):
                 continue
-                
+
             # Check same line and proximity
             y_tolerance = 5
-            if abs(word1.bounding_box["y"] - word2.bounding_box["y"]) > y_tolerance:
+            if (
+                abs(word1.bounding_box["y"] - word2.bounding_box["y"])
+                > y_tolerance
+            ):
                 continue
-                
+
             word1_right = word1.bounding_box["x"] + word1.bounding_box["width"]
             word2_left = word2.bounding_box["x"]
             max_gap = 30
             if word2_left - word1_right > max_gap:
                 continue
-                
+
             combined_text = f"{word1.text} {word2.text}"
-            
+
             # Try various 2-word patterns
             for pattern_method, pattern_type in [
                 (self._match_quantity_times, PatternType.QUANTITY_TIMES),
@@ -481,13 +519,17 @@ class QuantityPatternDetector(PatternDetector):
             ]:
                 match_info = pattern_method(combined_text)
                 if match_info:
-                    match = self._create_match(word1, pattern_type, match_info, words)
-                    match.metadata.update({
-                        "spans_multiple_words": True,
-                        "word_ids": [word1.word_id, word2.word_id],
-                    })
+                    match = self._create_match(
+                        word1, pattern_type, match_info, words
+                    )
+                    match.metadata.update(
+                        {
+                            "spans_multiple_words": True,
+                            "word_ids": [word1.word_id, word2.word_id],
+                        }
+                    )
                     matches.append(match)
-                    
+
                     # Mark both words as used to prevent overlapping matches
                     used_word_ids.update([word1.word_id, word2.word_id])
                     break  # Found a match, don't try other patterns for this word pair
