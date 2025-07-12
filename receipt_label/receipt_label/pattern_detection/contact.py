@@ -136,8 +136,10 @@ class ContactPatternDetector(PatternDetector):
                 }
                 # Add is_international flag if present
                 if "is_international" in phone_match:
-                    metadata["is_international"] = phone_match["is_international"]
-                    
+                    metadata["is_international"] = phone_match[
+                        "is_international"
+                    ]
+
                 match = PatternMatch(
                     word=word,
                     pattern_type=PatternType.PHONE_NUMBER,
@@ -196,7 +198,9 @@ class ContactPatternDetector(PatternDetector):
         text = text.strip()
 
         # Skip if this looks like an email or website
-        if "@" in text or text.lower().startswith(("http://", "https://", "www.")):
+        if "@" in text or text.lower().startswith(
+            ("http://", "https://", "www.")
+        ):
             return None
 
         # Skip invalid international numbers (starts with + but has no structure)
@@ -212,11 +216,13 @@ class ContactPatternDetector(PatternDetector):
         if match := self._compiled_patterns["phone_intl"].search(cleaned_text):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d+]", "", matched_text)
-            
+
             # Valid international phone should have structure (separators/spaces), not just digits
             has_structure = bool(re.search(r"[-.\s\(\)]", matched_text))
-            
-            if 10 <= len(digits) <= 15 and has_structure:  # Valid phone length with structure
+
+            if (
+                10 <= len(digits) <= 15 and has_structure
+            ):  # Valid phone length with structure
                 return {
                     "matched_text": matched_text,
                     "normalized": self._normalize_phone(matched_text),
@@ -230,7 +236,7 @@ class ContactPatternDetector(PatternDetector):
         if match := self._compiled_patterns["phone_us"].search(cleaned_text):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d]", "", matched_text)
-            
+
             # Ensure it's exactly a phone number (not longer with extra digits)
             if len(digits) == 10 or (len(digits) == 11 and digits[0] == "1"):
                 # Check that there are no extra digits/separators after the valid phone
@@ -239,9 +245,11 @@ class ContactPatternDetector(PatternDetector):
                     end_pos = match_in_original.end()
                     # Check for trailing digits or more phone-like patterns (-123, etc.)
                     remaining_text = text[end_pos:]
-                    if remaining_text and re.match(r"[-.\s]*\d", remaining_text):
+                    if remaining_text and re.match(
+                        r"[-.\s]*\d", remaining_text
+                    ):
                         return None  # Skip if there are trailing phone digits/patterns
-                    
+
                 return {
                     "matched_text": matched_text,
                     "normalized": self._normalize_phone(matched_text),
@@ -253,17 +261,19 @@ class ContactPatternDetector(PatternDetector):
         # Try generic pattern (lower confidence) - but be more selective
         if match := self._compiled_patterns["phone_generic"].search(text):
             matched_text = match.group(0).strip()
-            
+
             # Skip if it's just a domain name without phone-like structure
-            if "." in matched_text and not re.search(r"[\d\-\(\)\s]", matched_text):
+            if "." in matched_text and not re.search(
+                r"[\d\-\(\)\s]", matched_text
+            ):
                 return None
-                
+
             # Check if it has letters (vanity number) or just digits
             if re.search(r"[A-Za-z]", matched_text):
                 # For vanity numbers, ensure proper structure (like 1-800-FLOWERS)
                 if re.search(r"\d", matched_text) and (
-                    re.search(r"1-?800|1-?888|1-?877|1-?866", matched_text) or
-                    len(re.sub(r"[^\d]", "", matched_text)) >= 7
+                    re.search(r"1-?800|1-?888|1-?877|1-?866", matched_text)
+                    or len(re.sub(r"[^\d]", "", matched_text)) >= 7
                 ):
                     return {
                         "matched_text": matched_text,
@@ -278,9 +288,12 @@ class ContactPatternDetector(PatternDetector):
                     # Reject non-standard US patterns like 555-12-34567
                     if len(digits) == 10:
                         # US number should follow xxx-xxx-xxxx pattern, not weird groupings
-                        if re.match(r"\d{3}-\d{2}-\d{5}|\d{2}-\d{3}-\d{5}", matched_text):
+                        if re.match(
+                            r"\d{3}-\d{2}-\d{5}|\d{2}-\d{3}-\d{5}",
+                            matched_text,
+                        ):
                             return None  # Reject non-standard groupings
-                    
+
                     return {
                         "matched_text": matched_text,
                         "normalized": self._normalize_phone(matched_text),
@@ -354,11 +367,11 @@ class ContactPatternDetector(PatternDetector):
         # Handle special cases like 1-800-FLOWERS
         if re.search(r"[A-Za-z]", phone):
             return phone.strip()
-        
+
         # For international numbers, preserve original format with separators
         if phone.strip().startswith("+"):
             return phone.strip()
-        
+
         # Extract digits only for US numbers
         digits = re.sub(r"[^\d]", "", phone)
 
@@ -403,52 +416,63 @@ class ContactPatternDetector(PatternDetector):
         domain = re.sub(r"^www\.", "", domain)
         # Remove path
         domain = domain.split("/")[0]
-        
+
         # For certain tests, extract only the main domain (remove subdomains)
         # This is a heuristic - if we have more than 2 parts and common TLD patterns
         parts = domain.split(".")
         if len(parts) >= 3:
             # Check if it's a pattern like shop.example.co.uk or store.apple.com
-            if parts[-1] in ["uk", "au", "ca"] and parts[-2] in ["co", "com", "net", "org"]:
+            if parts[-1] in ["uk", "au", "ca"] and parts[-2] in [
+                "co",
+                "com",
+                "net",
+                "org",
+            ]:
                 # Keep last 3 parts for country domains
                 domain = ".".join(parts[-3:])
             elif len(parts) >= 3 and parts[-1] in COMMON_TLDS:
                 # Keep last 2 parts for common domains
                 domain = ".".join(parts[-2:])
-        
+
         return domain
 
-    def _detect_multi_word_phones(self, words: List[ReceiptWord], matches: List[PatternMatch]) -> set:
+    def _detect_multi_word_phones(
+        self, words: List[ReceiptWord], matches: List[PatternMatch]
+    ) -> set:
         """Detect phone numbers that span multiple words on the same line.
-        
+
         Returns:
             Set of word IDs that are used in multi-word phone patterns.
         """
         used_word_ids = set()
-        
+
         for i in range(len(words) - 1):
             word1 = words[i]
             word2 = words[i + 1]
-            
+
             # Skip if either word is already used, noise, or in existing matches
-            if (word1.word_id in used_word_ids or word2.word_id in used_word_ids or
-                word1.is_noise or word2.is_noise):
+            if (
+                word1.word_id in used_word_ids
+                or word2.word_id in used_word_ids
+                or word1.is_noise
+                or word2.is_noise
+            ):
                 continue
-                
+
             # Check if words are on the same line (similar y coordinates)
             if abs(word1.bounding_box["y"] - word2.bounding_box["y"]) > 5:
                 continue
-                
+
             # Check if words are reasonably close horizontally
             word1_right = word1.bounding_box["x"] + word1.bounding_box["width"]
             word2_left = word2.bounding_box["x"]
             if word2_left - word1_right > 20:  # Max 20px gap
                 continue
-                
+
             # Try combining the words with a space
             combined_text = f"{word1.text} {word2.text}"
             phone_match = self._match_phone_pattern(combined_text)
-            
+
             if phone_match:
                 # Create match using the first word as primary
                 metadata = {
@@ -459,10 +483,12 @@ class ContactPatternDetector(PatternDetector):
                     "word_ids": [word1.word_id, word2.word_id],
                     **self._calculate_position_context(word1, words),
                 }
-                
+
                 if "is_international" in phone_match:
-                    metadata["is_international"] = phone_match["is_international"]
-                    
+                    metadata["is_international"] = phone_match[
+                        "is_international"
+                    ]
+
                 match = PatternMatch(
                     word=word1,
                     pattern_type=PatternType.PHONE_NUMBER,
@@ -472,8 +498,8 @@ class ContactPatternDetector(PatternDetector):
                     metadata=metadata,
                 )
                 matches.append(match)
-                
+
                 # Mark both words as used to prevent overlapping matches
                 used_word_ids.update([word1.word_id, word2.word_id])
-                
+
         return used_word_ids
