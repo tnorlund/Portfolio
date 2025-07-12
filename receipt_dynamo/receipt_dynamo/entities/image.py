@@ -101,33 +101,51 @@ class Image(DynamoDBEntity):
             raise ValueError("cdn_avif_s3_key must be a string")
 
         # Validate thumbnail fields
-        if self.cdn_thumbnail_s3_key and not isinstance(self.cdn_thumbnail_s3_key, str):
+        if self.cdn_thumbnail_s3_key and not isinstance(
+            self.cdn_thumbnail_s3_key, str
+        ):
             raise ValueError("cdn_thumbnail_s3_key must be a string")
-        
-        if self.cdn_thumbnail_webp_s3_key and not isinstance(self.cdn_thumbnail_webp_s3_key, str):
+
+        if self.cdn_thumbnail_webp_s3_key and not isinstance(
+            self.cdn_thumbnail_webp_s3_key, str
+        ):
             raise ValueError("cdn_thumbnail_webp_s3_key must be a string")
-        
-        if self.cdn_thumbnail_avif_s3_key and not isinstance(self.cdn_thumbnail_avif_s3_key, str):
+
+        if self.cdn_thumbnail_avif_s3_key and not isinstance(
+            self.cdn_thumbnail_avif_s3_key, str
+        ):
             raise ValueError("cdn_thumbnail_avif_s3_key must be a string")
-        
+
         # Validate small fields
-        if self.cdn_small_s3_key and not isinstance(self.cdn_small_s3_key, str):
+        if self.cdn_small_s3_key and not isinstance(
+            self.cdn_small_s3_key, str
+        ):
             raise ValueError("cdn_small_s3_key must be a string")
-        
-        if self.cdn_small_webp_s3_key and not isinstance(self.cdn_small_webp_s3_key, str):
+
+        if self.cdn_small_webp_s3_key and not isinstance(
+            self.cdn_small_webp_s3_key, str
+        ):
             raise ValueError("cdn_small_webp_s3_key must be a string")
-        
-        if self.cdn_small_avif_s3_key and not isinstance(self.cdn_small_avif_s3_key, str):
+
+        if self.cdn_small_avif_s3_key and not isinstance(
+            self.cdn_small_avif_s3_key, str
+        ):
             raise ValueError("cdn_small_avif_s3_key must be a string")
-        
+
         # Validate medium fields
-        if self.cdn_medium_s3_key and not isinstance(self.cdn_medium_s3_key, str):
+        if self.cdn_medium_s3_key and not isinstance(
+            self.cdn_medium_s3_key, str
+        ):
             raise ValueError("cdn_medium_s3_key must be a string")
-        
-        if self.cdn_medium_webp_s3_key and not isinstance(self.cdn_medium_webp_s3_key, str):
+
+        if self.cdn_medium_webp_s3_key and not isinstance(
+            self.cdn_medium_webp_s3_key, str
+        ):
             raise ValueError("cdn_medium_webp_s3_key must be a string")
-        
-        if self.cdn_medium_avif_s3_key and not isinstance(self.cdn_medium_avif_s3_key, str):
+
+        if self.cdn_medium_avif_s3_key and not isinstance(
+            self.cdn_medium_avif_s3_key, str
+        ):
             raise ValueError("cdn_medium_avif_s3_key must be a string")
 
         if isinstance(self.image_type, ImageType):
@@ -341,16 +359,24 @@ def item_to_image(item: Dict[str, Any]) -> Image:
         cdn_avif_s3_key = item.get("cdn_avif_s3_key", {}).get("S")
         # Get thumbnail fields
         cdn_thumbnail_s3_key = item.get("cdn_thumbnail_s3_key", {}).get("S")
-        cdn_thumbnail_webp_s3_key = item.get("cdn_thumbnail_webp_s3_key", {}).get("S")
-        cdn_thumbnail_avif_s3_key = item.get("cdn_thumbnail_avif_s3_key", {}).get("S")
+        cdn_thumbnail_webp_s3_key = item.get(
+            "cdn_thumbnail_webp_s3_key", {}
+        ).get("S")
+        cdn_thumbnail_avif_s3_key = item.get(
+            "cdn_thumbnail_avif_s3_key", {}
+        ).get("S")
         # Get small fields
         cdn_small_s3_key = item.get("cdn_small_s3_key", {}).get("S")
         cdn_small_webp_s3_key = item.get("cdn_small_webp_s3_key", {}).get("S")
         cdn_small_avif_s3_key = item.get("cdn_small_avif_s3_key", {}).get("S")
         # Get medium fields
         cdn_medium_s3_key = item.get("cdn_medium_s3_key", {}).get("S")
-        cdn_medium_webp_s3_key = item.get("cdn_medium_webp_s3_key", {}).get("S")
-        cdn_medium_avif_s3_key = item.get("cdn_medium_avif_s3_key", {}).get("S")
+        cdn_medium_webp_s3_key = item.get("cdn_medium_webp_s3_key", {}).get(
+            "S"
+        )
+        cdn_medium_avif_s3_key = item.get("cdn_medium_avif_s3_key", {}).get(
+            "S"
+        )
         image_type = item.get("image_type", {}).get("S")
         return Image(
             image_id=item["PK"]["S"].split("#")[1],
@@ -366,15 +392,33 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
             cdn_webp_s3_key=cdn_webp_s3_key if cdn_webp_s3_key else None,
             cdn_avif_s3_key=cdn_avif_s3_key if cdn_avif_s3_key else None,
-            cdn_thumbnail_s3_key=cdn_thumbnail_s3_key if cdn_thumbnail_s3_key else None,
-            cdn_thumbnail_webp_s3_key=cdn_thumbnail_webp_s3_key if cdn_thumbnail_webp_s3_key else None,
-            cdn_thumbnail_avif_s3_key=cdn_thumbnail_avif_s3_key if cdn_thumbnail_avif_s3_key else None,
+            cdn_thumbnail_s3_key=(
+                cdn_thumbnail_s3_key if cdn_thumbnail_s3_key else None
+            ),
+            cdn_thumbnail_webp_s3_key=(
+                cdn_thumbnail_webp_s3_key
+                if cdn_thumbnail_webp_s3_key
+                else None
+            ),
+            cdn_thumbnail_avif_s3_key=(
+                cdn_thumbnail_avif_s3_key
+                if cdn_thumbnail_avif_s3_key
+                else None
+            ),
             cdn_small_s3_key=cdn_small_s3_key if cdn_small_s3_key else None,
-            cdn_small_webp_s3_key=cdn_small_webp_s3_key if cdn_small_webp_s3_key else None,
-            cdn_small_avif_s3_key=cdn_small_avif_s3_key if cdn_small_avif_s3_key else None,
+            cdn_small_webp_s3_key=(
+                cdn_small_webp_s3_key if cdn_small_webp_s3_key else None
+            ),
+            cdn_small_avif_s3_key=(
+                cdn_small_avif_s3_key if cdn_small_avif_s3_key else None
+            ),
             cdn_medium_s3_key=cdn_medium_s3_key if cdn_medium_s3_key else None,
-            cdn_medium_webp_s3_key=cdn_medium_webp_s3_key if cdn_medium_webp_s3_key else None,
-            cdn_medium_avif_s3_key=cdn_medium_avif_s3_key if cdn_medium_avif_s3_key else None,
+            cdn_medium_webp_s3_key=(
+                cdn_medium_webp_s3_key if cdn_medium_webp_s3_key else None
+            ),
+            cdn_medium_avif_s3_key=(
+                cdn_medium_avif_s3_key if cdn_medium_avif_s3_key else None
+            ),
             image_type=image_type if image_type else ImageType.SCAN.value,
         )
     except KeyError as e:
