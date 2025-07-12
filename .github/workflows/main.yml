@@ -265,7 +265,7 @@ jobs:
               -m "unit and not end_to_end and not slow" \
               --cov \
               --cov-report=term-missing \
-              --cov-report=xml \
+              --cov-report=xml
             
             echo "🚀 Running receipt_label integration tests with extended timeout..."
             python -m pytest tests \
@@ -278,7 +278,7 @@ jobs:
               --cov-append \
               --cov \
               --cov-report=term-missing \
-              --cov-report=xml \
+              --cov-report=xml
           else
             # receipt_dynamo: Run unit tests first (fast feedback), then integration tests
             echo "🚀 Running receipt_dynamo unit tests with optimized timeout..."
@@ -292,7 +292,7 @@ jobs:
               -m "unit and not end_to_end and not slow" \
               --cov \
               --cov-report=term-missing \
-              --cov-report=xml \
+              --cov-report=xml
             
             echo "🚀 Running receipt_dynamo integration tests with extended timeout..."
             python -m pytest tests \
@@ -306,7 +306,7 @@ jobs:
               --cov-append \
               --cov \
               --cov-report=term-missing \
-              --cov-report=xml \
+              --cov-report=xml
           fi
 
       - name: Upload coverage
