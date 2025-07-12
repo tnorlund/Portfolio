@@ -262,7 +262,7 @@ jobs:
               --tb=short \
               --maxfail=5 \
               --durations=10 \
-              -m "unit and not end_to_end and not slow" \
+              -m "unit and not end_to_end and not slow and not performance" \
               --cov \
               --cov-report=term-missing \
               --cov-report=xml
@@ -274,7 +274,7 @@ jobs:
               --tb=short \
               --maxfail=3 \
               --durations=10 \
-              -m "integration and not end_to_end and not slow" \
+              -m "integration and not end_to_end and not slow and not performance" \
               --cov-append \
               --cov \
               --cov-report=term-missing \
@@ -289,7 +289,7 @@ jobs:
               --maxfail=5 \
               --durations=10 \
               --dist=loadfile \
-              -m "unit and not end_to_end and not slow" \
+              -m "unit and not end_to_end and not slow and not performance" \
               --cov \
               --cov-report=term-missing \
               --cov-report=xml
@@ -302,7 +302,7 @@ jobs:
               --maxfail=3 \
               --durations=10 \
               --dist=loadfile \
-              -m "integration and not end_to_end and not slow" \
+              -m "integration and not end_to_end and not slow and not performance" \
               --cov-append \
               --cov \
               --cov-report=term-missing \

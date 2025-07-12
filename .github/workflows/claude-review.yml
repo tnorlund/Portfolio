@@ -7,7 +7,8 @@ on:
     types: [created]
   pull_request:
     types: [opened, ready_for_review]
-    # Only trigger on non-draft PRs or when marked ready for review
+    # Only trigger on initial PR creation or when marked ready for review
+    # NOT on subsequent commits to avoid reviewing every commit
 
 # Cancel in-progress runs for the same PR
 concurrency:
