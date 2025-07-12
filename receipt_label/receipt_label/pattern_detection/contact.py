@@ -115,14 +115,14 @@ class ContactPatternDetector(PatternDetector):
         matches = []
 
         # First pass: try to detect multi-word phone numbers
-        self._detect_multi_word_phones(words, matches)
+        used_word_ids = self._detect_multi_word_phones(words, matches)
 
         for word in words:
             if word.is_noise:
                 continue
 
-            # Skip if already matched as part of multi-word phone
-            if any(match.word.word_id == word.word_id for match in matches):
+            # Skip if already used in multi-word pattern
+            if word.word_id in used_word_ids:
                 continue
 
             # Phone number detection
@@ -418,14 +418,21 @@ class ContactPatternDetector(PatternDetector):
         
         return domain
 
-    def _detect_multi_word_phones(self, words: List[ReceiptWord], matches: List[PatternMatch]) -> None:
-        """Detect phone numbers that span multiple words on the same line."""
+    def _detect_multi_word_phones(self, words: List[ReceiptWord], matches: List[PatternMatch]) -> set:
+        """Detect phone numbers that span multiple words on the same line.
+        
+        Returns:
+            Set of word IDs that are used in multi-word phone patterns.
+        """
+        used_word_ids = set()
+        
         for i in range(len(words) - 1):
             word1 = words[i]
             word2 = words[i + 1]
             
-            # Skip if either word is noise
-            if word1.is_noise or word2.is_noise:
+            # Skip if either word is already used, noise, or in existing matches
+            if (word1.word_id in used_word_ids or word2.word_id in used_word_ids or
+                word1.is_noise or word2.is_noise):
                 continue
                 
             # Check if words are on the same line (similar y coordinates)
@@ -443,13 +450,13 @@ class ContactPatternDetector(PatternDetector):
             phone_match = self._match_phone_pattern(combined_text)
             
             if phone_match:
-                # Create match using the first word as primary, but mark both as used
+                # Create match using the first word as primary
                 metadata = {
                     "normalized": phone_match["normalized"],
                     "format": phone_match["format"],
                     "country": phone_match.get("country", "US"),
                     "spans_multiple_words": True,
-                    "second_word_id": word2.word_id,
+                    "word_ids": [word1.word_id, word2.word_id],
                     **self._calculate_position_context(word1, words),
                 }
                 
@@ -466,14 +473,7 @@ class ContactPatternDetector(PatternDetector):
                 )
                 matches.append(match)
                 
-                # Add a placeholder match for the second word to mark it as used
-                # This will be filtered out by the word_id check
-                placeholder_match = PatternMatch(
-                    word=word2,
-                    pattern_type=PatternType.PHONE_NUMBER,
-                    confidence=0.0,  # Low confidence placeholder
-                    matched_text="",
-                    extracted_value="",
-                    metadata={"placeholder": True},
-                )
-                matches.append(placeholder_match)
+                # Mark both words as used to prevent overlapping matches
+                used_word_ids.update([word1.word_id, word2.word_id])
+                
+        return used_word_ids
