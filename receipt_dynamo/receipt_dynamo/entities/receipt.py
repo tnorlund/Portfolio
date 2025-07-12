@@ -360,6 +360,18 @@ class Receipt(DynamoDBEntity):
                 self.cdn_s3_key,
                 self.cdn_webp_s3_key,
                 self.cdn_avif_s3_key,
+                # Thumbnail versions
+                self.cdn_thumbnail_s3_key,
+                self.cdn_thumbnail_webp_s3_key,
+                self.cdn_thumbnail_avif_s3_key,
+                # Small versions
+                self.cdn_small_s3_key,
+                self.cdn_small_webp_s3_key,
+                self.cdn_small_avif_s3_key,
+                # Medium versions
+                self.cdn_medium_s3_key,
+                self.cdn_medium_webp_s3_key,
+                self.cdn_medium_avif_s3_key,
             )
         )
 
