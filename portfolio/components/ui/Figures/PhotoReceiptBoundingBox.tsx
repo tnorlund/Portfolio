@@ -113,11 +113,13 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
 
+
   // Get the optimal image URL based on browser support and available formats
+  // Use medium size for PhotoReceiptBoundingBox to balance quality and performance
   // Use fallback URL during SSR/initial render to prevent hydration mismatch
   const cdnUrl =
     firstImage && formatSupport && isClient
-      ? getBestImageUrl(firstImage, formatSupport)
+      ? getBestImageUrl(firstImage, formatSupport, 'medium')
       : firstImage
       ? `${
           isDevelopment

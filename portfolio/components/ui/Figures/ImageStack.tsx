@@ -6,6 +6,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -36,7 +37,8 @@ const ImageItem = React.memo<ImageItemProps>(
 
     useEffect(() => {
       if (formatSupport) {
-        const bestUrl = getBestImageUrl(image, formatSupport);
+        // Use thumbnail size for ImageStack since images are displayed at 150px
+        const bestUrl = getBestImageUrl(image, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
     }, [formatSupport, image]); // currentSrc removed to prevent infinite loop
@@ -47,34 +49,73 @@ const ImageItem = React.memo<ImageItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
+      // Determine current size from URL
+      let currentSize: 'thumbnail' | 'small' | 'medium' | 'full' = 'full';
+      if (currentSrc.includes("_thumbnail")) {
+        currentSize = 'thumbnail';
+      } else if (currentSrc.includes("_small")) {
+        currentSize = 'small';
+      } else if (currentSrc.includes("_medium")) {
+        currentSize = 'medium';
+      }
 
-      let fallbackUrl = "";
-
+      // Determine current format from URL
+      let currentFormat: 'avif' | 'webp' | 'jpeg' = 'jpeg';
       if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && image.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_webp_s3_key}`;
-        } else if (image.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
-        }
-      } else if (currentSrc.includes(".webp") && image.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true); // Consider it "loaded" even on error
-        onLoad();
-        return;
+        currentFormat = 'avif';
+      } else if (currentSrc.includes(".webp")) {
+        currentFormat = 'webp';
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
+      // Try fallback strategies:
+      // 1. First try different formats at the same size
+      // 2. Then try larger sizes with the preferred format
+      // 3. Finally try larger sizes with fallback formats
+
+      const formats: Array<'avif' | 'webp' | 'jpeg'> = ['avif', 'webp', 'jpeg'];
+      const sizes: Array<'thumbnail' | 'small' | 'medium' | 'full'> = ['thumbnail', 'small', 'medium', 'full'];
+      
+      // Remove the current format from the list to try others first
+      const otherFormats = formats.filter(f => f !== currentFormat);
+      const orderedFormats = [currentFormat, ...otherFormats];
+      
+      // Find the index of current size
+      const currentSizeIndex = sizes.indexOf(currentSize);
+      
+      // Try other formats at the current size first
+      for (const format of otherFormats) {
+        const support = formatSupport || { supportsAVIF: false, supportsWebP: false };
+        // Skip unsupported formats
+        if (format === 'avif' && !support.supportsAVIF) continue;
+        if (format === 'webp' && !support.supportsWebP) continue;
+        
+        // Create a temporary format support that only allows the specific format
+        const tempSupport = {
+          supportsAVIF: format === 'avif',
+          supportsWebP: format === 'webp'
+        };
+        
+        const url = getBestImageUrl(image, tempSupport, currentSize);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
       }
+      
+      // Try larger sizes with all supported formats
+      for (let i = currentSizeIndex + 1; i < sizes.length; i++) {
+        const size = sizes[i];
+        const url = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, size);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
+      }
+
+      // If all attempts fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;
@@ -277,6 +318,7 @@ const ImageStack: React.FC<ImageStackProps> = ({
         if (!response || !response.images) {
           throw new Error("Invalid response");
         }
+
 
         setImages(response.images.slice(0, initialCount));
         // Store the lastEvaluatedKey for pagination

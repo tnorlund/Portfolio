@@ -50,6 +50,18 @@ export interface Image {
   cdn_s3_key: string;
   cdn_webp_s3_key?: string;
   cdn_avif_s3_key?: string;
+  // Thumbnail versions
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  // Small versions
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+  // Medium versions
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
   image_type: string;
 }
 
@@ -121,4 +133,16 @@ export interface Receipt {
   cdn_s3_key: string;
   cdn_webp_s3_key?: string;
   cdn_avif_s3_key?: string;
+  // Thumbnail versions
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  // Small versions
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+  // Medium versions
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
 }
