@@ -254,30 +254,59 @@ jobs:
           cd ${{ matrix.package }}
           
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            # receipt_label: Run all tests (unit + integration) with markers, exclude slow and e2e
-            echo "Running all receipt_label tests with pytest-xdist auto parallelization..."
+            # receipt_label: Run unit tests first (fast feedback), then integration tests
+            echo "🚀 Running receipt_label unit tests with optimized timeout..."
             python -m pytest tests \
               -n auto \
-              --timeout=600 \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              -m "unit and not end_to_end and not slow" \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml \
+              --cov-fail-under=80
+            
+            echo "🚀 Running receipt_label integration tests with extended timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=300 \
               --tb=short \
               --maxfail=3 \
               --durations=10 \
-              -m "not end_to_end and not slow" \
+              -m "integration and not end_to_end and not slow" \
+              --cov-append \
               --cov \
               --cov-report=term-missing \
               --cov-report=xml \
               --cov-fail-under=80
           else
-            # receipt_dynamo: Run all tests (unit + integration) together, exclude slow and e2e
-            echo "Running all receipt_dynamo tests with pytest-xdist auto parallelization..."
+            # receipt_dynamo: Run unit tests first (fast feedback), then integration tests
+            echo "🚀 Running receipt_dynamo unit tests with optimized timeout..."
             python -m pytest tests \
               -n auto \
-              --timeout=600 \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              --dist=loadfile \
+              -m "unit and not end_to_end and not slow" \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml \
+              --cov-fail-under=80
+            
+            echo "🚀 Running receipt_dynamo integration tests with extended timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=300 \
               --tb=short \
               --maxfail=3 \
               --durations=10 \
               --dist=loadfile \
-              -m "not end_to_end and not slow" \
+              -m "integration and not end_to_end and not slow" \
+              --cov-append \
               --cov \
               --cov-report=term-missing \
               --cov-report=xml \
@@ -488,7 +517,7 @@ jobs:
       - name: Run E2E tests
         working-directory: receipt_dynamo
         run: |
-          pytest -m end_to_end --tb=short
+          pytest -m end_to_end --timeout=600 --tb=short
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
