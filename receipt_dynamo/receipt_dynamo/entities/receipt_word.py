@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from math import atan2, degrees, pi, sqrt
-from typing import Any, Dict, Generator, Optional, Tuple
+from math import atan2, pi
+from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -282,7 +282,10 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
         flip_y: bool = False,
     ):
         """
-        Inverse perspective transform from 'new' space back to 'old' space.
+        Receipt-specific inverse perspective transform from 'new' space back to 'old' space.
+
+        This implementation uses the 2x2 linear system approach optimized for receipt
+        coordinate systems, independent of the GeometryMixin's vision-based implementation.
 
         Args:
             a, b, c, d, e, f, g, h (float): The perspective coefficients that mapped
@@ -331,16 +334,16 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
             #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
             #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
 
-            A11 = g * x_new_px - a
-            A12 = h * x_new_px - b
-            B1 = c - x_new_px
+            a11 = g * x_new_px - a
+            a12 = h * x_new_px - b
+            b1 = c - x_new_px
 
-            A21 = g * y_new_px - d
-            A22 = h * y_new_px - e
-            B2 = f - y_new_px
+            a21 = g * y_new_px - d
+            a22 = h * y_new_px - e
+            b2 = f - y_new_px
 
             # Solve the 2×2 linear system via determinant
-            det = A11 * A22 - A12 * A21
+            det = a11 * a22 - a12 * a21
             if abs(det) < 1e-12:
                 # Degenerate or singular.  You can raise an exception or skip.
                 # For robust code, handle it gracefully:
@@ -348,12 +351,12 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
                     "Inverse perspective transform is singular for this corner."
                 )
 
-            X_old_px = (B1 * A22 - B2 * A12) / det
-            Y_old_px = (A11 * B2 - A21 * B1) / det
+            x_old_px = (b1 * a22 - b2 * a12) / det
+            y_old_px = (a11 * b2 - a21 * b1) / det
 
             # 3) Convert old pixel coords -> old normalized coords in [0..1]
-            corner["x"] = X_old_px / src_width
-            corner["y"] = Y_old_px / src_height
+            corner["x"] = x_old_px / src_width
+            corner["y"] = y_old_px / src_height
 
             if flip_y:
                 # If the old/original system also had Y=0 at top, do the final
