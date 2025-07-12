@@ -83,7 +83,9 @@ def get_cached_label_counts():
         # Get all cached label counts in a single efficient query
         logger.info("Fetching cached label counts from DynamoDB")
         cached_entries, _ = dynamo_client.list_label_count_caches()
-        logger.info(f"Retrieved {len(cached_entries)} cached entries from DynamoDB")
+        logger.info(
+            f"Retrieved {len(cached_entries)} cached entries from DynamoDB"
+        )
 
         # Convert to dictionary for quick lookup
         cached_by_label = {entry.label: entry for entry in cached_entries}
@@ -91,16 +93,21 @@ def get_cached_label_counts():
         # Process each core label
         import time
         from datetime import datetime
+
         current_time = int(time.time())
-        
+
         for label in CORE_LABELS:
             if label in cached_by_label:
                 cached_entry = cached_by_label[label]
-                
+
                 # Check cache age
-                last_updated = datetime.fromisoformat(cached_entry.last_updated)
-                age_minutes = (datetime.now() - last_updated).total_seconds() / 60
-                
+                last_updated = datetime.fromisoformat(
+                    cached_entry.last_updated
+                )
+                age_minutes = (
+                    datetime.now() - last_updated
+                ).total_seconds() / 60
+
                 # Check if entry has valid TTL
                 ttl_status = "No TTL"
                 if cached_entry.time_to_live:
@@ -108,7 +115,7 @@ def get_cached_label_counts():
                         ttl_status = f"Valid (expires in {(cached_entry.time_to_live - current_time) / 60:.1f} min)"
                     else:
                         ttl_status = f"EXPIRED ({(current_time - cached_entry.time_to_live) / 60:.1f} min ago)"
-                
+
                 cached_counts[label] = {
                     "VALID": cached_entry.valid_count,
                     "INVALID": cached_entry.invalid_count,
@@ -117,7 +124,9 @@ def get_cached_label_counts():
                     "NONE": cached_entry.none_count,
                 }
                 missing_labels.remove(label)
-                logger.info(f"Cache hit for label: {label} (age: {age_minutes:.1f} min, TTL: {ttl_status})")
+                logger.info(
+                    f"Cache hit for label: {label} (age: {age_minutes:.1f} min, TTL: {ttl_status})"
+                )
             else:
                 logger.info(f"Cache miss for label: {label}")
 
