@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Receipt, ReceiptApiResponse } from "../../../types/api";
@@ -6,7 +6,9 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
+import { usePerformanceMonitor } from "../../../hooks/usePerformanceMonitor";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -35,11 +37,12 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
     const [hasErrored, setHasErrored] = useState<boolean>(false);
 
     useEffect(() => {
-      if (formatSupport && !currentSrc) {
-        const bestUrl = getBestImageUrl(receipt, formatSupport);
+      if (formatSupport) {
+        // Use thumbnail size for ReceiptStack since receipts are displayed at 100px
+        const bestUrl = getBestImageUrl(receipt, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
-    }, [formatSupport, receipt, currentSrc]);
+    }, [formatSupport, receipt]); // currentSrc removed to prevent infinite loop
 
     const handleImageLoad = useCallback(() => {
       setImageLoaded(true);
@@ -47,34 +50,73 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
+      // Determine current size from URL
+      let currentSize: 'thumbnail' | 'small' | 'medium' | 'full' = 'full';
+      if (currentSrc.includes("_thumbnail")) {
+        currentSize = 'thumbnail';
+      } else if (currentSrc.includes("_small")) {
+        currentSize = 'small';
+      } else if (currentSrc.includes("_medium")) {
+        currentSize = 'medium';
+      }
 
-      let fallbackUrl = "";
-
+      // Determine current format from URL
+      let currentFormat: 'avif' | 'webp' | 'jpeg' = 'jpeg';
       if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && receipt.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_webp_s3_key}`;
-        } else if (receipt.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
-        }
-      } else if (currentSrc.includes(".webp") && receipt.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${receipt.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
-        return;
+        currentFormat = 'avif';
+      } else if (currentSrc.includes(".webp")) {
+        currentFormat = 'webp';
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
+      // Try fallback strategies:
+      // 1. First try different formats at the same size
+      // 2. Then try larger sizes with the preferred format
+      // 3. Finally try larger sizes with fallback formats
+
+      const formats: Array<'avif' | 'webp' | 'jpeg'> = ['avif', 'webp', 'jpeg'];
+      const sizes: Array<'thumbnail' | 'small' | 'medium' | 'full'> = ['thumbnail', 'small', 'medium', 'full'];
+      
+      // Remove the current format from the list to try others first
+      const otherFormats = formats.filter(f => f !== currentFormat);
+      const orderedFormats = [currentFormat, ...otherFormats];
+      
+      // Find the index of current size
+      const currentSizeIndex = sizes.indexOf(currentSize);
+      
+      // Try other formats at the current size first
+      for (const format of otherFormats) {
+        const support = formatSupport || { supportsAVIF: false, supportsWebP: false };
+        // Skip unsupported formats
+        if (format === 'avif' && !support.supportsAVIF) continue;
+        if (format === 'webp' && !support.supportsWebP) continue;
+        
+        // Create a temporary format support that only allows the specific format
+        const tempSupport = {
+          supportsAVIF: format === 'avif',
+          supportsWebP: format === 'webp'
+        };
+        
+        const url = getBestImageUrl(receipt, tempSupport, currentSize);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
       }
+      
+      // Try larger sizes with all supported formats
+      for (let i = currentSizeIndex + 1; i < sizes.length; i++) {
+        const size = sizes[i];
+        const url = getBestImageUrl(receipt, formatSupport || { supportsAVIF: false, supportsWebP: false }, size);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
+      }
+
+      // If all attempts fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;
@@ -86,13 +128,15 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             position: "absolute",
             width: "100px",
             left: `${leftPercent}%`,
-            top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+            top: `${topOffset}px`,
             border: "1px solid #ccc",
             backgroundColor: "var(--background-color)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            transform: `rotate(${rotation}deg)`,
+            transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
             opacity: shouldAnimate && imageLoaded ? 1 : 0,
-            transition: `all 0.6s ease-out ${
+            transition: `transform 0.6s ease-out ${
+              shouldAnimate ? index * fadeDelay : 0
+            }ms, opacity 0.6s ease-out ${
               shouldAnimate ? index * fadeDelay : 0
             }ms`,
             display: "flex",
@@ -113,16 +157,18 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
           position: "absolute",
           width: "100px",
           left: `${leftPercent}%`,
-          top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+          top: `${topOffset}px`,
           border: "1px solid #ccc",
           backgroundColor: "var(--background-color)",
           boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          transform: `rotate(${rotation}deg)`,
+          transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
           opacity: shouldAnimate && imageLoaded ? 1 : 0,
-          transition: `all 0.6s ease-out ${
+          transition: `transform 0.6s ease-out ${
+            shouldAnimate ? index * fadeDelay : 0
+          }ms, opacity 0.6s ease-out ${
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
-          willChange: "top, opacity, transform",
+          willChange: "transform, opacity",
           overflow: "hidden",
         }}
       >
@@ -141,7 +187,6 @@ const ReceiptItem = React.memo<ReceiptItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
-            unoptimized={receipt.width > 3000 || receipt.height > 3000}
           />
         )}
       </div>
@@ -155,13 +200,24 @@ interface ReceiptStackProps {
   maxReceipts?: number;
   pageSize?: number;
   fadeDelay?: number;
+  initialCount?: number; // Number of receipts to load immediately
 }
 
 const ReceiptStack: React.FC<ReceiptStackProps> = ({
   maxReceipts = 40,
   pageSize = 20,
   fadeDelay = 25,
+  initialCount = 6,
 }) => {
+  // Add performance monitoring
+  // TEMPORARILY DISABLED: Performance monitor causes infinite render loop
+  // const { trackAPICall, trackImageLoad } = usePerformanceMonitor({
+  //   componentName: 'ReceiptStack',
+  //   trackRender: true,
+  // });
+  const trackAPICall = async <T,>(endpoint: string, apiCall: () => Promise<T>): Promise<T> => apiCall();
+  const trackImageLoad = () => {};
+
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
@@ -189,6 +245,9 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
+  const [loadingRemaining, setLoadingRemaining] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
+  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -257,35 +316,29 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
   }, []);
 
   useEffect(() => {
-    const loadReceipts = async () => {
+    const loadInitialReceipts = async () => {
       if (!formatSupport) return;
 
       try {
-        let allReceipts: Receipt[] = [];
-        let lastEvaluatedKey: any = undefined;
+        // Load just the initial subset first for faster rendering
+        const response: ReceiptApiResponse = await api.fetchReceipts(
+          Math.min(initialCount, maxReceipts)
+        );
 
-        // Fetch receipts in pages until we have enough
-        while (allReceipts.length < maxReceipts) {
-          const response: ReceiptApiResponse = await api.fetchReceipts(
-            pageSize,
-            lastEvaluatedKey
-          );
-
-          if (!response || !response.receipts) {
-            throw new Error("Invalid response");
-          }
-
-          allReceipts = [...allReceipts, ...response.receipts];
-
-          if (!response.lastEvaluatedKey || allReceipts.length >= maxReceipts) {
-            break;
-          }
-          lastEvaluatedKey = response.lastEvaluatedKey;
+        if (!response || !response.receipts) {
+          throw new Error("Invalid response");
         }
 
-        setReceipts(allReceipts.slice(0, maxReceipts));
+        setReceipts(response.receipts.slice(0, initialCount));
+        // Store the lastEvaluatedKey for pagination
+        setLastEvaluatedKey(response.lastEvaluatedKey);
+
+        // If we need more receipts and more data is available, load them after initial render
+        if (initialCount < maxReceipts && response.lastEvaluatedKey) {
+          setLoadingRemaining(true);
+        }
       } catch (error) {
-        console.error("Error loading receipts:", error);
+        console.error("Error loading initial receipts:", error);
         setError(
           error instanceof Error ? error.message : "Failed to load receipts"
         );
@@ -293,9 +346,78 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     };
 
     if (formatSupport) {
-      loadReceipts();
+      loadInitialReceipts();
     }
-  }, [formatSupport, maxReceipts, pageSize]);
+  }, [formatSupport, initialCount, maxReceipts]);
+
+  // Load remaining receipts after initial set
+  useEffect(() => {
+    const loadRemainingReceipts = async () => {
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
+      
+      isLoadingRef.current = true;
+
+      try {
+        // Get current count without modifying state
+        let currentReceiptsCount = 0;
+        setReceipts(prevReceipts => {
+          currentReceiptsCount = prevReceipts.length;
+          return prevReceipts; // Don't modify state, just read it
+        });
+
+        // Check if we already have enough receipts
+        if (currentReceiptsCount >= maxReceipts) {
+          setLoadingRemaining(false);
+          isLoadingRef.current = false;
+          return;
+        }
+
+        // Calculate remaining needed based on actual current count
+        const remainingNeeded = maxReceipts - currentReceiptsCount;
+        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
+        
+        // Use the stored lastEvaluatedKey from initial fetch
+        const firstPageResponse = await api.fetchReceipts(pageSize, lastEvaluatedKey);
+        if (!firstPageResponse || !firstPageResponse.receipts) {
+          throw new Error("Invalid response");
+        }
+
+        let allNewReceipts: Receipt[] = firstPageResponse.receipts;
+        let currentKey = firstPageResponse.lastEvaluatedKey;
+
+        // If we need more pages, fetch them sequentially
+        if (pagesNeeded > 1 && currentKey) {
+          for (let i = 1; i < pagesNeeded && currentKey; i++) {
+            const response = await api.fetchReceipts(pageSize, currentKey);
+            if (response && response.receipts) {
+              allNewReceipts = [...allNewReceipts, ...response.receipts];
+              currentKey = response.lastEvaluatedKey;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Combine with existing receipts and trim to maxReceipts
+        setReceipts(prevReceipts => {
+          const combinedReceipts = [...prevReceipts, ...allNewReceipts].slice(0, maxReceipts);
+          return combinedReceipts;
+        });
+        setLoadingRemaining(false);
+        isLoadingRef.current = false;
+      } catch (error) {
+        console.error("Error loading remaining receipts:", error);
+        setLoadingRemaining(false);
+        isLoadingRef.current = false;
+      }
+    };
+
+    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
+      // Delay loading remaining receipts until after initial render
+      const timer = setTimeout(loadRemainingReceipts, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [formatSupport, loadingRemaining, maxReceipts, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
@@ -307,7 +429,8 @@ const ReceiptStack: React.FC<ReceiptStackProps> = ({
     if (inView && receipts.length > 0 && !startAnimation) {
       setStartAnimation(true);
     }
-  }, [inView, receipts.length, startAnimation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, receipts.length]); // startAnimation removed to prevent infinite loop
 
   if (error) {
     return (

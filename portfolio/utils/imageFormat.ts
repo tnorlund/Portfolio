@@ -3,11 +3,30 @@ export interface FormatSupport {
   supportsWebP: boolean;
 }
 
+const CACHE_KEY = 'imageFormatSupport';
+const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
 /**
  * Detect browser support for AVIF and WebP image formats.
+ * Results are cached in localStorage for performance.
  */
 export const detectImageFormatSupport = (): Promise<FormatSupport> => {
   return new Promise(resolve => {
+    // Check localStorage cache first
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+        if (age < CACHE_DURATION) {
+          resolve(data);
+          return;
+        }
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+
     const userAgent = navigator.userAgent;
 
     const getSafariVersion = (): number | null => {
@@ -37,7 +56,7 @@ export const detectImageFormatSupport = (): Promise<FormatSupport> => {
           const webpDataUrl = canvas.toDataURL("image/webp", 0.5);
           supportsWebP = webpDataUrl.indexOf("data:image/webp") === 0;
         }
-      } catch {
+      } catch (e) {
         supportsWebP = false;
       }
     }
@@ -76,7 +95,19 @@ export const detectImageFormatSupport = (): Promise<FormatSupport> => {
     };
 
     detectAVIF().then(supportsAVIF => {
-      resolve({ supportsAVIF, supportsWebP });
+      const result = { supportsAVIF, supportsWebP };
+      
+      // Cache the result
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          data: result,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      resolve(result);
     });
   });
 };
@@ -85,27 +116,81 @@ export interface ImageFormats {
   cdn_s3_key: string;
   cdn_webp_s3_key?: string;
   cdn_avif_s3_key?: string;
+  // Thumbnail versions
+  cdn_thumbnail_s3_key?: string;
+  cdn_thumbnail_webp_s3_key?: string;
+  cdn_thumbnail_avif_s3_key?: string;
+  // Small versions
+  cdn_small_s3_key?: string;
+  cdn_small_webp_s3_key?: string;
+  cdn_small_avif_s3_key?: string;
+  // Medium versions
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
 }
+
+export type ImageSize = 'thumbnail' | 'small' | 'medium' | 'full';
 
 /**
  * Choose the optimal image URL given supported formats and available keys.
+ * Now supports different image sizes for bandwidth optimization.
  */
 export const getBestImageUrl = (
   image: ImageFormats,
   formatSupport: FormatSupport,
+  size: ImageSize = 'full',
 ): string => {
   const baseUrl =
     process.env.NODE_ENV === "development"
       ? "https://dev.tylernorlund.com"
       : "https://www.tylernorlund.com";
 
-  if (formatSupport.supportsAVIF && image.cdn_avif_s3_key) {
-    return `${baseUrl}/${image.cdn_avif_s3_key}`;
+  // Helper to get the appropriate key based on size and format
+  const getKey = (format: 'jpeg' | 'webp' | 'avif'): string | undefined => {
+    switch (size) {
+      case 'thumbnail':
+        return format === 'jpeg' ? image.cdn_thumbnail_s3_key :
+               format === 'webp' ? image.cdn_thumbnail_webp_s3_key :
+               image.cdn_thumbnail_avif_s3_key;
+      case 'small':
+        return format === 'jpeg' ? image.cdn_small_s3_key :
+               format === 'webp' ? image.cdn_small_webp_s3_key :
+               image.cdn_small_avif_s3_key;
+      case 'medium':
+        return format === 'jpeg' ? image.cdn_medium_s3_key :
+               format === 'webp' ? image.cdn_medium_webp_s3_key :
+               image.cdn_medium_avif_s3_key;
+      case 'full':
+      default:
+        return format === 'jpeg' ? image.cdn_s3_key :
+               format === 'webp' ? image.cdn_webp_s3_key :
+               image.cdn_avif_s3_key;
+    }
+  };
+
+  // Try AVIF first if supported
+  if (formatSupport.supportsAVIF) {
+    const avifKey = getKey('avif');
+    if (avifKey) {
+      return `${baseUrl}/${avifKey}`;
+    }
   }
 
-  if (formatSupport.supportsWebP && image.cdn_webp_s3_key) {
-    return `${baseUrl}/${image.cdn_webp_s3_key}`;
+  // Try WebP if supported
+  if (formatSupport.supportsWebP) {
+    const webpKey = getKey('webp');
+    if (webpKey) {
+      return `${baseUrl}/${webpKey}`;
+    }
   }
 
+  // Fallback to JPEG
+  const jpegKey = getKey('jpeg');
+  if (jpegKey) {
+    return `${baseUrl}/${jpegKey}`;
+  }
+
+  // Ultimate fallback to full-size JPEG if specific size not available
   return `${baseUrl}/${image.cdn_s3_key}`;
 };

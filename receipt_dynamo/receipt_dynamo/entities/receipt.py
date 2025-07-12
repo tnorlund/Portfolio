@@ -56,6 +56,18 @@ class Receipt(DynamoDBEntity):
     cdn_s3_key: Optional[str] = None
     cdn_webp_s3_key: Optional[str] = None
     cdn_avif_s3_key: Optional[str] = None
+    # Thumbnail versions
+    cdn_thumbnail_s3_key: Optional[str] = None
+    cdn_thumbnail_webp_s3_key: Optional[str] = None
+    cdn_thumbnail_avif_s3_key: Optional[str] = None
+    # Small versions
+    cdn_small_s3_key: Optional[str] = None
+    cdn_small_webp_s3_key: Optional[str] = None
+    cdn_small_avif_s3_key: Optional[str] = None
+    # Medium versions
+    cdn_medium_s3_key: Optional[str] = None
+    cdn_medium_webp_s3_key: Optional[str] = None
+    cdn_medium_avif_s3_key: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -104,6 +116,54 @@ class Receipt(DynamoDBEntity):
 
         if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
             raise ValueError("cdn_avif_s3_key must be a string")
+
+        # Validate thumbnail fields
+        if self.cdn_thumbnail_s3_key and not isinstance(
+            self.cdn_thumbnail_s3_key, str
+        ):
+            raise ValueError("cdn_thumbnail_s3_key must be a string")
+
+        if self.cdn_thumbnail_webp_s3_key and not isinstance(
+            self.cdn_thumbnail_webp_s3_key, str
+        ):
+            raise ValueError("cdn_thumbnail_webp_s3_key must be a string")
+
+        if self.cdn_thumbnail_avif_s3_key and not isinstance(
+            self.cdn_thumbnail_avif_s3_key, str
+        ):
+            raise ValueError("cdn_thumbnail_avif_s3_key must be a string")
+
+        # Validate small fields
+        if self.cdn_small_s3_key and not isinstance(
+            self.cdn_small_s3_key, str
+        ):
+            raise ValueError("cdn_small_s3_key must be a string")
+
+        if self.cdn_small_webp_s3_key and not isinstance(
+            self.cdn_small_webp_s3_key, str
+        ):
+            raise ValueError("cdn_small_webp_s3_key must be a string")
+
+        if self.cdn_small_avif_s3_key and not isinstance(
+            self.cdn_small_avif_s3_key, str
+        ):
+            raise ValueError("cdn_small_avif_s3_key must be a string")
+
+        # Validate medium fields
+        if self.cdn_medium_s3_key and not isinstance(
+            self.cdn_medium_s3_key, str
+        ):
+            raise ValueError("cdn_medium_s3_key must be a string")
+
+        if self.cdn_medium_webp_s3_key and not isinstance(
+            self.cdn_medium_webp_s3_key, str
+        ):
+            raise ValueError("cdn_medium_webp_s3_key must be a string")
+
+        if self.cdn_medium_avif_s3_key and not isinstance(
+            self.cdn_medium_avif_s3_key, str
+        ):
+            raise ValueError("cdn_medium_avif_s3_key must be a string")
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -212,6 +272,54 @@ class Receipt(DynamoDBEntity):
                 if self.cdn_avif_s3_key
                 else {"NULL": True}
             ),
+            # Thumbnail versions
+            "cdn_thumbnail_s3_key": (
+                {"S": self.cdn_thumbnail_s3_key}
+                if self.cdn_thumbnail_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_thumbnail_webp_s3_key": (
+                {"S": self.cdn_thumbnail_webp_s3_key}
+                if self.cdn_thumbnail_webp_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_thumbnail_avif_s3_key": (
+                {"S": self.cdn_thumbnail_avif_s3_key}
+                if self.cdn_thumbnail_avif_s3_key
+                else {"NULL": True}
+            ),
+            # Small versions
+            "cdn_small_s3_key": (
+                {"S": self.cdn_small_s3_key}
+                if self.cdn_small_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_small_webp_s3_key": (
+                {"S": self.cdn_small_webp_s3_key}
+                if self.cdn_small_webp_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_small_avif_s3_key": (
+                {"S": self.cdn_small_avif_s3_key}
+                if self.cdn_small_avif_s3_key
+                else {"NULL": True}
+            ),
+            # Medium versions
+            "cdn_medium_s3_key": (
+                {"S": self.cdn_medium_s3_key}
+                if self.cdn_medium_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_medium_webp_s3_key": (
+                {"S": self.cdn_medium_webp_s3_key}
+                if self.cdn_medium_webp_s3_key
+                else {"NULL": True}
+            ),
+            "cdn_medium_avif_s3_key": (
+                {"S": self.cdn_medium_avif_s3_key}
+                if self.cdn_medium_avif_s3_key
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -237,7 +345,16 @@ class Receipt(DynamoDBEntity):
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
             f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
             f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
-            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}"
+            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
+            f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
+            f"cdn_thumbnail_webp_s3_key={_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
+            f"cdn_thumbnail_avif_s3_key={_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
+            f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
+            f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
+            f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
+            f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
+            f"cdn_medium_webp_s3_key={_repr_str(self.cdn_medium_webp_s3_key)}, "
+            f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}"
             ")"
         )
 
@@ -261,6 +378,18 @@ class Receipt(DynamoDBEntity):
                 self.cdn_s3_key,
                 self.cdn_webp_s3_key,
                 self.cdn_avif_s3_key,
+                # Thumbnail versions
+                self.cdn_thumbnail_s3_key,
+                self.cdn_thumbnail_webp_s3_key,
+                self.cdn_thumbnail_avif_s3_key,
+                # Small versions
+                self.cdn_small_s3_key,
+                self.cdn_small_webp_s3_key,
+                self.cdn_small_avif_s3_key,
+                # Medium versions
+                self.cdn_medium_s3_key,
+                self.cdn_medium_webp_s3_key,
+                self.cdn_medium_avif_s3_key,
             )
         )
 
@@ -344,6 +473,63 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             cdn_avif_s3_key=(
                 item["cdn_avif_s3_key"]["S"]
                 if "cdn_avif_s3_key" in item and "S" in item["cdn_avif_s3_key"]
+                else None
+            ),
+            # Thumbnail versions
+            cdn_thumbnail_s3_key=(
+                item["cdn_thumbnail_s3_key"]["S"]
+                if "cdn_thumbnail_s3_key" in item
+                and "S" in item["cdn_thumbnail_s3_key"]
+                else None
+            ),
+            cdn_thumbnail_webp_s3_key=(
+                item["cdn_thumbnail_webp_s3_key"]["S"]
+                if "cdn_thumbnail_webp_s3_key" in item
+                and "S" in item["cdn_thumbnail_webp_s3_key"]
+                else None
+            ),
+            cdn_thumbnail_avif_s3_key=(
+                item["cdn_thumbnail_avif_s3_key"]["S"]
+                if "cdn_thumbnail_avif_s3_key" in item
+                and "S" in item["cdn_thumbnail_avif_s3_key"]
+                else None
+            ),
+            # Small versions
+            cdn_small_s3_key=(
+                item["cdn_small_s3_key"]["S"]
+                if "cdn_small_s3_key" in item
+                and "S" in item["cdn_small_s3_key"]
+                else None
+            ),
+            cdn_small_webp_s3_key=(
+                item["cdn_small_webp_s3_key"]["S"]
+                if "cdn_small_webp_s3_key" in item
+                and "S" in item["cdn_small_webp_s3_key"]
+                else None
+            ),
+            cdn_small_avif_s3_key=(
+                item["cdn_small_avif_s3_key"]["S"]
+                if "cdn_small_avif_s3_key" in item
+                and "S" in item["cdn_small_avif_s3_key"]
+                else None
+            ),
+            # Medium versions
+            cdn_medium_s3_key=(
+                item["cdn_medium_s3_key"]["S"]
+                if "cdn_medium_s3_key" in item
+                and "S" in item["cdn_medium_s3_key"]
+                else None
+            ),
+            cdn_medium_webp_s3_key=(
+                item["cdn_medium_webp_s3_key"]["S"]
+                if "cdn_medium_webp_s3_key" in item
+                and "S" in item["cdn_medium_webp_s3_key"]
+                else None
+            ),
+            cdn_medium_avif_s3_key=(
+                item["cdn_medium_avif_s3_key"]["S"]
+                if "cdn_medium_avif_s3_key" in item
+                and "S" in item["cdn_medium_avif_s3_key"]
                 else None
             ),
         )

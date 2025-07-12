@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
 import { Image, ImagesApiResponse } from "../../../types/api";
@@ -6,6 +6,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
+  ImageSize,
 } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -35,11 +36,12 @@ const ImageItem = React.memo<ImageItemProps>(
     const [hasErrored, setHasErrored] = useState<boolean>(false);
 
     useEffect(() => {
-      if (formatSupport && !currentSrc) {
-        const bestUrl = getBestImageUrl(image, formatSupport);
+      if (formatSupport) {
+        // Use thumbnail size for ImageStack since images are displayed at 150px
+        const bestUrl = getBestImageUrl(image, formatSupport, 'thumbnail');
         setCurrentSrc(bestUrl);
       }
-    }, [formatSupport, image, currentSrc]);
+    }, [formatSupport, image]); // currentSrc removed to prevent infinite loop
 
     const handleImageLoad = useCallback(() => {
       setImageLoaded(true);
@@ -47,34 +49,73 @@ const ImageItem = React.memo<ImageItemProps>(
     }, [onLoad]);
 
     const handleError = () => {
-      const baseUrl = isDevelopment
-        ? "https://dev.tylernorlund.com"
-        : "https://www.tylernorlund.com";
+      // Determine current size from URL
+      let currentSize: 'thumbnail' | 'small' | 'medium' | 'full' = 'full';
+      if (currentSrc.includes("_thumbnail")) {
+        currentSize = 'thumbnail';
+      } else if (currentSrc.includes("_small")) {
+        currentSize = 'small';
+      } else if (currentSrc.includes("_medium")) {
+        currentSize = 'medium';
+      }
 
-      let fallbackUrl = "";
-
+      // Determine current format from URL
+      let currentFormat: 'avif' | 'webp' | 'jpeg' = 'jpeg';
       if (currentSrc.includes(".avif")) {
-        if (formatSupport?.supportsWebP && image.cdn_webp_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_webp_s3_key}`;
-        } else if (image.cdn_s3_key) {
-          fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
-        }
-      } else if (currentSrc.includes(".webp") && image.cdn_s3_key) {
-        fallbackUrl = `${baseUrl}/${image.cdn_s3_key}`;
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true); // Consider it "loaded" even on error
-        onLoad();
-        return;
+        currentFormat = 'avif';
+      } else if (currentSrc.includes(".webp")) {
+        currentFormat = 'webp';
       }
 
-      if (fallbackUrl && fallbackUrl !== currentSrc) {
-        setCurrentSrc(fallbackUrl);
-      } else {
-        setHasErrored(true);
-        setImageLoaded(true);
-        onLoad();
+      // Try fallback strategies:
+      // 1. First try different formats at the same size
+      // 2. Then try larger sizes with the preferred format
+      // 3. Finally try larger sizes with fallback formats
+
+      const formats: Array<'avif' | 'webp' | 'jpeg'> = ['avif', 'webp', 'jpeg'];
+      const sizes: Array<'thumbnail' | 'small' | 'medium' | 'full'> = ['thumbnail', 'small', 'medium', 'full'];
+      
+      // Remove the current format from the list to try others first
+      const otherFormats = formats.filter(f => f !== currentFormat);
+      const orderedFormats = [currentFormat, ...otherFormats];
+      
+      // Find the index of current size
+      const currentSizeIndex = sizes.indexOf(currentSize);
+      
+      // Try other formats at the current size first
+      for (const format of otherFormats) {
+        const support = formatSupport || { supportsAVIF: false, supportsWebP: false };
+        // Skip unsupported formats
+        if (format === 'avif' && !support.supportsAVIF) continue;
+        if (format === 'webp' && !support.supportsWebP) continue;
+        
+        // Create a temporary format support that only allows the specific format
+        const tempSupport = {
+          supportsAVIF: format === 'avif',
+          supportsWebP: format === 'webp'
+        };
+        
+        const url = getBestImageUrl(image, tempSupport, currentSize);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
       }
+      
+      // Try larger sizes with all supported formats
+      for (let i = currentSizeIndex + 1; i < sizes.length; i++) {
+        const size = sizes[i];
+        const url = getBestImageUrl(image, formatSupport || { supportsAVIF: false, supportsWebP: false }, size);
+        if (url && url !== currentSrc && !url.endsWith('undefined')) {
+          setCurrentSrc(url);
+          return;
+        }
+      }
+
+      // If all attempts fail, mark as errored
+      setHasErrored(true);
+      setImageLoaded(true);
+      onLoad();
     };
 
     const { rotation, topOffset, leftPercent } = position;
@@ -86,13 +127,15 @@ const ImageItem = React.memo<ImageItemProps>(
             position: "absolute",
             width: "150px",
             left: `${leftPercent}%`,
-            top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+            top: `${topOffset}px`,
             border: "1px solid #ccc",
             backgroundColor: "var(--background-color)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            transform: `rotate(${rotation}deg)`,
+            transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
             opacity: shouldAnimate && imageLoaded ? 1 : 0,
-            transition: `all 0.6s ease-out ${
+            transition: `transform 0.6s ease-out ${
+              shouldAnimate ? index * fadeDelay : 0
+            }ms, opacity 0.6s ease-out ${
               shouldAnimate ? index * fadeDelay : 0
             }ms`,
             display: "flex",
@@ -113,16 +156,18 @@ const ImageItem = React.memo<ImageItemProps>(
           position: "absolute",
           width: "150px",
           left: `${leftPercent}%`,
-          top: shouldAnimate && imageLoaded ? `${topOffset}px` : `${topOffset - 50}px`,
+          top: `${topOffset}px`,
           border: "1px solid #ccc",
           backgroundColor: "var(--background-color)",
           boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          transform: `rotate(${rotation}deg)`,
+          transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50}px)`,
           opacity: shouldAnimate && imageLoaded ? 1 : 0,
-          transition: `all 0.6s ease-out ${
+          transition: `transform 0.6s ease-out ${
+            shouldAnimate ? index * fadeDelay : 0
+          }ms, opacity 0.6s ease-out ${
             shouldAnimate ? index * fadeDelay : 0
           }ms`,
-          willChange: "top, opacity, transform",
+          willChange: "transform, opacity",
           overflow: "hidden",
         }}
       >
@@ -141,7 +186,6 @@ const ImageItem = React.memo<ImageItemProps>(
             onLoad={handleImageLoad}
             onError={handleError}
             priority={index < 5}
-            unoptimized={image.width > 3000 || image.height > 3000}
           />
         )}
       </div>
@@ -155,12 +199,14 @@ interface ImageStackProps {
   maxImages?: number;
   pageSize?: number;
   fadeDelay?: number; // Delay between each image fade in (ms)
+  initialCount?: number; // Number of images to load immediately
 }
 
 const ImageStack: React.FC<ImageStackProps> = ({
   maxImages = 20,
   pageSize = 20,
   fadeDelay = 50,
+  initialCount = 6,
 }) => {
   // Track window resize to recalculate positions
   const [windowWidth, setWindowWidth] = useState(
@@ -189,6 +235,9 @@ const ImageStack: React.FC<ImageStackProps> = ({
   } | null>(null);
   const [, setLoadedImages] = useState<Set<number>>(new Set());
   const [startAnimation, setStartAnimation] = useState(false);
+  const [loadingRemaining, setLoadingRemaining] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<any>(null);
+  const isLoadingRef = useRef(false);
 
   // Pre-calculate positions as percentages for responsive layout
   const positions = useMemo(() => {
@@ -257,35 +306,30 @@ const ImageStack: React.FC<ImageStackProps> = ({
   }, []);
 
   useEffect(() => {
-    const loadImages = async () => {
+    const loadInitialImages = async () => {
       if (!formatSupport) return;
 
       try {
-        let allImages: Image[] = [];
-        let lastEvaluatedKey: any = undefined;
+        // Load just the initial subset first for faster rendering
+        const response: ImagesApiResponse = await api.fetchImages(
+          Math.min(initialCount, maxImages)
+        );
 
-        // Fetch images in pages until we have enough
-        while (allImages.length < maxImages) {
-          const response: ImagesApiResponse = await api.fetchImages(
-            pageSize,
-            lastEvaluatedKey
-          );
-
-          if (!response || !response.images) {
-            throw new Error("Invalid response");
-          }
-
-          allImages = [...allImages, ...response.images];
-
-          if (!response.lastEvaluatedKey || allImages.length >= maxImages) {
-            break;
-          }
-          lastEvaluatedKey = response.lastEvaluatedKey;
+        if (!response || !response.images) {
+          throw new Error("Invalid response");
         }
 
-        setImages(allImages.slice(0, maxImages));
+
+        setImages(response.images.slice(0, initialCount));
+        // Store the lastEvaluatedKey for pagination
+        setLastEvaluatedKey(response.lastEvaluatedKey);
+
+        // If we need more images and more data is available, load them after initial render
+        if (initialCount < maxImages && response.lastEvaluatedKey) {
+          setLoadingRemaining(true);
+        }
       } catch (error) {
-        console.error("Error loading images:", error);
+        console.error("Error loading initial images:", error);
         setError(
           error instanceof Error ? error.message : "Failed to load images"
         );
@@ -293,9 +337,78 @@ const ImageStack: React.FC<ImageStackProps> = ({
     };
 
     if (formatSupport) {
-      loadImages();
+      loadInitialImages();
     }
-  }, [formatSupport, maxImages, pageSize]);
+  }, [formatSupport, initialCount, maxImages]);
+
+  // Load remaining images after initial set
+  useEffect(() => {
+    const loadRemainingImages = async () => {
+      if (!formatSupport || !loadingRemaining || !lastEvaluatedKey || isLoadingRef.current) return;
+      
+      isLoadingRef.current = true;
+
+      try {
+        // Get current count without modifying state
+        let currentImagesCount = 0;
+        setImages(prevImages => {
+          currentImagesCount = prevImages.length;
+          return prevImages; // Don't modify state, just read it
+        });
+
+        // Check if we already have enough images
+        if (currentImagesCount >= maxImages) {
+          setLoadingRemaining(false);
+          isLoadingRef.current = false;
+          return;
+        }
+
+        // Calculate remaining needed based on actual current count
+        const remainingNeeded = maxImages - currentImagesCount;
+        const pagesNeeded = Math.ceil(remainingNeeded / pageSize);
+        
+        // Use the stored lastEvaluatedKey from initial fetch
+        const firstPageResponse = await api.fetchImages(pageSize, lastEvaluatedKey);
+        if (!firstPageResponse || !firstPageResponse.images) {
+          throw new Error("Invalid response");
+        }
+
+        let allNewImages: Image[] = firstPageResponse.images;
+        let currentKey = firstPageResponse.lastEvaluatedKey;
+
+        // If we need more pages, fetch them sequentially
+        if (pagesNeeded > 1 && currentKey) {
+          for (let i = 1; i < pagesNeeded && currentKey; i++) {
+            const response = await api.fetchImages(pageSize, currentKey);
+            if (response && response.images) {
+              allNewImages = [...allNewImages, ...response.images];
+              currentKey = response.lastEvaluatedKey;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Combine with existing images and trim to maxImages
+        setImages(prevImages => {
+          const combinedImages = [...prevImages, ...allNewImages].slice(0, maxImages);
+          return combinedImages;
+        });
+        setLoadingRemaining(false);
+        isLoadingRef.current = false;
+      } catch (error) {
+        console.error("Error loading remaining images:", error);
+        setLoadingRemaining(false);
+        isLoadingRef.current = false;
+      }
+    };
+
+    if (loadingRemaining && lastEvaluatedKey && !isLoadingRef.current) {
+      // Delay loading remaining images until after initial render
+      const timer = setTimeout(loadRemainingImages, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [formatSupport, loadingRemaining, maxImages, pageSize, lastEvaluatedKey, initialCount]); // initialCount is stable
 
   // Handle individual image load
   const handleImageLoad = useCallback((index: number) => {
@@ -307,7 +420,8 @@ const ImageStack: React.FC<ImageStackProps> = ({
     if (inView && images.length > 0 && !startAnimation) {
       setStartAnimation(true);
     }
-  }, [inView, images.length, startAnimation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, images.length]); // startAnimation removed to prevent infinite loop
 
   if (error) {
     return (
