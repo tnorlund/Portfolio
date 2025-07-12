@@ -1,0 +1,10 @@
+{
+  "receipt_id": "test-receipt-123",
+  "metadata": {
+    "merchant_name": "Starbucks",
+    "location": {
+      "city": "Seattle",
+      "state": "WA"
+    }
+  }
+}

@@ -5,6 +5,7 @@ import asyncio
 import time
 
 from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection import ParallelPatternOrchestrator
 
 
@@ -156,7 +157,9 @@ async def test_pattern_detection():
             continue
 
         if matches:
-            print(f"\n{detector_name.upper()} detector found {len(matches)} matches:")
+            print(
+                f"\n{detector_name.upper()} detector found {len(matches)} matches:"
+            )
             for match in matches:
                 print(
                     f"  - '{match.matched_text}' → {match.pattern_type.name} (confidence: {match.confidence:.2f})"

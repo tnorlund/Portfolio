@@ -28,6 +28,7 @@ from validation_pipeline import ValidationPipeline
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
 from word_label_step_functions import WordLabelStepFunctions
+from step_functions import AgentLabelingStepFunction
 
 # Import other necessary components
 try:
@@ -79,6 +80,12 @@ validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
+)
+agent_labeling_step_function = AgentLabelingStepFunction(
+    "agent-labeling",
+    validate_merchant_step_function=validate_merchant_step_functions,
+    word_label_step_function=word_label_step_functions,
+    notification_system=notification_system,
 )
 upload_images = UploadImages(
     "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket

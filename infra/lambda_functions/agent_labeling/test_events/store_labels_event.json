@@ -1,0 +1,28 @@
+{
+  "receipt_id": "test-receipt-123",
+  "labeling": {
+    "pattern_labels": {
+      "word-1": {
+        "label": "DATE",
+        "confidence": 0.98,
+        "source": "pattern_detection",
+        "pattern_type": "date",
+        "match_value": "12/25/2023"
+      },
+      "word-2": {
+        "label": "TIME",
+        "confidence": 0.95,
+        "source": "pattern_detection",
+        "pattern_type": "time",
+        "match_value": "14:35"
+      }
+    }
+  },
+  "gpt_labels": {
+    "word-45": "MERCHANT_NAME",
+    "word-123": "GRAND_TOTAL"
+  },
+  "batch": {
+    "batch_id": "batch_20240115_120000_abc123"
+  }
+}

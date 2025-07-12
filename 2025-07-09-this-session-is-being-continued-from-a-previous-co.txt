@@ -1,0 +1,18 @@
+╭────────────────────────────────────────────────────────╮
+│ ✻ Welcome to Claude Code!                              │
+│                                                        │
+│   /help for help, /status for your current setup       │
+│                                                        │
+│   cwd: /Users/tnorlund/GitHub/Portfolio-phase2-batch1  │
+╰────────────────────────────────────────────────────────╯
+
+⏺ Compact summary (ctrl+r to expand)
+  ⎿  Read receipt_label/README.md (291 lines)
+  ⎿  Read PINECONE_STRUCTURE_ANALYSIS.md (188 lines)
+  ⎿  Read receipt_label/receipt_label/merchant_validation/README.md (478 lines)
+  ⎿  Read spec/archive/conflicting-plans/LABEL_CORPUS_EXPANSION.md (252 lines)
+  ⎿  Read receipt_label/receipt_label/tests/test_structure.py (325 lines)
+  ⎿  Todo list read (5 items)
+
+> /compact
+  ⎿  Compacted. ctrl+r to see full summary
