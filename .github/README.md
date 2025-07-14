@@ -74,7 +74,7 @@ This directory contains GitHub-specific configuration files and workflows that a
   - PR labeled with `claude-review-requested`
   - Manual trigger via `/claude review` comment
 - **Features**:
-  - Size-aware reviews (skips PRs > 1000 lines unless requested)
+  - Reviews all PRs regardless of size
   - File type filtering (focuses on code files)
   - Permission checks
   - Cost-optimized
