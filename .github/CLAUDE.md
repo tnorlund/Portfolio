@@ -16,17 +16,17 @@ Our Claude integration builds on the existing cost-optimized CI infrastructure:
 
 ## Claude Integration Workflow
 
-### Single Unified Workflow (`claude-review.yml`)
-Provides both automated PR reviews and interactive assistance in one optimized workflow.
+### Consolidated Claude Workflow (`claude-review.yml`)
+A single, unified workflow that provides automated PR reviews, interactive assistance, and comment management.
 
 **Triggers:**
-- **Automatic**: Non-draft PRs under 1000 lines
+- **Automatic**: Non-draft PRs (all sizes)
 - **Interactive**: `@claude` mentions in PR/issue comments
 - **Manual**: `claude-review-requested` label to force reviews
 - **Conditional**: Skips documentation-only changes and large PRs
 
 **Cost Optimization Features:**
-- **Size limits**: Automatically skips PRs over 1000 lines
+- **No size limits**: Reviews all PRs regardless of size
 - **Self-hosted runners**: Uses your existing ARM64 macOS infrastructure
 - **Smart filtering**: Ignores documentation-only changes
 - **Conversation limits**: Max 3 turns to prevent runaway costs
@@ -160,9 +160,8 @@ All Claude API usage is tracked in DynamoDB via `track-ai-usage.yml`. Monitor co
 ## Configuration
 
 ### Environment Variables
-- `CLAUDE_CODE_OAUTH_TOKEN` - Set in repository secrets (uses subscription)
+- `CLAUDE_CODE_OAUTH_TOKEN` - Set in repository secrets (uses Claude subscription instead of API key)
 - `GITHUB_TOKEN` - Automatically provided by GitHub Actions
-- `MAX_PR_SIZE` - Default 1000 lines (configurable in workflow)
 
 ### Customization
 Workflow behavior can be customized by editing the workflow files in `.github/workflows/`. Always test changes in a separate branch first.
