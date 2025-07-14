@@ -24,6 +24,7 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection.base import PatternType
 
+
 @dataclass
 class StandardizedPatternMatch:
     """Standardized pattern match format for all optimization levels."""
@@ -194,7 +195,6 @@ class EnhancedPatternOrchestrator:
         results = await UNIFIED_PATTERN_ENGINE.detect_all_patterns(
             words, merchant_name
         )
-
 
         return {
             "approach": "advanced",
