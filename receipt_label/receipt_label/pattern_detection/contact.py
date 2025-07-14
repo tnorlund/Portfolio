@@ -1,5 +1,6 @@
 """Contact information pattern detection for receipts."""
 
+import re
 from typing import Dict, List, Optional
 
 from receipt_label.pattern_detection.base import (
