@@ -117,9 +117,9 @@ jobs:
     name: Claude Code Review
     needs: [manage-comments]
     if: |
-      (github.event_name == 'pull_request' && github.event.action != 'closed' && (needs.manage-comments.result == 'success' || needs.manage-comments.result == 'skipped') && needs.manage-comments.outputs.should_review == 'true') ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && (needs.manage-comments.result == 'success' || needs.manage-comments.result == 'skipped')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && (needs.manage-comments.result == 'success' || needs.manage-comments.result == 'skipped'))
+      (github.event_name == 'pull_request' && github.event.action != 'closed' && needs.manage-comments.outputs.should_review == 'true') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
     
     # Run on self-hosted runner for cost optimization
     runs-on: [self-hosted, macOS, ARM64]
