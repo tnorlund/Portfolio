@@ -237,33 +237,33 @@ def generate_image_sizes(
 ) -> dict[str, PIL_Image.Image]:
     """
     Generate multiple sizes of an image while maintaining aspect ratio.
-    
+
     Args:
         image: Original PIL Image object
-        target_sizes: Dict mapping size name to max dimension 
+        target_sizes: Dict mapping size name to max dimension
                      (e.g., {"thumbnail": 300, "small": 600})
-    
+
     Returns:
         Dictionary with size names as keys and resized PIL Images as values
     """
     sizes = {}
-    
+
     for size_name, max_dimension in target_sizes.items():
         # Calculate dimensions maintaining aspect ratio
         ratio = min(max_dimension / image.width, max_dimension / image.height)
-        
+
         # Only resize if the image is larger than target
         if ratio < 1:
             new_width = int(image.width * ratio)
             new_height = int(image.height * ratio)
-            
+
             # Use high-quality Lanczos resampling
             resized = image.resize((new_width, new_height), Resampling.LANCZOS)
             sizes[size_name] = resized
         else:
             # If image is already smaller, use original
             sizes[size_name] = image
-    
+
     return sizes
 
 
@@ -293,7 +293,7 @@ def upload_all_cdn_formats(
         For thumbnails, keys will be like "jpeg_thumbnail", "webp_small", etc.
     """
     keys: dict[str, Optional[str]] = {}
-    
+
     # Define target sizes for responsive images
     # Sizes chosen based on frontend needs:
     # - thumbnail: for ImageStack (150px) and ReceiptStack (100px) displays
@@ -302,17 +302,17 @@ def upload_all_cdn_formats(
     # - full: original size for detailed viewing
     size_configs = {
         "thumbnail": 300,  # 2x the largest display size (150px)
-        "small": 600,      # 4x display size for retina
-        "medium": 1200,    # For larger previews
+        "small": 600,  # 4x display size for retina
+        "medium": 1200,  # For larger previews
     }
-    
+
     # Generate different sizes if requested
     if generate_thumbnails:
         sizes = generate_image_sizes(image, size_configs)
         sizes["full"] = image  # Include original
     else:
         sizes = {"full": image}
-    
+
     # Upload each size in all formats
     for size_name, sized_image in sizes.items():
         # Determine key suffix
@@ -320,7 +320,7 @@ def upload_all_cdn_formats(
             size_key = base_key
         else:
             size_key = f"{base_key}_{size_name}"
-        
+
         # Upload JPEG version
         jpeg_key = f"{size_key}.jpg"
         upload_jpeg_to_s3(sized_image, s3_bucket, jpeg_key)
@@ -339,7 +339,7 @@ def upload_all_cdn_formats(
         except AVIFError as e:
             print(f"Warning: Could not upload AVIF format for {size_key}: {e}")
             keys[f"avif_{size_name}"] = None
-    
+
     # For backward compatibility, also include the original keys
     keys["jpeg"] = keys.get("jpeg_full")
     keys["webp"] = keys.get("webp_full")

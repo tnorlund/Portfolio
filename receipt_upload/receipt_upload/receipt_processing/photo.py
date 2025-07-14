@@ -441,8 +441,12 @@ def process_photo(
                 cdn_avif_s3_key=receipt_cdn_keys["avif"],
                 # Add thumbnail versions
                 cdn_thumbnail_s3_key=receipt_cdn_keys.get("jpeg_thumbnail"),
-                cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get("webp_thumbnail"),
-                cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get("avif_thumbnail"),
+                cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get(
+                    "webp_thumbnail"
+                ),
+                cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get(
+                    "avif_thumbnail"
+                ),
                 # Add small versions
                 cdn_small_s3_key=receipt_cdn_keys.get("jpeg_small"),
                 cdn_small_webp_s3_key=receipt_cdn_keys.get("webp_small"),
