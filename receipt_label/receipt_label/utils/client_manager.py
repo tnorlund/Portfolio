@@ -12,7 +12,6 @@ from typing import Any, Optional
 
 from openai import OpenAI
 from pinecone import Pinecone
-
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker

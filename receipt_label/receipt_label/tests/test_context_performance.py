@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.utils import (
     ai_usage_context,
     ai_usage_tracked,
