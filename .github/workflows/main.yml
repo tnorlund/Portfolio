@@ -550,7 +550,7 @@ jobs:
           
           echo ""
           echo "🤖 Claude Code Review available:"
-          echo "   - Automatic reviews for PRs under 1000 lines"
+          echo "   - Automatic reviews for all PRs"
           echo "   - Interactive help with @claude comments"
           echo "   - Focus on performance and architecture patterns"
           echo "   - See .github/CLAUDE.md for details"
