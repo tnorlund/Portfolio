@@ -6,6 +6,10 @@
 
 # utils/performance/monitor
 
+## Classes
+
+- [PerformanceMonitor](classes/PerformanceMonitor.md)
+
 ## Interfaces
 
 - [PerformanceMetrics](interfaces/PerformanceMetrics.md)
