@@ -201,8 +201,9 @@ The app includes a performance overlay in development showing:
 
 ## 📝 Documentation
 
+- [Performance Optimization Guide](_media/image-stack-optimization.md)
+- [Performance Monitoring Tools](_media/PERFORMANCE_MONITORING.md)
 - [API Documentation](_media/API_DOCUMENTATION.md)
-- [Performance monitoring utilities](docs/utils/performance/README.md)
 
 ## 🚢 Deployment
 

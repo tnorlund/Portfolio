@@ -6,7 +6,7 @@
 
 # Function: profileFunction()
 
-> **profileFunction**\<`T`\>(`name`, `fn`): `Promise`\<\{ `profile`: `PerformanceProfile`; `result`: `T`; \}\>
+> **profileFunction**\<`T`\>(`name`, `fn`): `Promise`\<\{ `profile`: [`PerformanceProfile`](../interfaces/PerformanceProfile.md); `result`: `T`; \}\>
 
 Defined in: [utils/performance/testing.ts:137](https://github.com/tnorlund/Portfolio/blob/187460003383ab25549f0023f303010e8b254201/portfolio/utils/performance/testing.ts#L137)
 
@@ -30,4 +30,4 @@ Profile a function and get detailed performance breakdown
 
 ## Returns
 
-`Promise`\<\{ `profile`: `PerformanceProfile`; `result`: `T`; \}\>
+`Promise`\<\{ `profile`: [`PerformanceProfile`](../interfaces/PerformanceProfile.md); `result`: `T`; \}\>

@@ -6,6 +6,10 @@
 
 # utils/performance/api-wrapper
 
+## Type Aliases
+
+- [APIFunction](type-aliases/APIFunction.md)
+
 ## Functions
 
 - [withPerformanceTracking](functions/withPerformanceTracking.md)

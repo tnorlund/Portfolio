@@ -1,6 +1,6 @@
 import { getPerformanceMonitor } from './monitor';
 
-type APIFunction<T extends any[], R> = (...args: T) => Promise<R>;
+export type APIFunction<T extends any[], R> = (...args: T) => Promise<R>;
 
 /**
  * Wraps an API function to automatically track its performance
