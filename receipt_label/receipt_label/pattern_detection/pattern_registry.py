@@ -132,11 +132,11 @@ class PatternDetectorRegistry:
 
     def _register_default_detectors(self) -> None:
         """Register the default set of pattern detectors."""
-        from receipt_label.pattern_detection.contact import (
-            ContactPatternDetector,
-        )
         from receipt_label.pattern_detection.currency import (
             CurrencyPatternDetector,
+        )
+        from receipt_label.pattern_detection.contact import (
+            ContactPatternDetector,
         )
         from receipt_label.pattern_detection.datetime_patterns import (
             DateTimePatternDetector,

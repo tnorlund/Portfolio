@@ -12,17 +12,17 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from receipt_dynamo.entities import ReceiptWord
-
-from receipt_label.pattern_detection.base import PatternType
-from receipt_label.pattern_detection.batch_processor import BATCH_PROCESSOR
-from receipt_label.pattern_detection.parallel_engine import (
-    OPTIMIZED_PATTERN_DETECTOR,
-)
-from receipt_label.pattern_detection.pattern_registry import PATTERN_REGISTRY
 from receipt_label.pattern_detection.unified_pattern_engine import (
     UNIFIED_PATTERN_ENGINE,
 )
+from receipt_label.pattern_detection.parallel_engine import (
+    OPTIMIZED_PATTERN_DETECTOR,
+)
+from receipt_label.pattern_detection.batch_processor import BATCH_PROCESSOR
+from receipt_label.pattern_detection.pattern_registry import PATTERN_REGISTRY
+from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection.base import PatternType
 
 
 class OptimizationLevel(Enum):
@@ -34,20 +34,6 @@ class OptimizationLevel(Enum):
     ADVANCED = (
         "advanced"  # Phase 3: + Trie matching + Automata + Merchant patterns
     )
-
-
-@dataclass
-class StandardizedPatternMatch:
-    """Standardized pattern match format for all optimization levels."""
-
-    word: ReceiptWord  # Primary word (first word for multi-word patterns)
-    extracted_value: Any  # The extracted value (text, number, etc.)
-    confidence: float
-    pattern_type: Optional[str] = None  # Optional pattern type
-    words: Optional[List[ReceiptWord]] = (
-        None  # All words for multi-word patterns
-    )
-    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
 
 
 @dataclass
@@ -121,11 +107,8 @@ class EnhancedPatternOrchestrator:
             results, processing_time, words
         )
 
-        # Standardize results before returning
-        standardized_results = self._standardize_results(results)
-
         return {
-            "pattern_results": standardized_results,
+            "pattern_results": results,
             "performance_metrics": metrics,
             "optimization_level": self.optimization_level.value,
             "total_processing_time_ms": processing_time,
@@ -176,16 +159,7 @@ class EnhancedPatternOrchestrator:
         self, words: List[ReceiptWord]
     ) -> Dict[str, Any]:
         """Run detection with Phase 2 optimizations."""
-        # For now, fall back to basic detection with optimizations flag
-        # The parallel engine implementation is incomplete
-        from receipt_label.pattern_detection.orchestrator import (
-            ParallelPatternOrchestrator,
-        )
-
-        optimized_orchestrator = ParallelPatternOrchestrator(
-            use_adaptive_selection=True
-        )
-        results = await optimized_orchestrator.detect_all_patterns(words)
+        results = await OPTIMIZED_PATTERN_DETECTOR.detect_patterns(words)
 
         return {
             "approach": "optimized",
@@ -195,63 +169,19 @@ class EnhancedPatternOrchestrator:
                 "batch_regex_evaluation",
                 "true_cpu_parallelism",
             ],
-            "results": results,
-            "performance_data": {},
-            "optimizations_used": {},
+            "results": results["pattern_results"],
+            "performance_data": results.get("performance_stats", {}),
+            "optimizations_used": results.get("optimizations_used", {}),
         }
 
     async def _run_advanced_detection(
         self, words: List[ReceiptWord], merchant_name: Optional[str]
     ) -> Dict[str, Any]:
         """Run detection with Phase 3 enhancements."""
-        # Run both basic patterns and advanced unified engine
-        from receipt_label.pattern_detection.orchestrator import (
-            ParallelPatternOrchestrator,
-        )
-
-        # Get basic patterns first
-        basic_orchestrator = ParallelPatternOrchestrator(
-            use_adaptive_selection=True
-        )
-        basic_results = await basic_orchestrator.detect_all_patterns(words)
-
-        # Get advanced patterns from unified engine
-        advanced_results = await UNIFIED_PATTERN_ENGINE.detect_all_patterns(
+        results = await UNIFIED_PATTERN_ENGINE.detect_all_patterns(
             words, merchant_name
         )
 
-        # Merge results - basic patterns take precedence, then add unique advanced patterns
-        merged_results = {}
-
-        # Start with basic results
-        for category, patterns in basic_results.items():
-            if category != "_metadata":
-                merged_results[category] = patterns
-
-        # Add unique patterns from advanced results
-        for category, patterns in advanced_results.items():
-            if category == "_metadata":
-                continue
-            if category not in merged_results:
-                merged_results[category] = patterns
-            else:
-                # Merge patterns, avoiding duplicates
-                existing_texts = {
-                    getattr(p, "word", p).text
-                    for p in merged_results[category]
-                    if hasattr(p, "word") or hasattr(p, "text")
-                }
-                for pattern in patterns:
-                    pattern_text = (
-                        getattr(pattern, "word", pattern).text
-                        if hasattr(pattern, "word")
-                        else getattr(pattern, "text", "")
-                    )
-                    if pattern_text not in existing_texts:
-                        merged_results[category].append(pattern)
-
-        # Merge metadata
-        merged_results["_metadata"] = advanced_results.get("_metadata", {})
 
         return {
             "approach": "advanced",
@@ -264,9 +194,11 @@ class EnhancedPatternOrchestrator:
                 "optimized_keyword_lookups",
                 "merchant_specific_patterns",
             ],
-            "results": merged_results,
-            "engines_used": ["basic_patterns", "unified_engine"],
-            "performance_data": advanced_results.get("_metadata", {}).get(
+            "results": results,
+            "engines_used": results.get("_metadata", {}).get(
+                "engines_used", []
+            ),
+            "performance_data": results.get("_metadata", {}).get(
                 "performance_stats", {}
             ),
         }
@@ -434,92 +366,6 @@ class EnhancedPatternOrchestrator:
         return min(
             base_reduction, 0.84
         )  # Cap at the 84% target from the roadmap
-
-    def _standardize_results(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert results from any optimization level to standardized format."""
-
-        # Extract the actual results based on the structure
-        if "results" in results:
-            # Legacy/Basic/Optimized format
-            pattern_results = results["results"]
-        else:
-            # Advanced format (direct pattern results)
-            pattern_results = results
-
-        standardized = {}
-
-        for category, patterns in pattern_results.items():
-            if category.startswith("_"):  # Skip metadata
-                continue
-
-            standardized_patterns = []
-
-            if isinstance(patterns, list):
-                for pattern in patterns:
-                    standardized_match = self._convert_to_standard_format(
-                        pattern, category
-                    )
-                    if standardized_match:
-                        standardized_patterns.append(standardized_match)
-
-            if standardized_patterns:
-                standardized[category] = standardized_patterns
-
-        # Preserve metadata if present
-        if "_metadata" in pattern_results:
-            standardized["_metadata"] = pattern_results["_metadata"]
-
-        # Wrap in expected structure
-        return {
-            "approach": results.get("approach", "unknown"),
-            "optimizations": results.get("optimizations", []),
-            "results": standardized,
-        }
-
-    def _convert_to_standard_format(
-        self, pattern: Any, category: str
-    ) -> Optional[StandardizedPatternMatch]:
-        """Convert a pattern match from any format to standardized format."""
-
-        # Handle legacy format (has .word and .extracted_value attributes)
-        if hasattr(pattern, "word") and hasattr(pattern, "extracted_value"):
-            return StandardizedPatternMatch(
-                word=pattern.word,
-                extracted_value=pattern.extracted_value,
-                confidence=getattr(pattern, "confidence", 1.0),
-                pattern_type=category,
-                words=[pattern.word],
-                metadata=getattr(pattern, "metadata", {}),
-            )
-
-        # Handle UnifiedMatch format from advanced mode
-        elif hasattr(pattern, "words") and hasattr(pattern, "extracted_value"):
-            primary_word = pattern.words[0] if pattern.words else None
-            if primary_word:
-                return StandardizedPatternMatch(
-                    word=primary_word,
-                    extracted_value=pattern.extracted_value,
-                    confidence=pattern.confidence,
-                    pattern_type=category,
-                    words=pattern.words,
-                    metadata=pattern.metadata,
-                )
-
-        # Handle dict format
-        elif isinstance(pattern, dict):
-            # Try to extract required fields
-            if "word" in pattern and "extracted_value" in pattern:
-                return StandardizedPatternMatch(
-                    word=pattern["word"],
-                    extracted_value=pattern["extracted_value"],
-                    confidence=pattern.get("confidence", 1.0),
-                    pattern_type=category,
-                    words=pattern.get("words", [pattern["word"]]),
-                    metadata=pattern.get("metadata", {}),
-                )
-
-        # Could not convert
-        return None
 
     def get_optimization_summary(self) -> Dict[str, Any]:
         """Get a comprehensive summary of all available optimizations."""

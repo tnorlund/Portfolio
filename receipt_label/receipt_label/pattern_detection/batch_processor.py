@@ -223,11 +223,11 @@ class HybridBatchDetector:
 
     def _initialize_individual_detectors(self) -> None:
         """Initialize individual detectors for fallback mode."""
-        from receipt_label.pattern_detection.contact import (
-            ContactPatternDetector,
-        )
         from receipt_label.pattern_detection.currency import (
             CurrencyPatternDetector,
+        )
+        from receipt_label.pattern_detection.contact import (
+            ContactPatternDetector,
         )
         from receipt_label.pattern_detection.datetime_patterns import (
             DateTimePatternDetector,

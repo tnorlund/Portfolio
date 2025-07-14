@@ -35,14 +35,14 @@ from receipt_label.pattern_detection.enhanced_orchestrator import (
     compare_optimization_performance,
     detect_patterns_optimized,
 )
-from receipt_label.pattern_detection.orchestrator import (
-    ParallelPatternOrchestrator,
+from receipt_label.pattern_detection.unified_pattern_engine import (
+    UNIFIED_PATTERN_ENGINE,
 )
 from receipt_label.pattern_detection.parallel_engine import (
     OPTIMIZED_PATTERN_DETECTOR,
 )
-from receipt_label.pattern_detection.unified_pattern_engine import (
-    UNIFIED_PATTERN_ENGINE,
+from receipt_label.pattern_detection.orchestrator import (
+    ParallelPatternOrchestrator,
 )
 
 

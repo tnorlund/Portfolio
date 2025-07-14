@@ -6,7 +6,7 @@ including selective invocation, batch processing, and pattern optimization utili
 """
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional, Any
 
 from receipt_dynamo.entities import ReceiptWord
 

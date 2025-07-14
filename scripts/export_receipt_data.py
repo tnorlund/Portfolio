@@ -19,20 +19,20 @@ from receipt_dynamo.constants import ImageType
 
 def main():
     parser = argparse.ArgumentParser(description="Export receipt data")
-    subparsers = parser.add_subparsers(dest='command')
-    
-    sample_parser = subparsers.add_parser('sample')
-    sample_parser.add_argument('--size', type=int, default=20)
-    sample_parser.add_argument('--output-dir', default='./receipt_data')
-    
+    subparsers = parser.add_subparsers(dest="command")
+
+    sample_parser = subparsers.add_parser("sample")
+    sample_parser.add_argument("--size", type=int, default=20)
+    sample_parser.add_argument("--output-dir", default="./receipt_data")
+
     args = parser.parse_args()
-    
-    table_name = os.environ.get('DYNAMODB_TABLE_NAME')
+
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME")
     if not table_name:
         print("Error: DYNAMODB_TABLE_NAME environment variable not set")
         sys.exit(1)
-    
-    if args.command == 'sample':
+
+    if args.command == "sample":
         client = DynamoClient(table_name)
         # Get sample images using list_images
         images, _ = client.list_images(limit=args.size)
