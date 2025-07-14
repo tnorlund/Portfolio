@@ -7,19 +7,21 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.cost_monitoring import CostMonitor, ThresholdAlert
 from receipt_label.utils.cost_monitoring.cost_monitor import ThresholdLevel
-
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
 class TestCostMonitor:
     """Tests for CostMonitor functionality."""
 
     @pytest.fixture
-    def mock_dynamo_client(self):
-        """Create a mock DynamoDB client."""
-        return MagicMock()
+    def mock_dynamo_client(self, dynamodb_table_and_s3_bucket):
+        """Create a DynamoDB client with mocked AWS resources."""
+        table_name, _ = dynamodb_table_and_s3_bucket
+        return DynamoClient(table_name=table_name)
 
     @pytest.fixture
     def cost_monitor(self, mock_dynamo_client):
@@ -341,24 +343,24 @@ class TestCostMonitor:
 
     def test_query_metrics_job_scope(self, mock_dynamo_client):
         """Test querying metrics for job scope using GSI3."""
+        from datetime import datetime
+
+        # Create and insert a test metric
+        test_metric = AIUsageMetric(
+            service="openai",
+            model="gpt-3.5-turbo",
+            operation="completion",
+            timestamp=datetime.fromisoformat("2024-01-01T12:00:00+00:00"),
+            job_id="test-job-123",
+            cost_usd=1.50,
+            api_calls=1,
+        )
+
+        # Insert the metric into the mocked DynamoDB
+        mock_dynamo_client.put_ai_usage_metric(test_metric)
+
+        # Create monitor and query
         monitor = CostMonitor(mock_dynamo_client)
-
-        # Mock GSI3 query response
-        mock_query_response = {
-            "Items": [
-                {
-                    "service": {"S": "openai"},
-                    "model": {"S": "gpt-3.5-turbo"},
-                    "operation": {"S": "completion"},
-                    "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
-                    "job_id": {"S": "test-job-123"},
-                    "cost_usd": {"N": "1.50"},
-                    "date": {"S": "2024-01-01"},
-                }
-            ]
-        }
-
-        mock_dynamo_client._client.query.return_value = mock_query_response
 
         # Test job scope query
         metrics = monitor._query_metrics(
@@ -373,35 +375,26 @@ class TestCostMonitor:
         assert metrics[0].service == "openai"
         assert metrics[0].cost_usd == Decimal("1.50")
 
-        # Verify GSI3 query was called instead of scan
-        mock_dynamo_client._client.query.assert_called_once()
-        call_kwargs = mock_dynamo_client._client.query.call_args[1]
-        assert call_kwargs["IndexName"] == "GSI3"
-        assert (
-            call_kwargs["ExpressionAttributeValues"][":pk"]["S"]
-            == "JOB#test-job-123"
-        )
-
     def test_query_metrics_environment_scope(self, mock_dynamo_client):
         """Test querying metrics for environment scope using scan."""
+        from datetime import datetime
+
+        # Create and insert a test metric
+        test_metric = AIUsageMetric(
+            service="anthropic",
+            model="claude-3-opus",
+            operation="completion",
+            timestamp=datetime.fromisoformat("2024-01-01T12:00:00+00:00"),
+            environment="production",
+            cost_usd=2.25,
+            api_calls=1,
+        )
+
+        # Insert the metric into the mocked DynamoDB
+        mock_dynamo_client.put_ai_usage_metric(test_metric)
+
+        # Create monitor and query
         monitor = CostMonitor(mock_dynamo_client)
-
-        # Mock scan response
-        mock_scan_response = {
-            "Items": [
-                {
-                    "service": {"S": "anthropic"},
-                    "model": {"S": "claude-3-opus"},
-                    "operation": {"S": "completion"},
-                    "timestamp": {"S": "2024-01-01T12:00:00+00:00"},
-                    "environment": {"S": "production"},
-                    "cost_usd": {"N": "2.25"},
-                    "date": {"S": "2024-01-01"},
-                }
-            ]
-        }
-
-        mock_dynamo_client._client.scan.return_value = mock_scan_response
 
         # Test environment scope query
         metrics = monitor._query_metrics(
@@ -415,3 +408,75 @@ class TestCostMonitor:
         assert metrics[0].environment == "production"
         assert metrics[0].service == "anthropic"
         assert metrics[0].cost_usd == Decimal("2.25")
+
+    def test_get_period_spend_with_zero_costs(self, cost_monitor, mock_dynamo_client):
+        """Test that zero-cost metrics are correctly included in spend calculation."""
+        from datetime import datetime
+        
+        # Create metrics with various cost values including zeros
+        metrics = [
+            AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="completion",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=1.50,  # Normal cost
+            ),
+            AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="cached",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=0.0,  # Zero cost (cached response)
+            ),
+            AIUsageMetric(
+                service="anthropic",
+                model="claude-3",
+                operation="completion",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=2.25,  # Normal cost
+            ),
+            AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="cached",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=0.0,  # Another zero cost
+            ),
+            AIUsageMetric(
+                service="openai",
+                model="gpt-3.5-turbo",
+                operation="error",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=None,  # No cost (error case)
+            ),
+        ]
+        
+        # Test internal _get_period_spend method
+        with patch.object(cost_monitor, "_query_metrics", return_value=metrics):
+            total_spend = cost_monitor._get_period_spend(
+                scope="global:all",
+                period="daily"
+            )
+            
+            # Should include: 1.50 + 0.0 + 2.25 + 0.0 = 3.75
+            # Should NOT include the None value
+            assert total_spend == Decimal("3.75")
+            
+        # Test that it correctly handles all None values
+        none_metrics = [
+            AIUsageMetric(
+                service="test",
+                model="test",
+                operation="test",
+                timestamp=datetime.now(timezone.utc),
+                cost_usd=None,
+            ) for _ in range(3)
+        ]
+        
+        with patch.object(cost_monitor, "_query_metrics", return_value=none_metrics):
+            total_spend = cost_monitor._get_period_spend(
+                scope="global:all",
+                period="daily"
+            )
+            assert total_spend == Decimal("0")

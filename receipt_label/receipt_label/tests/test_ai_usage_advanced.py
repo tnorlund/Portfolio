@@ -19,7 +19,6 @@ from freezegun import freeze_time
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
-
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
