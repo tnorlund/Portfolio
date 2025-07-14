@@ -11,6 +11,10 @@
 - [FormatSupport](interfaces/FormatSupport.md)
 - [ImageFormats](interfaces/ImageFormats.md)
 
+## Type Aliases
+
+- [ImageSize](type-aliases/ImageSize.md)
+
 ## Functions
 
 - [detectImageFormatSupport](functions/detectImageFormatSupport.md)

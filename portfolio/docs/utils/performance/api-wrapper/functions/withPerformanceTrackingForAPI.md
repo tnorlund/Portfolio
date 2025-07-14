@@ -1,0 +1,33 @@
+[**portfolio**](../../../../README.md)
+
+***
+
+[portfolio](../../../../modules.md) / [utils/performance/api-wrapper](../README.md) / withPerformanceTrackingForAPI
+
+# Function: withPerformanceTrackingForAPI()
+
+> **withPerformanceTrackingForAPI**\<`T`\>(`api`, `prefix`): `T`
+
+Defined in: [utils/performance/api-wrapper.ts:42](https://github.com/tnorlund/Portfolio/blob/66e0b749b6ce1eda08da76d279914f09333252c9/portfolio/utils/performance/api-wrapper.ts#L42)
+
+Wraps all methods of an API object to track performance
+
+## Type Parameters
+
+### T
+
+`T` *extends* `Record`\<`string`, `any`\>
+
+## Parameters
+
+### api
+
+`T`
+
+### prefix
+
+`string` = `''`
+
+## Returns
+
+`T`
