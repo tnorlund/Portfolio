@@ -8,7 +8,7 @@
 
 > **theilSen**(`pts`): `object`
 
-Defined in: [utils/geometry/basic.ts:97](https://github.com/tnorlund/Portfolio/blob/9c3b6b445df61d0f11eac4aa1a6221384f96b729/portfolio/utils/geometry/basic.ts#L97)
+Defined in: [utils/geometry/basic.ts:97](https://github.com/tnorlund/Portfolio/blob/cfacd1ba52b097157cf91fcd1d100902a8f59a1f/portfolio/utils/geometry/basic.ts#L97)
 
 Perform Theil–Sen regression to estimate a line through a set of
 points.
