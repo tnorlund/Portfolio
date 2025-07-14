@@ -19,7 +19,7 @@ export interface PerformanceMetrics {
   imageLoadTime?: Record<string, number>;
 }
 
-class PerformanceMonitor {
+export class PerformanceMonitor {
   private metrics: PerformanceMetrics = {};
   private observers: Map<string, PerformanceObserver> = new Map();
   private listeners: Set<(metrics: PerformanceMetrics) => void> = new Set();
