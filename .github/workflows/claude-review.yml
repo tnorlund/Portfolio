@@ -115,14 +115,13 @@ jobs:
 
   claude-review:
     name: Claude Code Review
-    needs: [manage-comments]
     if: |
-      (github.event_name == 'pull_request' && github.event.action != 'closed' && needs.manage-comments.outputs.should_review == 'true') ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed')
     
-    # Run on self-hosted runner for cost optimization
-    runs-on: [self-hosted, macOS, ARM64]
+    # Use GitHub-hosted runner for reliable authentication
+    runs-on: ubuntu-latest
     
     permissions:
       contents: read
@@ -189,7 +188,7 @@ jobs:
         with:
           script: |
             console.log('Claude review workflow completed');
-            console.log('PR size:', '${{ needs.manage-comments.outputs.pr_size || "N/A" }}');
+            console.log('Event type:', '${{ github.event_name }}');
             console.log('Review triggered:', '${{ steps.claude-review.outcome }}');
 
   cleanup-on-merge:
