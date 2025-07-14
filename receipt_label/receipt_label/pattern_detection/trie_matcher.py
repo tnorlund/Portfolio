@@ -158,10 +158,14 @@ class AhoCorasickMatcher:
         matches = []
         current_node = self.root
         
+        # Track positions of non-noise words for accurate span calculation
+        non_noise_positions = []
+        
         for i, word in enumerate(words):
             if word.is_noise:
                 continue
-                
+            
+            non_noise_positions.append(i)
             word_text = word.text.lower().strip()
             
             # Follow failure links until we find a match or reach root
@@ -173,12 +177,15 @@ class AhoCorasickMatcher:
                 current_node = current_node.children[word_text]
             
             # Check for matches at current position
-            matches.extend(self._collect_matches_at_position(current_node, words, i))
+            # Pass both the actual position and the non-noise positions
+            matches.extend(self._collect_matches_at_position(
+                current_node, words, i, non_noise_positions
+            ))
         
         return matches
     
     def _collect_matches_at_position(self, node: TrieNode, words: List[ReceiptWord], 
-                                   end_position: int) -> List[MultiWordMatch]:
+                                   end_position: int, non_noise_positions: List[int]) -> List[MultiWordMatch]:
         """Collect all pattern matches ending at the current position."""
         matches = []
         current = node
@@ -186,20 +193,37 @@ class AhoCorasickMatcher:
         while current:
             if current.is_end_of_pattern:
                 for pattern, pattern_type in current.patterns:
-                    # Calculate start position
+                    # Calculate how many non-noise words are in the pattern
                     pattern_words = self._tokenize_pattern(pattern)
-                    start_position = max(0, end_position - len(pattern_words) + 1)
+                    pattern_length = len(pattern_words)
                     
-                    # Extract matching words
+                    # Find the current position in the non-noise sequence
+                    current_non_noise_idx = non_noise_positions.index(end_position)
+                    
+                    # Calculate the start index in the non-noise sequence
+                    start_non_noise_idx = max(0, current_non_noise_idx - pattern_length + 1)
+                    
+                    # Extract matching words using actual positions
                     matched_words = []
-                    for word_idx in range(start_position, end_position + 1):
-                        if word_idx < len(words) and not words[word_idx].is_noise:
-                            matched_words.append(words[word_idx])
+                    for idx in range(start_non_noise_idx, current_non_noise_idx + 1):
+                        if idx < len(non_noise_positions):
+                            word_position = non_noise_positions[idx]
+                            if word_position < len(words):
+                                matched_words.append(words[word_position])
                     
                     if matched_words:
                         confidence = self._calculate_match_confidence(
                             pattern, matched_words, MatchType.EXACT
                         )
+                        
+                        # Get actual word positions in the original words list
+                        # These are the indices where matched_words appear in the words list
+                        if start_non_noise_idx < len(non_noise_positions):
+                            start_position = non_noise_positions[start_non_noise_idx]
+                        else:
+                            start_position = 0
+                            
+                        # end_position is already the correct index in the words list
                         
                         match = MultiWordMatch(
                             words=matched_words,
