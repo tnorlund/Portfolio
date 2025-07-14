@@ -1,4 +1,4 @@
-name: Claude Code Review
+name: Claude Code Analysis
 
 on:
   issue_comment:
@@ -14,14 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  claude-review:
-    name: Claude Code Review
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request' && github.event.action != 'closed')
-    
-    # Use GitHub-hosted runner for reliable authentication
+  # Automated comprehensive review for all PRs
+  automated-review:
+    name: Automated Claude Review
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     
     permissions:
@@ -35,75 +31,139 @@ jobs:
         with:
           fetch-depth: 0  # Full history for comprehensive analysis
           
-      - name: Claude Code Review
-        id: claude-review
-        uses: anthropics/claude-code-action@v0.0.32
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          # Use Claude subscription instead of API key
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '20'
           
-          # Cost optimization settings
-          max_turns: "10"             # Allow complete review execution
-          timeout_minutes: "20"       # Prevent runaway costs
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude doctor  # Verify installation
           
-          # Review configuration
-          trigger_phrase: "@claude"   # Only respond when mentioned
+      - name: Comprehensive Code Review with Claude CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          # Create comprehensive review prompt
+          cat > review_prompt.md << 'EOF'
+          Please perform a comprehensive code review of this pull request. 
+
+          ## Review Context
+          Read CLAUDE.md first to understand repository guidelines, then analyze this PR systematically.
+
+          ## Focus Areas (High Priority)
+          1. **Performance implications** - test timeouts, CI optimization patterns, execution bottlenecks
+          2. **Package boundary violations** - strict separation between receipt_dynamo (data layer) and receipt_label (business logic)  
+          3. **Critical bugs or security issues** - authentication, data validation, error handling, runtime failures
+          4. **Architecture alignment** - consistency with CI optimization patterns and self-hosted runners
+
+          ## Additional Analysis (Medium Priority)
+          5. **Pattern detection logic** - overlapping matches, race conditions, algorithm correctness
+          6. **Cost optimization** - AWS resource usage, API call efficiency, DynamoDB query patterns
+          7. **Test strategy** - integration with optimized test matrix and parallel execution
+          8. **DynamoDB best practices** - GSI usage, query patterns, resilience patterns
+
+          ## Repository Context
+          - Uses optimized CI with self-hosted ARM64 runners
+          - Recent 48% CI execution time reduction through test optimization  
+          - Strict package separation: receipt_dynamo (data) vs receipt_label (business logic)
+          - DynamoDB with 4 GSIs for different query patterns
+          - Cost-optimized GitHub Actions workflow ($48/month → $5/month target)
+
+          ## Instructions
+          1. Read all changed files in this PR
+          2. For each significant finding, provide:
+             - File path and line numbers
+             - Description of the issue/concern
+             - Specific recommendation for improvement
+             - Severity level (Critical/High/Medium/Low)
+          3. Skip minor style issues (handled by auto-formatters)
+          4. Focus on actionable, concrete improvements
+          5. Be thorough but concise
+
+          Analyze the PR changes and provide detailed findings.
+          EOF
+
+          # Run Claude Code CLI with comprehensive review
+          echo "🤖 Starting comprehensive code review with Claude CLI..."
           
-          # Automatic PR review prompt (for pull_request events)
-          direct_prompt: |
-            Please perform a thorough code review of this pull request. I need you to:
+          if claude -p "$(cat review_prompt.md)" --output-format markdown > claude_review.md 2>&1; then
+            echo "✅ Claude review completed successfully"
             
-            1. Read CLAUDE.md to understand the repository context and guidelines
-            2. Identify all changed files in this PR
-            3. For each changed file, read the content and analyze for:
-               - Performance implications (test timeouts, CI optimization)
-               - Package boundary violations (receipt_dynamo vs receipt_label separation)
-               - Critical bugs or security issues
-               - Architecture alignment issues
-            4. Provide a comprehensive review comment with specific findings, line numbers, and actionable recommendations
+            # Add header to review
+            {
+              echo "## 🤖 Automated Claude Code Review"
+              echo ""
+              echo "_Generated by Claude CLI on $(date)_"
+              echo ""
+              cat claude_review.md
+            } > final_review.md
             
-            Important: Do not stop after creating a checklist. Continue working until you have analyzed the actual code changes and provided detailed feedback. Use multiple conversation turns to read files and build up your analysis, then provide a final comprehensive review.
+            # Post results as PR comment
+            gh pr comment ${{ github.event.pull_request.number }} --body-file final_review.md
+          else
+            echo "❌ Claude review failed, posting error"
+            cat > error_review.md << 'ERROR_EOF'
+          ## 🤖 Claude Code Review - Error
           
-          # Comprehensive review guidelines for manual mentions
-          custom_instructions: |
-            You are reviewing a pull request in a portfolio project with optimized CI/CD. Focus on:
-
-            ## High Priority Issues:
-            1. **Performance implications** - especially test timeouts and CI optimization patterns
-            2. **Package boundary violations** - strict separation between receipt_dynamo (data layer) and receipt_label (business logic)
-            3. **Critical bugs or security issues** - authentication, data validation, error handling
-            4. **Architecture alignment** - with existing CI optimization patterns and self-hosted runners
-
-            ## Medium Priority:
-            5. **Pattern detection logic** - overlapping matches, race conditions (recent area of focus)
-            6. **Cost optimization** - AWS resource usage, API call efficiency
-            7. **Test strategy** - integration with optimized test matrix and parallel execution
-            8. **DynamoDB best practices** - GSI usage, query patterns, resilience
-
-            ## Skip Commenting On:
-            - Minor style issues (handled by auto-formatters)
-            - Missing docstrings (unless critical for public APIs)
-            - Variable naming (unless very unclear)
-            - Type hints (unless missing in critical paths)
-
-            ## Context:
-            - Uses optimized CI with self-hosted ARM64 runners
-            - Recent 48% CI execution time reduction through test optimization
-            - Strict package separation: receipt_dynamo (data) vs receipt_label (business logic)
-            - DynamoDB with 4 GSIs for different query patterns
-            - Cost-optimized GitHub Actions workflow ($48/month → $5/month target)
-
-            Be concise and actionable. Reference specific lines and suggest concrete improvements.
+          The automated code review encountered an error. Please check the workflow logs for details.
+          
+          You can still request manual assistance by commenting `@claude` with specific questions.
+          ERROR_EOF
+            
+            gh pr comment ${{ github.event.pull_request.number }} --body-file error_review.md
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Integration status
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            console.log('Claude review workflow completed');
+            console.log('Automated Claude review completed');
             console.log('Event type:', '${{ github.event_name }}');
-            console.log('Review triggered:', '${{ steps.claude-review.outcome }}');
+            console.log('Review file created:', '${{ hashFiles('claude_review.md') }}');
+
+  # Manual assistance when @claude is mentioned
+  manual-assistance:
+    name: Manual Claude Assistance
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Claude Manual Assistance
+        uses: anthropics/claude-code-action@v0.0.32
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          trigger_phrase: "@claude"
+          max_turns: "5"
+          timeout_minutes: "10"
+          custom_instructions: |
+            You are providing targeted assistance for a portfolio project with optimized CI/CD.
+            
+            Focus on answering the specific question asked. Key context:
+            - Strict package separation: receipt_dynamo (data) vs receipt_label (business logic)
+            - Optimized CI with self-hosted ARM64 runners  
+            - Cost-optimized GitHub Actions workflow
+            - DynamoDB with 4 GSIs for different query patterns
+            
+            Be helpful, concise, and actionable. Reference specific files/lines when relevant.
 
   cleanup-on-merge:
     name: Cleanup Comments on Merge
