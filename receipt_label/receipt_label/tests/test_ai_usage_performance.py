@@ -448,7 +448,10 @@ class TestMemoryEfficiency:
         """Test that memory usage remains stable during extended operation."""
         import gc
 
-        import psutil
+        try:
+            import psutil
+        except ImportError:
+            pytest.skip("psutil not installed, skipping memory test")
 
         process = psutil.Process()
         initial_memory = process.memory_info().rss

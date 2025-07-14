@@ -12,13 +12,10 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from receipt_label.models.analysis import (
-    LabelAnalysis,
-    ValidationAnalysis,
-    StructureAnalysis,
-    LineItemAnalysis
-)
-from receipt_label.models.label import WordLabel
+from receipt_label.models.label import LabelAnalysis, WordLabel
+from receipt_label.models.validation import ValidationAnalysis
+from receipt_label.models.structure import StructureAnalysis
+from receipt_label.models.line_item import LineItemAnalysis
 
 
 @pytest.fixture
@@ -31,49 +28,6 @@ def use_stub_apis():
 def stub_label_analysis():
     """Provide a canned LabelAnalysis response."""
     return LabelAnalysis(
-        version="1.0.0",
-        timestamp=datetime.utcnow().isoformat() + "Z",
-        merchant_name="Stubbed Merchant",
-        location={
-            "store_name": "Stubbed Store #123",
-            "address": "123 Test Street",
-            "city": "Test City",
-            "state": "TS",
-            "postal_code": "12345",
-            "country": "US"
-        },
-        datetime={
-            "date": "2024-01-15",
-            "time": "14:30:00",
-            "timezone": "America/New_York"
-        },
-        totals={
-            "subtotal": 25.99,
-            "tax": 2.08,
-            "tip": 0.00,
-            "total": 28.07,
-            "paid": 28.07,
-            "currency": "USD"
-        },
-        payment_methods=[{
-            "type": "CREDIT_CARD",
-            "amount": 28.07,
-            "last_four": "4242"
-        }],
-        line_items=[
-            {
-                "name": "Test Item 1",
-                "quantity": 2,
-                "unit_price": 9.99,
-                "total_price": 19.98
-            },
-            {
-                "name": "Test Item 2", 
-                "quantity": 1,
-                "unit_price": 6.01,
-                "total_price": 6.01
-            }
-        ],
         labels=[
             WordLabel(word_id=1, label="MERCHANT_NAME", confidence=0.95),
             WordLabel(word_id=5, label="DATE", confidence=0.90),
@@ -81,6 +35,13 @@ def stub_label_analysis():
             WordLabel(word_id=11, label="TAX", confidence=0.91),
             WordLabel(word_id=12, label="TOTAL", confidence=0.95)
         ],
+        receipt_id="1",
+        image_id="550e8400-e29b-41d4-a716-446655440001",
+        sections=[],
+        total_labeled_words=5,
+        requires_review=False,
+        review_reasons=[],
+        analysis_reasoning="Stubbed analysis for testing",
         metadata={
             "confidence": 0.92,
             "processing_time_ms": 150,
