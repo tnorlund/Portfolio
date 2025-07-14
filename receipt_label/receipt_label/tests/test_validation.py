@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_label.models.receipt import ReceiptLine
 from receipt_label.utils.validation import (
     validate_address,

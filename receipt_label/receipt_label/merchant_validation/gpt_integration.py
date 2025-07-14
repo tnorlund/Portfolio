@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from typing import Any, Dict, List
 
 from openai import OpenAIError
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
