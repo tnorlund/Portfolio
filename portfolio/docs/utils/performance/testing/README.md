@@ -12,6 +12,8 @@
 
 ## Interfaces
 
+- [MemoryUsage](interfaces/MemoryUsage.md)
+- [PerformanceProfile](interfaces/PerformanceProfile.md)
 - [PerformanceTest](interfaces/PerformanceTest.md)
 - [PerformanceTestResult](interfaces/PerformanceTestResult.md)
 
