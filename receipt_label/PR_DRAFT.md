@@ -154,6 +154,75 @@ The decision engine will:
 - Update merchant-specific patterns
 - Optimize decision thresholds
 
+## Pinecone Integration for Smart Decision Engine
+
+Based on analysis of the existing codebase, the Smart Decision Engine can leverage Pinecone DB to make intelligent, merchant-aware decisions about when to skip GPT calls.
+
+### Current Pinecone Infrastructure
+
+The system uses a sophisticated multi-namespace Pinecone setup:
+- **`words` namespace**: Individual word embeddings with spatial context
+- **`lines` namespace**: Line embeddings with vertical context
+- **Merchant metadata**: Each vector includes `merchant_name`, `valid_labels`, `invalid_labels`
+- **Validation tracking**: Historical pattern validation for confidence scoring
+
+### Enhanced Decision Logic with Pinecone
+
+The decision engine can query Pinecone to:
+
+1. **Assess Merchant Coverage**: Determine expected pattern coverage based on historical data
+   ```python
+   # Query merchant-specific pattern reliability
+   query_response = pinecone_client.query(
+       filter={
+           "merchant_name": merchant_name,
+           "valid_labels": {"$exists": True}
+       },
+       namespace="words"
+   )
+   expected_coverage = validated_patterns / total_words * 100
+   ```
+
+2. **Validate Pattern Confidence**: Cross-check detected patterns against validated data
+   ```python
+   # Verify pattern matches have been validated before
+   validation_query = pinecone_client.query(
+       vector=text_embedding,
+       filter={
+           "merchant_name": merchant_name,
+           "valid_labels": {"$in": [detected_label]}
+       }
+   )
+   ```
+
+3. **Dynamic Threshold Adjustment**: Adapt decision thresholds based on merchant reliability
+   ```python
+   # Adjust coverage threshold based on merchant history
+   if merchant_expected_coverage > 85:
+       adjusted_threshold = base_threshold - 5  # More lenient
+   elif merchant_expected_coverage < 60:
+       adjusted_threshold = base_threshold + 10  # More strict
+   ```
+
+### Integration Benefits
+
+- **Merchant-Aware Decisions**: Different confidence levels for Walmart vs unknown merchants
+- **Historical Validation**: Leverage previously validated patterns to boost confidence  
+- **Adaptive Learning**: System gets smarter as more merchants are validated
+- **Better Coverage Estimation**: Predict expected pattern coverage before deciding
+- **Pattern Cross-Validation**: Verify new patterns against historical merchant data
+
+### Implementation Strategy
+
+The enhanced decision engine will:
+1. Query Pinecone for merchant-specific coverage expectations
+2. Validate detected patterns against historical validation data
+3. Adjust decision thresholds dynamically based on merchant confidence
+4. Use spatial context metadata for improved pattern matching
+5. Track validation status to avoid applying incorrect patterns
+
+This Pinecone integration should improve the decision engine's accuracy and help achieve the 84% GPT skip rate more reliably by making merchant-specific intelligent decisions rather than using global thresholds for all receipts.
+
 ---
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
