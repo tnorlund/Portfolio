@@ -28,20 +28,17 @@ jobs:
         with:
           node-version: '20'
           
-      - name: Check Authentication
+      - name: Test Claude CLI Installation
         env:
-          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "Checking secrets availability..."
-          if [ -n "$API_KEY" ]; then
-            echo "✅ ANTHROPIC_API_KEY is available"
-          else
-            echo "❌ ANTHROPIC_API_KEY is not available"
-          fi
+          echo "🔧 Installing Claude CLI..."
+          npm install -g @anthropic-ai/claude-code
           
-          if [ -n "$OAUTH_TOKEN" ]; then
-            echo "✅ CLAUDE_CODE_OAUTH_TOKEN is available"
-          else
-            echo "❌ CLAUDE_CODE_OAUTH_TOKEN is not available"
-          fi
+          echo "📋 Checking installation..."
+          which claude || echo "❌ Claude CLI not found in PATH"
+          
+          echo "🩺 Running claude doctor..."
+          claude doctor || echo "❌ Claude doctor failed"
+          
+          echo "✅ Claude CLI test completed"
