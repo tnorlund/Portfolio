@@ -44,21 +44,23 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
           # Cost optimization settings
-          max_turns: "3"              # Limit conversation length
-          timeout_minutes: "15"       # Prevent runaway costs
+          max_turns: "10"             # Allow complete review execution
+          timeout_minutes: "20"       # Prevent runaway costs
           
           # Review configuration
           trigger_phrase: "@claude"   # Only respond when mentioned
           
           # Automatic PR review prompt (for pull_request events)
           direct_prompt: |
-            Review this pull request focusing on:
-            1. Performance implications - especially test timeouts and CI optimization patterns
-            2. Package boundary violations - strict separation between receipt_dynamo (data layer) and receipt_label (business logic)
-            3. Critical bugs or security issues - authentication, data validation, error handling
-            4. Architecture alignment - with existing CI optimization patterns and self-hosted runners
+            Perform a complete code review of this pull request. Read CLAUDE.md for context, then analyze every changed file.
             
-            Be concise and actionable. Reference specific lines and suggest concrete improvements.
+            Review priorities:
+            1. Performance implications - test timeouts, CI optimization patterns
+            2. Package boundary violations - receipt_dynamo (data) vs receipt_label (business logic)
+            3. Critical bugs or security issues - authentication, data validation, error handling
+            4. Architecture alignment - CI optimization patterns, self-hosted runners
+            
+            Do NOT just create a checklist - actually perform the review. Read each changed file, analyze the code, and provide specific feedback with line numbers. Complete the entire review before finishing.
           
           # Comprehensive review guidelines for manual mentions
           custom_instructions: |
