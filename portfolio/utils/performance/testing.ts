@@ -159,7 +159,7 @@ export async function profileFunction<T>(
   return { result, profile };
 }
 
-interface PerformanceProfile {
+export interface PerformanceProfile {
   name: string;
   startTime: number;
   endTime: number;
@@ -169,7 +169,7 @@ interface PerformanceProfile {
   markers: Array<{ name: string; time: number }>;
 }
 
-interface MemoryUsage {
+export interface MemoryUsage {
   usedJSHeapSize: number;
   totalJSHeapSize: number;
   jsHeapSizeLimit: number;

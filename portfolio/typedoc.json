@@ -20,5 +20,6 @@
   "excludePrivate": true,
   "excludeProtected": true,
   "excludeInternal": true,
-  "sort": ["required-first", "alphabetical"]
+  "sort": ["required-first", "alphabetical"],
+  "treatWarningsAsErrors": true
 }
