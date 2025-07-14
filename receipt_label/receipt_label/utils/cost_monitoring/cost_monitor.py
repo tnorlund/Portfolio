@@ -121,7 +121,7 @@ class CostMonitor:
         current_spend = self._get_period_spend(scope, period)
 
         # Add the new usage cost
-        new_total = current_spend + (current_usage.cost_usd or Decimal("0"))
+        new_total = current_spend + Decimal(str(current_usage.cost_usd or 0))
 
         # Calculate percentage of budget used
         if budget_limit == 0:
@@ -192,7 +192,7 @@ class CostMonitor:
         breakdown: Dict[str, Decimal] = {}
         for metric in metrics:
             service = metric.service
-            cost = metric.cost_usd or Decimal("0")
+            cost = Decimal(str(metric.cost_usd or 0))
             breakdown[service] = breakdown.get(service, Decimal("0")) + cost
 
         return breakdown
@@ -221,8 +221,8 @@ class CostMonitor:
         # Sum costs
         total = Decimal("0")
         for metric in metrics:
-            if metric.cost_usd:
-                total += metric.cost_usd
+            if metric.cost_usd is not None:
+                total += Decimal(str(metric.cost_usd))
 
         return total
 
@@ -757,17 +757,21 @@ class CostMonitor:
                 model=model,
                 operation=operation,
                 timestamp=timestamp,
-                request_id=get_string_value("requestId"),
-                input_tokens=get_int_value("inputTokens"),
-                output_tokens=get_int_value("outputTokens"),
-                total_tokens=get_int_value("totalTokens"),
-                api_calls=get_int_value("apiCalls") or 1,
-                cost_usd=get_decimal_value("costUSD"),
-                latency_ms=get_int_value("latencyMs"),
-                user_id=get_string_value("userId"),
-                job_id=get_string_value("jobId"),
-                batch_id=get_string_value("batchId"),
-                github_pr=get_int_value("githubPR"),
+                request_id=get_string_value("request_id"),
+                input_tokens=get_int_value("input_tokens"),
+                output_tokens=get_int_value("output_tokens"),
+                total_tokens=get_int_value("total_tokens"),
+                api_calls=get_int_value("api_calls") or 1,
+                cost_usd=(
+                    float(cost_val)
+                    if (cost_val := get_decimal_value("cost_usd")) is not None
+                    else None
+                ),
+                latency_ms=get_int_value("latency_ms"),
+                user_id=get_string_value("user_id"),
+                job_id=get_string_value("job_id"),
+                batch_id=get_string_value("batch_id"),
+                github_pr=get_int_value("github_pr"),
                 environment=get_string_value("environment"),
                 error=get_string_value("error"),
             )
