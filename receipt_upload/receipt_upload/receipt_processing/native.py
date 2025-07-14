@@ -66,7 +66,10 @@ def process_native(
     # Upload images to S3
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
     cdn_keys = upload_all_cdn_formats(
-        image, site_bucket, f"assets/{ocr_job.image_id}", generate_thumbnails=True
+        image,
+        site_bucket,
+        f"assets/{ocr_job.image_id}",
+        generate_thumbnails=True,
     )
 
     # Calculate image hash once
