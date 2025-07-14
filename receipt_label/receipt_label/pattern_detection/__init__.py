@@ -54,24 +54,21 @@ from receipt_label.pattern_detection.parallel_engine import (
 __all__ = [
     # Core types and base classes
     "PatternDetector",
-    "PatternMatch", 
+    "PatternMatch",
     "PatternType",
-    
     # Legacy individual detectors (backward compatibility)
     "CurrencyPatternDetector",
     "DateTimePatternDetector",
     "ContactPatternDetector",
     "QuantityPatternDetector",
     "ParallelPatternOrchestrator",
-    
     # Enhanced detection (recommended for new code)
     "EnhancedPatternOrchestrator",
     "detect_patterns_optimized",
-    "compare_optimization_performance", 
+    "compare_optimization_performance",
     "get_optimization_capabilities",
     "OptimizationLevel",
     "ENHANCED_ORCHESTRATOR",
-    
     # Specialized engines
     "UNIFIED_PATTERN_ENGINE",
     "OPTIMIZED_PATTERN_DETECTOR",
