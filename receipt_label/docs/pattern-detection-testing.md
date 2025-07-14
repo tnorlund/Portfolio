@@ -96,35 +96,39 @@ Receipt Words → Enhanced Orchestrator → Pattern Detectors
 ### 1. Export Production Data
 
 ```bash
-# Export 5 sample images from production
-python scripts/export_data_using_existing_tools.py sample --size 5
+# Set environment variable
+export DYNAMODB_TABLE_NAME=ReceiptsTable-d7ff76a
 
-# Export specific image
-python scripts/export_data_using_existing_tools.py single \
-    --image-id "5492b016-cc08-4d57-9a64-d6775684361c"
+# Export sample dataset (20 receipts by default)
+make export-sample-data
+
+# Or manually export specific size
+python scripts/export_receipt_data.py sample --size 10 --output-dir ./receipt_data
 ```
 
 ### 2. Test Pattern Detection
 
 ```bash
 # Test with advanced optimization
-python scripts/test_pattern_detection_with_exported_data.py \
-    ./receipt_data_existing --optimization-level advanced
+make test-pattern-detection
 
 # Compare all optimization levels
-python scripts/test_pattern_detection_with_exported_data.py \
-    ./receipt_data_existing --compare-all --limit 2
+make compare-pattern-optimizations
 
-# Generate detailed results
-python scripts/test_pattern_detection_with_exported_data.py \
-    ./receipt_data_existing --output results.json --verbose
+# Or run manually with custom options
+python receipt_label/scripts/test_pattern_detection_local.py \
+    --data-dir ./receipt_data \
+    --optimization-level advanced \
+    --verbose
 ```
 
-### 3. View Summary
+### 3. View Results
 
-```bash
-python scripts/test_results_summary.py
-```
+The test scripts provide comprehensive output showing:
+- Processing time per receipt
+- Pattern detection coverage
+- Optimization level comparisons
+- Cost reduction estimates
 
 ## Integration with Existing System
 

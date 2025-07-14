@@ -159,16 +159,14 @@ This package includes advanced pattern detection capabilities that reduce AI API
 The pattern detection system has been validated with real production data:
 
 ```bash
-# Export production data
-python scripts/export_data_using_existing_tools.py sample --size 5
+# Export production data (uses receipt_dynamo's export_image)
+make export-sample-data
 
 # Test pattern detection performance
-python scripts/test_pattern_detection_with_exported_data.py \
-    ./receipt_data_existing --optimization-level advanced
+make test-pattern-detection
 
 # Compare optimization levels
-python scripts/test_pattern_detection_with_exported_data.py \
-    ./receipt_data_existing --compare-all
+make compare-pattern-optimizations
 ```
 
 ### Performance Results
