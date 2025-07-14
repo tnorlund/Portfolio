@@ -6,13 +6,13 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from receipt_dynamo.entities import ReceiptWord  # type: ignore
-from receipt_dynamo.entities import ReceiptWordLabel
-
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import pinecone_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+
+from receipt_dynamo.entities import ReceiptWord  # type: ignore
+from receipt_dynamo.entities import ReceiptWordLabel
 
 # Date format patterns
 DATE_SLASH_FORMAT = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"

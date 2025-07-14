@@ -5,10 +5,10 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from pinecone.grpc import Vector
+from receipt_label.client_manager import get_client_manager
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptLine
-
-from receipt_label.client_manager import get_client_manager
 
 logger = logging.getLogger(__name__)
 

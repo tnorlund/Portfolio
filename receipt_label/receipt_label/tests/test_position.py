@@ -1,5 +1,4 @@
 import pytest
-
 from receipt_label.models.position import BoundingBox, Point
 
 

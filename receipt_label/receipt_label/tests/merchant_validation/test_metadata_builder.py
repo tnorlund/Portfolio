@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from receipt_label.merchant_validation.metadata_builder import (
     build_receipt_metadata_from_result,
     build_receipt_metadata_from_result_no_match,

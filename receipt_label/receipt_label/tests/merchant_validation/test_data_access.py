@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
-from receipt_dynamo.entities import Receipt, ReceiptMetadata, ReceiptWord
-
 from receipt_label.merchant_validation.data_access import (
     get_receipt_details,
     list_all_receipt_metadatas,
@@ -15,6 +13,8 @@ from receipt_label.merchant_validation.data_access import (
     query_records_by_place_id,
     write_receipt_metadata_to_dynamo,
 )
+
+from receipt_dynamo.entities import Receipt, ReceiptMetadata, ReceiptWord
 
 
 class TestListReceiptMetadatas:
