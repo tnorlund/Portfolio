@@ -5,9 +5,9 @@ import statistics
 import time
 
 import pytest
-from receipt_label.pattern_detection import ParallelPatternOrchestrator
-
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection import ParallelPatternOrchestrator
 
 
 @pytest.mark.performance

@@ -6,10 +6,10 @@ replacing the current substring-based keyword searching with efficient pattern m
 """
 
 import re
-from typing import Dict, List, Set, Tuple, Optional, Any, NamedTuple
-from dataclasses import dataclass
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from receipt_label.pattern_detection.patterns_config import PatternConfig
 

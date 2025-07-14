@@ -6,6 +6,9 @@ import re
 from typing import Optional
 
 from rapidfuzz.fuzz import ratio
+from receipt_dynamo.entities import ReceiptMetadata  # type: ignore
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import (
     normalize_text,
@@ -13,9 +16,6 @@ from receipt_label.label_validation.utils import (
 )
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
-
-from receipt_dynamo.entities import ReceiptMetadata  # type: ignore
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 def _merged_merchant_name_candidates_from_text(

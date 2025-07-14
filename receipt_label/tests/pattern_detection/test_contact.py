@@ -1,12 +1,12 @@
 """Tests for contact pattern detection."""
 
 import pytest
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection import (
     ContactPatternDetector,
     PatternType,
 )
-
-from receipt_dynamo.entities import ReceiptWord
 
 
 class TestContactPatternDetector:

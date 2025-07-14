@@ -8,9 +8,9 @@ improvements and new capabilities.
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 from receipt_label.pattern_detection.unified_pattern_engine import (
     UNIFIED_PATTERN_ENGINE,
@@ -21,6 +21,21 @@ from receipt_label.pattern_detection.parallel_engine import (
 from receipt_label.pattern_detection.batch_processor import BATCH_PROCESSOR
 from receipt_label.pattern_detection.pattern_registry import PATTERN_REGISTRY
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection.base import PatternType
+
+@dataclass
+class StandardizedPatternMatch:
+    """Standardized pattern match format for all optimization levels."""
+
+    word: ReceiptWord  # Primary word (first word for multi-word patterns)
+    extracted_value: Any  # The extracted value (text, number, etc.)
+    confidence: float
+    pattern_type: Optional[str] = None  # Optional pattern type
+    words: Optional[List[ReceiptWord]] = (
+        None  # All words for multi-word patterns
+    )
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
 
 
 class OptimizationLevel(Enum):
@@ -179,6 +194,7 @@ class EnhancedPatternOrchestrator:
         results = await UNIFIED_PATTERN_ENGINE.detect_all_patterns(
             words, merchant_name
         )
+
 
         return {
             "approach": "advanced",

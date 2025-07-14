@@ -22,17 +22,17 @@ This supports scalable, event-driven processing of line embedding jobs for
 receipt section classification.
 """
 
-from receipt_label.submit_line_embedding_batch.submit_line_batch import (
-    _format_line_context_embedding_input,
-)
-from receipt_label.utils import get_clients
-
 from receipt_dynamo.constants import (
     BatchType,
     EmbeddingStatus,
     ValidationStatus,
 )
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
+
+from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+    _format_line_context_embedding_input,
+)
+from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, pinecone_index = get_clients()
 

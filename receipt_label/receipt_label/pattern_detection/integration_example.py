@@ -7,9 +7,9 @@ with the existing receipt processing pipeline and other epics.
 import asyncio
 from typing import Dict, List
 
-from receipt_label.pattern_detection import ParallelPatternOrchestrator
-
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection import ParallelPatternOrchestrator
 
 
 async def label_receipt_efficiently(
