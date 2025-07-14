@@ -6,7 +6,9 @@ from typing import Dict, List, Optional
 
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.pattern_detection.pattern_registry import (
-    PATTERN_REGISTRY, PatternDetectorFactory, DetectorCategory
+    PATTERN_REGISTRY,
+    PatternDetectorFactory,
+    DetectorCategory,
 )
 from receipt_label.pattern_detection.pattern_utils import PatternOptimizer
 from receipt_dynamo.entities import ReceiptWord
@@ -15,7 +17,9 @@ from receipt_dynamo.entities import ReceiptWord
 class ParallelPatternOrchestrator:
     """Orchestrates parallel execution of pattern detectors for optimal performance."""
 
-    def __init__(self, timeout: float = 0.1, use_adaptive_selection: bool = True):
+    def __init__(
+        self, timeout: float = 0.1, use_adaptive_selection: bool = True
+    ):
         """Initialize the orchestrator.
 
         Args:
@@ -24,14 +28,14 @@ class ParallelPatternOrchestrator:
         """
         self.timeout = timeout
         self.use_adaptive_selection = use_adaptive_selection
-        
+
         # Create detectors using the registry
         if use_adaptive_selection:
             self._detectors = {}  # Will be created adaptively per request
         else:
             # Use all detectors (legacy mode)
             self._detectors = self._create_all_detectors()
-    
+
     def _create_all_detectors(self) -> Dict[str, any]:
         """Create all available detectors."""
         detectors = {}
@@ -59,7 +63,9 @@ class ParallelPatternOrchestrator:
 
         # Adaptive detector selection (Phase 2 optimization)
         if self.use_adaptive_selection:
-            active_detectors = PatternDetectorFactory.create_adaptive_detectors(words)
+            active_detectors = (
+                PatternDetectorFactory.create_adaptive_detectors(words)
+            )
             detector_map = {}
             for detector in active_detectors:
                 # Map detector class name to registry name
