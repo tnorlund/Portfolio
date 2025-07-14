@@ -24,6 +24,19 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection.base import PatternType
 
+@dataclass
+class StandardizedPatternMatch:
+    """Standardized pattern match format for all optimization levels."""
+
+    word: ReceiptWord  # Primary word (first word for multi-word patterns)
+    extracted_value: Any  # The extracted value (text, number, etc.)
+    confidence: float
+    pattern_type: Optional[str] = None  # Optional pattern type
+    words: Optional[List[ReceiptWord]] = (
+        None  # All words for multi-word patterns
+    )
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
+
 
 class OptimizationLevel(Enum):
     """Levels of optimization to apply."""
