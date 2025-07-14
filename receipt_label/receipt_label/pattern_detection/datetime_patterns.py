@@ -1,6 +1,5 @@
 """Date and time pattern detection for receipts."""
 
-import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -9,7 +8,7 @@ from receipt_label.pattern_detection.base import (
     PatternMatch,
     PatternType,
 )
-
+from receipt_label.pattern_detection.patterns_config import PatternConfig
 from receipt_dynamo.entities import ReceiptWord
 
 
@@ -18,61 +17,15 @@ class DateTimePatternDetector(PatternDetector):
 
     # Month names and abbreviations
     MONTHS = {
-        "january": 1,
-        "jan": 1,
-        "february": 2,
-        "feb": 2,
-        "march": 3,
-        "mar": 3,
-        "april": 4,
-        "apr": 4,
-        "may": 5,
-        "june": 6,
-        "jun": 6,
-        "july": 7,
-        "jul": 7,
-        "august": 8,
-        "aug": 8,
-        "september": 9,
-        "sep": 9,
-        "sept": 9,
-        "october": 10,
-        "oct": 10,
-        "november": 11,
-        "nov": 11,
-        "december": 12,
-        "dec": 12,
+        "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
+        "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
+        "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
+        "october": 10, "oct": 10, "november": 11, "nov": 11, "december": 12, "dec": 12,
     }
 
     def _initialize_patterns(self) -> None:
-        """Compile regex patterns for date/time detection."""
-        # Date patterns
-        self._compiled_patterns = {
-            # MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY
-            "date_mdy": re.compile(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})"),
-            # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (European format)
-            "date_dmy": re.compile(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})"),
-            # YYYY-MM-DD (ISO format)
-            "date_iso": re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})"),
-            # Month DD, YYYY or DD Month YYYY (with spaces, hyphens, or dots)
-            "date_month_name": re.compile(
-                r"(?:(\w+)[\s\-.](\d{1,2}),?[\s\-.](\d{2,4})|(\d{1,2})[\s\-.](\w+)[\s\-.](\d{2,4}))",
-                re.IGNORECASE,
-            ),
-            # Time patterns
-            # HH:MM:SS or HH:MM with optional AM/PM
-            "time_12h": re.compile(
-                r"(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)?"
-            ),
-            # 24-hour time
-            "time_24h": re.compile(
-                r"(?:^|(?<=\s))([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(?=$|\s)"
-            ),
-            # Combined datetime patterns
-            "datetime_combined": re.compile(
-                r"(\d{1,2}[/\-.]?\d{1,2}[/\-.]?\d{2,4})\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|am|pm))?)"
-            ),
-        }
+        """Compile regex patterns for date/time detection using centralized config."""
+        self._compiled_patterns = PatternConfig.get_datetime_patterns()
 
     async def detect(self, words: List[ReceiptWord]) -> List[PatternMatch]:
         """Detect date and time patterns in receipt words."""
@@ -189,36 +142,37 @@ class DateTimePatternDetector(PatternDetector):
                     date_dict["is_ambiguous"] = False
                 return date_dict
 
-        # Try numeric patterns (MDY/DMY ambiguous)
-        if match := self._compiled_patterns["date_mdy"].search(text):
-            first, second, year = map(int, match.groups())
-            # Use heuristics to determine format
-            if first > 12:  # Must be day
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), second, first, "DMY"
-                )
-                if date_dict:
-                    date_dict["is_ambiguous"] = False
-                return date_dict
-            if second > 12:  # Must be day
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), first, second, "MDY"
-                )
-                if date_dict:
-                    date_dict["is_ambiguous"] = False
-                return date_dict
-            else:
-                # Ambiguous - assume MDY for US receipts
-                # Could be enhanced with locale detection
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), first, second, "MDY"
-                )
-                if date_dict:
-                    # Mark as ambiguous when both values could be month or day
-                    date_dict["is_ambiguous"] = (
-                        first <= 12 and second <= 12 and first != second
+        # Try numeric patterns with different separators (MDY format for US receipts)
+        for pattern_name in ["date_mdy", "mdy_dash", "mdy_dot"]:
+            if match := self._compiled_patterns[pattern_name].search(text):
+                first, second, year = map(int, match.groups())
+                
+                # Use heuristics to determine format (all are treated as potential MDY)
+                if first > 12:  # Must be day, so this is really DMY
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), second, first, "DMY"
                     )
-                return date_dict
+                    if date_dict:
+                        date_dict["is_ambiguous"] = False
+                    return date_dict
+                elif second > 12:  # Must be day, so this is MDY
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), first, second, "MDY"
+                    )
+                    if date_dict:
+                        date_dict["is_ambiguous"] = False
+                    return date_dict
+                else:
+                    # Ambiguous - assume MDY for US receipts
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), first, second, "MDY"
+                    )
+                    if date_dict:
+                        # Mark as ambiguous when both values could be month or day
+                        date_dict["is_ambiguous"] = (
+                            first <= 12 and second <= 12 and first != second
+                        )
+                    return date_dict
 
         return None
 
