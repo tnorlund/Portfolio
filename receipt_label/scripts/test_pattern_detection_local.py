@@ -4,6 +4,13 @@ Test pattern detection enhancements using the local development infrastructure.
 
 This script integrates with the LocalDataLoader from PR #215 to test
 the Phase 2-3 pattern detection enhancements on local receipt data.
+
+Usage:
+    Run from project root:
+    python scripts/test_pattern_detection_local.py --data-dir ./receipt_data
+    
+    Or with environment setup:
+    cd /path/to/Portfolio && python receipt_label/scripts/test_pattern_detection_local.py
 """
 
 import argparse
@@ -15,22 +22,31 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add parent directory to path for standalone execution
+# This allows the script to be run directly without installation
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent.parent
 
-# Import local data loader from PR #215
-# pylint: disable=import-error,wrong-import-position
-from receipt_label.data.local_data_loader import LocalDataLoader
+# Only modify path if running as standalone script
+if __name__ == "__main__" and str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-# Import pattern detection modules
-# pylint: disable=import-error,wrong-import-position
-from receipt_label.pattern_detection.enhanced_orchestrator import (
-    EnhancedPatternOrchestrator,
-    OptimizationLevel,
-    compare_optimization_performance,
-    detect_patterns_optimized,
-)
+try:
+    from receipt_label.data.local_data_loader import LocalDataLoader
+    from receipt_label.pattern_detection.enhanced_orchestrator import (
+        EnhancedPatternOrchestrator,
+        OptimizationLevel,
+        compare_optimization_performance,
+        detect_patterns_optimized,
+    )
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    print("\nPlease run from the project root directory:")
+    print("  cd /path/to/Portfolio")
+    print("  python receipt_label/scripts/test_pattern_detection_local.py")
+    print("\nOr install the package in development mode:")
+    print("  pip install -e receipt_label")
+    sys.exit(1)
 
 
 async def test_pattern_detection_on_receipt(
