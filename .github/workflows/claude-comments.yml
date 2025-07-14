@@ -1,0 +1,31 @@
+name: Claude Comments
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-comment:
+    name: Claude Comment Response
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v0.0.32
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          trigger_phrase: "@claude"
+          max_turns: "3"
+          timeout_minutes: "15"
