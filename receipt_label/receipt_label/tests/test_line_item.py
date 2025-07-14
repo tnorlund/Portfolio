@@ -3,16 +3,16 @@ from decimal import Decimal
 from typing import Dict
 
 import pytest
-from receipt_dynamo.entities.receipt_line_item_analysis import (
-    ReceiptLineItemAnalysis,
-)
-
 from receipt_label.models.line_item import (
     ItemModifier,
     LineItem,
     LineItemAnalysis,
     Price,
     Quantity,
+)
+
+from receipt_dynamo.entities.receipt_line_item_analysis import (
+    ReceiptLineItemAnalysis,
 )
 
 
