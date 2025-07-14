@@ -19,6 +19,7 @@ from receipt_label.decision_engine.types import (
     ConfidenceLevel,
     DecisionOutcome,
     DecisionResult,
+    FourFieldSummary,
 )
 from receipt_label.models import ReceiptWord
 from receipt_label.pattern_detection.fuzzy_merchant_detector import (
@@ -77,18 +78,18 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
         result = await self.process_receipt(words, receipt_context)
 
         # Step 2: Check specifically for our 4 fields
-        fields_found = self._check_four_fields(
+        field_summary = self._check_four_fields(
             result.pattern_results, metadata
         )
 
         # Step 3: Make simplified decision
-        decision = self._make_simple_decision(fields_found, len(words))
+        decision = self._make_simple_decision(field_summary, len(words))
 
         processing_time = (time.time() - start_time) * 1000
 
         logger.info(
             f"Four Field Decision: {decision.action.value.upper()} - "
-            f"Fields: {fields_found} - Time: {processing_time:.1f}ms"
+            f"Fields: {field_summary.fields_found_count}/4 found - Time: {processing_time:.1f}ms"
         )
 
         return decision
@@ -97,35 +98,60 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
         self,
         pattern_results: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, bool]:
-        """Check if we found each of the 4 required fields."""
+    ) -> FourFieldSummary:
+        """Extract both presence and values for the 4 essential fields."""
 
-        fields = {
-            "MERCHANT_NAME": False,
-            "DATE": False,
-            "TIME": False,
-            "GRAND_TOTAL": False,
-        }
+        # Initialize with defaults
+        merchant_name_found = False
+        merchant_name_value = None
+        merchant_name_confidence = 0.0
+        
+        date_found = False
+        date_value = None
+        date_confidence = 0.0
+        
+        time_found = False
+        time_value = None
+        time_confidence = 0.0
+        
+        grand_total_found = False
+        grand_total_value = None
+        grand_total_confidence = 0.0
 
         # 1. Check MERCHANT_NAME
         # Use metadata first (highest confidence)
         if metadata and metadata.get("merchant_name"):
-            fields["MERCHANT_NAME"] = True
+            merchant_name_found = True
+            merchant_name_value = metadata["merchant_name"]
+            merchant_name_confidence = 1.0  # Metadata is highest confidence
         # Or check pattern results
         elif "merchant" in pattern_results and pattern_results["merchant"]:
-            fields["MERCHANT_NAME"] = True
+            merchant_matches = pattern_results["merchant"]
+            if merchant_matches:
+                best_match = merchant_matches[0]  # Take first/best match
+                merchant_name_found = True
+                merchant_name_value = getattr(best_match, "extracted_value", str(best_match))
+                merchant_name_confidence = getattr(best_match, "confidence", 0.8)
 
         # 2. Check DATE
-        if ("datetime" in pattern_results and pattern_results["datetime"]) or (
-            "date" in pattern_results and pattern_results["date"]
-        ):
-            fields["DATE"] = True
+        datetime_patterns = pattern_results.get("datetime", [])
+        date_patterns = pattern_results.get("date", [])
+        
+        if datetime_patterns:
+            best_match = datetime_patterns[0]
+            date_found = True
+            date_value = getattr(best_match, "extracted_value", str(best_match))
+            date_confidence = getattr(best_match, "confidence", 0.9)
+        elif date_patterns:
+            best_match = date_patterns[0]
+            date_found = True
+            date_value = getattr(best_match, "extracted_value", str(best_match))
+            date_confidence = getattr(best_match, "confidence", 0.8)
 
         # 3. Check TIME
         # Often included with datetime patterns
-        if "datetime" in pattern_results and pattern_results["datetime"]:
-            # Check if any datetime pattern includes time information
-            for pattern in pattern_results["datetime"]:
+        if datetime_patterns:
+            for pattern in datetime_patterns:
                 if hasattr(pattern, "extracted_value"):
                     # If the extracted value includes time info, mark TIME as found
                     text = str(pattern.extracted_value).lower()
@@ -133,78 +159,99 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
                         time_indicator in text
                         for time_indicator in [":", "am", "pm", "time"]
                     ):
-                        fields["TIME"] = True
+                        time_found = True
+                        time_value = pattern.extracted_value
+                        time_confidence = getattr(pattern, "confidence", 0.9)
                         break
 
         # 4. Check GRAND_TOTAL
         # Look in currency patterns for totals
-        if "currency" in pattern_results and pattern_results["currency"]:
-            # Currency patterns often include totals
-            # For simplicity, if we have currency patterns, assume we found some total
-            fields["GRAND_TOTAL"] = True
+        currency_patterns = pattern_results.get("currency", [])
+        if currency_patterns:
+            # Look for patterns that might be totals (higher confidence for words like "total")
+            for pattern in currency_patterns:
+                pattern_text = str(getattr(pattern, "extracted_value", "")).lower()
+                # Simple heuristic: if it contains "total" or is a reasonable amount
+                if "total" in pattern_text or self._looks_like_total(pattern):
+                    grand_total_found = True
+                    grand_total_value = getattr(pattern, "extracted_value", str(pattern))
+                    grand_total_confidence = getattr(pattern, "confidence", 0.7)
+                    break
+            
+            # If no obvious total found, use first currency pattern as fallback
+            if not grand_total_found and currency_patterns:
+                best_match = currency_patterns[0]
+                grand_total_found = True
+                grand_total_value = getattr(best_match, "extracted_value", str(best_match))
+                grand_total_confidence = getattr(best_match, "confidence", 0.5)
 
-        return fields
+        return FourFieldSummary(
+            merchant_name_found=merchant_name_found,
+            date_found=date_found,
+            time_found=time_found,
+            grand_total_found=grand_total_found,
+            merchant_name_value=merchant_name_value,
+            date_value=date_value,
+            time_value=time_value,
+            grand_total_value=grand_total_value,
+            merchant_name_confidence=merchant_name_confidence,
+            date_confidence=date_confidence,
+            time_confidence=time_confidence,
+            grand_total_confidence=grand_total_confidence,
+        )
+
+    def _looks_like_total(self, pattern) -> bool:
+        """Simple heuristic to determine if a currency pattern looks like a total."""
+        # This is a placeholder - could be enhanced with more sophisticated logic
+        return True  # For now, assume any currency could be a total
 
     def _make_simple_decision(
-        self, fields_found: Dict[str, bool], total_words: int
+        self, field_summary: FourFieldSummary, total_words: int
     ) -> DecisionResult:
-        """Make a simple decision based only on the 4 fields."""
+        """Make a simple decision based on the 4 field summary."""
 
-        # Count how many fields we found
-        found_count = sum(fields_found.values())
-        missing_fields = [
-            field for field, found in fields_found.items() if not found
-        ]
-
-        if found_count == 4:
+        if field_summary.all_fields_found:
             # All 4 fields found - SKIP GPT!
             return DecisionResult(
                 action=DecisionOutcome.SKIP,
                 confidence=ConfidenceLevel.HIGH,
                 reasoning="All 4 required fields found: MERCHANT_NAME, DATE, TIME, GRAND_TOTAL",
-                essential_fields_found=set(fields_found.keys()),
+                essential_fields_found=field_summary.found_fields_set,
                 essential_fields_missing=set(),
                 total_words=total_words,
-                labeled_words=found_count,  # Simplified
-                unlabeled_meaningful_words=total_words
-                - found_count,  # Simplified
-                coverage_percentage=(
-                    found_count / 4 * 100
-                ),  # Percentage of required fields found
-                merchant_name=fields_found.get("MERCHANT_NAME", "Unknown"),
+                labeled_words=field_summary.fields_found_count,
+                unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
+                coverage_percentage=(field_summary.fields_found_count / 4 * 100),
+                merchant_name=field_summary.merchant_name_value,
             )
 
-        elif found_count == 3:
+        elif field_summary.fields_found_count == 3:
             # Missing only 1 field - could be suitable for BATCH
-            missing_field = missing_fields[0]
+            missing_field = field_summary.missing_fields[0]
             if missing_field in ["TIME", "GRAND_TOTAL"]:
                 return DecisionResult(
                     action=DecisionOutcome.BATCH,
                     confidence=ConfidenceLevel.MEDIUM,
                     reasoning=f"3/4 fields found, only missing {missing_field} - suitable for batch",
-                    essential_fields_found={
-                        field for field, found in fields_found.items() if found
-                    },
+                    essential_fields_found=field_summary.found_fields_set,
                     essential_fields_missing={missing_field},
                     total_words=total_words,
-                    labeled_words=found_count,
-                    unlabeled_meaningful_words=total_words - found_count,
-                    coverage_percentage=(found_count / 4 * 100),
-                    merchant_name=fields_found.get("MERCHANT_NAME", "Unknown"),
+                    labeled_words=field_summary.fields_found_count,
+                    unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
+                    coverage_percentage=(field_summary.fields_found_count / 4 * 100),
+                    merchant_name=field_summary.merchant_name_value,
                 )
 
         # Missing 2+ fields or missing critical field (MERCHANT_NAME, DATE)
         return DecisionResult(
             action=DecisionOutcome.REQUIRED,
             confidence=ConfidenceLevel.HIGH,
-            reasoning=f"Missing critical fields: {', '.join(missing_fields)}",
-            essential_fields_found={
-                field for field, found in fields_found.items() if found
-            },
-            essential_fields_missing=set(missing_fields),
+            reasoning=f"Missing critical fields: {', '.join(field_summary.missing_fields)}",
+            essential_fields_found=field_summary.found_fields_set,
+            essential_fields_missing=set(field_summary.missing_fields),
             total_words=total_words,
-            labeled_words=found_count,
-            unlabeled_meaningful_words=total_words - found_count,
-            coverage_percentage=(found_count / 4 * 100),
-            merchant_name=fields_found.get("MERCHANT_NAME", "Unknown"),
+            labeled_words=field_summary.fields_found_count,
+            unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
+            coverage_percentage=(field_summary.fields_found_count / 4 * 100),
+            merchant_name=field_summary.merchant_name_value,
         )
