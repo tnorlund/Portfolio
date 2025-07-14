@@ -13,7 +13,9 @@ from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptMetadata,
     ReceiptWord,
+    ReceiptWordLabel,
     Word,
 )
 
@@ -62,6 +64,14 @@ def import_image(table_name: str, json_path: str) -> None:
         "receipt_letters": [
             ReceiptLetter(**item) for item in data["receipt_letters"]
         ],
+        "receipt_word_labels": [
+            ReceiptWordLabel(**item)
+            for item in data.get("receipt_word_labels", [])
+        ],
+        "receipt_metadatas": [
+            ReceiptMetadata(**item)
+            for item in data.get("receipt_metadatas", [])
+        ],
         "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
         "ocr_routing_decisions": [
             OCRRoutingDecision(**item)
@@ -93,6 +103,12 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_letters"]:
         dynamo_client.add_receipt_letters(entities["receipt_letters"])  # type: ignore[arg-type]
+
+    if entities["receipt_word_labels"]:
+        dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])  # type: ignore[arg-type]
+
+    if entities["receipt_metadatas"]:
+        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])  # type: ignore[arg-type]
 
     if entities["ocr_jobs"]:
         dynamo_client.add_ocr_jobs(entities["ocr_jobs"])  # type: ignore[arg-type]

@@ -39,6 +39,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     receipt_lines = details.receipt_lines
     receipt_words = details.receipt_words
     receipt_letters = details.receipt_letters
+    receipt_word_labels = details.receipt_word_labels
     receipt_metadatas = details.receipt_metadatas
     ocr_jobs = details.ocr_jobs
     ocr_routing_decisions = details.ocr_routing_decisions
@@ -56,6 +57,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "receipt_lines": [dict(line) for line in receipt_lines],
         "receipt_words": [dict(word) for word in receipt_words],
         "receipt_letters": [dict(letter) for letter in receipt_letters],
+        "receipt_word_labels": [dict(label) for label in receipt_word_labels],
         "receipt_metadatas": [
             dict(metadata) for metadata in receipt_metadatas
         ],

@@ -7,7 +7,12 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities import OCRJob, OCRRoutingDecision, ReceiptMetadata
+from receipt_dynamo.entities import (
+    OCRJob,
+    OCRRoutingDecision,
+    ReceiptMetadata,
+    ReceiptWordLabel,
+)
 
 
 @pytest.fixture
@@ -326,6 +331,21 @@ def test_image_get_details(dynamodb_table, example_image):
     client.add_ocr_job(ocr_job)
     client.add_ocr_routing_decision(routing_decision)
 
+    # Add a receipt word label
+    receipt_word_label = ReceiptWordLabel(
+        image_id=image.image_id,
+        receipt_id=1,
+        line_id=1,
+        word_id=1,
+        label="MERCHANT_NAME",
+        reasoning="Identified as merchant name based on position and format",
+        timestamp_added=datetime(2025, 1, 1, 0, 0, 0),
+        validation_status="NONE",
+        label_proposed_by="pattern_detector",
+        label_consolidated_from=None,
+    )
+    client.add_receipt_word_label(receipt_word_label)
+
     details = client.get_image_details(image.image_id)
 
     (
@@ -337,6 +357,7 @@ def test_image_get_details(dynamodb_table, example_image):
         receipt_lines,
         receipt_words,
         receipt_letters,
+        receipt_word_labels,
         receipt_metadatas,
         ocr_jobs,
         routing_decisions,
@@ -346,6 +367,14 @@ def test_image_get_details(dynamodb_table, example_image):
     assert lines == [line]
     assert words == [word]
     assert letters == [letter]
+    assert len(receipt_word_labels) == 1
+    retrieved_label = receipt_word_labels[0]
+    assert retrieved_label.image_id == receipt_word_label.image_id
+    assert retrieved_label.receipt_id == receipt_word_label.receipt_id
+    assert retrieved_label.line_id == receipt_word_label.line_id
+    assert retrieved_label.word_id == receipt_word_label.word_id
+    assert retrieved_label.label == receipt_word_label.label
+    assert retrieved_label.reasoning == receipt_word_label.reasoning
     retrieved_metadata = receipt_metadatas[0]
     assert retrieved_metadata.image_id == receipt_metadata.image_id
     assert retrieved_metadata.receipt_id == receipt_metadata.receipt_id
@@ -420,6 +449,7 @@ def test_image_get_details_multiple_receipt_metadatas(
         receipt_lines,
         receipt_words,
         receipt_letters,
+        receipt_word_labels,
         receipt_metadatas,
         ocr_jobs,
         routing_decisions,
@@ -427,6 +457,8 @@ def test_image_get_details_multiple_receipt_metadatas(
 
     # Verify we got all three receipt metadatas
     assert len(receipt_metadatas) == 3
+    # Verify no receipt word labels were added
+    assert len(receipt_word_labels) == 0
 
     # Sort by receipt_id for consistent ordering
     sorted_metadatas = sorted(receipt_metadatas, key=lambda x: x.receipt_id)
@@ -487,6 +519,7 @@ def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
         receipt_lines,
         receipt_words,
         receipt_letters,
+        receipt_word_labels,
         receipt_metadatas,
         ocr_jobs,
         routing_decisions,
@@ -496,6 +529,71 @@ def test_image_get_details_no_receipt_metadata(dynamodb_table, example_image):
     assert len(images) == 1
     assert len(lines) == 1
     assert len(receipt_metadatas) == 0
+    assert len(receipt_word_labels) == 0
+
+
+@pytest.mark.integration
+def test_image_get_details_with_multiple_receipt_word_labels(
+    dynamodb_table, example_image
+):
+    """Test that image details correctly handles multiple receipt word labels."""
+    client = DynamoClient(dynamodb_table)
+    image = example_image
+
+    # Add the image
+    client.add_image(image)
+
+    # Create multiple receipt word labels for the same image
+    labels = []
+    for i in range(3):
+        label = ReceiptWordLabel(
+            image_id=image.image_id,
+            receipt_id=1,
+            line_id=i + 1,
+            word_id=i + 1,
+            label=["MERCHANT_NAME", "PRODUCT_NAME", "GRAND_TOTAL"][i],
+            reasoning=f"Test reasoning {i + 1}",
+            timestamp_added=datetime(2025, 1, 1, i, 0, 0),
+            validation_status="NONE",
+            label_proposed_by="test_system",
+            label_consolidated_from=None,
+        )
+        client.add_receipt_word_label(label)
+        labels.append(label)
+
+    # Get image details
+    details = client.get_image_details(image.image_id)
+
+    (
+        images,
+        lines,
+        words,
+        letters,
+        receipts,
+        receipt_lines,
+        receipt_words,
+        receipt_letters,
+        receipt_word_labels,
+        receipt_metadatas,
+        ocr_jobs,
+        routing_decisions,
+    ) = details
+
+    # Verify we got all three receipt word labels
+    assert len(receipt_word_labels) == 3
+
+    # Sort by line_id for consistent ordering
+    sorted_labels = sorted(receipt_word_labels, key=lambda x: x.line_id)
+
+    # Verify each label
+    for i, label in enumerate(sorted_labels):
+        assert label.image_id == labels[i].image_id
+        assert label.receipt_id == labels[i].receipt_id
+        assert label.line_id == labels[i].line_id
+        assert label.word_id == labels[i].word_id
+        assert label.label == labels[i].label
+        assert label.reasoning == labels[i].reasoning
+        assert label.label_proposed_by == labels[i].label_proposed_by
 
 
 @pytest.mark.integration
