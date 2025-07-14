@@ -5,13 +5,14 @@ This module provides a centralized registry for all pattern detectors,
 enabling better organization, categorization, and selective invocation.
 """
 
-from typing import Dict, List, Type, Set, Optional
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional, Set, Type
+
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection.base import PatternDetector, PatternType
 from receipt_label.pattern_detection.pattern_utils import PatternOptimizer
-from receipt_dynamo.entities import ReceiptWord
 
 
 class DetectorCategory(Enum):

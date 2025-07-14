@@ -13,16 +13,16 @@ to demonstrate the improvements from Phase 2-3 enhancements including:
 - Merchant-specific patterns
 """
 
-import asyncio
 import argparse
+import asyncio
 import json
 import logging
 import sys
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -32,8 +32,8 @@ from receipt_label.data.local_data_loader import LocalDataLoader
 from receipt_label.pattern_detection.enhanced_orchestrator import (
     EnhancedPatternOrchestrator,
     OptimizationLevel,
-    detect_patterns_optimized,
     compare_optimization_performance,
+    detect_patterns_optimized,
 )
 from receipt_label.pattern_detection.unified_pattern_engine import (
     UNIFIED_PATTERN_ENGINE,

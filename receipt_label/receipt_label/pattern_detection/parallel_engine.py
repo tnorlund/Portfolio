@@ -6,18 +6,19 @@ asyncio cooperative scheduling to leverage multiple CPU cores for regex processi
 """
 
 import asyncio
-import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
-from typing import Dict, List, Tuple, Optional, Any, Callable
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection.batch_processor import (
     AdvancedBatchProcessor,
 )
 from receipt_label.pattern_detection.pattern_utils import PatternOptimizer
-from receipt_dynamo.entities import ReceiptWord
 
 
 @dataclass
