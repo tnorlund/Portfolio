@@ -48,9 +48,11 @@ class PatternOptimizer:
                 has_relevant_words = True
             elif detector_type == "contact" and ("contact_like" in types or "@" in word.text):
                 has_relevant_words = True
-            elif detector_type == "datetime" and ("numeric" in types or "alphanumeric" in types):
-                # Dates often contain numbers/slashes
-                if any(char in word.text for char in "/-.:"):
+            elif detector_type == "datetime":
+                # Dates can be numeric, alphanumeric, or contain symbols like slashes/colons
+                # Look for datetime separators or pure numbers
+                if (any(char in word.text for char in "/-.:") or 
+                    "numeric" in types or "alphanumeric" in types):
                     has_relevant_words = True
             elif detector_type == "quantity" and ("numeric" in types or "@" in word.text or "x" in word.text.lower()):
                 has_relevant_words = True

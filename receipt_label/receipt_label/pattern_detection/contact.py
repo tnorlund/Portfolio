@@ -345,6 +345,7 @@ class ContactPatternDetector(PatternDetector):
         # For certain tests, extract only the main domain (remove subdomains)
         # This is a heuristic - if we have more than 2 parts and common TLD patterns
         parts = domain.split(".")
+        
         if len(parts) >= 3:
             # Check if it's a pattern like shop.example.co.uk or store.apple.com
             if parts[-1] in ["uk", "au", "ca"] and parts[-2] in [
@@ -353,10 +354,10 @@ class ContactPatternDetector(PatternDetector):
                 "net",
                 "org",
             ]:
-                # Keep last 3 parts for country domains
+                # Keep last 3 parts for country domains like example.co.uk
                 domain = ".".join(parts[-3:])
-            elif len(parts) >= 3 and parts[-1] in PatternConfig.COMMON_TLDS:
-                # Keep last 2 parts for common domains
+            else:
+                # For other multi-part domains, keep last 2 parts for common domains
                 domain = ".".join(parts[-2:])
 
         return domain

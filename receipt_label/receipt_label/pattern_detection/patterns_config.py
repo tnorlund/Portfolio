@@ -77,18 +77,19 @@ class PatternConfig:
     # ========================================
     
     DATETIME_PATTERNS = {
-        # Date formats
-        "mdy_slash": rf"{MONTH_DAY}/{MONTH_DAY}/(?:{YEAR_2_DIGIT}|{YEAR_4_DIGIT})",
-        "mdy_dash": rf"{MONTH_DAY}-{MONTH_DAY}-(?:{YEAR_2_DIGIT}|{YEAR_4_DIGIT})",
-        "ymd_iso": rf"{YEAR_4_DIGIT}-{MONTH_DAY}-{MONTH_DAY}",
-        "dmy_dot": rf"{MONTH_DAY}\.{MONTH_DAY}\.(?:{YEAR_2_DIGIT}|{YEAR_4_DIGIT})",
+        # Date formats (matching what datetime detector expects)
+        "date_iso": rf"({YEAR_4_DIGIT})-({MONTH_DAY})-({MONTH_DAY})",
+        "date_mdy": rf"({MONTH_DAY})/({MONTH_DAY})/((?:{YEAR_4_DIGIT}|{YEAR_2_DIGIT}))",
+        "date_month_name": r"\b(?:((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?)[\s-]+(\d{1,2}),?[\s-]+(\d{2,4})|(\d{1,2})[\s-]+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?)[\s-]+(\d{2,4}))\b",
+        "mdy_dash": rf"({MONTH_DAY})-({MONTH_DAY})-((?:{YEAR_4_DIGIT}|{YEAR_2_DIGIT}))",
+        "mdy_dot": rf"({MONTH_DAY})\.({MONTH_DAY})\.((?:{YEAR_4_DIGIT}|{YEAR_2_DIGIT}))",
         
-        # Time formats  
-        "time_12h": r"\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)",
-        "time_24h": r"(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?",
+        # Time formats with capture groups
+        "time_12h": r"(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)",
+        "time_24h": r"(\d{1,2}):(\d{2})(?::(\d{2}))?",
         
         # Combined date-time
-        "datetime_iso": rf"{YEAR_4_DIGIT}-{MONTH_DAY}-{MONTH_DAY}T\d{{2}}:\d{{2}}:\d{{2}}",
+        "datetime_combined": rf"({YEAR_4_DIGIT}-{MONTH_DAY}-{MONTH_DAY})\s+(\d{{2}}:\d{{2}}:\d{{2}})",
     }
     
     # ========================================
@@ -112,14 +113,14 @@ class PatternConfig:
         "com", "org", "net", "edu", "gov", "mil", "int", "co", "io", "ai",
         "app", "dev", "tech", "store", "shop", "biz", "info", "name", "mobi",
         "tv", "uk", "us", "ca", "au", "de", "fr", "jp", "cn", "in", "br",
-        "ru", "eu", "asia", "africa"
+        "ru", "eu", "asia", "africa", "ly"  # Add ly for bit.ly
     }
     
-    # Website patterns
+    # Website patterns - handle multi-level domains like shop.example.co.uk
     WEBSITE_PATTERNS = {
-        "website": rf"\b(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
-        "website_short": rf"\b[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
-        "website_no_protocol": rf"\b(?:www\.)?[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
+        "website": rf"\b(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9-]+\.)+(?:{'|'.join(COMMON_TLDS)})(?:/[^\s]*)?\b",
+        "website_short": rf"\b(?:[a-zA-Z0-9-]+\.)+(?:{'|'.join(COMMON_TLDS)})(?:/[^\s]*)?\b",
+        "website_no_protocol": rf"\b(?:www\.)?(?:[a-zA-Z0-9-]+\.)+(?:{'|'.join(COMMON_TLDS)})(?:/[^\s]*)?\b",
     }
     
     # ========================================
@@ -149,7 +150,7 @@ class PatternConfig:
         "volume": rf"({DECIMAL_NUMBER})\s*(oz|fl\.?\s*oz|ml|l|liters?|gallons?|gal)",
         
         # Unit patterns: "2 items", "3 pieces", "1 each"
-        "quantity_unit": rf"({DECIMAL_NUMBER})\s*(ea|each|pc|pcs|pieces?|items?|units?|pack|packs|pkg|packages?|box|boxes|bag|bags|bottles?|cans?)",
+        "quantity_unit": rf"({DECIMAL_NUMBER})\s*(each|pieces?|items?|units?|packages?|bottles?|cans?|packs|boxes|bags|pack|pkg|box|bag|pcs|pc|ea)",
         
         # Plain quantity (context-dependent): just a number
         "quantity_plain": rf"^({BASIC_NUMBER})$",

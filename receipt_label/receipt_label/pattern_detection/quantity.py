@@ -71,6 +71,18 @@ class QuantityPatternDetector(PatternDetector):
                 )
                 matches.append(match)
 
+            elif match_info := self._match_weight(word.text):
+                match = self._create_match(
+                    word, PatternType.QUANTITY, match_info, words
+                )
+                matches.append(match)
+
+            elif match_info := self._match_volume(word.text):
+                match = self._create_match(
+                    word, PatternType.QUANTITY, match_info, words
+                )
+                matches.append(match)
+
             # Check for plain numbers that might be quantities
             elif match_info := self._match_plain_quantity(word, words, i):
                 match = self._create_match(
@@ -91,7 +103,7 @@ class QuantityPatternDetector(PatternDetector):
 
     def _match_quantity_at(self, text: str) -> Optional[Dict]:
         """Match '2 @ $5.99' pattern."""
-        if match := self._compiled_patterns["quantity_at"].search(text):
+        if match := self._compiled_patterns["quantity_at_price"].search(text):
             quantity, price = match.groups()
             return {
                 "matched_text": match.group(0),
@@ -104,7 +116,7 @@ class QuantityPatternDetector(PatternDetector):
 
     def _match_quantity_times(self, text: str) -> Optional[Dict]:
         """Match '3 x $4.50' pattern."""
-        if match := self._compiled_patterns["quantity_times"].search(text):
+        if match := self._compiled_patterns["quantity_x_price"].search(text):
             quantity, price = match.groups()
             return {
                 "matched_text": match.group(0),
@@ -185,6 +197,30 @@ class QuantityPatternDetector(PatternDetector):
     def _match_quantity_unit(self, text: str) -> Optional[Dict]:
         """Match '2 items' or '3.5 lbs' pattern."""
         if match := self._compiled_patterns["quantity_unit"].search(text):
+            quantity, unit = match.groups()
+            return {
+                "matched_text": match.group(0),
+                "quantity": float(quantity),
+                "unit": unit.lower(),
+                "format": "with_unit",
+            }
+        return None
+
+    def _match_weight(self, text: str) -> Optional[Dict]:
+        """Match weight patterns like '3.5 lbs' or '2.3 kg'."""
+        if match := self._compiled_patterns["weight"].search(text):
+            quantity, unit = match.groups()
+            return {
+                "matched_text": match.group(0),
+                "quantity": float(quantity),
+                "unit": unit.lower(),
+                "format": "with_unit",
+            }
+        return None
+
+    def _match_volume(self, text: str) -> Optional[Dict]:
+        """Match volume patterns like '12 oz' or '1 L'."""
+        if match := self._compiled_patterns["volume"].search(text):
             quantity, unit = match.groups()
             return {
                 "matched_text": match.group(0),

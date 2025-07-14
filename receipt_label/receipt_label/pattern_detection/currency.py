@@ -1,5 +1,6 @@
 """Currency pattern detection with smart classification."""
 
+import re
 from typing import Dict, List, Set
 
 from receipt_label.pattern_detection.base import (

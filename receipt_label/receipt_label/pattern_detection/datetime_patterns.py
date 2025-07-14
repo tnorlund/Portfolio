@@ -142,36 +142,37 @@ class DateTimePatternDetector(PatternDetector):
                     date_dict["is_ambiguous"] = False
                 return date_dict
 
-        # Try numeric patterns (MDY/DMY ambiguous)
-        if match := self._compiled_patterns["date_mdy"].search(text):
-            first, second, year = map(int, match.groups())
-            # Use heuristics to determine format
-            if first > 12:  # Must be day
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), second, first, "DMY"
-                )
-                if date_dict:
-                    date_dict["is_ambiguous"] = False
-                return date_dict
-            if second > 12:  # Must be day
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), first, second, "MDY"
-                )
-                if date_dict:
-                    date_dict["is_ambiguous"] = False
-                return date_dict
-            else:
-                # Ambiguous - assume MDY for US receipts
-                # Could be enhanced with locale detection
-                date_dict = self._create_date_match(
-                    match.group(0), int(year), first, second, "MDY"
-                )
-                if date_dict:
-                    # Mark as ambiguous when both values could be month or day
-                    date_dict["is_ambiguous"] = (
-                        first <= 12 and second <= 12 and first != second
+        # Try numeric patterns with different separators (MDY format for US receipts)
+        for pattern_name in ["date_mdy", "mdy_dash", "mdy_dot"]:
+            if match := self._compiled_patterns[pattern_name].search(text):
+                first, second, year = map(int, match.groups())
+                
+                # Use heuristics to determine format (all are treated as potential MDY)
+                if first > 12:  # Must be day, so this is really DMY
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), second, first, "DMY"
                     )
-                return date_dict
+                    if date_dict:
+                        date_dict["is_ambiguous"] = False
+                    return date_dict
+                elif second > 12:  # Must be day, so this is MDY
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), first, second, "MDY"
+                    )
+                    if date_dict:
+                        date_dict["is_ambiguous"] = False
+                    return date_dict
+                else:
+                    # Ambiguous - assume MDY for US receipts
+                    date_dict = self._create_date_match(
+                        match.group(0), int(year), first, second, "MDY"
+                    )
+                    if date_dict:
+                        # Mark as ambiguous when both values could be month or day
+                        date_dict["is_ambiguous"] = (
+                            first <= 12 and second <= 12 and first != second
+                        )
+                    return date_dict
 
         return None
 
