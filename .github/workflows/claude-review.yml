@@ -43,8 +43,16 @@ jobs:
           
       - name: Comprehensive Code Review with Claude CLI
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # Check if we have authentication
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "❌ No ANTHROPIC_API_KEY found in secrets"
+            echo "Please add ANTHROPIC_API_KEY to repository secrets for Claude CLI usage"
+            exit 1
+          fi
+          
+          echo "✅ Authentication configured"
           # Create comprehensive review prompt
           cat > review_prompt.md << 'EOF'
           Please perform a comprehensive code review of this pull request. 
