@@ -4,11 +4,11 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from receipt_dynamo.constants import ValidationStatus  # type: ignore
-from receipt_dynamo.entities import ReceiptWordLabel  # type: ignore
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+
+from receipt_dynamo.constants import ValidationStatus  # type: ignore
+from receipt_dynamo.entities import ReceiptWordLabel  # type: ignore
 
 
 @dataclass

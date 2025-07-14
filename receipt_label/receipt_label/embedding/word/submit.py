@@ -24,11 +24,11 @@ from uuid import uuid4
 import boto3
 from openai.resources.batches import Batch
 from openai.types import FileObject
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities import BatchSummary, ReceiptWord
-
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities import BatchSummary, ReceiptWord
 
 
 def serialize_receipt_words(

@@ -1,6 +1,10 @@
 import json
 import os
 
+from receipt_label.constants import CORE_LABELS
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import (
     ReceiptLine,
@@ -8,10 +12,6 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
-
-from receipt_label.constants import CORE_LABELS
-from receipt_label.utils import get_client_manager
-from receipt_label.utils.client_manager import ClientManager
 
 # A mini JSON schema snippet for validate_labels
 VALIDATE_LABELS_SCHEMA = {
