@@ -1,6 +1,5 @@
 """Quantity pattern detection for receipt line items."""
 
-import re
 from typing import Dict, List, Optional
 
 from receipt_label.pattern_detection.base import (
@@ -8,104 +7,16 @@ from receipt_label.pattern_detection.base import (
     PatternMatch,
     PatternType,
 )
-
+from receipt_label.pattern_detection.patterns_config import PatternConfig
 from receipt_dynamo.entities import ReceiptWord
 
 
 class QuantityPatternDetector(PatternDetector):
     """Detects quantity patterns in receipt text."""
 
-    # Common quantity units
-    UNITS = {
-        "ea",
-        "each",
-        "pc",
-        "pcs",
-        "piece",
-        "pieces",
-        "lb",
-        "lbs",
-        "pound",
-        "pounds",
-        "oz",
-        "ounce",
-        "ounces",
-        "kg",
-        "kilogram",
-        "kilograms",
-        "g",
-        "gram",
-        "grams",
-        "l",
-        "liter",
-        "liters",
-        "litre",
-        "litres",
-        "ml",
-        "milliliter",
-        "milliliters",
-        "gal",
-        "gallon",
-        "gallons",
-        "qt",
-        "quart",
-        "quarts",
-        "pt",
-        "pint",
-        "pints",
-        "pk",
-        "pack",
-        "packs",
-        "pkg",
-        "package",
-        "box",
-        "boxes",
-        "bag",
-        "bags",
-        "bottle",
-        "bottles",
-        "can",
-        "cans",
-        "item",
-        "items",
-        "unit",
-        "units",
-    }
-
     def _initialize_patterns(self) -> None:
-        """Compile regex patterns for quantity detection."""
-        # Build units pattern
-        units_pattern = "|".join(re.escape(unit) for unit in self.UNITS)
-
-        self._compiled_patterns = {
-            # "2 @ $5.99" or "2 @ 5.99"
-            "quantity_at": re.compile(
-                r"(\d+(?:\.\d+)?)\s*@\s*(?:\$)?(\d+(?:\.\d+)?)", re.IGNORECASE
-            ),
-            # "3 x $4.50" or "Qty: 3 x $4.50" or "3 X 4.50"
-            "quantity_times": re.compile(
-                r"(?:qty:?\s*)?(\d+(?:\.\d+)?)\s*[xX]\s*(?:\$)?(\d+(?:\.\d+)?)",
-                re.IGNORECASE,
-            ),
-            # "2/$10.00" or "2 / $10" or "3 / $15"
-            "quantity_slash": re.compile(
-                r"(\d+)\s*/\s*(?:\$\s*)?(\d+(?:\.\d+)?)", re.IGNORECASE
-            ),
-            # "3 for $15.00" or "3 FOR 15"
-            "quantity_for": re.compile(
-                r"(\d+)\s+for\s+(?:\$)?(\d+(?:\.\d+)?)", re.IGNORECASE
-            ),
-            # "Qty: 5" or "QTY 5" or "Quantity: 5"
-            "quantity_label": re.compile(
-                r"(?:qty|quantity):?\s*(\d+(?:\.\d+)?)", re.IGNORECASE
-            ),
-            # "2 items" or "3.5 lbs" or "1 each"
-            "quantity_unit": re.compile(
-                rf"(\d+(?:\.\d+)?)\s*({units_pattern})\b", re.IGNORECASE
-            ),
-            # Plain number that might be quantity (context-dependent)
-            "quantity_plain": re.compile(r"^(\d+)$"),
-        }
+        """Compile regex patterns for quantity detection using centralized config."""
+        self._compiled_patterns = PatternConfig.get_quantity_patterns()
 
     async def detect(self, words: List[ReceiptWord]) -> List[PatternMatch]:
         """Detect quantity patterns in receipt words."""

@@ -1,6 +1,5 @@
 """Currency pattern detection with smart classification."""
 
-import re
 from typing import Dict, List, Set
 
 from receipt_label.pattern_detection.base import (
@@ -8,96 +7,22 @@ from receipt_label.pattern_detection.base import (
     PatternMatch,
     PatternType,
 )
-
+from receipt_label.pattern_detection.patterns_config import PatternConfig
+from receipt_label.pattern_detection.pattern_utils import (
+    CURRENCY_KEYWORD_MATCHER, ContextAnalyzer, PatternOptimizer
+)
 from receipt_dynamo.entities import ReceiptWord
 
 
 class CurrencyPatternDetector(PatternDetector):
     """Detects and classifies currency patterns in receipt text."""
 
-    # Keywords that indicate specific currency types
-    TOTAL_KEYWORDS = {
-        "total",
-        "grand total",
-        "amount due",
-        "balance due",
-        "due",
-        "pay",
-        "total amount",
-        "total due",
-        "total price",
-        "final total",
-    }
-    SUBTOTAL_KEYWORDS = {
-        "subtotal",
-        "sub total",
-        "sub-total",
-        "merchandise",
-        "net total",
-        "items total",
-        "goods total",
-        "product total",
-    }
-    TAX_KEYWORDS = {
-        "tax",
-        "sales tax",
-        "vat",
-        "gst",
-        "hst",
-        "pst",
-        "taxes",
-        "tax amount",
-        "total tax",
-        "city tax",
-        "state tax",
-    }
-    DISCOUNT_KEYWORDS = {
-        "discount",
-        "coupon",
-        "savings",
-        "save",
-        "off",
-        "reduction",
-        "promo",
-        "promotion",
-        "special",
-        "deal",
-        "markdown",
-    }
-
     def _initialize_patterns(self) -> None:
-        """Compile regex patterns for currency detection."""
-        # Common currency symbols
-        currency_symbols = r"[$€£¥₹¢]"
-
-        # Number pattern: handles separated (1,000.00) and unseparated (1000.00) numbers
-        # Use alternation: either formatted with commas OR plain digits
-        number_pattern = (
-            r"(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"
-        )
-
-        # Main currency patterns
-        self._compiled_patterns = {
-            # Symbol before number: $5.99, €10,00
-            "symbol_prefix": re.compile(
-                rf"({currency_symbols})\s*({number_pattern})", re.IGNORECASE
-            ),
-            # Symbol after number: 5.99$, 10€
-            "symbol_suffix": re.compile(
-                rf"({number_pattern})\s*({currency_symbols})", re.IGNORECASE
-            ),
-            # Plain number that could be currency: 5.99, 10.00
-            "plain_number": re.compile(
-                rf"^({number_pattern})$", re.IGNORECASE
-            ),
-            # Negative amounts: -$5.99, ($5.99), $5.99-
-            "negative": re.compile(
-                rf"(?:-\s*{currency_symbols}\s*{number_pattern}|"
-                rf"\(\s*{currency_symbols}\s*{number_pattern}\s*\)|"
-                rf"{currency_symbols}\s*{number_pattern}\s*-)",
-                re.IGNORECASE,
-            ),
-        }
+        """Compile regex patterns for currency detection using centralized config."""
+        self._compiled_patterns = PatternConfig.get_currency_patterns()
+        
+        # Get centralized keyword sets
+        self._keyword_sets = PatternConfig.CURRENCY_KEYWORDS
 
     async def detect(self, words: List[ReceiptWord]) -> List[PatternMatch]:
         """Detect currency patterns in receipt words."""
@@ -207,31 +132,31 @@ class CurrencyPatternDetector(PatternDetector):
         # This ensures exact context matches take precedence over nearby matches
 
         # Check same line first for more specific matches
-        if self._has_keywords(same_line_text, self.TAX_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "tax"):
             return PatternType.TAX
 
-        if self._has_keywords(same_line_text, self.SUBTOTAL_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "subtotal"):
             return PatternType.SUBTOTAL
 
-        if self._has_keywords(same_line_text, self.DISCOUNT_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "discount"):
             return PatternType.DISCOUNT
 
-        if self._has_keywords(same_line_text, self.TOTAL_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "total"):
             return PatternType.GRAND_TOTAL
 
         # Then check same line + nearby context for broader matches
         combined_text = same_line_text + " " + nearby_text
 
-        if self._has_keywords(combined_text, self.TAX_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(combined_text, "tax"):
             return PatternType.TAX
 
-        if self._has_keywords(combined_text, self.SUBTOTAL_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(combined_text, "subtotal"):
             return PatternType.SUBTOTAL
 
-        if self._has_keywords(combined_text, self.DISCOUNT_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(combined_text, "discount"):
             return PatternType.DISCOUNT
 
-        if self._has_keywords(combined_text, self.TOTAL_KEYWORDS):
+        if CURRENCY_KEYWORD_MATCHER.has_keywords(combined_text, "total"):
             return PatternType.GRAND_TOTAL
 
         # Position-based classification
@@ -267,20 +192,20 @@ class CurrencyPatternDetector(PatternDetector):
 
         if pattern_type == PatternType.GRAND_TOTAL:
             if any(
-                keyword in same_line_text for keyword in self.TOTAL_KEYWORDS
+                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "total")
             ):
                 confidence += 0.3
         elif pattern_type == PatternType.TAX:
-            if any(keyword in same_line_text for keyword in self.TAX_KEYWORDS):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "tax"):
                 confidence += 0.3
         elif pattern_type == PatternType.SUBTOTAL:
             if any(
-                keyword in same_line_text for keyword in self.SUBTOTAL_KEYWORDS
+                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "subtotal")
             ):
                 confidence += 0.3
         elif pattern_type == PatternType.DISCOUNT:
             if any(
-                keyword in same_line_text for keyword in self.DISCOUNT_KEYWORDS
+                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "discount")
             ):
                 confidence += 0.3
 
@@ -296,10 +221,6 @@ class CurrencyPatternDetector(PatternDetector):
 
         return min(confidence, 1.0)
 
-    def _has_keywords(self, text: str, keywords: Set[str]) -> bool:
-        """Check if text contains any of the keywords."""
-        text_lower = text.lower()
-        return any(keyword in text_lower for keyword in keywords)
 
     def _has_quantity_pattern_nearby(
         self, word: ReceiptWord, all_words: List[ReceiptWord]
