@@ -1,0 +1,20 @@
+{
+  "total_receipts": 10,
+  "successful_downloads": 10,
+  "failed_downloads": 0,
+  "receipt_ids": [
+    "5492b016-cc08-4d57-9a64-d6775684361c",
+    "d48a0ef4-e518-4a53-8414-0abc5f677a95",
+    "7ca97b51-7369-4321-bd01-0211f2bf2557",
+    "1bfb07b7-aefd-4579-b721-df597471b96b",
+    "6d7db41f-6e9b-4f43-a577-3208194f64e5",
+    "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+    "105a4af7-9381-418c-b1ef-be1b4f6a2991",
+    "86cca8b7-db22-4844-b6f7-d9130e3bae57",
+    "3ea1b045-48f9-425e-a9e6-10a347a71113",
+    "cee0fbe1-d84a-4f69-9af1-7166226e8b88"
+  ],
+  "failed_ids": [],
+  "table_name": "ReceiptsTable-d7ff76a",
+  "note": "Downloaded all 10 receipts from production table"
+}

@@ -4,12 +4,12 @@ from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.embedding.word.submit import (
     list_receipt_words_with_no_embeddings,
 )
-
-from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.entities import ReceiptWord
 
 
 class TestNoiseFilteringIntegration:

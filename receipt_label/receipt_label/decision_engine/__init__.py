@@ -14,17 +14,54 @@ Key Components:
 
 Usage:
     from receipt_label.decision_engine import DecisionEngine, DecisionEngineConfig
-    
+
     config = DecisionEngineConfig()
-    engine = DecisionEngine(config, pinecone_client)
-    decision = await engine.decide(pattern_results, merchant_name)
+    engine = DecisionEngine(config)
+    decision = await engine.decide(pattern_results, merchant_reliability)
 """
 
-# Core exports will be added as components are implemented
-__version__ = "0.1.0"
-__all__ = []
+from .config import (
+    DecisionEngineConfig,
+    create_aggressive_config,
+    create_config_from_env,
+    create_conservative_config,
+)
+from .core import DecisionEngine
+from .integration import (
+    DecisionEngineIntegrationResult,
+    DecisionEngineOrchestrator,
+    process_receipt_with_decision_engine,
+)
+from .pinecone_integration import PineconeDecisionHelper
+from .types import (
+    ConfidenceLevel,
+    DecisionOutcome,
+    DecisionResult,
+    EssentialFieldsStatus,
+    MerchantReliabilityData,
+    PatternDetectionSummary,
+)
 
-# TODO: Add exports as components are implemented in phases:
-# Phase 1: DecisionEngine, DecisionEngineConfig, DecisionResult, DecisionOutcome
-# Phase 2: MerchantReliabilityScore, AdaptiveThresholds  
-# Phase 3: FeedbackLoop, PerformanceMonitor
+__version__ = "0.1.0"
+__all__ = [
+    # Core classes
+    "DecisionEngine",
+    "DecisionEngineConfig",
+    # Configuration helpers
+    "create_config_from_env",
+    "create_conservative_config",
+    "create_aggressive_config",
+    # Data types
+    "DecisionResult",
+    "DecisionOutcome",
+    "ConfidenceLevel",
+    "EssentialFieldsStatus",
+    "PatternDetectionSummary",
+    "MerchantReliabilityData",
+    # Pinecone integration
+    "PineconeDecisionHelper",
+    # Integration layer
+    "DecisionEngineOrchestrator",
+    "DecisionEngineIntegrationResult",
+    "process_receipt_with_decision_engine",
+]

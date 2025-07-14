@@ -1,0 +1,157 @@
+{
+  "summary": {
+    "total_receipts": 10,
+    "receipts_with_metadata": 10,
+    "metadata_impact": {
+      "merchant_detection_before": 0,
+      "merchant_detection_after": 0,
+      "phone_detection_before": 0,
+      "phone_detection_after": 0,
+      "address_detection_before": 0,
+      "address_detection_after": 0
+    },
+    "merchant_categories": {
+      "Grocery & Bakery": 1,
+      "Grocery Store": 5,
+      "Grocery": 1,
+      "Restaurant": 2,
+      "Department Store": 1
+    },
+    "decision_impact": {
+      "skip_without_metadata": 0,
+      "skip_with_metadata": 0,
+      "batch_without_metadata": 0,
+      "batch_with_metadata": 0,
+      "required_without_metadata": 10,
+      "required_with_metadata": 10
+    }
+  },
+  "receipts": [
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery & Bakery",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Italia Deli & Bakery"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Vons"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Sprouts Farmers Market"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Sprouts Farmers Market"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Sprouts Farmers Market"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Sprouts Farmers Market"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Restaurant",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Brent's Delicatessen & Restaurant"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Restaurant",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Pasta Sisters"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Grocery Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Sprouts Farmers Market"
+    },
+    {
+      "receipt_id": "1",
+      "has_metadata": true,
+      "merchant_category": "Department Store",
+      "decision_without_metadata": "required",
+      "decision_with_metadata": "required",
+      "merchant_detected_without": false,
+      "merchant_detected_with": false,
+      "coverage_without": 0.0,
+      "coverage_with": 0.0,
+      "merchant_name": "Costco Wholesale"
+    }
+  ],
+  "cost_analysis": {
+    "skip_rate_without_metadata": 0.0,
+    "skip_rate_with_metadata": 0.0,
+    "monthly_savings_estimate": 0.0,
+    "annual_savings_estimate": 0.0
+  }
+}

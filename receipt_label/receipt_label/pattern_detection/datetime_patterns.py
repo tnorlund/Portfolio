@@ -3,13 +3,14 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
 from receipt_label.pattern_detection.patterns_config import PatternConfig
-from receipt_dynamo.entities import ReceiptWord
 
 
 class DateTimePatternDetector(PatternDetector):
@@ -17,10 +18,30 @@ class DateTimePatternDetector(PatternDetector):
 
     # Month names and abbreviations
     MONTHS = {
-        "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
-        "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
-        "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
-        "october": 10, "oct": 10, "november": 11, "nov": 11, "december": 12, "dec": 12,
+        "january": 1,
+        "jan": 1,
+        "february": 2,
+        "feb": 2,
+        "march": 3,
+        "mar": 3,
+        "april": 4,
+        "apr": 4,
+        "may": 5,
+        "june": 6,
+        "jun": 6,
+        "july": 7,
+        "jul": 7,
+        "august": 8,
+        "aug": 8,
+        "september": 9,
+        "sep": 9,
+        "sept": 9,
+        "october": 10,
+        "oct": 10,
+        "november": 11,
+        "nov": 11,
+        "december": 12,
+        "dec": 12,
     }
 
     def _initialize_patterns(self) -> None:
@@ -146,7 +167,7 @@ class DateTimePatternDetector(PatternDetector):
         for pattern_name in ["date_mdy", "mdy_dash", "mdy_dot"]:
             if match := self._compiled_patterns[pattern_name].search(text):
                 first, second, year = map(int, match.groups())
-                
+
                 # Use heuristics to determine format (all are treated as potential MDY)
                 if first > 12:  # Must be day, so this is really DMY
                     date_dict = self._create_date_match(

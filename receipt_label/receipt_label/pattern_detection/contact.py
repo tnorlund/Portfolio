@@ -3,13 +3,14 @@
 import re
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
 from receipt_label.pattern_detection.patterns_config import PatternConfig
-from receipt_dynamo.entities import ReceiptWord
 
 
 class ContactPatternDetector(PatternDetector):
@@ -123,7 +124,9 @@ class ContactPatternDetector(PatternDetector):
         )
 
         # Try international format first
-        if match := self._compiled_patterns["international"].search(cleaned_text):
+        if match := self._compiled_patterns["international"].search(
+            cleaned_text
+        ):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d+]", "", matched_text)
 
@@ -154,7 +157,9 @@ class ContactPatternDetector(PatternDetector):
             }
 
         # Try US/Canada format
-        if match := self._compiled_patterns["us_standard"].search(cleaned_text):
+        if match := self._compiled_patterns["us_standard"].search(
+            cleaned_text
+        ):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d]", "", matched_text)
 
@@ -246,7 +251,7 @@ class ContactPatternDetector(PatternDetector):
     def _match_website_pattern(self, text: str) -> Optional[Dict]:
         """Match website patterns."""
         text = text.strip().lower()
-        
+
         # Skip if this looks like an email (has @ symbol)
         if "@" in text:
             return None
@@ -301,7 +306,11 @@ class ContactPatternDetector(PatternDetector):
         digits = re.sub(r"[^\d]", "", phone)
 
         # Handle US with country code (only for domestic numbers, not international)
-        if len(digits) == 11 and digits[0] == "1" and not phone.strip().startswith("+"):
+        if (
+            len(digits) == 11
+            and digits[0] == "1"
+            and not phone.strip().startswith("+")
+        ):
             digits = digits[1:]
 
         # Format US numbers to xxx-xxx-xxxx format (matching test expectations)
@@ -345,7 +354,7 @@ class ContactPatternDetector(PatternDetector):
         # For certain tests, extract only the main domain (remove subdomains)
         # This is a heuristic - if we have more than 2 parts and common TLD patterns
         parts = domain.split(".")
-        
+
         if len(parts) >= 3:
             # Check if it's a pattern like shop.example.co.uk or store.apple.com
             if parts[-1] in ["uk", "au", "ca"] and parts[-2] in [

@@ -5,12 +5,12 @@ import time
 from unittest.mock import Mock, patch
 
 import pytest
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection import (
     ParallelPatternOrchestrator,
     PatternType,
 )
-
-from receipt_dynamo.entities import ReceiptWord
 
 
 class TestParallelPatternOrchestrator:
@@ -211,8 +211,10 @@ class TestParallelPatternOrchestrator:
     async def test_timeout_handling(self):
         """Test that timeout is properly handled."""
         # Create orchestrator with adaptive selection disabled for predictable behavior
-        orchestrator = ParallelPatternOrchestrator(timeout=0.1, use_adaptive_selection=False)
-        
+        orchestrator = ParallelPatternOrchestrator(
+            timeout=0.1, use_adaptive_selection=False
+        )
+
         # Create a slow detector
         slow_detector = Mock()
 
@@ -256,8 +258,10 @@ class TestParallelPatternOrchestrator:
     async def test_error_handling(self):
         """Test that errors in one detector don't crash the whole system."""
         # Create orchestrator with adaptive selection disabled for predictable behavior
-        orchestrator = ParallelPatternOrchestrator(timeout=0.1, use_adaptive_selection=False)
-        
+        orchestrator = ParallelPatternOrchestrator(
+            timeout=0.1, use_adaptive_selection=False
+        )
+
         # Create a failing detector
         failing_detector = Mock()
 

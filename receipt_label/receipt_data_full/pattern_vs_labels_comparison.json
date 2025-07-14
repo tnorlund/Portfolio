@@ -1,0 +1,135 @@
+{
+  "summary": {
+    "total_receipts": 10,
+    "overall_precision": 0.0,
+    "overall_recall": 0.0,
+    "overall_f1_score": 0.0,
+    "true_positives": 0,
+    "false_positives": 44,
+    "false_negatives": 0,
+    "label_type_performance": {},
+    "essential_field_detection": {}
+  },
+  "receipts": [
+    {
+      "receipt_id": "1",
+      "total_words": 47,
+      "labeled_words": 0,
+      "pattern_detected": 2,
+      "true_positives": 0,
+      "false_positives": 2,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 100,
+      "labeled_words": 0,
+      "pattern_detected": 5,
+      "true_positives": 0,
+      "false_positives": 5,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 220,
+      "labeled_words": 0,
+      "pattern_detected": 4,
+      "true_positives": 0,
+      "false_positives": 4,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 171,
+      "labeled_words": 0,
+      "pattern_detected": 5,
+      "true_positives": 0,
+      "false_positives": 5,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 171,
+      "labeled_words": 0,
+      "pattern_detected": 5,
+      "true_positives": 0,
+      "false_positives": 5,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 183,
+      "labeled_words": 0,
+      "pattern_detected": 5,
+      "true_positives": 0,
+      "false_positives": 5,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 81,
+      "labeled_words": 0,
+      "pattern_detected": 3,
+      "true_positives": 0,
+      "false_positives": 3,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 66,
+      "labeled_words": 0,
+      "pattern_detected": 4,
+      "true_positives": 0,
+      "false_positives": 4,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 190,
+      "labeled_words": 0,
+      "pattern_detected": 5,
+      "true_positives": 0,
+      "false_positives": 5,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    },
+    {
+      "receipt_id": "1",
+      "total_words": 108,
+      "labeled_words": 0,
+      "pattern_detected": 6,
+      "true_positives": 0,
+      "false_positives": 6,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0
+    }
+  ]
+}

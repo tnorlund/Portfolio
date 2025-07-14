@@ -1,0 +1,112 @@
+{
+  "summary": {
+    "total_receipts": 10,
+    "average_coverage": 3.8746538044174264,
+    "average_labeled_words": 4.4,
+    "average_total_words": 133.7,
+    "decision_distribution": {
+      "required": 10
+    },
+    "pattern_distribution": {
+      "currency": 181,
+      "datetime": 28,
+      "contact": 13,
+      "quantity": 11
+    },
+    "missing_fields": {
+      "MERCHANT_NAME": 10
+    }
+  },
+  "receipts": [
+    {
+      "receipt_id": 1,
+      "coverage": 4.25531914893617,
+      "total_words": 47,
+      "labeled_words": 2,
+      "unlabeled_words": 45,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 5.154639175257731,
+      "total_words": 100,
+      "labeled_words": 5,
+      "unlabeled_words": 92,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 1.8779342723004695,
+      "total_words": 220,
+      "labeled_words": 4,
+      "unlabeled_words": 209,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 3.048780487804878,
+      "total_words": 171,
+      "labeled_words": 5,
+      "unlabeled_words": 159,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 3.067484662576687,
+      "total_words": 171,
+      "labeled_words": 5,
+      "unlabeled_words": 158,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 2.840909090909091,
+      "total_words": 183,
+      "labeled_words": 5,
+      "unlabeled_words": 171,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 3.75,
+      "total_words": 81,
+      "labeled_words": 3,
+      "unlabeled_words": 77,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 6.25,
+      "total_words": 66,
+      "labeled_words": 4,
+      "unlabeled_words": 60,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 2.73224043715847,
+      "total_words": 190,
+      "labeled_words": 5,
+      "unlabeled_words": 178,
+      "decision": "required",
+      "merchant": null
+    },
+    {
+      "receipt_id": 1,
+      "coverage": 5.769230769230769,
+      "total_words": 108,
+      "labeled_words": 6,
+      "unlabeled_words": 98,
+      "decision": "required",
+      "merchant": null
+    }
+  ]
+}

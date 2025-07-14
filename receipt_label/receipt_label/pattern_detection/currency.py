@@ -3,16 +3,19 @@
 import re
 from typing import Dict, List, Set
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
-from receipt_label.pattern_detection.patterns_config import PatternConfig
 from receipt_label.pattern_detection.pattern_utils import (
-    CURRENCY_KEYWORD_MATCHER, ContextAnalyzer, PatternOptimizer
+    CURRENCY_KEYWORD_MATCHER,
+    ContextAnalyzer,
+    PatternOptimizer,
 )
-from receipt_dynamo.entities import ReceiptWord
+from receipt_label.pattern_detection.patterns_config import PatternConfig
 
 
 class CurrencyPatternDetector(PatternDetector):
@@ -21,7 +24,7 @@ class CurrencyPatternDetector(PatternDetector):
     def _initialize_patterns(self) -> None:
         """Compile regex patterns for currency detection using centralized config."""
         self._compiled_patterns = PatternConfig.get_currency_patterns()
-        
+
         # Get centralized keyword sets
         self._keyword_sets = PatternConfig.CURRENCY_KEYWORDS
 
@@ -198,10 +201,14 @@ class CurrencyPatternDetector(PatternDetector):
             if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "tax"):
                 confidence += 0.3
         elif pattern_type == PatternType.SUBTOTAL:
-            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "subtotal"):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(
+                same_line_text, "subtotal"
+            ):
                 confidence += 0.3
         elif pattern_type == PatternType.DISCOUNT:
-            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "discount"):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(
+                same_line_text, "discount"
+            ):
                 confidence += 0.3
 
         # Boost confidence for expected positions
@@ -215,7 +222,6 @@ class CurrencyPatternDetector(PatternDetector):
             confidence += 0.1
 
         return min(confidence, 1.0)
-
 
     def _has_quantity_pattern_nearby(
         self, word: ReceiptWord, all_words: List[ReceiptWord]
