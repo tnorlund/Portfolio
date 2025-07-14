@@ -1,0 +1,47 @@
+name: Claude Test Minimal
+
+on:
+  pull_request:
+    types: [synchronize]
+
+jobs:
+  test:
+    name: Minimal Test
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Test Environment
+        run: |
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Action: ${{ github.event.action }}"
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Check Authentication
+        env:
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          echo "Checking secrets availability..."
+          if [ -n "$API_KEY" ]; then
+            echo "✅ ANTHROPIC_API_KEY is available"
+          else
+            echo "❌ ANTHROPIC_API_KEY is not available"
+          fi
+          
+          if [ -n "$OAUTH_TOKEN" ]; then
+            echo "✅ CLAUDE_CODE_OAUTH_TOKEN is available"
+          else
+            echo "❌ CLAUDE_CODE_OAUTH_TOKEN is not available"
+          fi
