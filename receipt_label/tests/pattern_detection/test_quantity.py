@@ -1,12 +1,12 @@
 """Tests for quantity pattern detection."""
 
 import pytest
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection import (
     PatternType,
     QuantityPatternDetector,
 )
-
-from receipt_dynamo.entities import ReceiptWord
 
 
 class TestQuantityPatternDetector:

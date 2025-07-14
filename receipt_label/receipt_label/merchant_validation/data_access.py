@@ -5,9 +5,6 @@ from typing import Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from receipt_label.utils import get_client_manager
-from receipt_label.utils.client_manager import ClientManager
-
 from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
@@ -16,6 +13,9 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+
+from receipt_label.utils import get_client_manager
+from receipt_label.utils.client_manager import ClientManager
 
 # Initialize logger
 logger = logging.getLogger(__name__)

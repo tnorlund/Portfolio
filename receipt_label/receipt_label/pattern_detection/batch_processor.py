@@ -7,11 +7,13 @@ patterns to minimize the number of regex operations per receipt.
 
 import re
 import time
-from typing import Dict, List, Tuple, Set, Optional, Any
 from dataclasses import dataclass
-from receipt_label.pattern_detection.patterns_config import PatternConfig
-from receipt_label.pattern_detection.pattern_utils import BatchPatternMatcher
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection.pattern_utils import BatchPatternMatcher
+from receipt_label.pattern_detection.patterns_config import PatternConfig
 
 
 @dataclass

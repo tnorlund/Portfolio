@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.models.label import LabelAnalysis, WordLabel
 from receipt_label.models.line_item import LineItemAnalysis
 from receipt_label.models.structure import StructureAnalysis

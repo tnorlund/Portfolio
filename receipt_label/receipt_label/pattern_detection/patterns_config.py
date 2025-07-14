@@ -6,8 +6,8 @@ keywords, and related constants used across all pattern detection classes.
 Consolidating patterns here makes them easier to maintain, review, and extend.
 """
 
-from typing import Dict, List, Set
 import re
+from typing import Dict, List, Set
 
 
 class PatternConfig:
