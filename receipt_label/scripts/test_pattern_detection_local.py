@@ -8,7 +8,7 @@ the Phase 2-3 pattern detection enhancements on local receipt data.
 Usage:
     Run from project root:
     python scripts/test_pattern_detection_local.py --data-dir ./receipt_data
-    
+
     Or with environment setup:
     cd /path/to/Portfolio && python receipt_label/scripts/test_pattern_detection_local.py
 """
