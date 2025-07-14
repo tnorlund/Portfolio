@@ -7,11 +7,11 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
 from receipt_label.utils.cost_monitoring import CostMonitor, ThresholdAlert
 from receipt_label.utils.cost_monitoring.cost_monitor import ThresholdLevel
-
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
 class TestCostMonitor:
@@ -344,7 +344,7 @@ class TestCostMonitor:
     def test_query_metrics_job_scope(self, mock_dynamo_client):
         """Test querying metrics for job scope using GSI3."""
         from datetime import datetime
-        
+
         # Create and insert a test metric
         test_metric = AIUsageMetric(
             service="openai",
@@ -355,13 +355,13 @@ class TestCostMonitor:
             cost_usd=1.50,
             api_calls=1,
         )
-        
+
         # Insert the metric into the mocked DynamoDB
         mock_dynamo_client.put_ai_usage_metric(test_metric)
-        
+
         # Create monitor and query
         monitor = CostMonitor(mock_dynamo_client)
-        
+
         # Test job scope query
         metrics = monitor._query_metrics(
             scope_type="job",
@@ -378,7 +378,7 @@ class TestCostMonitor:
     def test_query_metrics_environment_scope(self, mock_dynamo_client):
         """Test querying metrics for environment scope using scan."""
         from datetime import datetime
-        
+
         # Create and insert a test metric
         test_metric = AIUsageMetric(
             service="anthropic",
@@ -389,13 +389,13 @@ class TestCostMonitor:
             cost_usd=2.25,
             api_calls=1,
         )
-        
+
         # Insert the metric into the mocked DynamoDB
         mock_dynamo_client.put_ai_usage_metric(test_metric)
-        
+
         # Create monitor and query
         monitor = CostMonitor(mock_dynamo_client)
-        
+
         # Test environment scope query
         metrics = monitor._query_metrics(
             scope_type="environment",

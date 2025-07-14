@@ -4,13 +4,13 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
-
-from receipt_dynamo.entities import ReceiptWord
 
 
 class DateTimePatternDetector(PatternDetector):

@@ -762,7 +762,11 @@ class CostMonitor:
                 output_tokens=get_int_value("output_tokens"),
                 total_tokens=get_int_value("total_tokens"),
                 api_calls=get_int_value("api_calls") or 1,
-                cost_usd=float(cost_val) if (cost_val := get_decimal_value("cost_usd")) is not None else None,
+                cost_usd=(
+                    float(cost_val)
+                    if (cost_val := get_decimal_value("cost_usd")) is not None
+                    else None
+                ),
                 latency_ms=get_int_value("latency_ms"),
                 user_id=get_string_value("user_id"),
                 job_id=get_string_value("job_id"),
