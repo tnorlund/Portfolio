@@ -1,0 +1,817 @@
+{
+  "summary": {
+    "total_images": 10,
+    "successful_tests": 9,
+    "failed_tests": 1
+  },
+  "results": [
+    {
+      "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
+      "merchant_name": "Italia Deli & Bakery",
+      "word_count": 207,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 5.131006240844727,
+                  "word_count": 207,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 6.761074066162109,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=2, image_id='7ca97b51-7369-4321-bd01-0211f2bf2557', line_id=20, word_id=1, text='SUBTOTAL', bounding_box={'x': 0.530079348992214, 'width': 0.18715312623757918, 'y': 0.6679002853758503, 'height': 0.018850591892844437}, top_right={'x': 0.7172324752297932, 'y': 0.6853390937849562}, top_left={'x': 0.5308839073198844, 'y': 0.6867508772686948}, bottom_right={'x': 0.7164279169021227, 'y': 0.6679002853758503}, bottom_left={'x': 0.530079348992214, 'y': 0.6693120688595888}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.SUBTOTAL: 3>, confidence=0.9, matched_text='SUBTOTAL', extracted_value='subtotal', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'subtotal', 'pattern_length': 1, 'word_span': 1}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=2, image_id='7ca97b51-7369-4321-bd01-0211f2bf2557', line_id=22, word_id=4, text='TAX', bounding_box={'x': 0.107526882261737, 'width': 0.6057347592120896, 'y': 0.6482558144146686, 'height': 0.01889534780179969}, top_right={'x': 0.7132616414738266, 'y': 0.6671511622164683}, top_left={'x': 0.107526882261737, 'y': 0.6671511622164683}, bottom_right={'x': 0.7132616414738266, 'y': 0.6482558144146686}, bottom_left={'x': 0.107526882261737, 'y': 0.6482558144146686}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.TAX: 4>, confidence=1.0, matched_text='TAX', extracted_value='tax', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'tax', 'text_position': (648, 651)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=2, image_id='7ca97b51-7369-4321-bd01-0211f2bf2557', line_id=33, word_id=2, text='DISCOUNT', bounding_box={'x': 0.1648745633410539, 'width': 0.6810035529773906, 'y': 0.4883286646735383, 'height': 0.016031800420567066}, top_right={'x': 0.8458781163184445, 'y': 0.5043604650941054}, top_left={'x': 0.1648745633410539, 'y': 0.5043604650941054}, bottom_right={'x': 0.8458781163184445, 'y': 0.4883286646735383}, bottom_left={'x': 0.1648745633410539, 'y': 0.4883286646735383}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='DISCOUNT', extracted_value='discount', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (846, 854)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.5347728729248047,
+                  "total_matches": 3,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 1,
+                    "multi_word_matches": 1,
+                    "keyword_matches": 6,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.5347728729248047
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 1,
+                "multi_word_matches": 1,
+                "keyword_matches": 6,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.5347728729248047
+              }
+            },
+            "processing_time_ms": 0.5397796630859375,
+            "patterns_found": 3
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 92.01636222582692,
+            "speedup_factor": 12.525618374558304,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "32e93177-6528-4d63-b637-45d53d1cf3f3",
+      "merchant_name": "Sprouts Farmers Market",
+      "word_count": 354,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 0.9491443634033203,
+                  "word_count": 354,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 0.9782314300537109,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=1, image_id='32e93177-6528-4d63-b637-45d53d1cf3f3', line_id=24, word_id=1, text='BALANCE', bounding_box={'x': 0.13333333680695228, 'width': 0.27499998846942886, 'y': 0.6781427670783393, 'height': 0.010467473269262006}, top_right={'x': 0.40833332527638116, 'y': 0.6886102403476013}, top_left={'x': 0.13333333680695228, 'y': 0.6886102403476013}, bottom_right={'x': 0.40833332527638116, 'y': 0.6781427670783393}, bottom_left={'x': 0.13333333680695228, 'y': 0.6781427670783393}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), ReceiptWord(receipt_id=1, image_id='32e93177-6528-4d63-b637-45d53d1cf3f3', line_id=24, word_id=2, text='DUE', bounding_box={'x': 0.13333333680695228, 'width': 0.27499998846942886, 'y': 0.6781427670783393, 'height': 0.010467473269262006}, top_right={'x': 0.40833332527638116, 'y': 0.6886102403476013}, top_left={'x': 0.13333333680695228, 'y': 0.6886102403476013}, bottom_right={'x': 0.40833332527638116, 'y': 0.6781427670783393}, bottom_left={'x': 0.13333333680695228, 'y': 0.6781427670783393}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=0.9450000000000001, matched_text='BALANCE DUE', extracted_value='balance due', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'balance due', 'pattern_length': 2, 'word_span': 2}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.904083251953125,
+                  "total_matches": 1,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 2,
+                    "multi_word_matches": 3,
+                    "keyword_matches": 14,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.7194280624389648
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 2,
+                "multi_word_matches": 3,
+                "keyword_matches": 14,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.7194280624389648
+              }
+            },
+            "processing_time_ms": 0.911712646484375,
+            "patterns_found": 1
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 6.799902510358274,
+            "speedup_factor": 1.0729602510460252,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "53500759-d95a-4225-911e-18f5cc45d09a",
+      "error": "Expecting value: line 31772 column 27 (char 1003110)"
+    },
+    {
+      "image_id": "33ca0e5b-3b1b-465c-adf8-1b2b82b47282",
+      "merchant_name": "HOMG West Hills",
+      "word_count": 59,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='33ca0e5b-3b1b-465c-adf8-1b2b82b47282', line_id=16, word_id=1, text='20.00', bounding_box={'x': 0.3960389008579602, 'width': 0.3226762936439043, 'y': 0.2175683809593526, 'height': 0.02852602831022011}, top_right={'x': 0.7184392176379564, 'y': 0.2460944092695727}, top_left={'x': 0.3960389008579602, 'y': 0.2451842698102481}, bottom_right={'x': 0.7187151945018645, 'y': 0.2184785204186772}, bottom_left={'x': 0.39631487772186835, 'y': 0.2175683809593526}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.UNIT_PRICE: 6>, confidence=0.5, matched_text='20.00', extracted_value=20.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.22204134790617128, 'is_bottom_20_percent': False, 'same_line_text': 'ATOAT DARDOARCE , MAN BAROWARE MI: : MAN HANOWARE MESI : $ 4t AU\" 413 NEED KERER AGOURA Chatce: MX: CRIVE 9130! the\\' AT 3 FA EA FA I0', 'line_word_count': 59, 'line_position': 0})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='33ca0e5b-3b1b-465c-adf8-1b2b82b47282', line_id=25, word_id=1, text='9.21', bounding_box={'x': 0.896174863467443, 'width': 0.09562841344762729, 'y': 0.2529069776316024, 'height': 0.02470930104493463}, top_right={'x': 0.9918032769150703, 'y': 0.27761627867653704}, top_left={'x': 0.896174863467443, 'y': 0.27761627867653704}, bottom_right={'x': 0.9918032769150703, 'y': 0.2529069776316024}, bottom_left={'x': 0.896174863467443, 'y': 0.2529069776316024}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='9.21', extracted_value=9.21, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.258185061094736, 'is_bottom_20_percent': False, 'same_line_text': 'ATOAT DARDOARCE , MAN BAROWARE MI: : MAN HANOWARE MESI : $ 4t AU\" 413 NEED KERER AGOURA Chatce: MX: CRIVE 9130! the\\' AT 3 FA EA FA I0', 'line_word_count': 59, 'line_position': 0})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='33ca0e5b-3b1b-465c-adf8-1b2b82b47282', line_id=26, word_id=1, text='10.13', bounding_box={'x': 0.8743169400914916, 'width': 0.12295081998095103, 'y': 0.2194767443894633, 'height': 0.02616279081409678}, top_right={'x': 0.9972677600724427, 'y': 0.24563953520356008}, top_left={'x': 0.8743169400914916, 'y': 0.24563953520356008}, bottom_right={'x': 0.9972677600724427, 'y': 0.2194767443894633}, bottom_left={'x': 0.8743169400914916, 'y': 0.2194767443894633}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='10.13', extracted_value=10.13, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.22399318943279395, 'is_bottom_20_percent': False, 'same_line_text': 'ATOAT DARDOARCE , MAN BAROWARE MI: : MAN HANOWARE MESI : $ 4t AU\" 413 NEED KERER AGOURA Chatce: MX: CRIVE 9130! the\\' AT 3 FA EA FA I0', 'line_word_count': 59, 'line_position': 0})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='33ca0e5b-3b1b-465c-adf8-1b2b82b47282', line_id=29, word_id=2, text='413', bounding_box={'x': 0.22131147453176592, 'width': 0.2267759535047743, 'y': 0.03197674418615404, 'height': 0.023255813778854773}, top_right={'x': 0.4480874280365402, 'y': 0.05523255796500881}, top_left={'x': 0.22131147453176592, 'y': 0.05523255796500881}, bottom_right={'x': 0.4480874280365402, 'y': 0.03197674418615404}, bottom_left={'x': 0.22131147453176592, 'y': 0.03197674418615404}, angle_degrees=0.0, angle_radians=0.0, confidence=0.5, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='413', extracted_value=413.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.03222139121857865, 'is_bottom_20_percent': False, 'same_line_text': 'HL DARDOARCE PE MAN BAROWARE MI: W: MAN HANOWARE MESI (UTAL $ IRA . HOMG !to: CE KERER AGOURA Customor GiEEt9 20.00 JoUo. d.41 KTP 4 Aos CTAPPING TAL: .79 .18 ,JS: .55 SAI! 10.13 9.21 2. 3. .72 .80', 'line_word_count': 59, 'line_position': 1})"
+                ],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 0.6358623504638672,
+                  "word_count": 59,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 0.6620883941650391,
+            "patterns_found": 4
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "_metadata": {
+                  "processing_time_ms": 0.10395050048828125,
+                  "total_matches": 0,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 3,
+                    "multi_word_matches": 3,
+                    "keyword_matches": 14,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.5142688751220703
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 3,
+                "multi_word_matches": 3,
+                "keyword_matches": 14,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.5142688751220703
+              }
+            },
+            "processing_time_ms": 0.10704994201660156,
+            "patterns_found": 0
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 83.83147281238746,
+            "speedup_factor": 6.184855233853007,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4",
+      "merchant_name": "Los Angeles County Department of Beaches & Harbors",
+      "word_count": 43,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=2, word_id=3, text='2024', bounding_box={'x': 0.1557562051918736, 'width': 0.5462753950338601, 'y': 0.7236842105113637, 'height': 0.07894736842105265}, top_right={'x': 0.7020316002257337, 'y': 0.8026315789324163}, top_left={'x': 0.1557562051918736, 'y': 0.8026315789324163}, bottom_right={'x': 0.7020316002257337, 'y': 0.7236842105113637}, bottom_left={'x': 0.1557562051918736, 'y': 0.7236842105113637}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='2024', extracted_value=2024.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.7914552705387102, 'is_bottom_20_percent': False, 'same_line_text': 'Zuma - Transaction: Allendant: Type: Amount: 12:350C,PM Aug 24, LA County & Harbors This is PRIME transaction: Thank you your business. Marina Del CA 90292 $15.00 13837 Fiji Event Parking 143855408 Malt S $ 15.00 Credit', 'line_word_count': 43, 'line_position': 2})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=6, word_id=1, text='13837', bounding_box={'x': 0.3066984575813294, 'width': 0.2534202420684608, 'y': 0.5332707984296268, 'height': 0.035432087747674146}, top_right={'x': 0.5601186996497902, 'y': 0.5661624075964246}, top_left={'x': 0.30732108850793954, 'y': 0.5687028861773009}, bottom_right={'x': 0.5594960687231801, 'y': 0.5332707984296268}, bottom_left={'x': 0.3066984575813294, 'y': 0.535811277010503}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='13837', extracted_value=13837.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.5783672501948197, 'is_bottom_20_percent': False, 'same_line_text': '- LABH 24, 2024 County Beaches & Harbors is a PRIME transaction: you for your business. Del Rey, CA 90292 Fiji Way Parking S 15.00', 'line_word_count': 43, 'line_position': 0})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=7, word_id=5, text='90292', bounding_box={'x': 0.2090308024500538, 'width': 0.45125543667554313, 'y': 0.4945994028157731, 'height': 0.04531021180905792}, top_right={'x': 0.658945153454833, 'y': 0.539909614624831}, top_left={'x': 0.2090308024500538, 'y': 0.5311444833897083}, bottom_right={'x': 0.6602862391255969, 'y': 0.5033645340508957}, bottom_left={'x': 0.21037188812081775, 'y': 0.4945994028157731}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='90292', extracted_value=90292.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.5350908284070823, 'is_bottom_20_percent': False, 'same_line_text': 'Zuma - LABH Transaction: Allendant: Type: Amount: 12:350C,PM Aug 24, 2024 LA County Beaches & This is a PRIME Thank you for your Marina Del Rey, CA $15.00 13837 Fiji Way Event Parking 143855408 Malt S $ 15.00 Credit', 'line_word_count': 43, 'line_position': 15})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=13, word_id=1, text='143855408', bounding_box={'x': 0.5388608992068123, 'width': 0.18840371297659786, 'y': 0.3574955313995194, 'height': 0.029795740780077518}, top_right={'x': 0.7269566722535772, 'y': 0.3872912721795969}, top_left={'x': 0.5388608992068123, 'y': 0.38622078530777715}, bottom_right={'x': 0.7272646121834102, 'y': 0.35856601827133916}, bottom_left={'x': 0.5391688391366454, 'y': 0.3574955313995194}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='143855408', extracted_value=143855408.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.3816604989876825, 'is_bottom_20_percent': False, 'same_line_text': '- LABH 24, 2024 County Beaches & Harbors is a PRIME transaction: you for your business. Del Rey, CA 90292 Fiji Way Parking S 15.00', 'line_word_count': 43, 'line_position': 0})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=16, word_id=2, text='15.00', bounding_box={'x': 0.6004514677200903, 'width': 0.13092550790067714, 'y': 0.2105263159630848, 'height': 0.03125}, top_right={'x': 0.7313769756207674, 'y': 0.2417763159630848}, top_left={'x': 0.6004514677200903, 'y': 0.2417763159630848}, bottom_right={'x': 0.7313769756207674, 'y': 0.2105263159630848}, bottom_left={'x': 0.6004514677200903, 'y': 0.2105263159630848}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.5, matched_text='15.00', extracted_value=15.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'plain_number', 'relative_y_position': 0.21719005110031778, 'is_bottom_20_percent': False, 'same_line_text': 'Zuma LABH Transaction: Allendant: Type: Amount: 12:350C,PM Aug 2024 LA Beaches & Harbors This a PRIME transaction: Thank for your business. Marina Rey, CA 90292 $15.00 13837 Way Event 143855408 Malt $ Credit', 'line_word_count': 43, 'line_position': 1})",
+                  "PatternMatch(word=ReceiptWord(receipt_id=1, image_id='a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4', line_id=17, word_id=1, text='$15.00', bounding_box={'x': 0.28861146916516056, 'width': 0.28282220638094313, 'y': 0.11117383644316126, 'height': 0.07534969480414144}, top_right={'x': 0.5714336755461037, 'y': 0.1851854257946146}, top_left={'x': 0.28927260872872745, 'y': 0.1865235312473027}, bottom_right={'x': 0.5707725359825367, 'y': 0.11117383644316126}, bottom_left={'x': 0.28861146916516056, 'y': 0.11251194189584945}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), pattern_type=<PatternType.CURRENCY: 1>, confidence=0.6, matched_text='$15.00', extracted_value=15.0, metadata={'currency_symbol': '$', 'is_negative': False, 'format_type': 'symbol_prefix', 'relative_y_position': 0.10600658484285874, 'is_bottom_20_percent': False, 'same_line_text': '- LABH 24, 2024 County Beaches & Harbors is a PRIME transaction: you for your business. Del Rey, CA 90292 Fiji Way Parking S 15.00', 'line_word_count': 43, 'line_position': 0})"
+                ],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 0.7688999176025391,
+                  "word_count": 43,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 0.7910728454589844,
+            "patterns_found": 6
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "_metadata": {
+                  "processing_time_ms": 0.08177757263183594,
+                  "total_matches": 0,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 4,
+                    "multi_word_matches": 3,
+                    "keyword_matches": 14,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.4061460494995117
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 4,
+                "multi_word_matches": 3,
+                "keyword_matches": 14,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.4061460494995117
+              }
+            },
+            "processing_time_ms": 0.08392333984375,
+            "patterns_found": 0
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 89.3911995177818,
+            "speedup_factor": 9.426136363636363,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "728bc793-a1b8-4dcb-9528-4d6e23572b9d",
+      "merchant_name": "Carrefour",
+      "word_count": 105,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 1.2390613555908203,
+                  "word_count": 105,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 1.2569427490234375,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "_metadata": {
+                  "processing_time_ms": 0.20503997802734375,
+                  "total_matches": 0,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 5,
+                    "multi_word_matches": 3,
+                    "keyword_matches": 14,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.3659248352050781
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 5,
+                "multi_word_matches": 3,
+                "keyword_matches": 14,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.3659248352050781
+              }
+            },
+            "processing_time_ms": 0.2071857452392578,
+            "patterns_found": 0
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 83.51669195751138,
+            "speedup_factor": 6.066743383199079,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "44dc1b44-a656-4dc1-bd41-4abf9d832827",
+      "merchant_name": "Sprouts Farmers Market",
+      "word_count": 212,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 0.49805641174316406,
+                  "word_count": 212,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 0.5137920379638672,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=1, image_id='44dc1b44-a656-4dc1-bd41-4abf9d832827', line_id=27, word_id=1, text='BALANCE', bounding_box={'x': 0.14409531282320193, 'width': 0.2743093692114078, 'y': 0.6205553128519339, 'height': 0.015299629647821167}, top_right={'x': 0.41840468203460973, 'y': 0.6320238722575197}, top_left={'x': 0.14635082053372672, 'y': 0.635854942499755}, bottom_right={'x': 0.41614917432408494, 'y': 0.6205553128519339}, bottom_left={'x': 0.14409531282320193, 'y': 0.6243863830941692}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), ReceiptWord(receipt_id=1, image_id='44dc1b44-a656-4dc1-bd41-4abf9d832827', line_id=27, word_id=2, text='DUE', bounding_box={'x': 0.14409531282320193, 'width': 0.2743093692114078, 'y': 0.6205553128519339, 'height': 0.015299629647821167}, top_right={'x': 0.41840468203460973, 'y': 0.6320238722575197}, top_left={'x': 0.14635082053372672, 'y': 0.635854942499755}, bottom_right={'x': 0.41614917432408494, 'y': 0.6205553128519339}, bottom_left={'x': 0.14409531282320193, 'y': 0.6243863830941692}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=0.9450000000000001, matched_text='BALANCE DUE', extracted_value='balance due', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'balance due', 'pattern_length': 2, 'word_span': 2}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='SAVINGS', extracted_value='savings', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (630, 637)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='discount', extracted_value='discount', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (1158, 1166)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.5421638488769531,
+                  "total_matches": 3,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 6,
+                    "multi_word_matches": 4,
+                    "keyword_matches": 22,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.3952980041503906
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 6,
+                "multi_word_matches": 4,
+                "keyword_matches": 22,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.3952980041503906
+              }
+            },
+            "processing_time_ms": 0.5459785461425781,
+            "patterns_found": 3
+          },
+          "performance_improvement": {
+            "time_reduction_percent": -6.2645011600928076,
+            "speedup_factor": 0.9410480349344978,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "6d7db41f-6e9b-4f43-a577-3208194f64e5",
+      "merchant_name": "Vons",
+      "word_count": 341,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 1.2340545654296875,
+                  "word_count": 341,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 1.2569427490234375,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=2, image_id='6d7db41f-6e9b-4f43-a577-3208194f64e5', line_id=18, word_id=1, text='BALANCE', bounding_box={'x': 0.137500010599614, 'width': 0.2624999853632719, 'y': 0.7322064057050146, 'height': 0.009297198672311602}, top_right={'x': 0.3999999959628859, 'y': 0.7415036043773262}, top_left={'x': 0.137500010599614, 'y': 0.7415036043773262}, bottom_right={'x': 0.3999999959628859, 'y': 0.7322064057050146}, bottom_left={'x': 0.137500010599614, 'y': 0.7322064057050146}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), ReceiptWord(receipt_id=2, image_id='6d7db41f-6e9b-4f43-a577-3208194f64e5', line_id=18, word_id=2, text='DUE', bounding_box={'x': 0.137500010599614, 'width': 0.2624999853632719, 'y': 0.7322064057050146, 'height': 0.009297198672311602}, top_right={'x': 0.3999999959628859, 'y': 0.7415036043773262}, top_left={'x': 0.137500010599614, 'y': 0.7415036043773262}, bottom_right={'x': 0.3999999959628859, 'y': 0.7322064057050146}, bottom_left={'x': 0.137500010599614, 'y': 0.7322064057050146}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=0.9450000000000001, matched_text='BALANCE DUE', extracted_value='balance due', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'balance due', 'pattern_length': 2, 'word_span': 2}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='savings', extracted_value='savings', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (438, 445)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='SAVINGS', extracted_value='savings', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (1197, 1204)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.DISCOUNT: 5>, confidence=1.0, matched_text='discount', extracted_value='discount', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'discount', 'text_position': (1668, 1676)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.8449554443359375,
+                  "total_matches": 4,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 7,
+                    "multi_word_matches": 5,
+                    "keyword_matches": 34,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.45953478131975445
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 7,
+                "multi_word_matches": 5,
+                "keyword_matches": 34,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.45953478131975445
+              }
+            },
+            "processing_time_ms": 0.8499622344970703,
+            "patterns_found": 4
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 32.37860394537178,
+            "speedup_factor": 1.4788218793828891,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "687da832-1d9b-48c2-a295-1cc122c23ed8",
+      "merchant_name": "Target Grocery",
+      "word_count": 321,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 3.0040740966796875,
+                  "word_count": 321,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 3.0219554901123047,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=2, image_id='687da832-1d9b-48c2-a295-1cc122c23ed8', line_id=21, word_id=1, text='BALANCE', bounding_box={'x': 0.1375000023330316, 'width': 0.2791666564172702, 'y': 0.6744186044911136, 'height': 0.010570824717561322}, top_right={'x': 0.4166666587503018, 'y': 0.6849894292086749}, top_left={'x': 0.1375000023330316, 'y': 0.6849894292086749}, bottom_right={'x': 0.4166666587503018, 'y': 0.6744186044911136}, bottom_left={'x': 0.1375000023330316, 'y': 0.6744186044911136}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), ReceiptWord(receipt_id=2, image_id='687da832-1d9b-48c2-a295-1cc122c23ed8', line_id=21, word_id=2, text='DUE', bounding_box={'x': 0.1375000023330316, 'width': 0.2791666564172702, 'y': 0.6744186044911136, 'height': 0.010570824717561322}, top_right={'x': 0.4166666587503018, 'y': 0.6849894292086749}, top_left={'x': 0.1375000023330316, 'y': 0.6849894292086749}, bottom_right={'x': 0.4166666587503018, 'y': 0.6744186044911136}, bottom_left={'x': 0.1375000023330316, 'y': 0.6744186044911136}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=0.9450000000000001, matched_text='BALANCE DUE', extracted_value='balance due', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'balance due', 'pattern_length': 2, 'word_span': 2}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=1, image_id='687da832-1d9b-48c2-a295-1cc122c23ed8', line_id=12, word_id=4, text='TAX', bounding_box={'x': 0.07466400416080729, 'width': 0.6413277539742241, 'y': 0.6944124982537857, 'height': 0.025310797937985074}, top_right={'x': 0.7159917581350315, 'y': 0.7165524904333274}, top_left={'x': 0.07517186339306149, 'y': 0.7197232961917708}, bottom_right={'x': 0.7154838989027773, 'y': 0.6944124982537857}, bottom_left={'x': 0.07466400416080729, 'y': 0.697583304012229}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.TAX: 4>, confidence=1.0, matched_text='TAX', extracted_value='tax', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'tax', 'text_position': (199, 202)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.7011890411376953,
+                  "total_matches": 2,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 8,
+                    "multi_word_matches": 7,
+                    "keyword_matches": 43,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.48974156379699707
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 8,
+                "multi_word_matches": 7,
+                "keyword_matches": 43,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.48974156379699707
+              }
+            },
+            "processing_time_ms": 0.7050037384033203,
+            "patterns_found": 2
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 76.6706114398422,
+            "speedup_factor": 4.286438958403788,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    },
+    {
+      "image_id": "6f323479-9357-464b-b2e6-2883fde9f019",
+      "merchant_name": "Sprouts Farmers Market",
+      "word_count": 162,
+      "comparison": {
+        "comparison": {
+          "legacy": {
+            "results": {
+              "approach": "legacy",
+              "detectors_used": [
+                "currency",
+                "datetime",
+                "contact",
+                "quantity"
+              ],
+              "optimizations": [],
+              "results": {
+                "currency": [],
+                "datetime": [],
+                "contact": [],
+                "quantity": [],
+                "_metadata": {
+                  "execution_time_ms": 0.4820823669433594,
+                  "word_count": 162,
+                  "timeout_occurred": false
+                }
+              }
+            },
+            "processing_time_ms": 0.4978179931640625,
+            "patterns_found": 0
+          },
+          "advanced": {
+            "results": {
+              "approach": "advanced",
+              "optimizations": [
+                "centralized_patterns",
+                "selective_detector_invocation",
+                "batch_regex_evaluation",
+                "true_cpu_parallelism",
+                "trie_based_multi_word_detection",
+                "optimized_keyword_lookups",
+                "merchant_specific_patterns"
+              ],
+              "results": {
+                "currency": [
+                  "UnifiedMatch(words=[ReceiptWord(receipt_id=1, image_id='6f323479-9357-464b-b2e6-2883fde9f019', line_id=37, word_id=1, text='BALANCE', bounding_box={'x': 0.1374999953474079, 'width': 0.2750000038051843, 'y': 0.4958217273426516, 'height': 0.013927575843944662}, top_right={'x': 0.41249999915259217, 'y': 0.5097493031865963}, top_left={'x': 0.1374999953474079, 'y': 0.5097493031865963}, bottom_right={'x': 0.41249999915259217, 'y': 0.4958217273426516}, bottom_left={'x': 0.1374999953474079, 'y': 0.4958217273426516}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False), ReceiptWord(receipt_id=1, image_id='6f323479-9357-464b-b2e6-2883fde9f019', line_id=37, word_id=2, text='DUE', bounding_box={'x': 0.1374999953474079, 'width': 0.2750000038051843, 'y': 0.4958217273426516, 'height': 0.013927575843944662}, top_right={'x': 0.41249999915259217, 'y': 0.5097493031865963}, top_left={'x': 0.1374999953474079, 'y': 0.5097493031865963}, bottom_right={'x': 0.41249999915259217, 'y': 0.4958217273426516}, bottom_left={'x': 0.1374999953474079, 'y': 0.4958217273426516}, angle_degrees=0.0, angle_radians=0.0, confidence=1.0, embedding_status='NONE', is_noise=False)], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=0.9450000000000001, matched_text='BALANCE DUE', extracted_value='balance due', metadata={'algorithm': 'aho_corasick', 'match_type': 'exact', 'original_pattern': 'balance due', 'pattern_length': 2, 'word_span': 2}, source_engine='trie', is_multi_word=True, is_merchant_specific=False)",
+                  "UnifiedMatch(words=[], pattern_type=<PatternType.GRAND_TOTAL: 2>, confidence=1.0, matched_text='Total', extracted_value='total', metadata={'algorithm': 'automaton', 'automaton_type': 'keyword', 'category': 'total', 'text_position': (105, 110)}, source_engine='automaton', is_multi_word=False, is_merchant_specific=False)"
+                ],
+                "_metadata": {
+                  "processing_time_ms": 0.36025047302246094,
+                  "total_matches": 2,
+                  "engines_used": [
+                    "trie",
+                    "automaton",
+                    "merchant"
+                  ],
+                  "performance_stats": {
+                    "total_detections": 9,
+                    "multi_word_matches": 8,
+                    "keyword_matches": 47,
+                    "merchant_matches": 0,
+                    "avg_processing_time_ms": 0.4753536648220486
+                  }
+                }
+              },
+              "engines_used": [
+                "trie",
+                "automaton",
+                "merchant"
+              ],
+              "performance_data": {
+                "total_detections": 9,
+                "multi_word_matches": 8,
+                "keyword_matches": 47,
+                "merchant_matches": 0,
+                "avg_processing_time_ms": 0.4753536648220486
+              }
+            },
+            "processing_time_ms": 0.3631114959716797,
+            "patterns_found": 2
+          },
+          "performance_improvement": {
+            "time_reduction_percent": 27.05938697318008,
+            "speedup_factor": 1.370978332239002,
+            "optimizations_enabled": 7
+          }
+        }
+      }
+    }
+  ]
+}
