@@ -221,7 +221,7 @@ class CostMonitor:
         # Sum costs
         total = Decimal("0")
         for metric in metrics:
-            if metric.cost_usd:
+            if metric.cost_usd is not None:
                 total += Decimal(str(metric.cost_usd))
 
         return total
