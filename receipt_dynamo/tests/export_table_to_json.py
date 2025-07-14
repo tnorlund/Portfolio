@@ -28,6 +28,7 @@ if __name__ == "__main__":
         receipt_lines,
         receipt_words,
         receipt_letters,
+        receipt_word_labels,
         _receipt_metadatas,
         _ocr_jobs,
         _ocr_routing_decisions,
@@ -149,6 +150,9 @@ if __name__ == "__main__":
                 ],
                 "receipt_letters": [
                     dict(letter) for letter in receipt_letters
+                ],
+                "receipt_word_labels": [
+                    dict(label) for label in receipt_word_labels
                 ],
             },
             f,
