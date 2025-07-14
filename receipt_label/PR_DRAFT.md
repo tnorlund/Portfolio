@@ -124,11 +124,35 @@ None. All changes are backward compatible.
 
 ## Next Steps
 
-1. Configure merchant-specific patterns for the 19 identified merchants
-2. Implement GPT-4 fallback for unmatched patterns
-3. Add pattern learning from GPT-4 corrections
-4. Deploy to production with monitoring
-5. Track actual cost reduction metrics
+### 1. Design Smart Decision Engine (IMMEDIATE NEXT STEP)
+- **Context Document**: `docs/decision-engine-design-context.md` provides full background
+- **Design Prompt**: `docs/decision-engine-design-prompt.md` for larger model assistance
+- **Goal**: Determine when pattern detection is sufficient vs. when GPT is needed
+- **Target**: 84% of receipts should skip GPT entirely
+
+### 2. Implement Core Labeling Flow
+Pattern Detection → Decision Engine → [Skip GPT or Use GPT] → Apply Labels
+
+The decision engine will:
+- Evaluate pattern detection coverage
+- Check for essential labels (MERCHANT_NAME, DATE, GRAND_TOTAL)
+- Calculate confidence scores
+- Determine if remaining unlabeled words justify GPT cost
+
+### 3. Integrate with Existing Pipeline
+- Connect to receipt processing workflow
+- Maintain backward compatibility
+- Add monitoring and metrics
+
+### 4. Production Deployment
+- A/B testing against current approach
+- Gradual rollout with cost tracking
+- Performance monitoring
+
+### 5. Continuous Improvement
+- Learn from GPT corrections
+- Update merchant-specific patterns
+- Optimize decision thresholds
 
 ---
 
