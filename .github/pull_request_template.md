@@ -38,10 +38,11 @@
 - [ ] Package boundary adherence verified
 
 > **💡 Claude Review Tips:**
-> - Reviews automatically trigger for non-draft PRs under 1000 lines
+> - Reviews automatically trigger for all non-draft PRs using your Claude subscription
 > - Use `@claude` to ask specific questions about your code
 > - Add `skip-claude-review` label to skip automatic reviews
-> - Claude focuses on performance, architecture, and CI optimization patterns
+> - Claude focuses on performance, architecture, package boundaries, and CI optimization
+> - Comments are automatically managed and cleaned up on merge
 
 ## ✅ Checklist
 - [ ] My code follows this project's style guidelines
