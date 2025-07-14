@@ -36,9 +36,9 @@ def main():
         client = DynamoClient(table_name)
         # Get sample images using list_images
         images, _ = client.list_images(limit=args.size)
-        
+
         print(f"Found {len(images)} images to export...")
-        
+
         for i, image in enumerate(images):
             image_id = image.image_id
             try:
@@ -46,7 +46,7 @@ def main():
                 print(f"Exported {i+1}/{len(images)}: {image_id}")
             except Exception as e:
                 print(f"Failed {image_id}: {e}")
-        
+
         print(f"Export complete! Data saved to {args.output_dir}")
 
 
