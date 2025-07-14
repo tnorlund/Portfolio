@@ -75,22 +75,23 @@ class ContactPatternDetector(PatternDetector):
                 )
                 matches.append(match)
 
-            # Website detection
-            website_match = self._match_website_pattern(word.text)
-            if website_match:
-                match = PatternMatch(
-                    word=word,
-                    pattern_type=PatternType.WEBSITE,
-                    confidence=website_match["confidence"],
-                    matched_text=website_match["matched_text"],
-                    extracted_value=website_match["url"],
-                    metadata={
-                        "has_protocol": website_match["has_protocol"],
-                        "domain": website_match["domain"],
-                        **self._calculate_position_context(word, words),
-                    },
-                )
-                matches.append(match)
+            # Website detection (only if no email detected to avoid overlap)
+            if not email_match:
+                website_match = self._match_website_pattern(word.text)
+                if website_match:
+                    match = PatternMatch(
+                        word=word,
+                        pattern_type=PatternType.WEBSITE,
+                        confidence=website_match["confidence"],
+                        matched_text=website_match["matched_text"],
+                        extracted_value=website_match["url"],
+                        metadata={
+                            "has_protocol": website_match["has_protocol"],
+                            "domain": website_match["domain"],
+                            **self._calculate_position_context(word, words),
+                        },
+                    )
+                    matches.append(match)
 
         return matches
 
@@ -122,7 +123,7 @@ class ContactPatternDetector(PatternDetector):
         )
 
         # Try international format first
-        if match := self._compiled_patterns["phone_intl"].search(cleaned_text):
+        if match := self._compiled_patterns["international"].search(cleaned_text):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d+]", "", matched_text)
 
@@ -141,8 +142,19 @@ class ContactPatternDetector(PatternDetector):
                     "confidence": 0.9,
                 }
 
+        # Try US alpha format (1-800-FLOWERS)
+        if match := self._compiled_patterns["us_alpha"].search(cleaned_text):
+            matched_text = match.group(0)
+            return {
+                "matched_text": matched_text,
+                "normalized": matched_text,  # Keep alpha format
+                "format": "US_ALPHA",
+                "country": "US",
+                "confidence": 0.95,
+            }
+
         # Try US/Canada format
-        if match := self._compiled_patterns["phone_us"].search(cleaned_text):
+        if match := self._compiled_patterns["us_standard"].search(cleaned_text):
             matched_text = match.group(0)
             digits = re.sub(r"[^\d]", "", matched_text)
 
@@ -168,7 +180,7 @@ class ContactPatternDetector(PatternDetector):
                 }
 
         # Try generic pattern (lower confidence) - but be more selective
-        if match := self._compiled_patterns["phone_generic"].search(text):
+        if match := self._compiled_patterns["short"].search(text):
             matched_text = match.group(0).strip()
 
             # Skip if it's just a domain name without phone-like structure
@@ -234,9 +246,13 @@ class ContactPatternDetector(PatternDetector):
     def _match_website_pattern(self, text: str) -> Optional[Dict]:
         """Match website patterns."""
         text = text.strip().lower()
+        
+        # Skip if this looks like an email (has @ symbol)
+        if "@" in text:
+            return None
 
         # Try with protocol
-        if match := self._compiled_patterns["website_protocol"].search(text):
+        if match := self._compiled_patterns["website"].search(text):
             return {
                 "matched_text": match.group(0),
                 "url": match.group(0),
@@ -284,8 +300,8 @@ class ContactPatternDetector(PatternDetector):
         # Extract digits only for US numbers
         digits = re.sub(r"[^\d]", "", phone)
 
-        # Handle US with country code
-        if len(digits) == 11 and digits[0] == "1":
+        # Handle US with country code (only for domestic numbers, not international)
+        if len(digits) == 11 and digits[0] == "1" and not phone.strip().startswith("+"):
             digits = digits[1:]
 
         # Format US numbers to xxx-xxx-xxxx format (matching test expectations)
@@ -339,7 +355,7 @@ class ContactPatternDetector(PatternDetector):
             ]:
                 # Keep last 3 parts for country domains
                 domain = ".".join(parts[-3:])
-            elif len(parts) >= 3 and parts[-1] in COMMON_TLDS:
+            elif len(parts) >= 3 and parts[-1] in PatternConfig.COMMON_TLDS:
                 # Keep last 2 parts for common domains
                 domain = ".".join(parts[-2:])
 

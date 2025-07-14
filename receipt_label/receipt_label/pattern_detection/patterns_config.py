@@ -99,7 +99,8 @@ class PatternConfig:
     PHONE_PATTERNS = {
         "us_standard": r"\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})",
         "us_long": r"\+?1[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})",
-        "international": r"\+[1-9]\d{1,14}",
+        "us_alpha": r"1-800-[A-Z]{3,7}",  # 1-800-FLOWERS format
+        "international": r"\+[1-9][\d\s\-\.\(\)]{1,20}",
         "short": r"\d{3}-\d{4}",  # Local numbers
     }
     
@@ -114,8 +115,12 @@ class PatternConfig:
         "ru", "eu", "asia", "africa"
     }
     
-    # Website pattern
-    WEBSITE_PATTERN = rf"\b(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b"
+    # Website patterns
+    WEBSITE_PATTERNS = {
+        "website": rf"\b(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
+        "website_short": rf"\b[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
+        "website_no_protocol": rf"\b(?:www\.)?[a-zA-Z0-9-]+\.(?:{'|'.join(COMMON_TLDS)})\b",
+    }
     
     # ========================================
     # QUANTITY PATTERNS
@@ -211,7 +216,7 @@ class PatternConfig:
         """Get compiled contact patterns."""
         patterns = {**cls.PHONE_PATTERNS}
         patterns["email"] = cls.EMAIL_PATTERN
-        patterns["website"] = cls.WEBSITE_PATTERN
+        patterns.update(cls.WEBSITE_PATTERNS)
         return cls.compile_patterns(patterns)
     
     @classmethod
