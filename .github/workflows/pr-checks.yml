@@ -49,8 +49,8 @@ jobs:
           # Install formatters
           python3 -m pip install isort black
 
-          # Check if code is formatted
-          if isort --check-only --profile=black --line-length=79 . && black --check --line-length=79 .; then
+          # Check if code is formatted with standardized parameters
+          if isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra scripts && black --check --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra scripts; then
             echo "formatted=true" >> $GITHUB_OUTPUT
           else
             echo "formatted=false" >> $GITHUB_OUTPUT
