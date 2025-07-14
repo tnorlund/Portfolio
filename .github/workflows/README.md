@@ -73,46 +73,23 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 
 ### Claude AI Workflows
 
-#### 🤖 [`claude.yml`](./claude.yml)
-**Purpose**: Interactive AI assistant
-**Triggers**:
-- Comments with `@claude` mention
-- New issues with `@claude`
-- PR review comments with `@claude`
-
-**Usage Examples**:
-```
-@claude can you explain this function?
-@claude what are the security implications here?
-@claude help me refactor this code
-```
-
----
 
 #### 🔍 [`claude-review.yml`](./claude-review.yml)
-**Purpose**: Automated PR code reviews
+**Purpose**: Consolidated Claude code review, interactive assistance, and comment management
 **Triggers**:
-- PR marked "ready for review"
+- PR marked "ready for review" (automatic)
 - PR labeled with `claude-review-requested`
-- Comment `/claude review`
+- Comments containing `@claude`
 
-**Smart Features**:
-- Skips PRs > 1000 lines (override with label)
-- Ignores non-code files
-- Permission checks for manual triggers
-- Adds review summary as PR comment
-
----
-
-#### 🔍+ [`claude-review-enhanced.yml`](./claude-review-enhanced.yml)
-**Purpose**: Advanced review with comment management
-**Triggers**: PR ready, labeled, or synchronized
-
-**Enhanced Features**:
-- Collapses outdated reviews
-- Manages review threads
-- Cleanup on merge
-- GraphQL optimization for performance
+**Unified Features**:
+- Reviews all PRs regardless of size
+- Uses Claude subscription (not API key)
+- Manages and collapses outdated comments
+- Cleanup on PR merge
+- Self-hosted runner optimization
+- Interactive Q&A support
+- Comprehensive review guidelines
+- Cost optimization controls
 
 ---
 
@@ -170,7 +147,7 @@ matrix:
 
 ### 5. Secret Management
 Required secrets:
-- `ANTHROPIC_API_KEY` - Claude API access
+- `CLAUDE_CODE_OAUTH_TOKEN` - Claude subscription access (preferred over API key)
 - `AWS_ACCESS_KEY_ID` - AWS credentials
 - `AWS_SECRET_ACCESS_KEY` - AWS credentials
 - `PULUMI_ACCESS_TOKEN` - Infrastructure deployment
@@ -205,7 +182,7 @@ Control workflow behavior with PR labels:
 
 ### Claude AI Costs
 - Average PR review: ~5K tokens ≈ $0.24
-- Automatic skip for PRs > 1000 lines
+- Reviews all PRs regardless of size
 - Track usage via `track-ai-usage.yml`
 
 ## Debugging Workflows
