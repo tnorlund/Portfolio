@@ -31,12 +31,12 @@ jobs:
 
       - name: Format Python code
         run: |
-          # Format all Python files with project configs
+          # Format all Python files with standardized configs
           echo "Running black with line-length=79..."
-          black --line-length=79 receipt_dynamo receipt_label infra scripts || true
+          black --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra scripts || true
 
-          echo "Running isort with black profile..."
-          isort --profile=black --line-length=79 receipt_dynamo receipt_label infra scripts || true
+          echo "Running isort with standardized parameters..."
+          isort --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra scripts || true
 
           # Check if there are any changes
           if [[ -n $(git diff --name-only) ]]; then
