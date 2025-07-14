@@ -18,6 +18,8 @@ help:
 	@echo "Local Development Commands:"
 	@echo "  make export-sample-data - Export sample receipt data for local testing"
 	@echo "  make test-local      - Run tests with local data and stubbed APIs"
+	@echo "  make test-pattern-detection - Test pattern detection enhancements"
+	@echo "  make compare-pattern-optimizations - Compare optimization levels"
 	@echo "  make validate-pipeline - Run end-to-end pipeline validation"
 
 format:
@@ -109,8 +111,24 @@ validate-pipeline:
 		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
 		exit 1; \
 	fi
-	@echo "Testing pattern detection..."
-	python scripts/test_decision_engine.py ./receipt_data --report detailed --output validation_report.txt
+	@echo "Testing pattern detection enhancements..."
+	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --verbose
 	@echo "Testing local data loader..."
 	USE_STUB_APIS=true pytest receipt_label/tests/integration/test_local_pipeline.py::TestLocalPipeline::test_pipeline_with_stubbed_apis -v
-	@echo "✅ Pipeline validation completed. Check validation_report.txt for details"
+	@echo "✅ Pipeline validation completed"
+
+test-pattern-detection:
+	@echo "Testing pattern detection with local data..."
+	@if [ ! -d "./receipt_data" ]; then \
+		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
+		exit 1; \
+	fi
+	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --optimization-level advanced
+
+compare-pattern-optimizations:
+	@echo "Comparing pattern detection optimization levels..."
+	@if [ ! -d "./receipt_data" ]; then \
+		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
+		exit 1; \
+	fi
+	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --compare-all --limit 5

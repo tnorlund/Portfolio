@@ -5,39 +5,48 @@ import time
 from typing import Dict, List, Optional
 
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
-from receipt_label.pattern_detection.contact import ContactPatternDetector
-from receipt_label.pattern_detection.currency import CurrencyPatternDetector
-from receipt_label.pattern_detection.datetime_patterns import (
-    DateTimePatternDetector,
+from receipt_label.pattern_detection.pattern_registry import (
+    PATTERN_REGISTRY, PatternDetectorFactory, DetectorCategory
 )
-from receipt_label.pattern_detection.quantity import QuantityPatternDetector
-
+from receipt_label.pattern_detection.pattern_utils import PatternOptimizer
 from receipt_dynamo.entities import ReceiptWord
 
 
 class ParallelPatternOrchestrator:
     """Orchestrates parallel execution of pattern detectors for optimal performance."""
 
-    def __init__(self, timeout: float = 0.1):  # 100ms timeout
+    def __init__(self, timeout: float = 0.1, use_adaptive_selection: bool = True):
         """Initialize the orchestrator.
 
         Args:
             timeout: Maximum time in seconds to wait for pattern detection
+            use_adaptive_selection: Whether to use adaptive detector selection (Phase 2 optimization)
         """
         self.timeout = timeout
-        self._detectors = {
-            "currency": CurrencyPatternDetector(),
-            "datetime": DateTimePatternDetector(),
-            "contact": ContactPatternDetector(),
-            "quantity": QuantityPatternDetector(),
-        }
+        self.use_adaptive_selection = use_adaptive_selection
+        
+        # Create detectors using the registry
+        if use_adaptive_selection:
+            self._detectors = {}  # Will be created adaptively per request
+        else:
+            # Use all detectors (legacy mode)
+            self._detectors = self._create_all_detectors()
+    
+    def _create_all_detectors(self) -> Dict[str, any]:
+        """Create all available detectors."""
+        detectors = {}
+        for metadata in PATTERN_REGISTRY.get_all_detectors():
+            detector = PATTERN_REGISTRY.create_detector(metadata.name)
+            if detector:
+                detectors[metadata.name] = detector
+        return detectors
 
     async def detect_all_patterns(
         self,
         words: List[ReceiptWord],
         merchant_patterns: Optional[Dict] = None,
     ) -> Dict[str, List[PatternMatch]]:
-        """Run all pattern detectors in parallel.
+        """Run pattern detectors in parallel with adaptive selection.
 
         Args:
             words: List of receipt words to analyze (already filtered for noise)
@@ -48,12 +57,30 @@ class ParallelPatternOrchestrator:
         """
         start_time = time.time()
 
-        # Create detection tasks
+        # Adaptive detector selection (Phase 2 optimization)
+        if self.use_adaptive_selection:
+            active_detectors = PatternDetectorFactory.create_adaptive_detectors(words)
+            detector_map = {}
+            for detector in active_detectors:
+                # Map detector class name to registry name
+                class_name = type(detector).__name__.lower()
+                if "currency" in class_name:
+                    detector_map["currency"] = detector
+                elif "contact" in class_name:
+                    detector_map["contact"] = detector
+                elif "datetime" in class_name:
+                    detector_map["datetime"] = detector
+                elif "quantity" in class_name:
+                    detector_map["quantity"] = detector
+        else:
+            detector_map = self._detectors
+
+        # Create detection tasks for active detectors only
         tasks = {
             name: asyncio.create_task(
                 self._run_detector_with_timeout(detector, words)
             )
-            for name, detector in self._detectors.items()
+            for name, detector in detector_map.items()
         }
 
         # If merchant patterns provided, apply them as well

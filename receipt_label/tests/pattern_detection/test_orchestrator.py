@@ -208,8 +208,11 @@ class TestParallelPatternOrchestrator:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_timeout_handling(self, orchestrator):
+    async def test_timeout_handling(self):
         """Test that timeout is properly handled."""
+        # Create orchestrator with adaptive selection disabled for predictable behavior
+        orchestrator = ParallelPatternOrchestrator(timeout=0.1, use_adaptive_selection=False)
+        
         # Create a slow detector
         slow_detector = Mock()
 
@@ -229,7 +232,7 @@ class TestParallelPatternOrchestrator:
                 image_id="550e8400-e29b-41d4-a716-446655440000",
                 line_id=1,
                 word_id=1,
-                text="TEST",
+                text="$5.99",
                 bounding_box={"x": 0, "y": 0, "width": 50, "height": 20},
                 top_left={"x": 0, "y": 0},
                 top_right={"x": 50, "y": 0},
@@ -250,8 +253,11 @@ class TestParallelPatternOrchestrator:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_error_handling(self, orchestrator):
+    async def test_error_handling(self):
         """Test that errors in one detector don't crash the whole system."""
+        # Create orchestrator with adaptive selection disabled for predictable behavior
+        orchestrator = ParallelPatternOrchestrator(timeout=0.1, use_adaptive_selection=False)
+        
         # Create a failing detector
         failing_detector = Mock()
 

@@ -174,12 +174,12 @@ class TestPerformanceTarget:
         assert avg_time < 100
         assert p95_time < 100
 
-    @pytest.mark.unit
+    @pytest.mark.performance
     @pytest.mark.asyncio
     async def test_parallel_vs_sequential(self):
         """Compare parallel vs sequential execution."""
         # Use larger word count where parallelization benefits outweigh overhead
-        words = self.create_receipt_words(150)
+        words = self.create_receipt_words(500)
 
         # Test parallel execution
         orchestrator = ParallelPatternOrchestrator(timeout=0.1)
@@ -218,7 +218,7 @@ class TestPerformanceTarget:
         avg_parallel = sum(parallel_times) / len(parallel_times)
         avg_sequential = sum(sequential_times) / len(sequential_times)
 
-        print(f"\nParallel vs Sequential (150 words, 3 runs avg):")
+        print(f"\nParallel vs Sequential (500 words, 3 runs avg):")
         print(f"  Parallel: {avg_parallel:.2f}ms")
         print(f"  Sequential: {avg_sequential:.2f}ms")
         print(f"  Speedup: {avg_sequential / avg_parallel:.2f}x")
