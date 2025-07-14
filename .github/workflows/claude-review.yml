@@ -52,15 +52,18 @@ jobs:
           
           # Automatic PR review prompt (for pull_request events)
           direct_prompt: |
-            Perform a complete code review of this pull request. Read CLAUDE.md for context, then analyze every changed file.
+            Please perform a thorough code review of this pull request. I need you to:
             
-            Review priorities:
-            1. Performance implications - test timeouts, CI optimization patterns
-            2. Package boundary violations - receipt_dynamo (data) vs receipt_label (business logic)
-            3. Critical bugs or security issues - authentication, data validation, error handling
-            4. Architecture alignment - CI optimization patterns, self-hosted runners
+            1. Read CLAUDE.md to understand the repository context and guidelines
+            2. Identify all changed files in this PR
+            3. For each changed file, read the content and analyze for:
+               - Performance implications (test timeouts, CI optimization)
+               - Package boundary violations (receipt_dynamo vs receipt_label separation)
+               - Critical bugs or security issues
+               - Architecture alignment issues
+            4. Provide a comprehensive review comment with specific findings, line numbers, and actionable recommendations
             
-            Do NOT just create a checklist - actually perform the review. Read each changed file, analyze the code, and provide specific feedback with line numbers. Complete the entire review before finishing.
+            Important: Do not stop after creating a checklist. Continue working until you have analyzed the actual code changes and provided detailed feedback. Use multiple conversation turns to read files and build up your analysis, then provide a final comprehensive review.
           
           # Comprehensive review guidelines for manual mentions
           custom_instructions: |
