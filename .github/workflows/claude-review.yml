@@ -148,11 +148,9 @@ jobs:
           
           # Review configuration
           trigger_phrase: "@claude"   # Only respond when mentioned
-          auto_review: "true"         # Enable automatic PR reviews
-          allow_python_tool_execution: true
           
           # Comprehensive review guidelines
-          language_model_instructions: |
+          custom_instructions: |
             You are reviewing a pull request in a portfolio project with optimized CI/CD. Focus on:
 
             ## High Priority Issues:
