@@ -125,16 +125,16 @@ class LocalDataLoader:
         """
         receipt_dir = self.data_dir / f"image_{image_id}_receipt_{receipt_id}"
         return self._load_metadata(receipt_dir)
-    
+
     def list_available_receipts(self) -> List[Tuple[str, str]]:
         """
         List all available receipts in the data directory.
-        
+
         Returns:
             List of (image_id, receipt_id) tuples
         """
         receipts = []
-        
+
         # Look for directories matching pattern image_*_receipt_*
         for receipt_dir in self.data_dir.glob("image_*_receipt_*"):
             if receipt_dir.is_dir():
@@ -144,10 +144,12 @@ class LocalDataLoader:
                     image_id = parts[1]
                     receipt_id = parts[3]
                     receipts.append((image_id, receipt_id))
-        
+
         return receipts
-    
-    def load_metadata(self, image_id: str, receipt_id: str) -> Optional[ReceiptMetadata]:
+
+    def load_metadata(
+        self, image_id: str, receipt_id: str
+    ) -> Optional[ReceiptMetadata]:
         """Alias for load_receipt_metadata for compatibility."""
         return self.load_receipt_metadata(image_id, receipt_id)
 
