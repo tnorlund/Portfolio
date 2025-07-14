@@ -6,11 +6,12 @@
 
 # Function: getBestImageUrl()
 
-> **getBestImageUrl**(`image`, `formatSupport`): `string`
+> **getBestImageUrl**(`image`, `formatSupport`, `size`): `string`
 
-Defined in: [utils/imageFormat.ts:93](https://github.com/tnorlund/Portfolio/blob/cc3b7fd87445aa300d75b69796aa960f55590816/portfolio/utils/imageFormat.ts#L93)
+Defined in: [utils/imageFormat.ts:139](https://github.com/tnorlund/Portfolio/blob/66e0b749b6ce1eda08da76d279914f09333252c9/portfolio/utils/imageFormat.ts#L139)
 
 Choose the optimal image URL given supported formats and available keys.
+Now supports different image sizes for bandwidth optimization.
 
 ## Parameters
 
@@ -21,6 +22,10 @@ Choose the optimal image URL given supported formats and available keys.
 ### formatSupport
 
 [`FormatSupport`](../interfaces/FormatSupport.md)
+
+### size
+
+[`ImageSize`](../type-aliases/ImageSize.md) = `'full'`
 
 ## Returns
 
