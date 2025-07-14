@@ -191,22 +191,16 @@ class CurrencyPatternDetector(PatternDetector):
         same_line_text = context.get("same_line_text", "").lower()
 
         if pattern_type == PatternType.GRAND_TOTAL:
-            if any(
-                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "total")
-            ):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "total"):
                 confidence += 0.3
         elif pattern_type == PatternType.TAX:
             if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "tax"):
                 confidence += 0.3
         elif pattern_type == PatternType.SUBTOTAL:
-            if any(
-                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "subtotal")
-            ):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "subtotal"):
                 confidence += 0.3
         elif pattern_type == PatternType.DISCOUNT:
-            if any(
-                CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "discount")
-            ):
+            if CURRENCY_KEYWORD_MATCHER.has_keywords(same_line_text, "discount"):
                 confidence += 0.3
 
         # Boost confidence for expected positions

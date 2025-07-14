@@ -175,19 +175,19 @@ class ContextAnalyzer:
         Returns:
             List of words on the same line
         """
-        if not target_word.y_position:
+        if not (target_word.bounding_box and "y" in target_word.bounding_box):
             return [target_word]
             
         line_words = []
-        target_y = target_word.y_position
+        target_y = target_word.bounding_box["y"]
         
         for word in all_words:
-            if (word.y_position and 
-                abs(word.y_position - target_y) <= y_tolerance):
+            if (word.bounding_box and "y" in word.bounding_box and 
+                abs(word.bounding_box["y"] - target_y) <= y_tolerance):
                 line_words.append(word)
         
-        # Sort by x_position for proper reading order
-        line_words.sort(key=lambda w: w.x_position or 0)
+        # Sort by x position for proper reading order
+        line_words.sort(key=lambda w: w.bounding_box.get("x", 0) if w.bounding_box else 0)
         return line_words
     
     @staticmethod
@@ -205,19 +205,19 @@ class ContextAnalyzer:
         Returns:
             List of (word, distance) tuples, sorted by distance
         """
-        if not (target_word.x_position and target_word.y_position):
+        if not (target_word.bounding_box and "x" in target_word.bounding_box and "y" in target_word.bounding_box):
             return []
             
         neighbors = []
-        target_x, target_y = target_word.x_position, target_word.y_position
+        target_x, target_y = target_word.bounding_box["x"], target_word.bounding_box["y"]
         
         for word in all_words:
             if (word.word_id == target_word.word_id or 
-                not (word.x_position and word.y_position)):
+                not (word.bounding_box and "x" in word.bounding_box and "y" in word.bounding_box)):
                 continue
                 
-            distance = ((word.x_position - target_x) ** 2 + 
-                       (word.y_position - target_y) ** 2) ** 0.5
+            distance = ((word.bounding_box["x"] - target_x) ** 2 + 
+                       (word.bounding_box["y"] - target_y) ** 2) ** 0.5
             
             if distance <= max_distance:
                 neighbors.append((word, distance))
@@ -238,12 +238,12 @@ class ContextAnalyzer:
         Returns:
             Dictionary with position percentiles: {"x_percentile": 0.0-1.0, "y_percentile": 0.0-1.0}
         """
-        if not (word.x_position and word.y_position):
+        if not (word.bounding_box and "x" in word.bounding_box and "y" in word.bounding_box):
             return {"x_percentile": 0.5, "y_percentile": 0.5}
             
         # Get min/max positions
-        x_positions = [w.x_position for w in all_words if w.x_position]
-        y_positions = [w.y_position for w in all_words if w.y_position]
+        x_positions = [w.bounding_box["x"] for w in all_words if w.bounding_box and "x" in w.bounding_box]
+        y_positions = [w.bounding_box["y"] for w in all_words if w.bounding_box and "y" in w.bounding_box]
         
         if not x_positions or not y_positions:
             return {"x_percentile": 0.5, "y_percentile": 0.5}
@@ -251,8 +251,8 @@ class ContextAnalyzer:
         min_x, max_x = min(x_positions), max(x_positions)
         min_y, max_y = min(y_positions), max(y_positions)
         
-        x_percentile = (word.x_position - min_x) / (max_x - min_x) if max_x > min_x else 0.5
-        y_percentile = (word.y_position - min_y) / (max_y - min_y) if max_y > min_y else 0.5
+        x_percentile = (word.bounding_box["x"] - min_x) / (max_x - min_x) if max_x > min_x else 0.5
+        y_percentile = (word.bounding_box["y"] - min_y) / (max_y - min_y) if max_y > min_y else 0.5
         
         return {
             "x_percentile": max(0.0, min(1.0, x_percentile)),

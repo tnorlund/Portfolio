@@ -89,6 +89,9 @@ class TrueParallelismEngine:
             "config": self.config.__dict__.copy()
         }
         
+        # Initialize used_threading before try block to prevent NameError in except block
+        used_threading = False
+        
         try:
             # Strategy selection based on data size and configuration
             if self._should_use_threading(words):
