@@ -4,14 +4,15 @@ import asyncio
 import time
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.pattern_detection.pattern_registry import (
     PATTERN_REGISTRY,
-    PatternDetectorFactory,
     DetectorCategory,
+    PatternDetectorFactory,
 )
 from receipt_label.pattern_detection.pattern_utils import PatternOptimizer
-from receipt_dynamo.entities import ReceiptWord
 
 
 class ParallelPatternOrchestrator:

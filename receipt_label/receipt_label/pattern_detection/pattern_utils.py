@@ -7,12 +7,14 @@ including selective invocation, batch processing, and pattern optimization utili
 
 import re
 from typing import Dict, List, Set, Tuple, Optional, Any
+
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.patterns_config import (
     PatternConfig,
     classify_word_type,
     is_noise_word,
 )
-from receipt_dynamo.entities import ReceiptWord
 
 
 class PatternOptimizer:

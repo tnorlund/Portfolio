@@ -3,6 +3,7 @@
 import os
 
 import pytest
+
 from receipt_label.data.places_api import (
     BatchPlacesProcessor,
     ConfidenceLevel,
