@@ -13,7 +13,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 

@@ -10,24 +10,25 @@ This module combines:
 This represents the culmination of Phase 3 optimizations.
 """
 
-import time
-from typing import Dict, List, Set, Tuple, Optional, Any, Union
-from dataclasses import dataclass, field
-from collections import defaultdict
 import json
+import time
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from receipt_label.pattern_detection.trie_matcher import (
-    MultiWordPatternDetector,
-    MultiWordMatch,
-    MatchType,
-)
-from receipt_label.pattern_detection.automaton_matcher import (
-    OptimizedKeywordMatcher,
-    AutomatonMatch,
-)
-from receipt_label.pattern_detection.base import PatternType, PatternMatch
-from receipt_label.pattern_detection.patterns_config import PatternConfig
 from receipt_dynamo.entities import ReceiptWord
+
+from receipt_label.pattern_detection.automaton_matcher import (
+    AutomatonMatch,
+    OptimizedKeywordMatcher,
+)
+from receipt_label.pattern_detection.base import PatternMatch, PatternType
+from receipt_label.pattern_detection.patterns_config import PatternConfig
+from receipt_label.pattern_detection.trie_matcher import (
+    MatchType,
+    MultiWordMatch,
+    MultiWordPatternDetector,
+)
 
 
 @dataclass

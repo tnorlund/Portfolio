@@ -8,7 +8,6 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice, CompletionUsage
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 

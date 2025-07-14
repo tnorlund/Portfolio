@@ -7,9 +7,9 @@ across all tested receipts.
 """
 
 import json
+import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
-import statistics
 
 
 def analyze_results(results_file: str = "results_all.json"):

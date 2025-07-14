@@ -2,13 +2,14 @@
 
 from typing import Dict, List, Optional
 
+from receipt_dynamo.entities import ReceiptWord
+
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
     PatternType,
 )
 from receipt_label.pattern_detection.patterns_config import PatternConfig
-from receipt_dynamo.entities import ReceiptWord
 
 
 class QuantityPatternDetector(PatternDetector):

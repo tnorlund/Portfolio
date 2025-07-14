@@ -13,7 +13,6 @@ import boto3
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
-
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 from .cost_calculator import AICostCalculator

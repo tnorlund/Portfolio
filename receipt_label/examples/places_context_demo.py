@@ -7,6 +7,7 @@ and propagates context from the ai_usage_context manager.
 """
 
 import googlemaps
+
 from receipt_label.utils.ai_usage_context import ai_usage_context
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 

@@ -15,7 +15,6 @@ from openai.types.create_embedding_response import CreateEmbeddingResponse
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
-
 from tests.utils.ai_usage_helpers import (
     create_mock_openai_response,
     create_test_tracking_context,

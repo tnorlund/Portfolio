@@ -6,6 +6,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.utils.environment_config import (
     AIUsageEnvironmentConfig,
     Environment,

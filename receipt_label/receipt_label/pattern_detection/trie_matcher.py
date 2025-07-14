@@ -6,15 +6,16 @@ like "Big Mac", "grand total", "sales tax", and merchant-specific product names.
 The Aho-Corasick algorithm enables efficient searching for multiple patterns simultaneously.
 """
 
-from typing import Dict, List, Set, Tuple, Optional, Any, NamedTuple
-from dataclasses import dataclass
-from collections import defaultdict, deque
 import re
+from collections import defaultdict, deque
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
+
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection.base import PatternType
 from receipt_label.pattern_detection.patterns_config import PatternConfig
-from receipt_dynamo.entities import ReceiptWord
 
 
 class MatchType(Enum):
