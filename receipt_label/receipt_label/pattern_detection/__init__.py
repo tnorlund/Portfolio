@@ -28,27 +28,27 @@ from receipt_label.pattern_detection.currency import CurrencyPatternDetector
 from receipt_label.pattern_detection.datetime_patterns import (
     DateTimePatternDetector,
 )
-from receipt_label.pattern_detection.orchestrator import (
-    ParallelPatternOrchestrator,
-)
-from receipt_label.pattern_detection.quantity import QuantityPatternDetector
 
 # Enhanced pattern detection (Phase 2-3)
 from receipt_label.pattern_detection.enhanced_orchestrator import (
-    EnhancedPatternOrchestrator,
-    detect_patterns_optimized,
-    compare_optimization_performance,
-    get_optimization_capabilities,
-    OptimizationLevel,
     ENHANCED_ORCHESTRATOR,
+    EnhancedPatternOrchestrator,
+    OptimizationLevel,
+    compare_optimization_performance,
+    detect_patterns_optimized,
+    get_optimization_capabilities,
 )
+from receipt_label.pattern_detection.orchestrator import (
+    ParallelPatternOrchestrator,
+)
+from receipt_label.pattern_detection.parallel_engine import (
+    OPTIMIZED_PATTERN_DETECTOR,
+)
+from receipt_label.pattern_detection.quantity import QuantityPatternDetector
 
 # Specialized engines for advanced use cases
 from receipt_label.pattern_detection.unified_pattern_engine import (
     UNIFIED_PATTERN_ENGINE,
-)
-from receipt_label.pattern_detection.parallel_engine import (
-    OPTIMIZED_PATTERN_DETECTOR,
 )
 
 __all__ = [
