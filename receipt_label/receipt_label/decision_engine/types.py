@@ -29,39 +29,41 @@ class ConfidenceLevel(Enum):
 @dataclass
 class FourFieldSummary:
     """Summary of the 4 essential fields for decision making.
-    
+
     This dataclass provides a clean interface between pattern detection
     and decision making, containing both presence flags and actual values.
     """
-    
+
     # Field presence (boolean flags)
     merchant_name_found: bool
-    date_found: bool 
+    date_found: bool
     time_found: bool
     grand_total_found: bool
-    
+
     # Actual extracted values (for use in DecisionResult)
     merchant_name_value: Optional[str] = None
     date_value: Optional[str] = None
     time_value: Optional[str] = None
     grand_total_value: Optional[str] = None
-    
+
     # Confidence scores for each field
     merchant_name_confidence: float = 0.0
     date_confidence: float = 0.0
     time_confidence: float = 0.0
     grand_total_confidence: float = 0.0
-    
+
     @property
     def fields_found_count(self) -> int:
         """Count of fields found."""
-        return sum([
-            self.merchant_name_found,
-            self.date_found, 
-            self.time_found,
-            self.grand_total_found
-        ])
-    
+        return sum(
+            [
+                self.merchant_name_found,
+                self.date_found,
+                self.time_found,
+                self.grand_total_found,
+            ]
+        )
+
     @property
     def missing_fields(self) -> List[str]:
         """List of missing field names."""
@@ -69,18 +71,18 @@ class FourFieldSummary:
         if not self.merchant_name_found:
             missing.append("MERCHANT_NAME")
         if not self.date_found:
-            missing.append("DATE") 
+            missing.append("DATE")
         if not self.time_found:
             missing.append("TIME")
         if not self.grand_total_found:
             missing.append("GRAND_TOTAL")
         return missing
-    
-    @property 
+
+    @property
     def all_fields_found(self) -> bool:
         """True if all 4 fields were found."""
         return self.fields_found_count == 4
-    
+
     @property
     def found_fields_set(self) -> Set[str]:
         """Set of found field names."""

@@ -105,15 +105,15 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
         merchant_name_found = False
         merchant_name_value = None
         merchant_name_confidence = 0.0
-        
+
         date_found = False
         date_value = None
         date_confidence = 0.0
-        
+
         time_found = False
         time_value = None
         time_confidence = 0.0
-        
+
         grand_total_found = False
         grand_total_value = None
         grand_total_confidence = 0.0
@@ -130,22 +130,30 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
             if merchant_matches:
                 best_match = merchant_matches[0]  # Take first/best match
                 merchant_name_found = True
-                merchant_name_value = getattr(best_match, "extracted_value", str(best_match))
-                merchant_name_confidence = getattr(best_match, "confidence", 0.8)
+                merchant_name_value = getattr(
+                    best_match, "extracted_value", str(best_match)
+                )
+                merchant_name_confidence = getattr(
+                    best_match, "confidence", 0.8
+                )
 
         # 2. Check DATE
         datetime_patterns = pattern_results.get("datetime", [])
         date_patterns = pattern_results.get("date", [])
-        
+
         if datetime_patterns:
             best_match = datetime_patterns[0]
             date_found = True
-            date_value = getattr(best_match, "extracted_value", str(best_match))
+            date_value = getattr(
+                best_match, "extracted_value", str(best_match)
+            )
             date_confidence = getattr(best_match, "confidence", 0.9)
         elif date_patterns:
             best_match = date_patterns[0]
             date_found = True
-            date_value = getattr(best_match, "extracted_value", str(best_match))
+            date_value = getattr(
+                best_match, "extracted_value", str(best_match)
+            )
             date_confidence = getattr(best_match, "confidence", 0.8)
 
         # 3. Check TIME
@@ -170,19 +178,27 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
         if currency_patterns:
             # Look for patterns that might be totals (higher confidence for words like "total")
             for pattern in currency_patterns:
-                pattern_text = str(getattr(pattern, "extracted_value", "")).lower()
+                pattern_text = str(
+                    getattr(pattern, "extracted_value", "")
+                ).lower()
                 # Simple heuristic: if it contains "total" or is a reasonable amount
                 if "total" in pattern_text or self._looks_like_total(pattern):
                     grand_total_found = True
-                    grand_total_value = getattr(pattern, "extracted_value", str(pattern))
-                    grand_total_confidence = getattr(pattern, "confidence", 0.7)
+                    grand_total_value = getattr(
+                        pattern, "extracted_value", str(pattern)
+                    )
+                    grand_total_confidence = getattr(
+                        pattern, "confidence", 0.7
+                    )
                     break
-            
+
             # If no obvious total found, use first currency pattern as fallback
             if not grand_total_found and currency_patterns:
                 best_match = currency_patterns[0]
                 grand_total_found = True
-                grand_total_value = getattr(best_match, "extracted_value", str(best_match))
+                grand_total_value = getattr(
+                    best_match, "extracted_value", str(best_match)
+                )
                 grand_total_confidence = getattr(best_match, "confidence", 0.5)
 
         return FourFieldSummary(
@@ -220,8 +236,11 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
                 essential_fields_missing=set(),
                 total_words=total_words,
                 labeled_words=field_summary.fields_found_count,
-                unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
-                coverage_percentage=(field_summary.fields_found_count / 4 * 100),
+                unlabeled_meaningful_words=total_words
+                - field_summary.fields_found_count,
+                coverage_percentage=(
+                    field_summary.fields_found_count / 4 * 100
+                ),
                 merchant_name=field_summary.merchant_name_value,
             )
 
@@ -237,8 +256,11 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
                     essential_fields_missing={missing_field},
                     total_words=total_words,
                     labeled_words=field_summary.fields_found_count,
-                    unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
-                    coverage_percentage=(field_summary.fields_found_count / 4 * 100),
+                    unlabeled_meaningful_words=total_words
+                    - field_summary.fields_found_count,
+                    coverage_percentage=(
+                        field_summary.fields_found_count / 4 * 100
+                    ),
                     merchant_name=field_summary.merchant_name_value,
                 )
 
@@ -251,7 +273,8 @@ class FourFieldOrchestrator(DecisionEngineOrchestrator):
             essential_fields_missing=set(field_summary.missing_fields),
             total_words=total_words,
             labeled_words=field_summary.fields_found_count,
-            unlabeled_meaningful_words=total_words - field_summary.fields_found_count,
+            unlabeled_meaningful_words=total_words
+            - field_summary.fields_found_count,
             coverage_percentage=(field_summary.fields_found_count / 4 * 100),
             merchant_name=field_summary.merchant_name_value,
         )
