@@ -10,6 +10,7 @@ import time
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+
 from receipt_label.utils.ai_usage_context import (
     ai_usage_context,
     batch_ai_usage_context,

@@ -8,6 +8,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_label.utils.cost_monitoring import (
     Budget,
     BudgetManager,
