@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from functools import lru_cache
+# Removed lru_cache import - using instance cache instead
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -35,8 +35,8 @@ class LocalDataLoader:
         if not self.data_dir.exists():
             raise ValueError(f"Data directory does not exist: {data_dir}")
         
-        # Cache for loaded data
-        self._cache: Dict[str, Dict] = {}
+        # Cache for loaded data - keyed by directory path
+        self._receipt_cache: Dict[str, Optional[Receipt]] = {}
         
     def load_receipt_by_id(
         self,
@@ -121,21 +121,38 @@ class LocalDataLoader:
         receipt_dir = self.data_dir / f"image_{image_id}_receipt_{receipt_id}"
         return self._load_metadata(receipt_dir)
     
-    @lru_cache(maxsize=100)
     def _load_receipt(self, receipt_dir: Path) -> Optional[Receipt]:
-        """Load receipt entity from JSON."""
+        """Load receipt entity from JSON with caching."""
+        # Use string representation of path as cache key
+        cache_key = str(receipt_dir)
+        
+        # Check cache first
+        if cache_key in self._receipt_cache:
+            return self._receipt_cache[cache_key]
+        
         receipt_file = receipt_dir / "receipt.json"
         if not receipt_file.exists():
             logger.warning(f"Receipt file not found: {receipt_file}")
-            return None
-            
-        try:
-            with open(receipt_file) as f:
-                data = json.load(f)
-            return Receipt.from_dict(data)
-        except Exception as e:
-            logger.error(f"Error loading receipt from {receipt_file}: {e}")
-            return None
+            result = None
+        else:
+            try:
+                with open(receipt_file) as f:
+                    data = json.load(f)
+                # Receipt doesn't have from_dict, create directly from attributes
+                result = Receipt(**data)
+            except Exception as e:
+                logger.error(f"Error loading receipt from {receipt_file}: {e}")
+                result = None
+        
+        # Cache the result (including None for missing files)
+        # Limit cache size to prevent unbounded growth
+        if len(self._receipt_cache) >= 100:
+            # Remove oldest entry (simple FIFO strategy)
+            first_key = next(iter(self._receipt_cache))
+            del self._receipt_cache[first_key]
+        
+        self._receipt_cache[cache_key] = result
+        return result
     
     def _load_words(self, receipt_dir: Path) -> List[ReceiptWord]:
         """Load receipt words from JSON."""
@@ -147,7 +164,7 @@ class LocalDataLoader:
         try:
             with open(words_file) as f:
                 data = json.load(f)
-            return [ReceiptWord.from_dict(word_data) for word_data in data]
+            return [ReceiptWord(**word_data) for word_data in data]
         except Exception as e:
             logger.error(f"Error loading words from {words_file}: {e}")
             return []
@@ -162,7 +179,7 @@ class LocalDataLoader:
         try:
             with open(lines_file) as f:
                 data = json.load(f)
-            return [ReceiptLine.from_dict(line_data) for line_data in data]
+            return [ReceiptLine(**line_data) for line_data in data]
         except Exception as e:
             logger.error(f"Error loading lines from {lines_file}: {e}")
             return []
@@ -177,7 +194,7 @@ class LocalDataLoader:
         try:
             with open(labels_file) as f:
                 data = json.load(f)
-            return [ReceiptWordLabel.from_dict(label_data) for label_data in data]
+            return [ReceiptWordLabel(**label_data) for label_data in data]
         except Exception as e:
             logger.error(f"Error loading labels from {labels_file}: {e}")
             return []
@@ -271,12 +288,12 @@ def create_mock_receipt_from_export(
         Tuple of (Receipt, words, lines)
     """
     receipt_data = export_data.get('receipt', {})
-    receipt = Receipt.from_dict(receipt_data) if receipt_data else None
+    receipt = Receipt(**receipt_data) if receipt_data else None
     
     words_data = export_data.get('words', [])
-    words = [ReceiptWord.from_dict(w) for w in words_data]
+    words = [ReceiptWord(**w) for w in words_data]
     
     lines_data = export_data.get('lines', [])
-    lines = [ReceiptLine.from_dict(l) for l in lines_data]
+    lines = [ReceiptLine(**l) for l in lines_data]
     
     return receipt, words, lines
