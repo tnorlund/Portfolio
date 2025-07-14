@@ -10,11 +10,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 # Add the parent directory to the path to access the tests utils
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+
 from tests.utils.ai_usage_helpers import create_mock_openai_response
 
 

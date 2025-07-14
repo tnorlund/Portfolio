@@ -7,7 +7,6 @@ import warnings
 from unittest.mock import patch
 
 import pytest
-
 from receipt_label.utils.client_manager import ClientConfig
 
 

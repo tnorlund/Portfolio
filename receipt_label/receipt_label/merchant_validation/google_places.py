@@ -3,9 +3,9 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from receipt_dynamo.entities import ReceiptWord
-
 from receipt_label.data.places_api import PlacesAPI
+
+from receipt_dynamo.entities import ReceiptWord
 
 from .utils import get_name_similarity, normalize_phone
 
