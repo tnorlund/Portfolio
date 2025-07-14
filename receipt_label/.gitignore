@@ -73,6 +73,7 @@ wheels/
 
 # Local data exports and test results
 receipt_data/
+receipt_data_all/
 receipt_data_existing/
 test_results/
 
