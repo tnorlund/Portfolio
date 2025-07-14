@@ -7,11 +7,11 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-
 from receipt_label.utils.cost_monitoring import CostMonitor, ThresholdAlert
 from receipt_label.utils.cost_monitoring.cost_monitor import ThresholdLevel
+
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
 class TestCostMonitor:
@@ -409,10 +409,12 @@ class TestCostMonitor:
         assert metrics[0].service == "anthropic"
         assert metrics[0].cost_usd == Decimal("2.25")
 
-    def test_get_period_spend_with_zero_costs(self, cost_monitor, mock_dynamo_client):
+    def test_get_period_spend_with_zero_costs(
+        self, cost_monitor, mock_dynamo_client
+    ):
         """Test that zero-cost metrics are correctly included in spend calculation."""
         from datetime import datetime
-        
+
         # Create metrics with various cost values including zeros
         metrics = [
             AIUsageMetric(
@@ -451,18 +453,19 @@ class TestCostMonitor:
                 cost_usd=None,  # No cost (error case)
             ),
         ]
-        
+
         # Test internal _get_period_spend method
-        with patch.object(cost_monitor, "_query_metrics", return_value=metrics):
+        with patch.object(
+            cost_monitor, "_query_metrics", return_value=metrics
+        ):
             total_spend = cost_monitor._get_period_spend(
-                scope="global:all",
-                period="daily"
+                scope="global:all", period="daily"
             )
-            
+
             # Should include: 1.50 + 0.0 + 2.25 + 0.0 = 3.75
             # Should NOT include the None value
             assert total_spend == Decimal("3.75")
-            
+
         # Test that it correctly handles all None values
         none_metrics = [
             AIUsageMetric(
@@ -471,12 +474,14 @@ class TestCostMonitor:
                 operation="test",
                 timestamp=datetime.now(timezone.utc),
                 cost_usd=None,
-            ) for _ in range(3)
+            )
+            for _ in range(3)
         ]
-        
-        with patch.object(cost_monitor, "_query_metrics", return_value=none_metrics):
+
+        with patch.object(
+            cost_monitor, "_query_metrics", return_value=none_metrics
+        ):
             total_spend = cost_monitor._get_period_spend(
-                scope="global:all",
-                period="daily"
+                scope="global:all", period="daily"
             )
             assert total_spend == Decimal("0")

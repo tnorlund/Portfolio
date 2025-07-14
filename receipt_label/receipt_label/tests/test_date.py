@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 import pytest
-
 from receipt_label.utils.date import (
     extract_datetime,
     format_datetime,
