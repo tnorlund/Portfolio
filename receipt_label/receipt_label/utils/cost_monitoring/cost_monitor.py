@@ -121,7 +121,7 @@ class CostMonitor:
         current_spend = self._get_period_spend(scope, period)
 
         # Add the new usage cost
-        new_total = current_spend + (current_usage.cost_usd or Decimal("0"))
+        new_total = current_spend + Decimal(str(current_usage.cost_usd or 0))
 
         # Calculate percentage of budget used
         if budget_limit == 0:
@@ -192,7 +192,7 @@ class CostMonitor:
         breakdown: Dict[str, Decimal] = {}
         for metric in metrics:
             service = metric.service
-            cost = metric.cost_usd or Decimal("0")
+            cost = Decimal(str(metric.cost_usd or 0))
             breakdown[service] = breakdown.get(service, Decimal("0")) + cost
 
         return breakdown
@@ -222,7 +222,7 @@ class CostMonitor:
         total = Decimal("0")
         for metric in metrics:
             if metric.cost_usd:
-                total += metric.cost_usd
+                total += Decimal(str(metric.cost_usd))
 
         return total
 
