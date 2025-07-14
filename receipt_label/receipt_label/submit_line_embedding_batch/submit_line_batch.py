@@ -26,10 +26,10 @@ This script supports agentic document processing by facilitating scalable
 embedding of receipt lines for section classification.
 """
 
+from receipt_label.utils import get_clients
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary, ReceiptLine
-
-from receipt_label.utils import get_clients
 
 dynamo_client, openai_client, _ = get_clients()
 

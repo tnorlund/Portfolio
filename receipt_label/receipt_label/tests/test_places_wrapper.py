@@ -4,10 +4,10 @@ import threading
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
-
 from receipt_label.utils.ai_usage_context import ai_usage_context
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
+
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 
 class TestPlacesWrapper:

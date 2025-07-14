@@ -1,5 +1,4 @@
 import pytest
-
 from receipt_label.merchant_validation.utils.normalization import (
     format_canonical_merchant_name,
     normalize_address,

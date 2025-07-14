@@ -73,7 +73,9 @@ class LocalDataLoader:
             return receipt, words, lines
 
         except Exception as e:
-            logger.error("Error loading receipt %s/%s: %s", image_id, receipt_id, e)
+            logger.error(
+                "Error loading receipt %s/%s: %s", image_id, receipt_id, e
+            )
             return None
 
     def load_receipt_with_labels(
@@ -144,7 +146,9 @@ class LocalDataLoader:
                 # Receipt doesn't have from_dict, create directly from attributes
                 result = Receipt(**data)
             except Exception as e:
-                logger.error("Error loading receipt from %s: %s", receipt_file, e)
+                logger.error(
+                    "Error loading receipt from %s: %s", receipt_file, e
+                )
                 result = None
 
         # Cache the result (including None for missing files)
@@ -214,7 +218,9 @@ class LocalDataLoader:
                 data = json.load(f)
             return ReceiptMetadata(**data)
         except Exception as e:
-            logger.error("Error loading metadata from %s: %s", metadata_file, e)
+            logger.error(
+                "Error loading metadata from %s: %s", metadata_file, e
+            )
             return None
 
     def list_available_receipts(self) -> List[Tuple[str, str]]:

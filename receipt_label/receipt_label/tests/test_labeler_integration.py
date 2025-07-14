@@ -3,7 +3,6 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from receipt_label.core.labeler import LabelingResult, ReceiptLabeler
 from receipt_label.models.label import LabelAnalysis
 from receipt_label.models.line_item import (
