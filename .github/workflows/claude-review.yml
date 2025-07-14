@@ -50,7 +50,17 @@ jobs:
           # Review configuration
           trigger_phrase: "@claude"   # Only respond when mentioned
           
-          # Comprehensive review guidelines
+          # Automatic PR review prompt (for pull_request events)
+          direct_prompt: |
+            Review this pull request focusing on:
+            1. Performance implications - especially test timeouts and CI optimization patterns
+            2. Package boundary violations - strict separation between receipt_dynamo (data layer) and receipt_label (business logic)
+            3. Critical bugs or security issues - authentication, data validation, error handling
+            4. Architecture alignment - with existing CI optimization patterns and self-hosted runners
+            
+            Be concise and actionable. Reference specific lines and suggest concrete improvements.
+          
+          # Comprehensive review guidelines for manual mentions
           custom_instructions: |
             You are reviewing a pull request in a portfolio project with optimized CI/CD. Focus on:
 
