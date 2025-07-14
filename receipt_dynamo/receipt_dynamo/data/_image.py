@@ -45,6 +45,7 @@ from receipt_dynamo.entities import (
     item_to_ocr_job,
     item_to_ocr_routing_decision,
     item_to_receipt_metadata,
+    item_to_receipt_word_label,
 )
 
 if TYPE_CHECKING:
@@ -163,6 +164,7 @@ class _Image(
         receipt_lines = []
         receipt_words = []
         receipt_letters = []
+        receipt_word_labels = []
         receipt_metadatas = []
         ocr_jobs = []
         ocr_routing_decisions = []
@@ -208,6 +210,9 @@ class _Image(
             "RECEIPT_LETTER": lambda item: receipt_letters.append(
                 item_to_receipt_letter(item)
             ),
+            "RECEIPT_WORD_LABEL": lambda item: receipt_word_labels.append(
+                item_to_receipt_word_label(item)
+            ),
             "RECEIPT_METADATA": lambda item: receipt_metadatas.append(
                 item_to_receipt_metadata(item)
             ),
@@ -232,6 +237,7 @@ class _Image(
             receipt_lines=receipt_lines,
             receipt_words=receipt_words,
             receipt_letters=receipt_letters,
+            receipt_word_labels=receipt_word_labels,
             receipt_metadatas=receipt_metadatas,
             ocr_jobs=ocr_jobs,
             ocr_routing_decisions=ocr_routing_decisions,
