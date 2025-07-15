@@ -297,7 +297,7 @@ class TestSpatialWord:
             bottom_right={"x": 0.86, "y": 0.12},
             confidence=0.9,
         )
-        
+
         # Create pattern match for currency word
         currency_pattern_match = PatternMatch(
             word=currency_word,
@@ -305,9 +305,9 @@ class TestSpatialWord:
             confidence=0.95,
             matched_text="5.99",
             extracted_value=5.99,
-            metadata={}
+            metadata={},
         )
-        
+
         spatial_word = SpatialWord(currency_word, currency_pattern_match)
         assert spatial_word.is_currency_word()
 
@@ -342,7 +342,7 @@ class TestSpatialWord:
             bottom_right={"x": 0.54, "y": 0.12},
             confidence=0.9,
         )
-        
+
         # Create pattern match for quantity word
         quantity_pattern_match = PatternMatch(
             word=quantity_word,
@@ -350,9 +350,9 @@ class TestSpatialWord:
             confidence=0.9,
             matched_text="2x",
             extracted_value=2,
-            metadata={}
+            metadata={},
         )
-        
+
         spatial_word = SpatialWord(quantity_word, quantity_pattern_match)
         assert spatial_word.is_quantity_word()
 
@@ -368,7 +368,9 @@ class TestSpatialWord:
             bottom_right={"x": 0.15, "y": 0.12},
             confidence=0.9,
         )
-        spatial_word_no_qty = SpatialWord(non_quantity_word)  # No pattern match
+        spatial_word_no_qty = SpatialWord(
+            non_quantity_word
+        )  # No pattern match
         assert not spatial_word_no_qty.is_quantity_word()
 
 
@@ -411,31 +413,37 @@ class TestSpatialLine:
     def sample_pattern_matches(self, sample_line_words):
         """Create pattern matches for the sample line words."""
         matches = []
-        
+
         # "2x" is a quantity pattern
-        matches.append(PatternMatch(
-            word=sample_line_words[2],  # "2x"
-            pattern_type=PatternType.QUANTITY_TIMES,
-            confidence=0.9,
-            matched_text="2x",
-            extracted_value=2,
-            metadata={}
-        ))
-        
+        matches.append(
+            PatternMatch(
+                word=sample_line_words[2],  # "2x"
+                pattern_type=PatternType.QUANTITY_TIMES,
+                confidence=0.9,
+                matched_text="2x",
+                extracted_value=2,
+                metadata={},
+            )
+        )
+
         # "5.99" is a currency pattern
-        matches.append(PatternMatch(
-            word=sample_line_words[3],  # "5.99"
-            pattern_type=PatternType.CURRENCY,
-            confidence=0.95,
-            matched_text="5.99",
-            extracted_value=5.99,
-            metadata={}
-        ))
-        
+        matches.append(
+            PatternMatch(
+                word=sample_line_words[3],  # "5.99"
+                pattern_type=PatternType.CURRENCY,
+                confidence=0.95,
+                matched_text="5.99",
+                extracted_value=5.99,
+                metadata={},
+            )
+        )
+
         return matches
 
     @pytest.mark.unit
-    def test_spatial_line_creation(self, sample_line_words, sample_pattern_matches):
+    def test_spatial_line_creation(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test SpatialLine creation and word ordering."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -446,7 +454,9 @@ class TestSpatialLine:
         assert x_positions == sorted(x_positions)
 
     @pytest.mark.unit
-    def test_get_leftmost_words(self, sample_line_words, sample_pattern_matches):
+    def test_get_leftmost_words(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test getting leftmost words from line."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -457,7 +467,9 @@ class TestSpatialLine:
         assert leftmost[1].word.text == "Mac"
 
     @pytest.mark.unit
-    def test_get_rightmost_words(self, sample_line_words, sample_pattern_matches):
+    def test_get_rightmost_words(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test getting rightmost words from line."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -468,7 +480,9 @@ class TestSpatialLine:
         assert rightmost[1].word.text == "5.99"
 
     @pytest.mark.unit
-    def test_has_currency_pattern(self, sample_line_words, sample_pattern_matches):
+    def test_has_currency_pattern(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test currency pattern detection in line."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -478,7 +492,9 @@ class TestSpatialLine:
         non_currency_words = [
             w for w in sample_line_words if w.text in ["Big", "Mac"]
         ]  # Only pure text words
-        spatial_line_no_currency = SpatialLine(non_currency_words)  # No pattern matches
+        spatial_line_no_currency = SpatialLine(
+            non_currency_words
+        )  # No pattern matches
 
         assert not spatial_line_no_currency.has_currency_pattern()
 
@@ -495,7 +511,9 @@ class TestSpatialLine:
         assert abs(width - expected_width) < 0.01
 
     @pytest.mark.unit
-    def test_split_by_alignment(self, sample_line_words, sample_pattern_matches):
+    def test_split_by_alignment(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test splitting line words by alignment."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -526,7 +544,9 @@ class TestSpatialLine:
         assert "2x" not in price_texts
 
     @pytest.mark.unit
-    def test_get_description_words(self, sample_line_words, sample_pattern_matches):
+    def test_get_description_words(
+        self, sample_line_words, sample_pattern_matches
+    ):
         """Test getting description words from line."""
         spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
@@ -540,8 +560,12 @@ class TestSpatialLine:
         description_texts = [w.word.text for w in description_words]
         assert "Big" in description_texts
         assert "Mac" in description_texts
-        assert "2x" in description_texts  # "2x" is a quantity indicator, not currency
-        assert "5.99" not in description_texts  # "5.99" is excluded as currency
+        assert (
+            "2x" in description_texts
+        )  # "2x" is a quantity indicator, not currency
+        assert (
+            "5.99" not in description_texts
+        )  # "5.99" is excluded as currency
 
 
 class TestRowGrouper:

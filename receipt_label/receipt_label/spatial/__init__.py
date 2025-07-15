@@ -15,7 +15,7 @@ from .geometry_utils import (
 
 __all__ = [
     "SpatialWord",
-    "SpatialLine", 
+    "SpatialLine",
     "ColumnDetector",
     "RowGrouper",
     "LineItemSpatialDetector",
