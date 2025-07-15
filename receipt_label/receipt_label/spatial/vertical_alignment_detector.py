@@ -718,6 +718,84 @@ class VerticalAlignmentDetector:
                 return True
         return False
     
+    def _compute_adaptive_font_thresholds(self, words: List[ReceiptWord]) -> Tuple[float, float, float]:
+        """
+        Dynamically compute font size thresholds based on actual height distribution.
+        
+        This method analyzes the distribution of text heights in the receipt to determine
+        appropriate thresholds for small, normal, and large text classification.
+        
+        Args:
+            words: List of receipt words to analyze
+            
+        Returns:
+            Tuple of (small_threshold, normal_threshold, large_threshold)
+        """
+        # Collect all valid heights
+        heights = []
+        for word in words:
+            height = 0.0
+            if hasattr(word, 'bounding_box') and word.bounding_box:
+                if isinstance(word.bounding_box, dict):
+                    height = word.bounding_box.get('height', 0.0)
+                else:
+                    # List format: [left, top, width, height]
+                    height = word.bounding_box[3] if len(word.bounding_box) > 3 else 0.0
+            
+            # If no bounding box, try corner coordinates
+            if height == 0.0:
+                y_coords = []
+                for corner_attr in ['top_left', 'top_right', 'bottom_left', 'bottom_right']:
+                    if hasattr(word, corner_attr):
+                        corner = getattr(word, corner_attr)
+                        if corner:
+                            if isinstance(corner, dict):
+                                y_coords.append(corner.get('y', 0))
+                            else:
+                                y_coords.append(corner[1] if len(corner) > 1 else 0)
+                
+                if len(y_coords) >= 2:
+                    height = max(y_coords) - min(y_coords)
+            
+            if height > 0:
+                heights.append(height)
+        
+        if not heights:
+            # Fallback to safe defaults for normalized coordinates
+            return 0.02, 0.03, 0.04
+        
+        # Sort heights to compute percentiles
+        sorted_heights = sorted(heights)
+        n = len(sorted_heights)
+        
+        # Compute percentiles for threshold determination
+        # Small text: bottom 20th percentile
+        # Normal text: 20th to 80th percentile  
+        # Large text: top 80th percentile
+        p20_idx = int(n * 0.2)
+        p50_idx = int(n * 0.5)
+        p80_idx = int(n * 0.8)
+        
+        p20 = sorted_heights[p20_idx] if p20_idx < n else sorted_heights[-1]
+        p50 = sorted_heights[p50_idx] if p50_idx < n else sorted_heights[-1]
+        p80 = sorted_heights[p80_idx] if p80_idx < n else sorted_heights[-1]
+        
+        # Set thresholds with some margin
+        small_threshold = p20 * 1.1  # 10% above 20th percentile
+        large_threshold = p80 * 0.9   # 10% below 80th percentile
+        
+        # Ensure thresholds are in valid normalized range (0-1)
+        small_threshold = max(0.001, min(small_threshold, 0.1))
+        large_threshold = max(small_threshold * 1.5, min(large_threshold, 0.2))
+        
+        # Normal threshold is between small and large
+        normal_threshold = (small_threshold + large_threshold) / 2
+        
+        self.logger.debug(f"Adaptive font thresholds: small={small_threshold:.3f}, normal={normal_threshold:.3f}, large={large_threshold:.3f}")
+        self.logger.debug(f"Based on {n} words with heights - p20={p20:.3f}, p50={p50:.3f}, p80={p80:.3f}")
+        
+        return small_threshold, normal_threshold, large_threshold
+    
     def _analyze_font_metrics(self, pattern: PatternMatch) -> FontMetrics:
         """
         Analyze font characteristics from OCR bounding box data.
@@ -759,14 +837,18 @@ class VerticalAlignmentDetector:
             if len(y_coords) >= 2:
                 height = max(y_coords) - min(y_coords)
         
-        # Typical receipt font heights (based on analysis of real receipts)
-        # These are rough estimates - should be calibrated with actual data
-        SMALL_FONT_THRESHOLD = 12.0   # Footnotes, fine print
-        NORMAL_FONT_THRESHOLD = 18.0  # Regular item text
-        LARGE_FONT_THRESHOLD = 24.0   # Headers, totals
+        # Use adaptive thresholds if available, otherwise compute them
+        if hasattr(self, '_font_thresholds'):
+            small_threshold, normal_threshold, large_threshold = self._font_thresholds
+        else:
+            # Safe defaults for normalized coordinates (0-1 range)
+            # These will be overridden when detect_line_items_with_alignment is called
+            small_threshold = 0.02   # 2% of normalized height
+            normal_threshold = 0.03  # 3% of normalized height
+            large_threshold = 0.04   # 4% of normalized height
         
-        is_larger = height > LARGE_FONT_THRESHOLD
-        is_smaller = height < SMALL_FONT_THRESHOLD and height > 0
+        is_larger = height > large_threshold
+        is_smaller = height < small_threshold and height > 0
         
         # Calculate confidence based on distinctiveness
         confidence = 0.5  # Base confidence
@@ -774,7 +856,7 @@ class VerticalAlignmentDetector:
             confidence = 0.9  # High confidence for large text (likely totals/headers)
         elif is_smaller:
             confidence = 0.3  # Lower confidence for small text (might be noise)
-        elif SMALL_FONT_THRESHOLD <= height <= LARGE_FONT_THRESHOLD:
+        elif small_threshold <= height <= large_threshold:
             confidence = 0.7  # Good confidence for normal text
         
         self.logger.debug(f"Font analysis for '{word.text}': height={height:.1f}, large={is_larger}, small={is_smaller}, confidence={confidence:.2f}")
@@ -1093,6 +1175,9 @@ class VerticalAlignmentDetector:
         Returns:
             Dictionary with detection results
         """
+        # Compute adaptive font thresholds based on the actual receipt
+        self._font_thresholds = self._compute_adaptive_font_thresholds(words)
+        
         # Extract currency patterns
         currency_patterns = [m for m in pattern_matches if m.pattern_type in [
             PatternType.CURRENCY, PatternType.GRAND_TOTAL, PatternType.SUBTOTAL,

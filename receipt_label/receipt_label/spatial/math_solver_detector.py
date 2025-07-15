@@ -313,7 +313,8 @@ class MathSolverDetector:
         
         # Method 1: Direct sum (no tax)
         # Find combinations that directly sum to total
-        for size in range(1, min(len(values) + 1, 10)):
+        # Use min(len(values), 10) + 1 to include size 10 when len(values) >= 10
+        for size in range(1, min(len(values), 10) + 1):
             if len(solutions) >= self.max_solutions:
                 self.logger.info(f"Reached max solutions limit ({self.max_solutions}), stopping search")
                 break

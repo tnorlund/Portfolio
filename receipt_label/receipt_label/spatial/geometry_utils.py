@@ -103,9 +103,27 @@ class SpatialWord:
     
     def is_currency_word(self) -> bool:
         """Check if word contains currency patterns."""
-        # Reuse existing currency patterns from pattern detection
-        currency_pattern = re.compile(r'\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?')
-        return bool(currency_pattern.search(self.word.text))
+        # More restrictive pattern to avoid matching non-currency numbers
+        # Require either:
+        # 1. Currency symbol ($) followed by number
+        # 2. Number with exactly 2 decimal places (common for prices)
+        # 3. Number with thousand separators and optional decimals
+        text = self.word.text.strip()
+        
+        # Pattern 1: Currency symbol required
+        symbol_pattern = re.compile(r'^\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?$')
+        
+        # Pattern 2: Decimal prices (must have exactly 2 decimal places)
+        decimal_pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{2}$')
+        
+        # Pattern 3: Large numbers with thousand separators (likely prices)
+        thousand_pattern = re.compile(r'^\d{1,3},\d{3}(?:,\d{3})*(?:\.\d{2})?$')
+        
+        return bool(
+            symbol_pattern.match(text) or 
+            decimal_pattern.match(text) or 
+            thousand_pattern.match(text)
+        )
     
     def is_quantity_word(self) -> bool:
         """Check if word contains quantity patterns."""
