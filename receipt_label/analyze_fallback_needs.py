@@ -201,7 +201,7 @@ async def analyze_all_receipts():
     # Create detectors (no Pinecone - pure math+spatial only)
     pattern_orchestrator = ParallelPatternOrchestrator(timeout=10.0, use_adaptive_selection=False)
     alignment_detector = VerticalAlignmentDetector(alignment_tolerance=0.02)
-    math_solver = MathSolverDetector(tolerance=0.02, max_solutions=50)
+    math_solver = MathSolverDetector(tolerance=0.02, max_solutions=50, use_numpy_optimization=True)
     
     # Analyze each receipt
     all_results = []

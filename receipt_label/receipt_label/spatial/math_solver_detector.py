@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 from itertools import combinations
 import math
+import numpy as np
 
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
@@ -29,16 +30,18 @@ class MathSolution:
 class MathSolverDetector:
     """Solves line item detection as a pure math problem."""
     
-    def __init__(self, tolerance: float = 0.02, max_solutions: int = 50):
+    def __init__(self, tolerance: float = 0.02, max_solutions: int = 50, use_numpy_optimization: bool = True):
         """
         Initialize detector.
         
         Args:
             tolerance: Maximum difference allowed (e.g., 0.02 = 2 cents)
             max_solutions: Maximum number of solutions to find (prevent combinatorial explosion)
+            use_numpy_optimization: Use NumPy-based dynamic programming for large value sets
         """
         self.tolerance = tolerance
         self.max_solutions = max_solutions
+        self.use_numpy_optimization = use_numpy_optimization
         self.logger = logger
         
     def solve_receipt_math(self,
@@ -74,12 +77,23 @@ class MathSolverDetector:
                 
             self.logger.info(f"Testing ${potential_total_value:.2f} as potential total")
             
-            # Find solutions for this total
-            total_solutions = self._find_solutions_for_total(
-                values[:i],  # Don't include the total itself
-                potential_total_value,
-                potential_total_match
-            )
+            # Choose optimization strategy based on problem size and settings
+            remaining_values = values[:i]  # Don't include the total itself
+            
+            if self.use_numpy_optimization and len(remaining_values) > 10:
+                # Use NumPy DP optimization for large problems
+                total_solutions = self._find_solutions_numpy_optimized(
+                    remaining_values,
+                    potential_total_value,
+                    potential_total_match
+                )
+            else:
+                # Use traditional brute force for small problems
+                total_solutions = self._find_solutions_for_total(
+                    remaining_values,
+                    potential_total_value,
+                    potential_total_match
+                )
             
             solutions.extend(total_solutions)
         
@@ -87,6 +101,203 @@ class MathSolverDetector:
         solutions.sort(key=lambda s: s.confidence, reverse=True)
         
         return solutions
+    
+    def _find_solutions_numpy_optimized(self,
+                                      values: List[Tuple[float, PatternMatch]], 
+                                      total_amount: float,
+                                      total_match: PatternMatch) -> List[MathSolution]:
+        """
+        NumPy-optimized subset sum finder using dynamic programming.
+        
+        Converts the subset-sum problem to integer cents and uses vectorized
+        operations to find all valid combinations efficiently.
+        
+        Time complexity: O(n * target_cents) vs O(2^n) brute force
+        """
+        if len(values) <= 10:
+            # Use brute force for small cases (still fast)
+            return self._find_solutions_for_total(values, total_amount, total_match)
+        
+        solutions = []
+        
+        # Convert to integer cents to avoid floating point precision issues
+        target_cents = int(round(total_amount * 100))
+        tolerance_cents = int(round(self.tolerance * 100))
+        price_cents = np.array([int(round(v[0] * 100)) for v in values])
+        
+        # Method 1: Direct sum using dynamic programming
+        direct_solutions = self._numpy_subset_sum_dp(
+            price_cents, values, target_cents, tolerance_cents, total_match, tax_info=None
+        )
+        solutions.extend(direct_solutions)
+        
+        if len(solutions) >= self.max_solutions:
+            return solutions[:self.max_solutions]
+        
+        # Method 2: Items + Tax = Total
+        for tax_idx, (tax_value, tax_match) in enumerate(values):
+            if len(solutions) >= self.max_solutions:
+                break
+                
+            # Skip if tax is too large (> 20% of total)
+            if tax_value > total_amount * 0.2:
+                continue
+            
+            # Target subtotal = total - tax
+            tax_cents = int(round(tax_value * 100))
+            subtotal_target_cents = target_cents - tax_cents
+            
+            # Create array excluding the tax value
+            remaining_indices = np.arange(len(values))
+            remaining_indices = remaining_indices[remaining_indices != tax_idx]
+            remaining_price_cents = price_cents[remaining_indices]
+            remaining_values = [values[i] for i in remaining_indices]
+            
+            # Find combinations that sum to subtotal
+            tax_solutions = self._numpy_subset_sum_dp(
+                remaining_price_cents, remaining_values, subtotal_target_cents, 
+                tolerance_cents, total_match, tax_info=(tax_value, tax_match)
+            )
+            solutions.extend(tax_solutions)
+        
+        return solutions[:self.max_solutions]
+    
+    def _numpy_subset_sum_dp(self,
+                           price_cents: np.ndarray,
+                           values: List[Tuple[float, PatternMatch]],
+                           target_cents: int,
+                           tolerance_cents: int,
+                           total_match: PatternMatch,
+                           tax_info: Optional[Tuple[float, PatternMatch]] = None) -> List[MathSolution]:
+        """
+        Dynamic programming subset-sum using NumPy for vectorized operations.
+        
+        Creates a boolean DP table where dp[i][s] = True if we can achieve sum s 
+        using the first i items. Uses NumPy for efficient array operations.
+        """
+        n = len(price_cents)
+        max_sum = target_cents + tolerance_cents + 1
+        
+        # Limit DP table size to prevent memory issues
+        if max_sum > 100000:  # ~$1000 limit
+            self.logger.warning(f"Target too large for DP optimization: ${target_cents/100:.2f}, falling back to brute force")
+            return self._find_solutions_for_total(values, target_cents/100, total_match)
+        
+        # DP table: dp[i][s] = True if sum s is achievable using first i items
+        # Use uint8 for memory efficiency (0 or 1)
+        dp = np.zeros((n + 1, max_sum), dtype=np.uint8)
+        dp[0, 0] = 1  # Base case: sum 0 with 0 items
+        
+        # Fill DP table using vectorized operations
+        for i in range(1, n + 1):
+            price = price_cents[i - 1]
+            
+            # Copy previous row (don't include current item)
+            dp[i] = dp[i - 1].copy()
+            
+            # Add current item where possible (vectorized)
+            if price < max_sum:
+                # Use numpy's advanced indexing for efficiency
+                possible_sums = np.where(dp[i - 1, :-price])[0]
+                if len(possible_sums) > 0:
+                    new_sums = possible_sums + price
+                    valid_new_sums = new_sums[new_sums < max_sum]
+                    dp[i, valid_new_sums] = 1
+        
+        # Find all valid target sums within tolerance
+        valid_targets = range(
+            max(0, target_cents - tolerance_cents),
+            min(max_sum, target_cents + tolerance_cents + 1)
+        )
+        
+        solutions = []
+        for target in valid_targets:
+            if dp[n, target]:
+                # Backtrack to find which items were used
+                combinations_found = self._backtrack_numpy_solutions(
+                    dp, price_cents, values, target, n
+                )
+                
+                for combination in combinations_found:
+                    if len(solutions) >= self.max_solutions:
+                        break
+                    
+                    # Create solution object
+                    combo_sum = sum(v[0] for v in combination)
+                    
+                    if tax_info is None:
+                        # Direct sum solution
+                        solutions.append(MathSolution(
+                            item_prices=combination,
+                            subtotal=combo_sum,
+                            tax=None,
+                            grand_total=(target_cents / 100, total_match),
+                            confidence=0.85  # Good confidence for DP match
+                        ))
+                        self.logger.info(f"Found direct sum (NumPy): {[v[0] for v in combination]} = ${combo_sum:.2f}")
+                    else:
+                        # Tax structure solution
+                        tax_value, tax_match = tax_info
+                        grand_total_value = combo_sum + tax_value
+                        solutions.append(MathSolution(
+                            item_prices=combination,
+                            subtotal=combo_sum,
+                            tax=tax_info,
+                            grand_total=(grand_total_value, total_match),
+                            confidence=0.9  # High confidence for tax structure
+                        ))
+                        self.logger.info(f"Found with tax (NumPy): {[v[0] for v in combination]} + ${tax_value:.2f} = ${grand_total_value:.2f}")
+                
+                if len(solutions) >= self.max_solutions:
+                    break
+        
+        return solutions
+    
+    def _backtrack_numpy_solutions(self,
+                                 dp: np.ndarray,
+                                 price_cents: np.ndarray, 
+                                 values: List[Tuple[float, PatternMatch]],
+                                 target: int,
+                                 n: int,
+                                 max_combinations: int = 5) -> List[List[Tuple[float, PatternMatch]]]:
+        """
+        Backtrack through DP table to find actual item combinations.
+        
+        Returns up to max_combinations different ways to achieve the target sum.
+        Uses iterative approach to avoid stack overflow on large problems.
+        """
+        combinations = []
+        
+        # Use iterative approach to avoid recursion depth issues
+        # Stack contains tuples of (index, remaining_sum, current_combination)
+        stack = [(n, target, [])]
+        
+        while stack and len(combinations) < max_combinations:
+            i, remaining_sum, current_combo = stack.pop()
+            
+            if remaining_sum == 0:
+                combinations.append(current_combo.copy())
+                continue
+            
+            if i <= 0 or remaining_sum < 0 or remaining_sum >= dp.shape[1]:
+                continue
+            
+            # Option 1: Don't include item i-1
+            if remaining_sum < dp.shape[1] and dp[i - 1, remaining_sum]:
+                stack.append((i - 1, remaining_sum, current_combo.copy()))
+            
+            # Option 2: Include item i-1 (if possible and within bounds)
+            price = price_cents[i - 1]
+            new_remaining = remaining_sum - price
+            if (price <= remaining_sum and 
+                new_remaining >= 0 and 
+                new_remaining < dp.shape[1] and 
+                dp[i - 1, new_remaining]):
+                new_combo = current_combo.copy()
+                new_combo.append(values[i - 1])
+                stack.append((i - 1, new_remaining, new_combo))
+        
+        return combinations
     
     def _find_solutions_for_total(self,
                                  values: List[Tuple[float, PatternMatch]],

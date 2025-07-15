@@ -35,7 +35,7 @@ class PineconeLineItemDetector:
         """Initialize the detector."""
         self.tolerance = tolerance
         self.alignment_detector = VerticalAlignmentDetector()
-        self.math_solver = MathSolverDetector(tolerance=tolerance)
+        self.math_solver = MathSolverDetector(tolerance=tolerance, use_numpy_optimization=True)
         self.sequential_matcher = SequentialMatcher()
         self.logger = logger
         
