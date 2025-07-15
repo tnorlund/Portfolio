@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from math import atan2, pi
 from typing import Any, Dict, Generator, Tuple
 
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.geometry_base import GeometryMixin
 from receipt_dynamo.entities.util import (
     _format_float,
@@ -11,7 +13,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class ReceiptLetter(GeometryMixin):
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptLetter(GeometryMixin, DynamoDBEntity):
     """
     Represents a receipt letter and its associated metadata stored in a DynamoDB table.
 
@@ -37,104 +40,70 @@ class ReceiptLetter(GeometryMixin):
         confidence (float): The confidence level of the receipt letter (between 0 and 1).
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        line_id: int,
-        word_id: int,
-        letter_id: int,
-        text: str,
-        bounding_box: Dict[str, Any],
-        top_right: Dict[str, Any],
-        top_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        angle_degrees: float,
-        angle_radians: float,
-        confidence: float,
-    ):
-        """
-        Initializes a new ReceiptLetter object for DynamoDB.
+    receipt_id: int
+    image_id: str
+    line_id: int
+    word_id: int
+    letter_id: int
+    text: str
+    bounding_box: Dict[str, Any]
+    top_right: Dict[str, Any]
+    top_left: Dict[str, Any]
+    bottom_right: Dict[str, Any]
+    bottom_left: Dict[str, Any]
+    angle_degrees: float
+    angle_radians: float
+    confidence: float
 
-        Args:
-            receipt_id (int): Identifier for the receipt.
-            image_id (str): UUID identifying the image to which the receipt letter belongs.
-            line_id (int): Identifier for the receipt line.
-            word_id (int): Identifier for the receipt word.
-            letter_id (int): Identifier for the receipt letter.
-            text (str): The text content of the receipt letter. Must be exactly one character.
-            bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
-            top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-            top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-            bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-            bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
-            angle_degrees (float): The angle of the receipt letter in degrees.
-            angle_radians (float): The angle of the receipt letter in radians.
-            confidence (float): The confidence level of the receipt letter (between 0 and 1).
-
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        if not isinstance(receipt_id, int):
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(line_id, int):
+        if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
-        if line_id < 0:
+        if self.line_id < 0:
             raise ValueError("line_id must be positive")
-        self.line_id: int = line_id
 
-        if not isinstance(word_id, int):
+        if not isinstance(self.word_id, int):
             raise ValueError("word_id must be an integer")
-        if word_id < 0:
+        if self.word_id < 0:
             raise ValueError("word_id must be positive")
-        self.word_id: int = word_id
 
-        if not isinstance(letter_id, int):
+        if not isinstance(self.letter_id, int):
             raise ValueError("letter_id must be an integer")
-        if letter_id < 0:
+        if self.letter_id < 0:
             raise ValueError("letter_id must be positive")
-        self.letter_id: int = letter_id
 
-        if not isinstance(text, str):
+        if not isinstance(self.text, str):
             raise ValueError("text must be a string")
-        if len(text) != 1:
+        if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
-        self.text = text
 
-        assert_valid_bounding_box(bounding_box)
-        self.bounding_box = bounding_box
-        assert_valid_point(top_right)
-        self.top_right = top_right
-        assert_valid_point(top_left)
-        self.top_left = top_left
-        assert_valid_point(bottom_right)
-        self.bottom_right = bottom_right
-        assert_valid_point(bottom_left)
-        self.bottom_left = bottom_left
+        assert_valid_bounding_box(self.bounding_box)
+        assert_valid_point(self.top_right)
+        assert_valid_point(self.top_left)
+        assert_valid_point(self.bottom_right)
+        assert_valid_point(self.bottom_left)
 
-        if not isinstance(angle_degrees, (float, int)):
+        if not isinstance(self.angle_degrees, (float, int)):
             raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees: float = float(angle_degrees)
+        self.angle_degrees = float(self.angle_degrees)
 
-        if not isinstance(angle_radians, (float, int)):
+        if not isinstance(self.angle_radians, (float, int)):
             raise ValueError("angle_radians must be a float or int")
-        self.angle_radians: float = float(angle_radians)
+        self.angle_radians = float(self.angle_radians)
 
-        if isinstance(confidence, int):
-            confidence = float(confidence)
-        if not isinstance(confidence, float):
+        if isinstance(self.confidence, int):
+            self.confidence = float(self.confidence)
+        if not isinstance(self.confidence, float):
             raise ValueError("confidence must be a float")
-        if confidence <= 0.0 or confidence > 1.0:
+        if self.confidence <= 0.0 or self.confidence > 1.0:
             raise ValueError("confidence must be between 0 and 1")
-        self.confidence = confidence
 
     @property
     def key(self) -> Dict[str, Any]:
