@@ -1,0 +1,173 @@
+🔄 EXPORTING RECEIPT DATA WITH LABELS FROM DYNAMODB
+============================================================
+📋 Found 205 receipts to export
+📂 Output directory: ./receipt_data_with_labels_full
+🗄️  DynamoDB table: ReceiptsTable-dc5be22
+
+[1/50] Exporting 7ca97b51-7369-4321-bd01-0211f2bf2557... ✅
+    → Found 63 word labels
+
+[2/50] Exporting c914012e-3fc3-4ba2-b314-fa7d423acac8... ✅
+    → Found 90 word labels
+
+[3/50] Exporting 95718576-7873-4170-9b71-7736a44a2bd1... ✅
+    → Found 78 word labels
+
+[4/50] Exporting 32e93177-6528-4d63-b637-45d53d1cf3f3... ✅
+    → Found 130 word labels
+
+[5/50] Exporting 53500759-d95a-4225-911e-18f5cc45d09a... ❌ Error: Object of type datetime is not JSON serializable
+
+[6/50] Exporting 33ca0e5b-3b1b-465c-adf8-1b2b82b47282... ✅
+    → Found 10 word labels
+
+[7/50] Exporting 7c932424-cb54-4fdb-ac2d-465e9b57b7c8... ✅
+    → Found 72 word labels
+
+[8/50] Exporting e21c1ed5-4de3-4e77-a03a-368e62033298... ✅
+    → Found 83 word labels
+
+[9/50] Exporting a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4... ✅
+    → Found 23 word labels
+
+[10/50] Exporting a0301717-d765-4f34-a15d-48c362ebf9fd... ✅
+    → Found 53 word labels
+
+[11/50] Exporting cb7e299d-1e2a-4f2d-b519-176fc9fe0e5d... ✅
+    → Found 21 word labels
+
+[12/50] Exporting 129ee4aa-2053-4cd7-8534-a9817f8a3402... ✅
+    → Found 81 word labels
+
+[13/50] Exporting 728bc793-a1b8-4dcb-9528-4d6e23572b9d... ✅
+    → Found 65 word labels
+
+[14/50] Exporting 6cd1f7f5-d988-4e11-9209-cb6535fc3b04... ✅
+    → Found 57 word labels
+
+[15/50] Exporting 1d5ab3e0-7d81-4de4-b23d-1f490f85d89c... ✅
+    → Found 28 word labels
+
+[16/50] Exporting 332a60b7-13b5-454a-aae1-62b6807d42ea... ✅
+    → Found 48 word labels
+
+[17/50] Exporting db2cea4b-a8a6-4c97-8a4d-ed6430cb6791... ✅
+    → Found 61 word labels
+
+[18/50] Exporting 909a2b84-0b9d-496a-adf9-16588602a055... ✅
+    → Found 69 word labels
+
+[19/50] Exporting 5fc3d283-a39d-49ad-922c-2dac61bbe470... ✅
+    → Found 28 word labels
+
+[20/50] Exporting 0a345fdd-ecc3-4577-b3d3-869140451f43... ❌ Error: Object of type datetime is not JSON serializable
+
+[21/50] Exporting a893938d-146c-4381-a00a-88082627f353... ✅
+    → Found 169 word labels
+
+[22/50] Exporting 44dc1b44-a656-4dc1-bd41-4abf9d832827... ✅
+    → Found 69 word labels
+
+[23/50] Exporting 6d7db41f-6e9b-4f43-a577-3208194f64e5... ✅
+    → Found 110 word labels
+
+[24/50] Exporting 78e5a740-8f66-495c-b4d3-2e1c40498995... ✅
+    → Found 41 word labels
+
+[25/50] Exporting 62130e63-c4d8-46a5-bd4b-243400494b10... ✅
+    → Found 23 word labels
+
+[26/50] Exporting 8729d932-8637-4ab6-b38b-bae0e92c51e5... ✅
+    → Found 33 word labels
+
+[27/50] Exporting 05410ae8-bf1c-488b-87e5-1f7b006a442a... ✅
+    → Found 21 word labels
+
+[28/50] Exporting 687da832-1d9b-48c2-a295-1cc122c23ed8... ✅
+    → Found 126 word labels
+
+[29/50] Exporting ef8c6b37-c8f5-40f1-bd01-36e32a4a0dc7... ✅
+    → Found 52 word labels
+
+[30/50] Exporting e5e5dbf2-c31a-4b41-a80f-af81c6f1b4d1... ✅
+    → Found 102 word labels
+
+[31/50] Exporting 87bbf863-e4e2-4079-ac28-82e7abee02fb... ✅
+    → Found 152 word labels
+
+[32/50] Exporting 9ed1103e-0b4e-4089-8fa4-6f29b6dc198b... ✅
+    → Found 135 word labels
+
+[33/50] Exporting aff1852a-13c9-4f8f-a922-4f9cc1c2e29a... ✅
+    → Found 70 word labels
+
+[34/50] Exporting 6b415a15-6aa7-4cf3-932c-436cf28f9b0c... ✅
+    → Found 60 word labels
+
+[35/50] Exporting d36c2083-68bd-4690-b47f-11ffdc5e86e7... ✅
+    → Found 95 word labels
+
+[36/50] Exporting d0e37fb0-a826-4ee5-aa0c-8747acb28311... ✅
+    → Found 34 word labels
+
+[37/50] Exporting 058b662d-86d7-4e5f-9dd4-e77335d4197f... ✅
+    → Found 52 word labels
+
+[38/50] Exporting 069e270a-a3ce-40dc-81bc-1f05d7f23ac2... ✅
+    → Found 50 word labels
+
+[39/50] Exporting 04ebdb8a-b560-4c00-aa09-f6afa3bda458... ✅
+    → Found 32 word labels
+
+[40/50] Exporting ec17c1aa-612f-4466-91b2-075b836c9b3b... ✅
+    → Found 42 word labels
+
+[41/50] Exporting a861f6a6-8d6d-42bc-907c-3330d8bd2022... ✅
+    → Found 53 word labels
+
+[42/50] Exporting 314ac65b-2b97-45d6-81c2-e48fb0b8cef4... ✅
+    → Found 102 word labels
+
+[43/50] Exporting 53b8442d-754f-44c7-aa2d-2276c089af88... ✅
+    → Found 103 word labels
+
+[44/50] Exporting ccfbeaca-6f40-4e9f-ba5e-6a30a643f0aa... ✅
+    → Found 90 word labels
+
+[45/50] Exporting 6f323479-9357-464b-b2e6-2883fde9f019... ✅
+    → Found 29 word labels
+
+[46/50] Exporting 2dd75581-e04f-4c55-8c8e-d18c8518af1e... ✅
+    → Found 130 word labels
+
+[47/50] Exporting 735d8627-836b-44b7-9698-554172454bdb... ✅
+    → Found 24 word labels
+
+[48/50] Exporting ed3f3909-62d8-430b-9a1a-e82628d9d5ee... ✅
+    → Found 48 word labels
+
+[49/50] Exporting 8362b52a-60a1-4534-857f-028dd531976e... ❌ Error: Object of type datetime is not JSON serializable
+
+[50/50] Exporting ae0d9a91-ee91-4b88-aa68-881799eb9ab2... ✅
+    → Found 20 word labels
+
+📊 EXPORT SUMMARY
+============================================================
+✅ Successfully exported: 47 receipts
+❌ Failed exports: 3 receipts
+📁 Data saved to: ./receipt_data_with_labels_full
+
+🔍 SAMPLE DATA STRUCTURE (7ca97b51-7369-4321-bd01-0211f2bf2557.json):
+  images: 1 items
+  lines: 79 items
+  words: 206 items
+  letters: 1187 items
+  receipts: 2 items
+  receipt_lines: 74 items
+  receipt_words: 207 items
+  receipt_letters: 1188 items
+  receipt_word_labels: 63 items
+    → Sample label: {'image_id': '7ca97b51-7369-4321-bd01-0211f2bf2557', 'receipt_id': 1, 'line_id': 1, 'word_id': 1, 'label': 'BUSINESS_NAME', 'reasoning': 'Name of the business at the top of the receipt (Partial match confidence: 1.00)', 'timestamp_added': '2025-03-30T18:57:21.436224', 'validation_status': 'INVALID', 'label_consolidated_from': None, 'label_proposed_by': 'COMPLETION_BATCH'}
+  receipt_metadatas: 2 items
+  ocr_jobs: 0 items
+  ocr_routing_decisions: 0 items
