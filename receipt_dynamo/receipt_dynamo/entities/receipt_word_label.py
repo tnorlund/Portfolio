@@ -38,7 +38,7 @@ class ReceiptWordLabel:
     word_id: int
     label: str
     reasoning: Optional[str]
-    timestamp_added: datetime
+    timestamp_added: datetime | str
     validation_status: Optional[str] = None
     label_proposed_by: Optional[str] = None
     label_consolidated_from: Optional[str] = None
@@ -75,10 +75,16 @@ class ReceiptWordLabel:
         if self.reasoning is not None and not self.reasoning:
             raise ValueError("reasoning cannot be empty")
 
-        # Handle datetime conversion from string
-        if isinstance(self.timestamp_added, str):
-            self.timestamp_added = datetime.fromisoformat(self.timestamp_added)
-        if not isinstance(self.timestamp_added, datetime):
+        # Convert datetime to string for storage
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif isinstance(self.timestamp_added, str):
+            # Validate it's a valid ISO format by trying to parse it
+            try:
+                datetime.fromisoformat(self.timestamp_added)
+            except ValueError:
+                raise ValueError("timestamp_added string must be in ISO format")
+        else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
@@ -177,7 +183,7 @@ class ReceiptWordLabel:
                 if self.reasoning is not None
                 else {"NULL": True}
             ),
-            "timestamp_added": {"S": self.timestamp_added.isoformat() if isinstance(self.timestamp_added, datetime) else self.timestamp_added},
+            "timestamp_added": {"S": self.timestamp_added},
             "validation_status": {"S": self.validation_status},
             "label_consolidated_from": (
                 {"S": self.label_consolidated_from}
