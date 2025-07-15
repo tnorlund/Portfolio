@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_label.pattern_detection.base import PatternMatch, PatternType
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,9 @@ class SpatialRow:
 class SpatialWord:
     """Enhanced ReceiptWord with spatial analysis capabilities."""
     
-    def __init__(self, word: ReceiptWord):
+    def __init__(self, word: ReceiptWord, pattern_match: Optional[PatternMatch] = None):
         self.word = word
+        self.pattern_match = pattern_match
         self._cached_centroid = None
     
     @property
@@ -102,49 +104,55 @@ class SpatialWord:
         return (self.x - min_x) / (max_x - min_x)
     
     def is_currency_word(self) -> bool:
-        """Check if word contains currency patterns."""
-        # More restrictive pattern to avoid matching non-currency numbers
-        # Require either:
-        # 1. Currency symbol ($) followed by number
-        # 2. Number with exactly 2 decimal places (common for prices)
-        # 3. Number with thousand separators and optional decimals
-        text = self.word.text.strip()
+        """Check if word has been identified as a currency pattern."""
+        if not self.pattern_match:
+            return False
         
-        # Pattern 1: Currency symbol required
-        symbol_pattern = re.compile(r'^\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?$')
+        # Currency-related pattern types from pattern detection phase
+        currency_types = {
+            PatternType.CURRENCY,
+            PatternType.GRAND_TOTAL,
+            PatternType.SUBTOTAL,
+            PatternType.TAX,
+            PatternType.DISCOUNT,
+            PatternType.UNIT_PRICE,
+            PatternType.LINE_TOTAL
+        }
         
-        # Pattern 2: Decimal prices (must have exactly 2 decimal places)
-        decimal_pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{2}$')
-        
-        # Pattern 3: Large numbers with thousand separators (likely prices)
-        thousand_pattern = re.compile(r'^\d{1,3},\d{3}(?:,\d{3})*(?:\.\d{2})?$')
-        
-        return bool(
-            symbol_pattern.match(text) or 
-            decimal_pattern.match(text) or 
-            thousand_pattern.match(text)
-        )
+        return self.pattern_match.pattern_type in currency_types
     
     def is_quantity_word(self) -> bool:
-        """Check if word contains quantity patterns."""
-        # Common quantity patterns
-        quantity_patterns = [
-            r'^\d+([.,]\d+)?$',  # Simple numbers
-            r'^\d+[xX]$',        # "2x" format
-            r'^\d+\s*(lb|kg|oz|g|ea|each)$',  # With units
-        ]
+        """Check if word has been identified as a quantity pattern."""
+        if not self.pattern_match:
+            return False
         
-        for pattern in quantity_patterns:
-            if re.match(pattern, self.word.text, re.IGNORECASE):
-                return True
-        return False
+        # Quantity-related pattern types from pattern detection phase
+        quantity_types = {
+            PatternType.QUANTITY,
+            PatternType.QUANTITY_AT,
+            PatternType.QUANTITY_TIMES,
+            PatternType.QUANTITY_FOR
+        }
+        
+        return self.pattern_match.pattern_type in quantity_types
 
 
 class SpatialLine:
     """Spatial line created from grouped words with analysis capabilities."""
     
-    def __init__(self, words: List[ReceiptWord]):
-        self.spatial_words = [SpatialWord(word) for word in words]
+    def __init__(self, words: List[ReceiptWord], pattern_matches: Optional[List[PatternMatch]] = None):
+        # Create a mapping of word to pattern match for efficient lookup
+        word_to_pattern = {}
+        if pattern_matches:
+            for match in pattern_matches:
+                word_to_pattern[id(match.word)] = match
+        
+        # Create spatial words with their corresponding pattern matches
+        self.spatial_words = []
+        for word in words:
+            pattern_match = word_to_pattern.get(id(word))
+            self.spatial_words.append(SpatialWord(word, pattern_match))
+        
         self._words_by_x = sorted(self.spatial_words, key=lambda w: w.x)
     
     def get_leftmost_words(self, count: int = 3) -> List[SpatialWord]:
@@ -216,12 +224,22 @@ class RowGrouper:
     def __init__(self, y_tolerance: float = 0.02):
         self.y_tolerance = y_tolerance
     
-    def group_words_into_rows(self, words: List[ReceiptWord]) -> List[SpatialRow]:
+    def group_words_into_rows(self, words: List[ReceiptWord], pattern_matches: Optional[List[PatternMatch]] = None) -> List[SpatialRow]:
         """Group words into rows based on y-coordinate proximity."""
         if not words:
             return []
         
-        spatial_words = [SpatialWord(word) for word in words]
+        # Create a mapping of word to pattern match for efficient lookup
+        word_to_pattern = {}
+        if pattern_matches:
+            for match in pattern_matches:
+                word_to_pattern[id(match.word)] = match
+        
+        # Create spatial words with their corresponding pattern matches
+        spatial_words = []
+        for word in words:
+            pattern_match = word_to_pattern.get(id(word))
+            spatial_words.append(SpatialWord(word, pattern_match))
         
         # Sort by y-coordinate
         spatial_words.sort(key=lambda w: w.y)
@@ -413,12 +431,12 @@ class LineItemSpatialDetector:
         self.column_detector = ColumnDetector(x_tolerance)
         self.min_confidence = min_confidence
     
-    def detect_spatial_structure(self, words: List[ReceiptWord]) -> Dict:
+    def detect_spatial_structure(self, words: List[ReceiptWord], pattern_matches: Optional[List[PatternMatch]] = None) -> Dict:
         """Detect the spatial structure of the receipt for line item analysis."""
         logger.info(f"Analyzing spatial structure of {len(words)} words")
         
         # Step 1: Group words into rows
-        rows = self.row_grouper.group_words_into_rows(words)
+        rows = self.row_grouper.group_words_into_rows(words, pattern_matches)
         logger.info(f"Detected {len(rows)} spatial rows")
         
         # Step 2: Detect column structure

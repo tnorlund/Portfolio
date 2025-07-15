@@ -19,6 +19,7 @@ from receipt_label.spatial.geometry_utils import (
     SpatialRow,
     SpatialWord,
 )
+from receipt_label.pattern_detection.base import PatternMatch, PatternType
 
 
 def create_receipt_word(
@@ -296,8 +297,18 @@ class TestSpatialWord:
             bottom_right={"x": 0.86, "y": 0.12},
             confidence=0.9,
         )
-        spatial_word = SpatialWord(currency_word)
-
+        
+        # Create pattern match for currency word
+        currency_pattern_match = PatternMatch(
+            word=currency_word,
+            pattern_type=PatternType.CURRENCY,
+            confidence=0.95,
+            matched_text="5.99",
+            extracted_value=5.99,
+            metadata={}
+        )
+        
+        spatial_word = SpatialWord(currency_word, currency_pattern_match)
         assert spatial_word.is_currency_word()
 
         # Create non-currency word
@@ -312,7 +323,7 @@ class TestSpatialWord:
             bottom_right={"x": 0.25, "y": 0.12},
             confidence=0.9,
         )
-        spatial_word_text = SpatialWord(text_word)
+        spatial_word_text = SpatialWord(text_word)  # No pattern match
 
         assert not spatial_word_text.is_currency_word()
 
@@ -331,34 +342,34 @@ class TestSpatialWord:
             bottom_right={"x": 0.54, "y": 0.12},
             confidence=0.9,
         )
-        spatial_word = SpatialWord(quantity_word)
-
+        
+        # Create pattern match for quantity word
+        quantity_pattern_match = PatternMatch(
+            word=quantity_word,
+            pattern_type=PatternType.QUANTITY_TIMES,
+            confidence=0.9,
+            matched_text="2x",
+            extracted_value=2,
+            metadata={}
+        )
+        
+        spatial_word = SpatialWord(quantity_word, quantity_pattern_match)
         assert spatial_word.is_quantity_word()
 
-        # Test other quantity patterns that should match the regex patterns
-        # Pattern 1: r'^\d+([.,]\d+)?$' - Simple numbers like "3", "1.5", "2,5"
-        # Pattern 2: r'^\d+[xX]$' - "2x", "3X" format
-        # Pattern 3: r'^\d+\s*(lb|kg|oz|g|ea|each)$' - With units like "500g", "2 lb"
-        quantity_patterns = ["3", "1.5", "3X", "500g", "2lb"]
-        for pattern in quantity_patterns:
-            word = create_receipt_word(
-                receipt_id=1,
-                image_id="12345678-1234-4567-8901-123456789012",
-                line_id=1,
-                word_id=1,
-                text=pattern,
-                bounding_box={
-                    "x": 0.5,
-                    "y": 0.1,
-                    "width": 0.04,
-                    "height": 0.02,
-                },
-                top_left={"x": 0.5, "y": 0.1},
-                bottom_right={"x": 0.54, "y": 0.12},
-                confidence=0.9,
-            )
-            spatial_word = SpatialWord(word)
-            assert spatial_word.is_quantity_word()
+        # Test non-quantity word
+        non_quantity_word = create_receipt_word(
+            receipt_id=1,
+            image_id="12345678-1234-4567-8901-123456789012",
+            line_id=1,
+            word_id=2,
+            text="Big",
+            bounding_box={"x": 0.1, "y": 0.1, "width": 0.05, "height": 0.02},
+            top_left={"x": 0.1, "y": 0.1},
+            bottom_right={"x": 0.15, "y": 0.12},
+            confidence=0.9,
+        )
+        spatial_word_no_qty = SpatialWord(non_quantity_word)  # No pattern match
+        assert not spatial_word_no_qty.is_quantity_word()
 
 
 class TestSpatialLine:
@@ -396,10 +407,37 @@ class TestSpatialLine:
 
         return words
 
+    @pytest.fixture
+    def sample_pattern_matches(self, sample_line_words):
+        """Create pattern matches for the sample line words."""
+        matches = []
+        
+        # "2x" is a quantity pattern
+        matches.append(PatternMatch(
+            word=sample_line_words[2],  # "2x"
+            pattern_type=PatternType.QUANTITY_TIMES,
+            confidence=0.9,
+            matched_text="2x",
+            extracted_value=2,
+            metadata={}
+        ))
+        
+        # "5.99" is a currency pattern
+        matches.append(PatternMatch(
+            word=sample_line_words[3],  # "5.99"
+            pattern_type=PatternType.CURRENCY,
+            confidence=0.95,
+            matched_text="5.99",
+            extracted_value=5.99,
+            metadata={}
+        ))
+        
+        return matches
+
     @pytest.mark.unit
-    def test_spatial_line_creation(self, sample_line_words):
+    def test_spatial_line_creation(self, sample_line_words, sample_pattern_matches):
         """Test SpatialLine creation and word ordering."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         assert len(spatial_line.spatial_words) == 4
 
@@ -408,9 +446,9 @@ class TestSpatialLine:
         assert x_positions == sorted(x_positions)
 
     @pytest.mark.unit
-    def test_get_leftmost_words(self, sample_line_words):
+    def test_get_leftmost_words(self, sample_line_words, sample_pattern_matches):
         """Test getting leftmost words from line."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         leftmost = spatial_line.get_leftmost_words(2)
 
@@ -419,9 +457,9 @@ class TestSpatialLine:
         assert leftmost[1].word.text == "Mac"
 
     @pytest.mark.unit
-    def test_get_rightmost_words(self, sample_line_words):
+    def test_get_rightmost_words(self, sample_line_words, sample_pattern_matches):
         """Test getting rightmost words from line."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         rightmost = spatial_line.get_rightmost_words(2)
 
@@ -430,9 +468,9 @@ class TestSpatialLine:
         assert rightmost[1].word.text == "5.99"
 
     @pytest.mark.unit
-    def test_has_currency_pattern(self, sample_line_words):
+    def test_has_currency_pattern(self, sample_line_words, sample_pattern_matches):
         """Test currency pattern detection in line."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         assert spatial_line.has_currency_pattern()
 
@@ -440,14 +478,14 @@ class TestSpatialLine:
         non_currency_words = [
             w for w in sample_line_words if w.text in ["Big", "Mac"]
         ]  # Only pure text words
-        spatial_line_no_currency = SpatialLine(non_currency_words)
+        spatial_line_no_currency = SpatialLine(non_currency_words)  # No pattern matches
 
         assert not spatial_line_no_currency.has_currency_pattern()
 
     @pytest.mark.unit
-    def test_get_line_width(self, sample_line_words):
+    def test_get_line_width(self, sample_line_words, sample_pattern_matches):
         """Test line width calculation."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         width = spatial_line.get_line_width()
 
@@ -457,9 +495,9 @@ class TestSpatialLine:
         assert abs(width - expected_width) < 0.01
 
     @pytest.mark.unit
-    def test_split_by_alignment(self, sample_line_words):
+    def test_split_by_alignment(self, sample_line_words, sample_pattern_matches):
         """Test splitting line words by alignment."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         groups = spatial_line.split_by_alignment()
 
@@ -474,9 +512,9 @@ class TestSpatialLine:
         assert total_words == 4
 
     @pytest.mark.unit
-    def test_get_price_words(self, sample_line_words):
+    def test_get_price_words(self, sample_line_words, sample_pattern_matches):
         """Test getting price words from line."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         price_words = spatial_line.get_price_words()
 
@@ -488,9 +526,9 @@ class TestSpatialLine:
         assert "2x" not in price_texts
 
     @pytest.mark.unit
-    def test_get_description_words(self, sample_line_words):
+    def test_get_description_words(self, sample_line_words, sample_pattern_matches):
         """Test getting description words from line."""
-        spatial_line = SpatialLine(sample_line_words)
+        spatial_line = SpatialLine(sample_line_words, sample_pattern_matches)
 
         description_words = spatial_line.get_description_words(
             exclude_prices=True
@@ -666,8 +704,9 @@ class TestColumnDetector:
         # Should detect price column around x=0.8
         price_column = [c for c in columns if abs(c.x_position - 0.8) < 0.05]
         assert len(price_column) == 1
-        # Column type depends on X position - since x=0.8 > 0.7, it's classified as "line_total"
-        assert price_column[0].column_type == "line_total"
+        # Without pattern matches, numbers are not identified as currency,
+        # so the column is classified as "description"
+        assert price_column[0].column_type == "description"
 
     @pytest.mark.unit
     def test_x_tolerance_parameter(self, sample_spatial_rows):
