@@ -228,7 +228,7 @@ class ReceiptWordLabel:
             f"word_id={self.word_id}, "
             f"label={_repr_str(self.label)}, "
             f"reasoning={_repr_str(self.reasoning)}, "
-            f"timestamp_added={self.timestamp_added}, "
+            f"timestamp_added={_repr_str(self.timestamp_added)}, "
             f"validation_status={_repr_str(self.validation_status)}, "
             f"label_consolidated_from={_repr_str(self.label_consolidated_from)}, "
             f"label_proposed_by={_repr_str(self.label_proposed_by)}"
