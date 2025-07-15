@@ -536,8 +536,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
       <p>
         This concept of positioning items in multi-dimensional space like this,
-        where related items are clustevar(--color-red) near each other, goes by
-        the name of <strong>latent space</strong>.
+        where related items are clustered near each other, goes by the name of{" "}
+        <strong>latent space</strong>.
       </p>
       <p>
         Latent space is a powerful concept. It allows us to discover connections
@@ -565,10 +565,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h2>Meaningful Metadata</h2>
       <p>
         Imagine looking for the word &quot;latte&quot; across 10,000 receipts.
-        Without context, you&apos;ll get results from latte
-        flavovar(--color-red) cereal at grocery stores, expensive drinks at
-        coffee shops, and even brown colovar(--color-red) paint from hardware
-        stores.
+        Without context, you&apos;ll get results from latte flavored cereal at
+        grocery stores, expensive drinks at coffee shops, and even brown colored
+        paint from hardware stores.
       </p>
       <p>
         With context, you can filter out the results that don&apos;t make sense.
@@ -591,7 +590,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Pinecone doesn&apos;t just help me <i>find</i> similar words, it allows
         me to act on them. After every receipt is embedded, an OpenAI agent
         retrieves the &quot;nearest neighbors&quot; of each unlabeled word,
-        filtevar(--color-red) by the receipt&apos;s merchant-specific metadata.
+        filtered by the receipt&apos;s merchant-specific metadata.
       </p>
       <p>
         For the token &quot;latte&quot; on a Starbucks receipt, an agent pulls
@@ -754,7 +753,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
                     fontSize: "0.9rem",
                     color: message.includes("successful")
                       ? "var(--color-green)"
-                      : "var(--color-var(--color-red))",
+                      : "var(--color-red)",
                   }}
                 >
                   {message}
