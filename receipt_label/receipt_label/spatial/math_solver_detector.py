@@ -96,11 +96,16 @@ class MathSolverDetector:
                 )
             
             solutions.extend(total_solutions)
+            
+            # Check global max solutions limit
+            if len(solutions) >= self.max_solutions:
+                self.logger.info(f"Reached global max solutions limit ({self.max_solutions}), stopping search")
+                break
         
-        # Sort by confidence
+        # Sort by confidence and limit to max_solutions
         solutions.sort(key=lambda s: s.confidence, reverse=True)
         
-        return solutions
+        return solutions[:self.max_solutions]
     
     def _find_solutions_numpy_optimized(self,
                                       values: List[Tuple[float, PatternMatch]], 
@@ -308,7 +313,7 @@ class MathSolverDetector:
         
         # Method 1: Direct sum (no tax)
         # Find combinations that directly sum to total
-        for size in range(1, min(len(values), 10)):
+        for size in range(1, min(len(values) + 1, 10)):
             if len(solutions) >= self.max_solutions:
                 self.logger.info(f"Reached max solutions limit ({self.max_solutions}), stopping search")
                 break
@@ -344,7 +349,7 @@ class MathSolverDetector:
             # Find combinations that sum to subtotal
             remaining_values = values[:j] + values[j+1:]  # Exclude the tax
             
-            for size in range(1, min(len(remaining_values), 10)):
+            for size in range(1, min(len(remaining_values) + 1, 10)):
                 if len(solutions) >= self.max_solutions:
                     break
                     
