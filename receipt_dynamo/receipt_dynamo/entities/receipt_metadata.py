@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
@@ -19,6 +20,7 @@ MIN_NAME_LENGTH = 2  # Minimum length for meaningful merchant name
 MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptMetadata:
     """
     Represents validated metadata for a receipt, specifically merchant-related information
@@ -50,90 +52,76 @@ class ReceiptMetadata:
         canonical_phone_number (str): Canonical phone number from the most representative business in the cluster.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        receipt_id: int,
-        place_id: str,
-        merchant_name: str,
-        matched_fields: list[str],
-        timestamp: datetime,
-        merchant_category: str = "",
-        address: str = "",
-        phone_number: str = "",
-        validated_by: str = "",
-        reasoning: str = "",
-        canonical_place_id: str = "",
-        canonical_merchant_name: str = "",
-        canonical_address: str = "",
-        canonical_phone_number: str = "",
-    ):
+    image_id: str
+    receipt_id: int
+    place_id: str
+    merchant_name: str
+    matched_fields: List[str]
+    timestamp: datetime
+    merchant_category: str = ""
+    address: str = ""
+    phone_number: str = ""
+    validated_by: str = ""
+    reasoning: str = ""
+    canonical_place_id: str = ""
+    canonical_merchant_name: str = ""
+    canonical_address: str = ""
+    canonical_phone_number: str = ""
+    validation_status: str = ""
 
-        if not isinstance(receipt_id, int):
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(place_id, str):
+        if not isinstance(self.place_id, str):
             raise ValueError("place id must be a string")
-        self.place_id = place_id
 
-        if not isinstance(merchant_name, str):
+        if not isinstance(self.merchant_name, str):
             raise ValueError("merchant name must be a string")
-        self.merchant_name = merchant_name
 
-        if not isinstance(merchant_category, str):
+        if not isinstance(self.merchant_category, str):
             raise ValueError("merchant category must be a string")
-        self.merchant_category = merchant_category
 
-        if not isinstance(address, str):
+        if not isinstance(self.address, str):
             raise ValueError("address must be a string")
-        self.address = address
 
-        if not isinstance(phone_number, str):
+        if not isinstance(self.phone_number, str):
             raise ValueError("phone number must be a string")
-        self.phone_number = phone_number
 
-        if not isinstance(matched_fields, list):
+        if not isinstance(self.matched_fields, list):
             raise ValueError("matched fields must be a list")
-        for field in matched_fields:
+        for field in self.matched_fields:
             if not isinstance(field, str):
                 raise ValueError("matched fields must be a list of strings")
         # Check that they are unique
-        if len(matched_fields) != len(set(matched_fields)):
+        if len(self.matched_fields) != len(set(self.matched_fields)):
             raise ValueError("matched fields must be unique")
-        self.matched_fields = matched_fields
 
-        self.validated_by = normalize_enum(validated_by, ValidationMethod)
+        self.validated_by = normalize_enum(self.validated_by, ValidationMethod)
 
-        if not isinstance(timestamp, datetime):
+        if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
-        self.timestamp = timestamp
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning: str = reasoning
 
         # Initialize canonical fields
-        if not isinstance(canonical_place_id, str):
+        if not isinstance(self.canonical_place_id, str):
             raise ValueError("canonical place id must be a string")
-        self.canonical_place_id = canonical_place_id
 
-        if not isinstance(canonical_merchant_name, str):
+        if not isinstance(self.canonical_merchant_name, str):
             raise ValueError("canonical merchant name must be a string")
-        self.canonical_merchant_name = canonical_merchant_name
 
-        if not isinstance(canonical_address, str):
+        if not isinstance(self.canonical_address, str):
             raise ValueError("canonical address must be a string")
-        self.canonical_address = canonical_address
 
-        if not isinstance(canonical_phone_number, str):
+        if not isinstance(self.canonical_phone_number, str):
             raise ValueError("canonical phone number must be a string")
-        self.canonical_phone_number = canonical_phone_number
 
         # Validate field quality before determining validation status
         high_quality_fields = self._get_high_quality_matched_fields()

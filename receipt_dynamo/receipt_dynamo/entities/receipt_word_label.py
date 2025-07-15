@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
@@ -11,6 +12,7 @@ from receipt_dynamo.entities.util import (
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptWordLabel:
     """
     Represents a label for a word in a receipt line in DynamoDB.
@@ -30,99 +32,78 @@ class ReceiptWordLabel:
         timestamp_added (str): ISO formatted timestamp when the label was added.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        receipt_id: int,
-        line_id: int,
-        word_id: int,
-        label: str,
-        reasoning: str | None,
-        timestamp_added: datetime,
-        validation_status: Optional[str] = None,
-        label_proposed_by: Optional[str] = None,
-        label_consolidated_from: Optional[str] = None,
-    ):
-        """Initializes a new ReceiptWordLabel object for DynamoDB.
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    label: str
+    reasoning: Optional[str]
+    timestamp_added: datetime | str
+    validation_status: Optional[str] = None
+    label_proposed_by: Optional[str] = None
+    label_consolidated_from: Optional[str] = None
 
-        Args:
-            image_id (str): UUID identifying the associated image.
-            receipt_id (int): Number identifying the receipt.
-            line_id (int): Number identifying the line containing the word.
-            word_id (int): Number identifying the word.
-            label (str): The label assigned to the word.
-            reasoning (str): Explanation for why this label was assigned.
-            timestamp_added (datetime): The timestamp when the label was added.
-            validation_status (Optional[str]): The status of the label validation.
-        Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
-        """
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+    def __post_init__(
+        self
+    ) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        if not isinstance(line_id, int):
+        if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
-        if line_id <= 0:
+        if self.line_id <= 0:
             raise ValueError("line_id must be positive")
-        self.line_id: int = line_id
 
-        if not isinstance(word_id, int):
+        if not isinstance(self.word_id, int):
             raise ValueError("word_id must be an integer")
-        if word_id <= 0:
+        if self.word_id <= 0:
             raise ValueError("word_id must be positive")
-        self.word_id: int = word_id
 
-        if not isinstance(label, str):
+        if not isinstance(self.label, str):
             raise ValueError("label must be a string")
-        if not label:
+        if not self.label:
             raise ValueError("label cannot be empty")
-        self.label = label.upper()  # Store labels in uppercase for consistency
+        self.label = self.label.upper()  # Store labels in uppercase for consistency
 
-        if not isinstance(reasoning, str | None):
+        if not isinstance(self.reasoning, str | None):
             raise ValueError("reasoning must be a string or None")
-        if reasoning is not None and not reasoning:
+        if self.reasoning is not None and not self.reasoning:
             raise ValueError("reasoning cannot be empty")
-        self.reasoning = reasoning
 
-        self.timestamp_added: str
-        if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
-        elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
+        # Convert datetime to string for storage
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif isinstance(self.timestamp_added, str):
+            # Validate it's a valid ISO format by trying to parse it
+            try:
+                datetime.fromisoformat(self.timestamp_added)
+            except ValueError:
+                raise ValueError("timestamp_added string must be in ISO format")
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
 
         # Always assign a valid enum value for validation_status
-        status = validation_status or ValidationStatus.NONE.value
+        status = self.validation_status or ValidationStatus.NONE.value
         self.validation_status = normalize_enum(status, ValidationStatus)
 
-        self.label_proposed_by: Optional[str]
-        if label_proposed_by is not None:
-            if not isinstance(label_proposed_by, str):
+        if self.label_proposed_by is not None:
+            if not isinstance(self.label_proposed_by, str):
                 raise ValueError("label_proposed_by must be a string")
-            if not label_proposed_by:
+            if not self.label_proposed_by:
                 raise ValueError("label_proposed_by cannot be empty")
-            self.label_proposed_by = label_proposed_by
-        else:
-            self.label_proposed_by = None
 
-        self.label_consolidated_from: Optional[str]
-        if label_consolidated_from is not None:
-            if not isinstance(label_consolidated_from, str):
+        if self.label_consolidated_from is not None:
+            if not isinstance(self.label_consolidated_from, str):
                 raise ValueError("label_consolidated_from must be a string")
-            if not label_consolidated_from:
+            if not self.label_consolidated_from:
                 raise ValueError("label_consolidated_from cannot be empty")
-            self.label_consolidated_from = label_consolidated_from
-        else:
-            self.label_consolidated_from = None
 
     @property
     def key(self) -> Dict[str, Any]:
