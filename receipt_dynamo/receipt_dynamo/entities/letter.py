@@ -50,9 +50,7 @@ class Letter(GeometryMixin):
     angle_radians: float
     confidence: float
 
-    def __post_init__(
-        self
-    ) -> None:
+    def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
 
