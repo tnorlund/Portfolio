@@ -75,6 +75,7 @@ wheels/
 receipt_data/
 receipt_data_all/
 receipt_data_existing/
+receipt_data_with_labels/
 test_results/
 
 # OS files
