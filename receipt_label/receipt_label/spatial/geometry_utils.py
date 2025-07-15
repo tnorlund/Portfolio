@@ -58,7 +58,7 @@ class SpatialWord:
         """Y-coordinate of word center."""
         return self.centroid[1]
     
-    def is_on_same_line_as(self, other: 'SpatialWord', tolerance: float = 5.0) -> bool:
+    def is_on_same_line_as(self, other: 'SpatialWord', tolerance: float = 0.02) -> bool:
         """Check if two words are on the same horizontal line using y-coordinate tolerance."""
         return abs(self.y - other.y) <= tolerance
     
@@ -66,7 +66,7 @@ class SpatialWord:
         """Get horizontal distance between word centers."""
         return abs(self.x - other.x)
     
-    def is_left_aligned_with(self, other_words: List['SpatialWord'], tolerance: float = 10.0) -> bool:
+    def is_left_aligned_with(self, other_words: List['SpatialWord'], tolerance: float = 0.05) -> bool:
         """Check if word is left-aligned with a group of words."""
         if not other_words:
             return False
@@ -77,7 +77,7 @@ class SpatialWord:
         
         return abs(word_x - min_x) <= tolerance
     
-    def is_right_aligned_with(self, other_words: List['SpatialWord'], tolerance: float = 10.0) -> bool:
+    def is_right_aligned_with(self, other_words: List['SpatialWord'], tolerance: float = 0.05) -> bool:
         """Check if word is right-aligned with a group of words."""
         if not other_words:
             return False
@@ -195,7 +195,7 @@ class SpatialLine:
 class RowGrouper:
     """Groups words into rows using spatial relationships."""
     
-    def __init__(self, y_tolerance: float = 5.0):
+    def __init__(self, y_tolerance: float = 0.02):
         self.y_tolerance = y_tolerance
     
     def group_words_into_rows(self, words: List[ReceiptWord]) -> List[SpatialRow]:
@@ -254,7 +254,7 @@ class RowGrouper:
 class ColumnDetector:
     """Detects column structure in receipt layout."""
     
-    def __init__(self, x_tolerance: float = 20.0):
+    def __init__(self, x_tolerance: float = 0.05):
         self.x_tolerance = x_tolerance
     
     def detect_columns(self, rows: List[SpatialRow]) -> List[SpatialColumn]:
@@ -388,8 +388,8 @@ class LineItemSpatialDetector:
     """Main spatial detector for line items using pattern-first approach."""
     
     def __init__(self, 
-                 y_tolerance: float = 5.0,
-                 x_tolerance: float = 20.0,
+                 y_tolerance: float = 0.02,
+                 x_tolerance: float = 0.05,
                  min_confidence: float = 0.3):
         self.row_grouper = RowGrouper(y_tolerance)
         self.column_detector = ColumnDetector(x_tolerance)

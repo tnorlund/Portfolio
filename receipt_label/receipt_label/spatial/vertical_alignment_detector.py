@@ -1007,7 +1007,7 @@ class VerticalAlignmentDetector:
                         word_x_right = word.bottom_right['x'] if isinstance(word.bottom_right, dict) else word.bottom_right[0]
                     elif hasattr(word, 'bounding_box') and word.bounding_box:
                         if isinstance(word.bounding_box, dict):
-                            word_x_right = word.bounding_box['left'] + word.bounding_box['width']
+                            word_x_right = word.bounding_box['x'] + word.bounding_box['width']
                         else:
                             word_x_right = word.bounding_box[0] + word.bounding_box[2]
                     else:
