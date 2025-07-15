@@ -350,7 +350,7 @@ class MathSolverDetector:
             # Find combinations that sum to subtotal
             remaining_values = values[:j] + values[j+1:]  # Exclude the tax
             
-            for size in range(1, min(len(remaining_values) + 1, 10)):
+            for size in range(1, min(len(remaining_values) + 1, 11)):
                 if len(solutions) >= self.max_solutions:
                     break
                     
