@@ -43,9 +43,7 @@ class ReceiptWordLabel:
     label_proposed_by: Optional[str] = None
     label_consolidated_from: Optional[str] = None
 
-    def __post_init__(
-        self
-    ) -> None:
+    def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
 
@@ -68,7 +66,9 @@ class ReceiptWordLabel:
             raise ValueError("label must be a string")
         if not self.label:
             raise ValueError("label cannot be empty")
-        self.label = self.label.upper()  # Store labels in uppercase for consistency
+        self.label = (
+            self.label.upper()
+        )  # Store labels in uppercase for consistency
 
         if not isinstance(self.reasoning, str | None):
             raise ValueError("reasoning must be a string or None")
@@ -83,7 +83,9 @@ class ReceiptWordLabel:
             try:
                 datetime.fromisoformat(self.timestamp_added)
             except ValueError:
-                raise ValueError("timestamp_added string must be in ISO format")
+                raise ValueError(
+                    "timestamp_added string must be in ISO format"
+                )
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
