@@ -666,9 +666,8 @@ class TestColumnDetector:
         # Should detect price column around x=0.8
         price_column = [c for c in columns if abs(c.x_position - 0.8) < 0.05]
         assert len(price_column) == 1
-        # Column type depends on relative position calculation - since get_relative_position_on_line([])
-        # returns 0.5 (default), and 0.5 < 0.7, it's classified as "unit_price"
-        assert price_column[0].column_type == "unit_price"
+        # Column type depends on X position - since x=0.8 > 0.7, it's classified as "line_total"
+        assert price_column[0].column_type == "line_total"
 
     @pytest.mark.unit
     def test_x_tolerance_parameter(self, sample_spatial_rows):

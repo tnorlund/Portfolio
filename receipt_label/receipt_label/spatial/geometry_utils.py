@@ -348,8 +348,14 @@ class ColumnDetector:
         # High percentage of currency = price column
         if currency_count / total_count > 0.7:
             # Determine if it's unit price or line total based on position
-            avg_position = sum(w.get_relative_position_on_line([]) for w in words) / len(words)
-            return "line_total" if avg_position > 0.7 else "unit_price"
+            # Calculate average X position relative to all words in the column
+            x_positions = [w.x for w in words]
+            if x_positions:
+                avg_x = sum(x_positions) / len(x_positions)
+                # Assume positions > 0.7 (right side of receipt) are line totals
+                return "line_total" if avg_x > 0.7 else "unit_price"
+            else:
+                return "unit_price"
         
         # High percentage of quantities = quantity column
         if quantity_count / total_count > 0.6:
