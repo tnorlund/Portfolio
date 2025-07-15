@@ -480,11 +480,12 @@ class TestSpatialLine:
 
         price_words = spatial_line.get_price_words()
 
-        # Currency regex matches both "2x" (digit 2) and "5.99", so we expect 2 price words
-        assert len(price_words) == 2
+        # Only "5.99" should match as currency (has exactly 2 decimal places)
+        # "2x" is a quantity indicator, not a price
+        assert len(price_words) == 1
         price_texts = [w.word.text for w in price_words]
         assert "5.99" in price_texts
-        assert "2x" in price_texts
+        assert "2x" not in price_texts
 
     @pytest.mark.unit
     def test_get_description_words(self, sample_line_words):
@@ -495,15 +496,14 @@ class TestSpatialLine:
             exclude_prices=True
         )
 
-        # Since "2x" is detected as currency, only "Big" and "Mac" remain as description words
-        assert len(description_words) == 2
+        # "2x" is not currency, so we have "Big", "Mac", and "2x" as description words
+        # Only "5.99" is excluded as it's detected as currency
+        assert len(description_words) == 3
         description_texts = [w.word.text for w in description_words]
         assert "Big" in description_texts
         assert "Mac" in description_texts
-        assert "5.99" not in description_texts
-        assert (
-            "2x" not in description_texts
-        )  # "2x" is excluded as it's detected as currency
+        assert "2x" in description_texts  # "2x" is a quantity indicator, not currency
+        assert "5.99" not in description_texts  # "5.99" is excluded as currency
 
 
 class TestRowGrouper:
