@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities.util import (
@@ -9,52 +10,48 @@ from receipt_dynamo.entities.util import (
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class OCRJob:
     """
     Represents an OCR job in DynamoDB.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        job_id: str,
-        s3_bucket: str,
-        s3_key: str,
-        created_at: datetime,
-        updated_at: datetime | None = None,
-        status: OCRStatus | str = OCRStatus.PENDING,
-        job_type: OCRJobType | str = OCRJobType.FIRST_PASS,
-        receipt_id: int | None = None,
-    ):
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+    image_id: str
+    job_id: str
+    s3_bucket: str
+    s3_key: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    status: str = OCRStatus.PENDING.value
+    job_type: str = OCRJobType.FIRST_PASS.value
+    receipt_id: Optional[int] = None
 
-        assert_valid_uuid(job_id)
-        self.job_id = job_id
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
+        assert_valid_uuid(self.job_id)
 
-        if not isinstance(s3_bucket, str):
+        if not isinstance(self.s3_bucket, str):
             raise ValueError("s3_bucket must be a string")
-        self.s3_bucket = s3_bucket
 
-        if not isinstance(s3_key, str):
+        if not isinstance(self.s3_key, str):
             raise ValueError("s3_key must be a string")
-        self.s3_key = s3_key
 
-        if not isinstance(created_at, datetime):
+        if not isinstance(self.created_at, datetime):
             raise ValueError("created_at must be a datetime")
-        self.created_at = created_at
 
-        if updated_at is not None and not isinstance(updated_at, datetime):
+        if self.updated_at is not None and not isinstance(
+            self.updated_at, datetime
+        ):
             raise ValueError("updated_at must be a datetime or None")
-        self.updated_at = updated_at
 
-        self.status = normalize_enum(status, OCRStatus)
+        self.status = normalize_enum(self.status, OCRStatus)
+        self.job_type = normalize_enum(self.job_type, OCRJobType)
 
-        self.job_type = normalize_enum(job_type, OCRJobType)
-
-        if receipt_id is not None and not isinstance(receipt_id, int):
+        if self.receipt_id is not None and not isinstance(
+            self.receipt_id, int
+        ):
             raise ValueError("receipt_id must be an integer or None")
-        self.receipt_id: int | None = receipt_id
 
     @property
     def key(self) -> Dict[str, Any]:

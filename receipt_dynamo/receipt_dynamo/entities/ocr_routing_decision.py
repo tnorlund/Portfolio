@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import OCRStatus
+from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -9,49 +11,63 @@ from receipt_dynamo.entities.util import (
 )
 
 
-class OCRRoutingDecision:
-    def __init__(
-        self,
-        image_id: str,
-        job_id: str,
-        s3_bucket: str,
-        s3_key: str,
-        created_at: datetime | str,
-        updated_at: datetime | str | None,
-        receipt_count: int,
-        status: OCRStatus | str = OCRStatus.PENDING,
-    ):
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+@dataclass(eq=True, unsafe_hash=False)
+class OCRRoutingDecision(DynamoDBEntity):
+    """
+    Represents an OCR routing decision stored in a DynamoDB table.
 
-        assert_valid_uuid(job_id)
-        self.job_id = job_id
+    This class encapsulates information about OCR job routing decisions,
+    including the associated image, job details, S3 location, timestamps,
+    receipt count, and processing status.
 
-        if not isinstance(s3_bucket, str):
+    Attributes:
+        image_id (str): UUID identifying the image.
+        job_id (str): UUID identifying the OCR job.
+        s3_bucket (str): S3 bucket containing the image.
+        s3_key (str): S3 key for the image.
+        created_at (datetime): When the routing decision was created.
+        updated_at (Optional[datetime]): When the routing decision was last updated.
+        receipt_count (int): Number of receipts detected.
+        status (str): Status of the OCR routing decision.
+    """
+
+    image_id: str
+    job_id: str
+    s3_bucket: str
+    s3_key: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+    receipt_count: int
+    status: str = OCRStatus.PENDING.value
+
+    def __post_init__(self) -> None:
+        """Validate and normalize initialization arguments."""
+        assert_valid_uuid(self.image_id)
+        assert_valid_uuid(self.job_id)
+
+        if not isinstance(self.s3_bucket, str):
             raise ValueError("s3_bucket must be a string")
-        self.s3_bucket = s3_bucket
 
-        if not isinstance(s3_key, str):
+        if not isinstance(self.s3_key, str):
             raise ValueError("s3_key must be a string")
-        self.s3_key = s3_key
 
-        if not isinstance(created_at, (datetime, str)):
+        # Handle datetime conversion from string
+        if isinstance(self.created_at, str):
+            self.created_at = datetime.fromisoformat(self.created_at)
+        if not isinstance(self.created_at, datetime):
             raise ValueError("created_at must be a datetime or a string")
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-        self.created_at: datetime = created_at
 
-        if not isinstance(updated_at, (datetime, str)):
-            raise ValueError("updated_at must be a datetime or a string")
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at)
-        self.updated_at: datetime = updated_at
+        if self.updated_at is not None:
+            if isinstance(self.updated_at, str):
+                self.updated_at = datetime.fromisoformat(self.updated_at)
+            if not isinstance(self.updated_at, datetime):
+                raise ValueError("updated_at must be a datetime or a string")
 
-        if not isinstance(receipt_count, int):
+        if not isinstance(self.receipt_count, int):
             raise ValueError("receipt_count must be an integer")
-        self.receipt_count = receipt_count
 
-        self.status: str = normalize_enum(status, OCRStatus)
+        # Normalize status
+        self.status = normalize_enum(self.status, OCRStatus)
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -89,6 +105,21 @@ class OCRRoutingDecision:
             f"s3_bucket={_repr_str(self.s3_bucket)}, s3_key={_repr_str(self.s3_key)}, "
             f"created_at={self.created_at}, updated_at={self.updated_at}, "
             f"receipt_count={self.receipt_count}, status={_repr_str(self.status)})"
+        )
+
+    def __hash__(self) -> int:
+        """Returns the hash value of the OCRRoutingDecision object."""
+        return hash(
+            (
+                self.image_id,
+                self.job_id,
+                self.s3_bucket,
+                self.s3_key,
+                self.created_at,
+                self.updated_at,
+                self.receipt_count,
+                self.status,
+            )
         )
 
 
