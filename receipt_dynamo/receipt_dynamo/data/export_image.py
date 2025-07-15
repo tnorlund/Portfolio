@@ -1,8 +1,18 @@
 # infra/lambda_layer/python/dynamo/data/export_image.py
 import json
 import os
+from dataclasses import asdict
+from datetime import datetime
+from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+
+def datetime_handler(obj: Any) -> str:
+    """Custom JSON encoder for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 def export_image(table_name: str, image_id: str, output_dir: str) -> None:
@@ -49,37 +59,23 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
 
     # Export DynamoDB data as JSON
     results = {
-        "images": [dict(image) for image in images],
-        "lines": [dict(line) for line in lines],
-        "words": [dict(word) for word in words],
-        "letters": [dict(letter) for letter in letters],
-        "receipts": [dict(receipt) for receipt in receipts],
-        "receipt_lines": [dict(line) for line in receipt_lines],
-        "receipt_words": [dict(word) for word in receipt_words],
-        "receipt_letters": [dict(letter) for letter in receipt_letters],
-        "receipt_word_labels": [dict(label) for label in receipt_word_labels],
+        "images": [asdict(image) for image in images],
+        "lines": [asdict(line) for line in lines],
+        "words": [asdict(word) for word in words],
+        "letters": [asdict(letter) for letter in letters],
+        "receipts": [asdict(receipt) for receipt in receipts],
+        "receipt_lines": [asdict(line) for line in receipt_lines],
+        "receipt_words": [asdict(word) for word in receipt_words],
+        "receipt_letters": [asdict(letter) for letter in receipt_letters],
+        "receipt_word_labels": [asdict(label) for label in receipt_word_labels],
         "receipt_metadatas": [
-            dict(metadata) for metadata in receipt_metadatas
+            asdict(metadata) for metadata in receipt_metadatas
         ],
-        "ocr_jobs": [dict(job) for job in ocr_jobs],
+        "ocr_jobs": [asdict(job) for job in ocr_jobs],
         "ocr_routing_decisions": [
-            {
-                "image_id": decision.image_id,
-                "job_id": decision.job_id,
-                "s3_bucket": decision.s3_bucket,
-                "s3_key": decision.s3_key,
-                "created_at": decision.created_at.isoformat(),
-                "updated_at": (
-                    decision.updated_at.isoformat()
-                    if decision.updated_at
-                    else None
-                ),
-                "receipt_count": decision.receipt_count,
-                "status": decision.status,
-            }
-            for decision in ocr_routing_decisions
+            asdict(decision) for decision in ocr_routing_decisions
         ],
     }
 
     with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:
-        json.dump(results, f, indent=4)
+        json.dump(results, f, indent=4, default=datetime_handler)
