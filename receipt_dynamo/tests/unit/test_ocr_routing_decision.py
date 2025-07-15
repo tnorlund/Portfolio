@@ -23,12 +23,22 @@ def example_ocr_routing_decision():
 @pytest.mark.unit
 def test_ocr_routing_decision_init_valid(example_ocr_routing_decision):
     """Test the OCRRoutingDecision constructor"""
-    assert example_ocr_routing_decision.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    assert example_ocr_routing_decision.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    assert (
+        example_ocr_routing_decision.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
+    assert (
+        example_ocr_routing_decision.job_id
+        == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    )
     assert example_ocr_routing_decision.s3_bucket == "test-bucket"
     assert example_ocr_routing_decision.s3_key == "test-key/image.jpg"
-    assert example_ocr_routing_decision.created_at == datetime(2024, 1, 1, 12, 0, 0)
-    assert example_ocr_routing_decision.updated_at == datetime(2024, 1, 1, 13, 0, 0)
+    assert example_ocr_routing_decision.created_at == datetime(
+        2024, 1, 1, 12, 0, 0
+    )
+    assert example_ocr_routing_decision.updated_at == datetime(
+        2024, 1, 1, 13, 0, 0
+    )
     assert example_ocr_routing_decision.receipt_count == 3
     assert example_ocr_routing_decision.status == "COMPLETED"
 
@@ -82,7 +92,7 @@ def test_ocr_routing_decision_init_invalid_image_id():
             receipt_count=3,
             status=OCRStatus.PENDING,
         )
-    
+
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         OCRRoutingDecision(
             image_id="not-a-uuid",
@@ -200,7 +210,7 @@ def test_ocr_routing_decision_gsi1_key(example_ocr_routing_decision):
 def test_ocr_routing_decision_to_item(example_ocr_routing_decision):
     """Test the OCRRoutingDecision to_item method"""
     item = example_ocr_routing_decision.to_item()
-    
+
     assert item["PK"]["S"] == "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert item["SK"]["S"] == "ROUTING#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
     assert item["TYPE"]["S"] == "OCR_ROUTING_DECISION"
@@ -211,7 +221,9 @@ def test_ocr_routing_decision_to_item(example_ocr_routing_decision):
     assert item["receipt_count"]["N"] == "3"
     assert item["status"]["S"] == "COMPLETED"
     assert item["GSI1PK"]["S"] == "OCR_ROUTING_DECISION_STATUS#COMPLETED"
-    assert item["GSI1SK"]["S"] == "ROUTING#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    assert (
+        item["GSI1SK"]["S"] == "ROUTING#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
+    )
 
 
 @pytest.mark.unit
@@ -259,10 +271,10 @@ def test_ocr_routing_decision_hash(example_ocr_routing_decision):
         receipt_count=3,
         status=OCRStatus.COMPLETED,
     )
-    
+
     # They should have the same hash
     assert hash(decision1) == hash(decision2)
-    
+
     # Different object should have different hash
     decision3 = OCRRoutingDecision(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -291,7 +303,7 @@ def test_ocr_routing_decision_equality(example_ocr_routing_decision):
         receipt_count=3,
         status=OCRStatus.COMPLETED,
     )
-    
+
     assert decision1 == decision2
 
 
@@ -300,14 +312,17 @@ def test_item_to_ocr_routing_decision(example_ocr_routing_decision):
     """Test the item_to_ocr_routing_decision function"""
     item = example_ocr_routing_decision.to_item()
     reconstructed = item_to_ocr_routing_decision(item)
-    
+
     assert reconstructed.image_id == example_ocr_routing_decision.image_id
     assert reconstructed.job_id == example_ocr_routing_decision.job_id
     assert reconstructed.s3_bucket == example_ocr_routing_decision.s3_bucket
     assert reconstructed.s3_key == example_ocr_routing_decision.s3_key
     assert reconstructed.created_at == example_ocr_routing_decision.created_at
     assert reconstructed.updated_at == example_ocr_routing_decision.updated_at
-    assert reconstructed.receipt_count == example_ocr_routing_decision.receipt_count
+    assert (
+        reconstructed.receipt_count
+        == example_ocr_routing_decision.receipt_count
+    )
     assert reconstructed.status == example_ocr_routing_decision.status
 
 
@@ -326,7 +341,7 @@ def test_item_to_ocr_routing_decision_with_none_updated_at():
     )
     item = decision.to_item()
     reconstructed = item_to_ocr_routing_decision(item)
-    
+
     assert reconstructed.updated_at is None
 
 
@@ -340,6 +355,6 @@ def test_item_to_ocr_routing_decision_invalid_item():
         "TYPE": {"S": "OCR_ROUTING_DECISION"},
         # Missing other required fields
     }
-    
+
     with pytest.raises(ValueError, match="Invalid item format"):
         item_to_ocr_routing_decision(item)

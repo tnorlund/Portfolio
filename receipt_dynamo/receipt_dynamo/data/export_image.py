@@ -67,7 +67,9 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "receipt_lines": [asdict(line) for line in receipt_lines],
         "receipt_words": [asdict(word) for word in receipt_words],
         "receipt_letters": [asdict(letter) for letter in receipt_letters],
-        "receipt_word_labels": [asdict(label) for label in receipt_word_labels],
+        "receipt_word_labels": [
+            asdict(label) for label in receipt_word_labels
+        ],
         "receipt_metadatas": [
             asdict(metadata) for metadata in receipt_metadatas
         ],
