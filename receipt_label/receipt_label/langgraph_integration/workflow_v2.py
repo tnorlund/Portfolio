@@ -26,6 +26,7 @@ from .workflow_v1 import (
     pattern_labeling_node,
     validation_node,
 )
+from .nodes import audit_trail_node
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +322,7 @@ def create_conditional_workflow():
     workflow.add_node("spatial_context", spatial_context_node)
     workflow.add_node("gpt_labeling", gpt_labeling_node)
     workflow.add_node("validation", validation_node)
+    workflow.add_node("audit_trail", audit_trail_node)
     
     # Define flow with conditional branching
     workflow.set_entry_point("load_merchant")
@@ -341,8 +343,9 @@ def create_conditional_workflow():
     workflow.add_edge("spatial_context", "gpt_labeling")
     workflow.add_edge("gpt_labeling", "validation")
     
-    # All paths lead to validation, then end
-    workflow.add_edge("validation", END)
+    # All paths lead to validation, then audit, then end
+    workflow.add_edge("validation", "audit_trail")
+    workflow.add_edge("audit_trail", END)
     
     return workflow.compile()
 
