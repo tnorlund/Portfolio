@@ -4,6 +4,8 @@
 
 The LangGraph state schema is the core data structure that flows between all nodes in the workflow. This document explains what data should be included in the state vs. loaded on demand.
 
+**Updated**: Aligned with PR #221 (Spatial/Mathematical Currency Detection) and PR #223 (Smart Decision Engine with 94.4% Skip Rate)
+
 ## Design Principles
 
 ### 1. **Minimal State Principle**
@@ -27,58 +29,103 @@ Only include data that:
 
 ### Essential Input Data
 ```python
-# Identifiers
-receipt_id: int  # DynamoDB PK
-image_id: str   # UUID
+# Identifiers (from DynamoDB Receipt entity)
+receipt_id: int  # Receipt ID within image
+image_id: str   # UUID identifying the image
 
-# Minimal OCR data for processing
+# Minimal OCR data for processing (from ReceiptWord entity)
 receipt_words: List[Dict[str, Any]]
 # Each word dict contains only:
 # - word_id, line_id, text
 # - confidence, bounding_box
 # - x, y coordinates
+# Full ReceiptWord entity loaded from DB when needed
 ```
 
-### Pattern Detection Results
+### Pattern Detection Results (from PR #221 & #223)
 ```python
-# Transformed pattern matches
-pattern_matches: Dict[str, List[Dict]]
-# e.g., {"CURRENCY": [{word_id: 5, value: 12.99}]}
+# Pattern matches organized by type
+pattern_matches: Dict[str, List[PatternMatchResult]]
+# PatternMatchResult contains:
+# - word_id, pattern_type, confidence
+# - extracted_value (float for currency, str for others)
+# - matched_text, metadata
 
-# Currency structure (critical for GPT context)
-currency_columns: List[Dict]
-# Spatial grouping info
-structure_sections: Dict[str, List[int]]
+# Spatial currency columns (PR #221)
+currency_columns: List[PriceColumnInfo]
+# PriceColumnInfo contains:
+# - column_id, x_center, x_min, x_max
+# - prices: List[{word_id, value, y_position}]
+# - confidence, alignment_score
+
+# Mathematical relationships (PR #221)
+math_solutions: List[MathSolutionInfo]
+# MathSolutionInfo contains:
+# - solution_type ("items_to_total", "subtotal_tax_total")
+# - item_word_ids, sum_value, total_word_id
+# - confidence
+
+# Four field summary (PR #223 decision engine)
+four_field_summary: FourFieldSummary
+# Tracks essential fields: merchant_name, date, time, grand_total
+# With found/value/confidence for each
 ```
 
 ### Labeling Progress
 ```python
-# Current label assignments
+# Current label assignments (aligns with ReceiptWordLabel entity)
 labels: Dict[int, LabelInfo]
+# LabelInfo contains:
+# - label (uppercase, e.g., "MERCHANT_NAME")
+# - confidence, source ("pattern", "gpt", "manual")
+# - validation_status ("pending", "validated", "needs_review")
+# - reasoning, proposed_by, assigned_at
+# - group_id (for multi-word labels)
+
 grouped_labels: Dict[str, List[int]]  # Multi-word groups
 
-# Gap tracking
+# Essential field tracking (MERCHANT_NAME, DATE, TIME, GRAND_TOTAL)
 missing_essentials: List[str]
 found_essentials: Dict[str, int]
 
-# Line items detected
-line_items: List[Dict]
+# Coverage statistics (from decision engine)
+total_words: int
+labeled_words: int
+unlabeled_meaningful_words: int
+coverage_percentage: float
+
+# Line items with spatial alignment
+line_items: List[Dict]  # AlignedLineItem structures
 ```
 
-### Workflow Control
+### Decision Engine & Workflow Control
 ```python
-# Current state
-current_phase: str
-needs_gpt: bool
-needs_review: bool
+# Decision engine results (PR #223)
+decision_outcome: DecisionOutcome  # SKIP, BATCH, or REQUIRED
+decision_confidence: ConfidenceLevel  # HIGH, MEDIUM, LOW
+decision_reasoning: str
+skip_rate: float  # Target: 94.4%
 
-# Metrics
+# GPT context (only if decision != SKIP)
+needs_gpt: bool
+gpt_context_type: str  # "essential_gaps" or "line_items"
+gpt_spatial_context: List[Dict]  # Relevant receipt regions
+gpt_responses: List[Dict]  # All responses for retry logic
+
+# Current workflow state
+current_phase: str  # "pattern", "essential", "extended", "validation"
+needs_review: bool  # Human review required?
+
+# Metrics with cost tracking
 metrics: ProcessingMetrics
-node_timings: Dict[str, float]
+# Includes: pattern_detection_ms, decision_engine_ms
+# gpt_cost_usd, pinecone_cost_usd, total_cost_usd
+# pattern_coverage, gpt_skip_rate, batch_api_eligible
 
 # Audit trail
 decisions: List[Dict]  # All labeling decisions
-errors: List[Dict]
+errors: List[Dict]  # With recoverable flag
+node_timings: Dict[str, float]  # Performance tracking
 ```
 
 ## What's NOT in the State (Load on Demand)
@@ -93,15 +140,19 @@ receipt.sha256         # Load if needed
 
 ### 2. **Full Merchant Metadata**
 ```python
-# Store only:
-merchant_place_id: str
-merchant_name: str
+# Store only (from ReceiptMetadata entity):
+merchant_place_id: str  # Google Places ID
+merchant_name: str  # Canonical name
+merchant_validation_status: str  # MATCHED, UNSURE, NO_MATCH
+merchant_matched_fields: List[str]  # ["name", "phone", "address"]
 
 # Load from DynamoDB when needed:
 - Full address
-- Phone numbers
+- Phone numbers  
 - Business hours
 - Category details
+- Canonical merchant info
+- Validation reasoning
 ```
 
 ### 3. **Embeddings**
@@ -162,6 +213,10 @@ errors: List[Dict[str, Any]]
 #   "timestamp": "2024-01-15T10:31:00Z",
 #   "recoverable": true
 # }
+
+# External system updates
+label_updates: List[Dict]  # DynamoDB ReceiptWordLabel entities
+pinecone_updates: List[Dict]  # Pinecone metadata updates
 ```
 
 ### What We Don't Track
@@ -247,45 +302,66 @@ async def similarity_search_node(state: ReceiptProcessingState) -> ReceiptProces
     "image_id": "uuid-here",
     "receipt_words": [...],  # Minimal OCR data
     "pattern_matches": {...},  # From Phase 2
-    "currency_columns": [...],
+    "currency_columns": [...],  # Spatial columns
+    "math_solutions": [...],  # Mathematical relationships
+    "four_field_summary": {...},  # Essential field status
     "labels": {},
     "metrics": {},
     "decisions": [],
-    "current_phase": "init"
+    "current_phase": "init",
+    "total_words": 150,
+    "labeled_words": 0,
+    "coverage_percentage": 0.0
 }
 ```
 
-### After Pattern Labeling
+### After Pattern Labeling & Decision Engine
 ```python
 {
     ...previous fields...,
     "labels": {
-        5: {"label_type": "DATE", "confidence": 0.95, ...},
-        23: {"label_type": "GRAND_TOTAL", "confidence": 0.85, ...}
+        5: {"label": "DATE", "confidence": 0.95, "source": "pattern", ...},
+        23: {"label": "GRAND_TOTAL", "confidence": 0.85, "source": "position_heuristic", ...}
     },
     "found_essentials": {"DATE": 5, "GRAND_TOTAL": 23},
     "missing_essentials": ["MERCHANT_NAME", "TIME"],
+    "labeled_words": 45,
+    "coverage_percentage": 30.0,
+    "decision_outcome": "REQUIRED",  # Missing essentials
+    "decision_confidence": "HIGH",
+    "decision_reasoning": "Missing 2 essential fields",
     "needs_gpt": true,
     "current_phase": "pattern",
     "decisions": [
-        {"node": "pattern_labeling", "action": "found_date", ...}
+        {"node": "pattern_labeling", "action": "found_date", ...},
+        {"node": "decision_engine", "action": "require_gpt", ...}
     ]
 }
 ```
 
-### After GPT Labeling
+### After GPT Labeling (if needed)
 ```python
 {
     ...previous fields...,
     "labels": {
         ...existing...,
-        1: {"label_type": "MERCHANT_NAME", "confidence": 0.8, ...},
-        7: {"label_type": "TIME", "confidence": 0.75, ...}
+        1: {"label": "MERCHANT_NAME", "confidence": 0.8, "source": "gpt", ...},
+        7: {"label": "TIME", "confidence": 0.75, "source": "gpt", ...}
     },
     "missing_essentials": [],
-    "gpt_responses": [{"prompt": "...", "tokens": 150, ...}],
+    "labeled_words": 120,
+    "coverage_percentage": 80.0,
+    "gpt_responses": [{"prompt": "...", "tokens": 150, "cost": 0.003, ...}],
     "current_phase": "essential_complete",
-    "metrics": {"gpt_cost_usd": 0.003, ...}
+    "metrics": {
+        "gpt_cost_usd": 0.003,
+        "gpt_skip_rate": 0.0,  # Had to use GPT
+        "pattern_coverage": 0.3,  # 30% by patterns
+        ...
+    },
+    "label_updates": [  # Ready for DynamoDB
+        {"image_id": "uuid", "receipt_id": 12345, "word_id": 1, "label": "MERCHANT_NAME", ...}
+    ]
 }
 ```
 
@@ -321,5 +397,15 @@ The state schema is designed to be:
 - **Traceable**: Full audit trail of decisions
 - **Performant**: Under 100KB typical size
 - **Flexible**: Load heavy data on demand
+- **Type-Safe**: Strong typing for mypy compliance
+- **Entity-Aligned**: Matches DynamoDB entities exactly
 
-This design ensures efficient Lambda execution while maintaining full visibility into the labeling process.
+This design ensures efficient Lambda execution while maintaining full visibility into the labeling process and achieving the 94.4% GPT skip rate target from PR #223.
+
+## Key Achievements
+
+1. **Alignment with PRs**: State schema now incorporates spatial analysis (PR #221) and decision engine (PR #223)
+2. **Entity Consistency**: LabelInfo matches ReceiptWordLabel, merchant data matches ReceiptMetadata
+3. **Cost Optimization**: Decision engine integration enables 94.4% skip rate
+4. **Type Safety**: All types use TypedDict, dataclass, and Enum for strong typing
+5. **External System Clarity**: Separate tracking for DynamoDB and Pinecone updates
