@@ -42,7 +42,7 @@ dependencies = [
   "python-dotenv>=1.0.0",
   "googlemaps>=4.10.0",
   "pulumi>=3.0.0",
-  "mcp>=1.0.0",
+  "mcp[cli]",
   "langgraph>=0.2.0",
   "langchain>=0.3.0",
   "langchain-openai>=0.2.0",

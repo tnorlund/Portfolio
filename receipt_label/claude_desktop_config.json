@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "receipt-validation": {
+      "command": "python",
+      "args": [
+        "/Users/tnorlund/claude_b/Portfolio/receipt_label/mcp_isolated/server.py"
+      ],
+      "cwd": "/Users/tnorlund/claude_b/Portfolio/receipt_label"
+    }
+  }
+}
