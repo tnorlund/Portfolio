@@ -38,6 +38,15 @@ dependencies = [
   "fuzzywuzzy>=0.18.0",
   "RapidFuzz>=3.13.0",
   "numpy>=1.24.0",
+  "boto3>=1.26.0",
+  "python-dotenv>=1.0.0",
+  "googlemaps>=4.10.0",
+  "pulumi>=3.0.0",
+  "mcp>=1.0.0",
+  "langgraph>=0.2.0",
+  "langchain>=0.3.0",
+  "langchain-openai>=0.2.0",
+  "langchain-core>=0.3.0",
 ]
 keywords = ["llm", "labeling", "validation"]
 
@@ -108,3 +117,6 @@ good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
 [tool.pylint.design]
 max-args = 10
 max-locals = 20
+
+[project.scripts]
+receipt-validation-server = "receipt_label.mcp_validation_server:main"
