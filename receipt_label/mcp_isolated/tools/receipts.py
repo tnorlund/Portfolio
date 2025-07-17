@@ -9,16 +9,17 @@ def list_receipts(
     last_evaluated_key: Optional[dict] = None,
 ) -> dict:
     """List receipts from DynamoDB with pagination support.
-    
+
     Args:
         limit: Maximum number of receipts to return (default: all)
         last_evaluated_key: Pagination key from previous query
-        
+
     Returns:
         Dictionary containing:
         - success: Boolean indicating if operation succeeded
         - receipts: List of receipt dictionaries
-        - last_evaluated_key: Pagination key for next query (if more results exist)
+        - last_evaluated_key: Pagination key for next query (if more results
+            exist)
         - count: Number of receipts returned
     """
     manager = get_client_manager()
@@ -38,8 +39,16 @@ def list_receipts(
             receipt_dict = {
                 "image_id": receipt.image_id,
                 "receipt_id": receipt.receipt_id,
-                "timestamp_added": receipt.timestamp_added.isoformat() if receipt.timestamp_added else None,
-                "timestamp_completed": receipt.timestamp_completed.isoformat() if receipt.timestamp_completed else None,
+                "timestamp_added": (
+                    receipt.timestamp_added.isoformat()
+                    if receipt.timestamp_added
+                    else None
+                ),
+                "timestamp_completed": (
+                    receipt.timestamp_completed.isoformat()
+                    if receipt.timestamp_completed
+                    else None
+                ),
                 "status": receipt.status,
                 "image_url": receipt.image_url,
                 "label_count": receipt.label_count,

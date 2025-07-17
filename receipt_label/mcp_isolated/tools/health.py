@@ -2,6 +2,15 @@
 
 from core.client_manager import get_client_manager
 
+from botocore.exceptions import ClientError
+
+try:
+    # For pinecone-client v3.x+
+    from pinecone.exceptions import ApiException
+except ImportError:
+    # Fallback for older versions
+    from pinecone.core.client.exceptions import ApiException
+
 
 def get_health_status() -> dict:
     """Get health status of all services."""
@@ -25,7 +34,7 @@ def get_health_status() -> dict:
                 "table": manager.config.dynamo_table,
                 "item_count": response["Table"]["ItemCount"],
             }
-        except Exception as e:
+        except ClientError as e:
             status["services"]["dynamo"] = {"status": "error", "error": str(e)}
 
         # Test Pinecone
@@ -37,7 +46,7 @@ def get_health_status() -> dict:
                 "index": manager.config.pinecone_index_name,
                 "vector_count": stats.total_vector_count,
             }
-        except Exception as e:
+        except ApiException as e:
             status["services"]["pinecone"] = {
                 "status": "error",
                 "error": str(e),
@@ -45,7 +54,7 @@ def get_health_status() -> dict:
 
         return status
 
-    except Exception as e:
+    except RuntimeError as e:
         return {
             "initialized": False,
             "config_loaded": False,
