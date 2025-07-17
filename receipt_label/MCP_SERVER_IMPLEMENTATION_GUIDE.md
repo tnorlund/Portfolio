@@ -151,9 +151,15 @@ mcp dev server.py:mcp
 
 The final working server (`mcp_isolated/server.py`) implements:
 - Complete logging suppression
-- Lazy initialization of all dependencies
-- Proper error handling
+- Thread-safe client initialization with connection pooling
+- Proper error handling with detailed diagnostics
 - Clean JSON responses
-- Tools for receipt validation operations
+- Optimized DynamoDB and Pinecone client configuration
+- Tools for receipt validation operations:
+  - `test_connection` - Health check for all services
+  - `validate_label` - Check if label is valid according to CORE_LABELS
+  - `get_receipt_labels` - Get all labels for a specific receipt
+  - `save_label` - Save a validated label to DynamoDB
+  - `list_receipts` - List receipts with pagination support
 
 This architecture ensures reliable operation with Claude Desktop while maintaining clean separation of concerns and proper error handling.

@@ -11,7 +11,7 @@ echo ""
 echo "To test in MCP Inspector:"
 echo "  1. When the browser opens, you'll see the connection form"
 echo "  2. Command: python"
-echo "  3. Arguments: /Users/tnorlund/claude_b/Portfolio/receipt_label/mcp_isolated/server.py"
+echo "  3. Arguments: /Users/tnorlund/claude_b/Portfolio/receipt_label/mcp_isolated/server_clean.py"
 echo "  4. Transport: STDIO (default)"
 echo "  5. Click 'Connect'"
 echo ""
@@ -20,7 +20,7 @@ echo "  1. Add this configuration to Claude Desktop's MCP servers:"
 echo '     {
        "receipt-validation": {
          "command": "python",
-         "args": ["/Users/tnorlund/claude_b/Portfolio/receipt_label/mcp_isolated/server.py"],
+         "args": ["/Users/tnorlund/claude_b/Portfolio/receipt_label/mcp_isolated/server_clean.py"],
          "cwd": "/Users/tnorlund/claude_b/Portfolio/receipt_label"
        }
      }'
@@ -31,4 +31,4 @@ echo ""
 
 # Run the MCP dev server with the isolated server
 cd mcp_isolated
-mcp dev server.py:mcp
+mcp dev server_clean.py:mcp
