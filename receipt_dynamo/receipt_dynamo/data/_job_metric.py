@@ -48,7 +48,8 @@ class _JobMetric(
             job_metric (JobMetric): The job metric to add to the database
 
         Raises:
-            ValueError: When a job metric with the same timestamp and name already exists
+            ValueError: When a job metric with the same timestamp and name
+                already exists
         """
         if job_metric is None:
             raise ValueError(
@@ -62,13 +63,17 @@ class _JobMetric(
             self._client.put_item(
                 TableName=self.table_name,
                 Item=job_metric.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"JobMetric with name {job_metric.metric_name} and timestamp {job_metric.timestamp} for job {job_metric.job_id} already exists"
+                    f"JobMetric with name {job_metric.metric_name} "
+                    f"and timestamp {job_metric.timestamp} "
+                    f"for job {job_metric.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -125,7 +130,8 @@ class _JobMetric(
 
             if "Item" not in response:
                 raise ValueError(
-                    f"No job metric found with job ID {job_id}, metric name {metric_name}, and timestamp {timestamp}"
+                    f"No job metric found with job ID {job_id}, metric name "
+                    f"{metric_name}, and timestamp {timestamp}"
                 )
 
             return item_to_job_metric(response["Item"])
@@ -159,12 +165,14 @@ class _JobMetric(
             job_id (str): The ID of the job to get metrics for.
             metric_name (str, optional): Filter by specific metric name.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the
+                starting point for the query.
 
         Returns:
             tuple:
                 - A list of JobMetric objects for the specified job.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -185,7 +193,8 @@ class _JobMetric(
 
         metrics: List[JobMetric] = []
         try:
-            # Build the expression attribute values based on whether metric_name is provided
+            # Build the expression attribute values based on whether
+            # metric_name is provided
             expression_attr_values = {
                 ":pk": {"S": f"JOB#{job_id}"},
             }
@@ -265,12 +274,14 @@ class _JobMetric(
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
                 - A list of JobMetric objects with the specified name.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -359,18 +370,22 @@ class _JobMetric(
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
 
-        This method is optimized for comparing the same metric across different jobs.
-        Results are automatically grouped by job_id and then ordered by timestamp.
+        This method is optimized for comparing the same metric across different
+        jobs. Results are automatically grouped by job_id and then ordered by
+        timestamp.
 
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the
+                starting point for the query.
 
         Returns:
             tuple:
-                - A list of JobMetric objects with the specified name, sorted by job_id and timestamp.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A list of JobMetric objects with the specified name,
+                    sorted by job_id and timestamp.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -433,7 +448,8 @@ class _JobMetric(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not query metrics by name across jobs from the database: {e}"
+                    f"Could not query metrics by name across jobs from the "
+                    f"database: {e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -447,5 +463,6 @@ class _JobMetric(
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
                 raise DynamoDBError(
-                    f"Could not query metrics by name across jobs from the database: {e}"
+                    f"Could not query metrics by name across jobs from the "
+                    f"database: {e}"
                 ) from e
