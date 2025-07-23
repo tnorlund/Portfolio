@@ -6,10 +6,8 @@ while maintaining full backward compatibility and all functionality.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptLineItemAnalysis,
-    item_to_receipt_line_item_analysis,
-)
+from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
+from receipt_dynamo.entities import item_to_receipt_line_item_analysis
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,

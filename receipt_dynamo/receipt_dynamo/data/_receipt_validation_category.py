@@ -1,9 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptValidationCategory,
-    item_to_receipt_validation_category,
-)
+from receipt_dynamo.entities.receipt_validation_category import ReceiptValidationCategory
+from receipt_dynamo.entities import item_to_receipt_validation_category
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,

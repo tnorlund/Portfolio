@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Word, item_to_word
+from receipt_dynamo.entities.word import Word
+from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -19,8 +20,6 @@ if TYPE_CHECKING:
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 

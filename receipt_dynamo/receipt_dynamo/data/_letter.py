@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Letter, item_to_letter
+from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities import item_to_letter
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,

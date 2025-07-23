@@ -2,7 +2,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptWord, item_to_receipt_word
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities import item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (

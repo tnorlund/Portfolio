@@ -3,7 +3,8 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from receipt_dynamo import JobCheckpoint, item_to_job_checkpoint
+from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
+from receipt_dynamo.entities import item_to_job_checkpoint
 from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
 
 
