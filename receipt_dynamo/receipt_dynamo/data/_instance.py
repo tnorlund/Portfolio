@@ -86,8 +86,10 @@ class _Instance(DynamoClientProtocol):
 
         Raises:
             ValueError: If instances is invalid.
-            DynamoRetryableException: If the request failed due to a transient error.
-            DynamoCriticalErrorException: If the request failed due to a critical error.
+            DynamoRetryableException:
+                If the request failed due to a transient error.
+            DynamoCriticalErrorException:
+                If the request failed due to a critical error.
         """
         if instances is None:
             raise ValueError("instances cannot be None")
@@ -154,7 +156,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to add instances: {e.response['Error']['Message']}"
+                    (
+                        "Failed to add instances: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def update_instance(self, instance: Instance) -> None:
@@ -248,7 +253,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to delete instance: {e.response['Error']['Message']}"
+                    (
+                        "Failed to delete instance: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def get_instance(self, instance_id: str) -> Instance:
@@ -261,7 +269,8 @@ class _Instance(DynamoClientProtocol):
             Instance: The requested instance.
 
         Raises:
-            ValueError: If the instance ID is invalid or the instance doesn't exist.
+            ValueError:
+                If the instance ID is invalid or the instance doesn't exist.
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
@@ -310,7 +319,8 @@ class _Instance(DynamoClientProtocol):
             Tuple[Instance, List[InstanceJob]]: The instance and its jobs.
 
         Raises:
-            ValueError: If the instance ID is invalid or the instance doesn't exist.
+            ValueError:
+                If the instance ID is invalid or the instance doesn't exist.
             Exception: If the request failed due to an unknown error.
         """
         # First, get the instance
@@ -347,13 +357,19 @@ class _Instance(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) " "AND attribute_not_exists(SK)"
+                ),
             )
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} already exists"
+                    (
+                        "InstanceJob for instance "
+                        f"{instance_job.instance_id} and job "
+                        f"{instance_job.job_id} already exists"
+                    )
                 )
             elif error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -369,7 +385,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to add instance-job: {e.response['Error']['Message']}"
+                    (
+                        "Failed to add instance-job: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def update_instance_job(self, instance_job: InstanceJob) -> None:
@@ -396,13 +415,19 @@ class _Instance(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) " "AND attribute_exists(SK)"
+                ),
             )
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} does not exist"
+                    (
+                        "InstanceJob for instance "
+                        f"{instance_job.instance_id} and job "
+                        f"{instance_job.job_id} does not exist"
+                    )
                 )
             elif error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -418,7 +443,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to update instance-job: {e.response['Error']['Message']}"
+                    (
+                        "Failed to update instance-job: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def delete_instance_job(self, instance_job: InstanceJob) -> None:
@@ -445,13 +473,19 @@ class _Instance(DynamoClientProtocol):
                     "PK": {"S": f"INSTANCE#{instance_job.instance_id}"},
                     "SK": {"S": f"JOB#{instance_job.job_id}"},
                 },
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) " "AND attribute_exists(SK)"
+                ),
             )
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"InstanceJob for instance {instance_job.instance_id} and job {instance_job.job_id} does not exist"
+                    (
+                        "InstanceJob for instance "
+                        f"{instance_job.instance_id} and job "
+                        f"{instance_job.job_id} does not exist"
+                    )
                 )
             elif error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -467,7 +501,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to delete instance-job: {e.response['Error']['Message']}"
+                    (
+                        "Failed to delete instance-job: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def get_instance_job(self, instance_id: str, job_id: str) -> InstanceJob:
@@ -481,7 +518,8 @@ class _Instance(DynamoClientProtocol):
             InstanceJob: The requested instance-job association.
 
         Raises:
-            ValueError: If the IDs are invalid or the instance-job doesn't exist.
+            ValueError:
+                If the IDs are invalid or the instance-job doesn't exist.
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
@@ -502,7 +540,10 @@ class _Instance(DynamoClientProtocol):
             # Check if the instance-job exists
             if "Item" not in response:
                 raise ValueError(
-                    f"InstanceJob for instance {instance_id} and job {job_id} does not exist"
+                    (
+                        "InstanceJob for instance "
+                        f"{instance_id} and job {job_id} does not exist"
+                    )
                 )
 
             # Convert the DynamoDB item to an InstanceJob object
@@ -519,7 +560,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to get instance-job: {e.response['Error']['Message']}"
+                    (
+                        "Failed to get instance-job: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def list_instances(
@@ -531,11 +575,13 @@ class _Instance(DynamoClientProtocol):
 
         Args:
             limit (int, optional): The maximum number of instances to return.
-            last_evaluated_key (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional):
+                The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[Instance], Optional[Dict]]: A tuple containing the list of instances
-                and the last evaluated key for pagination, if any.
+            Tuple[List[Instance], Optional[Dict]]:
+                A tuple containing the list of instances and the last evaluated
+                key for pagination, if any.
 
         Raises:
             ValueError: If the last_evaluated_key is invalid.
@@ -578,7 +624,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to list instances: {e.response['Error']['Message']}"
+                    (
+                        "Failed to list instances: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def list_instances_by_status(
@@ -592,11 +641,13 @@ class _Instance(DynamoClientProtocol):
         Args:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of instances to return.
-            last_evaluated_key (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional):
+                The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[Instance], Optional[Dict]]: A tuple containing the list of instances
-                and the last evaluated key for pagination, if any.
+            Tuple[List[Instance], Optional[Dict]]:
+                A tuple containing the list of instances and the last evaluated
+                key for pagination, if any.
 
         Raises:
             ValueError: If the status or last_evaluated_key is invalid.
@@ -644,7 +695,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to list instances by status: {e.response['Error']['Message']}"
+                    (
+                        "Failed to list instances by status: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def list_instance_jobs(
@@ -658,11 +712,13 @@ class _Instance(DynamoClientProtocol):
         Args:
             instance_id (str): The ID of the instance.
             limit (int, optional): The maximum number of jobs to return.
-            last_evaluated_key (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional):
+                The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[InstanceJob], Optional[Dict]]: A tuple containing the list of instance-job
-                associations and the last evaluated key for pagination, if any.
+            Tuple[List[InstanceJob], Optional[Dict]]:
+                A tuple containing the list of instance-job associations and
+                the last evaluated key for pagination, if any.
 
         Raises:
             ValueError: If the instance_id or last_evaluated_key is invalid.
@@ -677,7 +733,9 @@ class _Instance(DynamoClientProtocol):
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
+            "KeyConditionExpression": (
+                "PK = :pk AND begins_with(SK, :sk_prefix)"
+            ),
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"INSTANCE#{instance_id}"},
                 ":sk_prefix": {"S": "JOB#"},
@@ -709,7 +767,10 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to list instance jobs: {e.response['Error']['Message']}"
+                    (
+                        "Failed to list instance jobs: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
 
     def list_instances_for_job(
@@ -723,11 +784,13 @@ class _Instance(DynamoClientProtocol):
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of instances to return.
-            last_evaluated_key (dict, optional): The exclusive start key for pagination.
+            last_evaluated_key (dict, optional):
+                The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[InstanceJob], Optional[Dict]]: A tuple containing the list of instance-job
-                associations and the last evaluated key for pagination, if any.
+            Tuple[List[InstanceJob], Optional[Dict]]:
+                A tuple containing the list of instance-job associations and
+                the last evaluated key for pagination, if any.
 
         Raises:
             ValueError: If the job_id or last_evaluated_key is invalid.
@@ -743,7 +806,9 @@ class _Instance(DynamoClientProtocol):
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk_prefix)",
+            "KeyConditionExpression": (
+                "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk_prefix)"
+            ),
             "ExpressionAttributeValues": {
                 ":gsi1pk": {"S": "JOB"},
                 ":gsi1sk_prefix": {"S": f"JOB#{job_id}#INSTANCE#"},
@@ -775,5 +840,8 @@ class _Instance(DynamoClientProtocol):
                 ) from e
             else:
                 raise OperationError(
-                    f"Failed to list instances for job: {e.response['Error']['Message']}"
+                    (
+                        "Failed to list instances for job: "
+                        f"{e.response['Error']['Message']}"
+                    )
                 ) from e
