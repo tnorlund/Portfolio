@@ -370,7 +370,7 @@ class ReceiptMetadata:
             f"validation_status={_repr_str(self.validation_status)}, "
             f"canonical_place_id={_repr_str(self.canonical_place_id)}, "
             f"canonical_merchant_name="
-            f"{_repr_str(self.canonical_merchant_name)},"
+            f"{_repr_str(self.canonical_merchant_name)}, "
             f"canonical_address={_repr_str(self.canonical_address)}, "
             f"canonical_phone_number="
             f"{_repr_str(self.canonical_phone_number)}"
