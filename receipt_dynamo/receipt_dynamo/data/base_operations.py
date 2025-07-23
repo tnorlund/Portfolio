@@ -39,10 +39,14 @@ def handle_dynamodb_errors(operation_name: str):
                 return func(self, *args, **kwargs)
             except ClientError as e:
                 self._handle_client_error(
-                    e, operation_name, context={"args": args, "kwargs": kwargs}
+                    e,
+                    operation_name,
+                    context={"args": args, "kwargs": kwargs},
                 )
-                # Safety net: if _handle_client_error doesn't raise, re-raise original
-                raise  # This line should never be reached if handlers work correctly
+                # Safety net: if _handle_client_error doesn't raise, re-raise
+                # original
+                raise  # This line should never be reached if handlers work
+                # correctly
 
         return wrapper
 
@@ -79,9 +83,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         # Map DynamoDB error codes to appropriate exceptions
         error_mappings = {
-            "ConditionalCheckFailedException": self._handle_conditional_check_failed,
+            "ConditionalCheckFailedException": (
+                self._handle_conditional_check_failed
+            ),
             "ResourceNotFoundException": self._handle_resource_not_found,
-            "ProvisionedThroughputExceededException": self._handle_throughput_exceeded,
+            "ProvisionedThroughputExceededException": (
+                self._handle_throughput_exceeded
+            ),
             "InternalServerError": self._handle_internal_server_error,
             "ValidationException": self._handle_validation_exception,
             "AccessDeniedException": self._handle_access_denied,
@@ -92,9 +100,15 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         handler(error, operation, context)
 
     def _handle_conditional_check_failed(
-        self, error: ClientError, operation: str, context: Optional[dict]
+        self,
+        error: ClientError,
+        operation: str,
+        context: Optional[dict],
     ):
-        """Handle conditional check failures - usually means entity exists/doesn't exist"""
+        """Handle conditional check failures.
+
+        Usually means the entity exists or does not exist.
+        """
         entity_context = self._extract_entity_context(context)
 
         # Special handling for update_images to maintain backward compatibility
@@ -110,7 +124,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 "One or more receipt word labels do not exist"
             ) from error
 
-        # Special handling for receipt line item analysis operations for backward compatibility
+        # Special handling for receipt line item analysis operations for
+        # backward compatibility
         if "receipt_line_item_analysis" in operation:
             if "update" in operation:
                 # Extract receipt_id from context if available
@@ -118,7 +133,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 if args and hasattr(args[0], "receipt_id"):
                     receipt_id = args[0].receipt_id
                     raise ValueError(
-                        f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist"
+                        (
+                            "ReceiptLineItemAnalysis for receipt ID "
+                            f"{receipt_id} does not exist"
+                        )
                     ) from error
                 raise ValueError(
                     "ReceiptLineItemAnalysis for receipt ID does not exist"
@@ -129,7 +147,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 if len(args) >= 2 and isinstance(args[1], int):
                     receipt_id = args[1]
                     raise ValueError(
-                        f"ReceiptLineItemAnalysis for receipt ID {receipt_id} does not exist"
+                        (
+                            "ReceiptLineItemAnalysis for receipt ID "
+                            f"{receipt_id} does not exist"
+                        )
                     ) from error
                 raise ValueError(
                     "ReceiptLineItemAnalysis does not exist"
@@ -142,7 +163,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     "One or more receipt label analyses do not exist"
                 ) from error
 
-        # Special handling for job checkpoint operations for backward compatibility
+        # Special handling for job checkpoint operations for backward
+        # compatibility
         if "job_checkpoint" in operation and "add" in operation:
             args = context.get("args", []) if context else []
             if (
@@ -152,7 +174,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ):
                 checkpoint = args[0]
                 raise ValueError(
-                    f"JobCheckpoint with timestamp {checkpoint.timestamp} for job {checkpoint.job_id} already exists"
+                    (
+                        "JobCheckpoint with timestamp "
+                        f"{checkpoint.timestamp} for job {checkpoint.job_id} "
+                        "already exists"
+                    )
                 ) from error
 
         # Special handling for job operations for backward compatibility
@@ -183,7 +209,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     f"Job with ID {job.job_id} does not exist"
                 ) from error
 
-        # Special handling for ReceiptValidationResult to maintain backward compatibility
+        # Special handling for ReceiptValidationResult to maintain backward
+        # compatibility
         if "ReceiptValidationResult with field" in entity_context:
             if "add" in operation.lower():
                 raise ValueError(f"{entity_context} already exists") from error
@@ -211,7 +238,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         # Map operations to expected error messages for backward compatibility
         operation_messages = {
-            # Image operations (excluding update_images which has special handling above)
+            # Image operations (excluding update_images which has special
+            # handling above)
             "add_image": "Could not add image to DynamoDB",
             "add_images": "Could not add images to the database",
             "update_image": "Could not update image in the database",
@@ -219,42 +247,108 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_images": "Could not delete images from the database",
             "get_image": "Error getting image",
             "list_images": "Could not list images from the database",
-            "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
-            "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
-            "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",
-            "update_receipt_line_item_analyses": "Could not update ReceiptLineItemAnalyses in the database",
-            "delete_receipt_line_item_analysis": "Could not delete ReceiptLineItemAnalysis from the database",
-            "delete_receipt_line_item_analyses": "Could not delete ReceiptLineItemAnalyses from the database",
-            "get_receipt_line_item_analysis": "Error getting receipt line item analysis",
-            "list_receipt_line_item_analyses": "Could not list receipt line item analyses from DynamoDB",
-            "list_receipt_line_item_analyses_for_image": "Could not list ReceiptLineItemAnalyses from the database",
+            "add_receipt_line_item_analysis": (
+                "Could not add receipt line item analysis to DynamoDB"
+            ),
+            "add_receipt_line_item_analyses": (
+                "Could not add ReceiptLineItemAnalyses to the database"
+            ),
+            "update_receipt_line_item_analysis": (
+                "Could not update ReceiptLineItemAnalysis in the database"
+            ),
+            "update_receipt_line_item_analyses": (
+                "Could not update ReceiptLineItemAnalyses in the database"
+            ),
+            "delete_receipt_line_item_analysis": (
+                "Could not delete ReceiptLineItemAnalysis from the database"
+            ),
+            "delete_receipt_line_item_analyses": (
+                "Could not delete ReceiptLineItemAnalyses from the database"
+            ),
+            "get_receipt_line_item_analysis": (
+                "Error getting receipt line item analysis"
+            ),
+            "list_receipt_line_item_analyses": (
+                "Could not list receipt line item analyses from DynamoDB"
+            ),
+            "list_receipt_line_item_analyses_for_image": (
+                "Could not list ReceiptLineItemAnalyses from the database"
+            ),
             "add_job_checkpoint": "Could not add job checkpoint to DynamoDB",
-            "add_receipt_label_analysis": "Could not add receipt label analysis to DynamoDB",
-            "add_receipt_label_analyses": "Error adding receipt label analyses",
-            "update_receipt_label_analysis": "Error updating receipt label analysis",
-            "update_receipt_label_analyses": "Error updating receipt label analyses",
-            "delete_receipt_label_analysis": "Error deleting receipt label analysis",
-            "delete_receipt_label_analyses": "Error deleting receipt label analyses",
-            "get_receipt_label_analysis": "Error getting receipt label analysis",
-            "list_receipt_label_analyses": "Could not list receipt label analyses from the database",
-            "add_receipt_field": "Table not found for operation add_receipt_field",
-            "update_receipt_field": "Table not found for operation update_receipt_field",
-            "delete_receipt_field": "Table not found for operation delete_receipt_field",
-            "add_receipt_fields": "Table not found for operation add_receipt_fields",
-            "update_receipt_fields": "Table not found for operation update_receipt_fields",
-            "delete_receipt_fields": "Table not found for operation delete_receipt_fields",
+            "add_receipt_label_analysis": (
+                "Could not add receipt label analysis to DynamoDB"
+            ),
+            "add_receipt_label_analyses": (
+                "Error adding receipt label analyses"
+            ),
+            "update_receipt_label_analysis": (
+                "Error updating receipt label analysis"
+            ),
+            "update_receipt_label_analyses": (
+                "Error updating receipt label analyses"
+            ),
+            "delete_receipt_label_analysis": (
+                "Error deleting receipt label analysis"
+            ),
+            "delete_receipt_label_analyses": (
+                "Error deleting receipt label analyses"
+            ),
+            "get_receipt_label_analysis": (
+                "Error getting receipt label analysis"
+            ),
+            "list_receipt_label_analyses": (
+                "Could not list receipt label analyses from the database"
+            ),
+            "add_receipt_field": (
+                "Table not found for operation add_receipt_field"
+            ),
+            "update_receipt_field": (
+                "Table not found for operation update_receipt_field"
+            ),
+            "delete_receipt_field": (
+                "Table not found for operation delete_receipt_field"
+            ),
+            "add_receipt_fields": (
+                "Table not found for operation add_receipt_fields"
+            ),
+            "update_receipt_fields": (
+                "Table not found for operation update_receipt_fields"
+            ),
+            "delete_receipt_fields": (
+                "Table not found for operation delete_receipt_fields"
+            ),
             "get_receipt_field": "Error getting receipt field",
-            "list_receipt_fields": "Could not list receipt fields from the database",
-            "get_receipt_fields_by_image": "Could not list receipt fields by image ID",
-            "get_receipt_fields_by_receipt": "Could not list receipt fields by receipt ID",
+            "list_receipt_fields": (
+                "Could not list receipt fields from the database"
+            ),
+            "get_receipt_fields_by_image": (
+                "Could not list receipt fields by image ID"
+            ),
+            "get_receipt_fields_by_receipt": (
+                "Could not list receipt fields by receipt ID"
+            ),
             # Receipt validation result operations
-            "add_receipt_validation_result": "Could not add receipt validation result to DynamoDB",
-            "update_receipt_validation_result": "Could not update ReceiptValidationResult in the database",
-            "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
-            "get_receipt_validation_result": "Error getting receipt validation result",
-            "list_receipt_validation_results": "Could not list receipt validation results from DynamoDB",
-            "list_receipt_validation_results_by_type": "Could not list receipt validation results from DynamoDB",
-            "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
+            "add_receipt_validation_result": (
+                "Could not add receipt validation result to DynamoDB"
+            ),
+            "update_receipt_validation_result": (
+                "Could not update ReceiptValidationResult in the database"
+            ),
+            "delete_receipt_validation_result": (
+                "Could not delete receipt validation result from the database"
+            ),
+            "get_receipt_validation_result": (
+                "Error getting receipt validation result"
+            ),
+            "list_receipt_validation_results": (
+                "Could not list receipt validation results from DynamoDB"
+            ),
+            "list_receipt_validation_results_by_type": (
+                "Could not list receipt validation results from DynamoDB"
+            ),
+            "list_receipt_validation_results_for_field": (
+                "Could not list ReceiptValidationResults from the database"
+            ),
             # Job operations
             "add_job": "Table not found",
             "add_jobs": "Table not found",
@@ -264,8 +358,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_jobs": "Table not found",
             "get_job": "Error getting job",
             "list_jobs": "Could not list jobs from the database",
-            "list_jobs_by_status": "Could not list jobs by status from the database",
-            "list_jobs_by_user": "Could not list jobs by user from the database",
+            "list_jobs_by_status": (
+                "Could not list jobs by status from the database"
+            ),
+            "list_jobs_by_user": (
+                "Could not list jobs by user from the database"
+            ),
             # Word operations
             "add_word": "Table not found",
             "add_words": "Table not found",
@@ -376,7 +474,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         elif operation in simple_validation_operations:
             raise DynamoDBValidationError("Validation error") from error
         elif operation in raw_message_operations:
-            # Extract original error message and apply standard message processing
+            # Extract original error message and apply standard message
+            # processing
             error_message = error.response.get("Error", {}).get(
                 "Message", str(error)
             )
@@ -506,23 +605,57 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_images": "Could not delete images from the database",
             "get_image": "Error getting image",
             "list_images": "Could not list images from the database",
-            "add_receipt_line_item_analysis": "Could not add receipt line item analysis to DynamoDB",
-            "add_receipt_line_item_analyses": "Could not add ReceiptLineItemAnalyses to the database",
-            "update_receipt_line_item_analysis": "Could not update ReceiptLineItemAnalysis in the database",
-            "update_receipt_line_item_analyses": "Could not update ReceiptLineItemAnalyses in the database",
-            "delete_receipt_line_item_analysis": "Could not delete ReceiptLineItemAnalysis from the database",
-            "delete_receipt_line_item_analyses": "Could not delete ReceiptLineItemAnalyses from the database",
-            "get_receipt_line_item_analysis": "Error getting receipt line item analysis",
-            "list_receipt_line_item_analyses": "Error listing receipt line item analyses",
-            "list_receipt_line_item_analyses_for_image": "Could not list ReceiptLineItemAnalyses from the database",
-            "add_receipt_label_analysis": "Could not add receipt label analysis to DynamoDB",
-            "add_receipt_label_analyses": "Error adding receipt label analyses",
-            "update_receipt_label_analysis": "Error updating receipt label analysis",
-            "update_receipt_label_analyses": "Error updating receipt label analyses",
-            "delete_receipt_label_analysis": "Error deleting receipt label analysis",
-            "delete_receipt_label_analyses": "Error deleting receipt label analyses",
-            "get_receipt_label_analysis": "Error getting receipt label analysis",
-            "list_receipt_label_analyses": "Could not list receipt label analyses from the database",
+            "add_receipt_line_item_analysis": (
+                "Could not add receipt line item analysis to DynamoDB"
+            ),
+            "add_receipt_line_item_analyses": (
+                "Could not add ReceiptLineItemAnalyses to the database"
+            ),
+            "update_receipt_line_item_analysis": (
+                "Could not update ReceiptLineItemAnalysis in the database"
+            ),
+            "update_receipt_line_item_analyses": (
+                "Could not update ReceiptLineItemAnalyses in the database"
+            ),
+            "delete_receipt_line_item_analysis": (
+                "Could not delete ReceiptLineItemAnalysis from the database"
+            ),
+            "delete_receipt_line_item_analyses": (
+                "Could not delete ReceiptLineItemAnalyses from the database"
+            ),
+            "get_receipt_line_item_analysis": (
+                "Error getting receipt line item analysis"
+            ),
+            "list_receipt_line_item_analyses": (
+                "Error listing receipt line item analyses"
+            ),
+            "list_receipt_line_item_analyses_for_image": (
+                "Could not list ReceiptLineItemAnalyses from the database"
+            ),
+            "add_receipt_label_analysis": (
+                "Could not add receipt label analysis to DynamoDB"
+            ),
+            "add_receipt_label_analyses": (
+                "Error adding receipt label analyses"
+            ),
+            "update_receipt_label_analysis": (
+                "Error updating receipt label analysis"
+            ),
+            "update_receipt_label_analyses": (
+                "Error updating receipt label analyses"
+            ),
+            "delete_receipt_label_analysis": (
+                "Error deleting receipt label analysis"
+            ),
+            "delete_receipt_label_analyses": (
+                "Error deleting receipt label analyses"
+            ),
+            "get_receipt_label_analysis": (
+                "Error getting receipt label analysis"
+            ),
+            "list_receipt_label_analyses": (
+                "Could not list receipt label analyses from the database"
+            ),
             "add_receipt_field": "Unknown error in add_receipt_field",
             "update_receipt_field": "Unknown error in update_receipt_field",
             "delete_receipt_field": "Unknown error in delete_receipt_field",
@@ -530,17 +663,37 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "update_receipt_fields": "Unknown error in update_receipt_fields",
             "delete_receipt_fields": "Unknown error in delete_receipt_fields",
             "get_receipt_field": "Error getting receipt field",
-            "list_receipt_fields": "Could not list receipt fields from the database",
-            "get_receipt_fields_by_image": "Could not list receipt fields by image ID",
-            "get_receipt_fields_by_receipt": "Could not list receipt fields by receipt ID",
+            "list_receipt_fields": (
+                "Could not list receipt fields from the database"
+            ),
+            "get_receipt_fields_by_image": (
+                "Could not list receipt fields by image ID"
+            ),
+            "get_receipt_fields_by_receipt": (
+                "Could not list receipt fields by receipt ID"
+            ),
             # Receipt validation result operations
-            "add_receipt_validation_result": "Could not add receipt validation result to DynamoDB",
-            "update_receipt_validation_result": "Could not update ReceiptValidationResult in the database",
-            "delete_receipt_validation_result": "Could not delete receipt validation result from the database",
-            "get_receipt_validation_result": "Error getting receipt validation result",
-            "list_receipt_validation_results": "Error listing receipt validation results",
-            "list_receipt_validation_results_by_type": "Error listing receipt validation results",
-            "list_receipt_validation_results_for_field": "Could not list ReceiptValidationResults from the database",
+            "add_receipt_validation_result": (
+                "Could not add receipt validation result to DynamoDB"
+            ),
+            "update_receipt_validation_result": (
+                "Could not update ReceiptValidationResult in the database"
+            ),
+            "delete_receipt_validation_result": (
+                "Could not delete receipt validation result from the database"
+            ),
+            "get_receipt_validation_result": (
+                "Error getting receipt validation result"
+            ),
+            "list_receipt_validation_results": (
+                "Error listing receipt validation results"
+            ),
+            "list_receipt_validation_results_by_type": (
+                "Error listing receipt validation results"
+            ),
+            "list_receipt_validation_results_for_field": (
+                "Could not list ReceiptValidationResults from the database"
+            ),
             # Receipt word label operations
             "update_receipt_word_label": "Error updating receipt word labels",
             "update_receipt_word_labels": "Error updating receipt word labels",
@@ -555,8 +708,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "delete_jobs": "Something unexpected",
             "get_job": "Something unexpected",
             "list_jobs": "Could not list jobs from the database",
-            "list_jobs_by_status": "Could not list jobs by status from the database",
-            "list_jobs_by_user": "Could not list jobs by user from the database",
+            "list_jobs_by_status": (
+                "Could not list jobs by status from the database"
+            ),
+            "list_jobs_by_user": (
+                "Could not list jobs by user from the database"
+            ),
             # Word operations
             "add_word": "Something unexpected",
             "add_words": "Something unexpected",
@@ -587,12 +744,16 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 entity = args[0]
                 entity_name = entity.__class__.__name__
 
-                # Special handling for ReceiptValidationResult - needs both field and index
+                # Special handling for ReceiptValidationResult - needs both
+                # field and index
                 if entity_name == "ReceiptValidationResult":
                     if hasattr(entity, "field_name") and hasattr(
                         entity, "result_index"
                     ):
-                        return f"{entity_name} with field {entity.field_name} and index {entity.result_index}"
+                        return (
+                            f"{entity_name} with field {entity.field_name} "
+                            f"and index {entity.result_index}"
+                        )
 
                 # Try to get ID or other identifying information
                 for id_attr in [
@@ -607,7 +768,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     if hasattr(entity, id_attr):
                         id_value = getattr(entity, id_attr)
                         return f"{entity_name} with {id_attr}={id_value}"
-                return entity_name
+                return str(entity_name)
 
         return "unknown entity"
 
@@ -629,15 +790,24 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # Special handling for specific parameters
             if param_name == "job_checkpoint":
                 raise ValueError(
-                    "JobCheckpoint parameter is required and cannot be None."
+                    (
+                        "JobCheckpoint parameter is required and cannot be "
+                        "None."
+                    )
                 )
             elif param_name == "ReceiptLabelAnalysis":
                 raise ValueError(
-                    "ReceiptLabelAnalysis parameter is required and cannot be None."
+                    (
+                        "ReceiptLabelAnalysis parameter is required and "
+                        "cannot be None."
+                    )
                 )
             elif param_name == "ReceiptField":
                 raise ValueError(
-                    "ReceiptField parameter is required and cannot be None."
+                    (
+                        "ReceiptField parameter is required and cannot be "
+                        "None."
+                    )
                 )
             elif param_name == "image":
                 raise ValueError(
@@ -663,62 +833,100 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
                 raise ValueError(
-                    f"{param_display} parameter is required and cannot be None."
+                    (
+                        f"{param_display} parameter is required and cannot "
+                        "be None."
+                    )
                 )
 
         if not isinstance(entity, entity_class):
             # Special handling for specific parameters
             if param_name == "receiptField":
                 raise ValueError(
-                    f"receiptField must be an instance of the {entity_class.__name__} class."
+                    (
+                        "receiptField must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "result":
                 raise ValueError(
-                    f"result must be an instance of the {entity_class.__name__} class."
+                    (
+                        "result must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "job_checkpoint":
                 raise ValueError(
-                    f"job_checkpoint must be an instance of the {entity_class.__name__} class."
+                    (
+                        "job_checkpoint must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "receipt_label_analysis":
                 raise ValueError(
-                    f"receipt_label_analysis must be an instance of the {entity_class.__name__} class."
+                    (
+                        "receipt_label_analysis must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "ReceiptLabelAnalysis":
-                # Special case: the implementation passes ReceiptLabelAnalysis but test expects lowercase
+                # Special case: the implementation passes ReceiptLabelAnalysis
+                # but test expects lowercase
                 raise ValueError(
-                    f"receipt_label_analysis must be an instance of the {entity_class.__name__} class."
+                    (
+                        "receipt_label_analysis must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "ReceiptWordLabel":
-                # Special case: the implementation passes ReceiptWordLabel but test expects lowercase
+                # Special case: the implementation passes ReceiptWordLabel but
+                # test expects lowercase
                 raise ValueError(
-                    f"receipt_word_label must be an instance of the {entity_class.__name__} class."
+                    (
+                        "receipt_word_label must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "image":
                 raise ValueError(
-                    f"image must be an instance of the {entity_class.__name__} class."
+                    (
+                        "image must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "letter":
                 raise ValueError(
-                    f"letter must be an instance of the {entity_class.__name__} class."
+                    (
+                        "letter must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "job":
                 raise ValueError(
-                    f"job must be an instance of the {entity_class.__name__} class."
+                    (
+                        "job must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "job_dependency":
                 raise ValueError(
-                    f"job_dependency must be a {entity_class.__name__} instance"
+                    (
+                        "job_dependency must be a "
+                        f"{entity_class.__name__} instance"
+                    )
                 )
             elif param_name == "job_log":
                 raise ValueError(
-                    f"job_log must be a {entity_class.__name__} instance"
+                    ("job_log must be a " f"{entity_class.__name__} instance")
                 )
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
                 raise ValueError(
-                    f"{param_display} must be an instance of the {entity_class.__name__} class."
+                    (
+                        f"{param_display} must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
 
     def _validate_entity_list(
@@ -739,11 +947,17 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # Special handling for specific parameters
             if param_name == "receipt_label_analyses":
                 raise ValueError(
-                    "ReceiptLabelAnalyses parameter is required and cannot be None."
+                    (
+                        "ReceiptLabelAnalyses parameter is required and "
+                        "cannot be None."
+                    )
                 )
             elif param_name == "ReceiptFields":
                 raise ValueError(
-                    "ReceiptFields parameter is required and cannot be None."
+                    (
+                        "ReceiptFields parameter is required and cannot "
+                        "be None."
+                    )
                 )
             elif param_name == "images":
                 raise ValueError(
@@ -755,13 +969,19 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 )
             elif param_name == "receipt_word_labels":
                 raise ValueError(
-                    "ReceiptWordLabels parameter is required and cannot be None."
+                    (
+                        "ReceiptWordLabels parameter is required and "
+                        "cannot be None."
+                    )
                 )
             else:
                 # Capitalize first letter for backward compatibility
                 param_display = param_name[0].upper() + param_name[1:]
                 raise ValueError(
-                    f"{param_display} parameter is required and cannot be None."
+                    (
+                        f"{param_display} parameter is required and cannot "
+                        "be None."
+                    )
                 )
 
         if not isinstance(entities, list):
@@ -772,11 +992,17 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("Words must be provided as a list.")
             elif param_name == "receipt_label_analyses":
                 raise ValueError(
-                    "receipt_label_analyses must be a list of ReceiptLabelAnalysis instances."
+                    (
+                        "receipt_label_analyses must be a list of "
+                        "ReceiptLabelAnalysis instances."
+                    )
                 )
             elif param_name == "ReceiptFields":
                 raise ValueError(
-                    "ReceiptFields must be a list of ReceiptField instances."
+                    (
+                        "ReceiptFields must be a list of "
+                        "ReceiptField instances."
+                    )
                 )
             elif param_name == "jobs":
                 raise ValueError("jobs must be a list of Job instances.")
@@ -784,50 +1010,80 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("images must be a list of Image instances.")
             elif param_name == "results":
                 raise ValueError(
-                    "results must be a list of ReceiptValidationResult instances."
+                    (
+                        "results must be a list of "
+                        "ReceiptValidationResult instances."
+                    )
                 )
             elif param_name == "letters":
                 raise ValueError("Letters must be provided as a list.")
             elif param_name == "receipt_word_labels":
                 raise ValueError(
-                    "receipt_word_labels must be a list of ReceiptWordLabel instances."
+                    (
+                        "receipt_word_labels must be a list of "
+                        "ReceiptWordLabel instances."
+                    )
                 )
             else:
                 # Default handling for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
                 raise ValueError(
-                    f"{param_display} must be a list of {entity_class.__name__} instances."
+                    (
+                        f"{param_display} must be a list of "
+                        f"{entity_class.__name__} instances."
+                    )
                 )
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             # Special handling for specific parameters
             if param_name == "receiptFields":
                 raise ValueError(
-                    f"All items in the receiptFields list must be instances of the {entity_class.__name__} class."
+                    (
+                        "All items in the receiptFields list must be "
+                        f"instances of the {entity_class.__name__} class."
+                    )
                 )
             elif param_name == "words":
                 raise ValueError(
-                    f"All words must be instances of the {entity_class.__name__} class."
+                    (
+                        "All words must be instances of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "receipt_label_analyses":
                 raise ValueError(
-                    f"All receipt label analyses must be instances of the {entity_class.__name__} class."
+                    (
+                        "All receipt label analyses must be instances of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "jobs":
                 raise ValueError(
-                    f"All jobs must be instances of the {entity_class.__name__} class."
+                    (
+                        "All jobs must be instances of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             elif param_name == "letters":
                 raise ValueError(
-                    f"All items in the letters list must be instances of the {entity_class.__name__} class."
+                    (
+                        "All items in the letters list must be instances of "
+                        f"the {entity_class.__name__} class."
+                    )
                 )
             elif param_name == "receipt_word_labels":
                 raise ValueError(
-                    f"All receipt word labels must be instances of the {entity_class.__name__} class."
+                    (
+                        "All receipt word labels must be instances of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             # Default handling for other parameters
             raise ValueError(
-                f"All {param_name} must be instances of the {entity_class.__name__} class."
+                (
+                    f"All {param_name} must be instances of the "
+                    f"{entity_class.__name__} class."
+                )
             )
 
 
@@ -922,7 +1178,8 @@ class BatchOperationsMixin:
         for i in range(0, len(request_items), 25):
             chunk = request_items[i : i + 25]
 
-            # Let ClientError exceptions bubble up to be handled by @handle_dynamodb_errors
+            # Let ClientError exceptions bubble up to be handled by
+            # @handle_dynamodb_errors
             response = self._client.batch_write_item(
                 RequestItems={self.table_name: chunk}
             )
@@ -942,8 +1199,11 @@ class BatchOperationsMixin:
 
             if unprocessed.get(self.table_name):
                 raise DynamoDBError(
-                    f"Failed to process all items after {max_retries} retries. "
-                    f"Remaining items: {len(unprocessed[self.table_name])}"
+                    (
+                        "Failed to process all items after "
+                        f"{max_retries} retries. "
+                        f"Remaining items: {len(unprocessed[self.table_name])}"
+                    )
                 )
 
 
@@ -976,7 +1236,8 @@ class TransactionalOperationsMixin:
 
 
 # Example usage - this shows how the refactored classes would look
-# NOTE: This is just an example - real implementations should pass specific entity classes!
+# NOTE: This is just an example - real implementations should pass
+# specific entity classes!
 class ExampleEntityOperations(
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -986,10 +1247,11 @@ class ExampleEntityOperations(
     """
     Example of how a refactored entity class would look.
 
-    This demonstrates the dramatic code reduction possible with the base classes.
+    This demonstrates the dramatic code reduction possible with the base
+    classes.
 
-    IMPORTANT: Real implementations should pass specific entity classes to validation
-    methods, not type(entity) which bypasses validation!
+    IMPORTANT: Real implementations should pass specific entity classes to
+    validation methods, not type(entity) which bypasses validation!
     """
 
     @handle_dynamodb_errors("add_entity")
