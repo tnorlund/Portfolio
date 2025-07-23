@@ -148,16 +148,19 @@ def _validate_gpt_response_initial_tagging(
                     for tag in value
                 ):
                     raise ValueError(
-                        "The response message content values do not contain 'l' and 'w'."
+                        "The response message content values do not contain "
+                        "'l' and 'w'."
                     )
             elif isinstance(value, dict):
                 if not ("l" in value and "w" in value):
                     raise ValueError(
-                        "The response message content values do not contain 'l' and 'w'."
+                        "The response message content values do not contain "
+                        "'l' and 'w'."
                     )
             else:
                 raise ValueError(
-                    "The response message content values must be a list or a dict."
+                    "The response message content values must be a list or "
+                    "a dict."
                 )
     return cast(Dict[str, Any], content)
 
@@ -276,9 +279,11 @@ def _llm_prompt_initial_tagging(
         }
     )
     return (
-        "\nYou are a helpful assistant that extracts structured data from a receipt.\n"
+        "\nYou are a helpful assistant that extracts structured data from a "
+        "receipt.\n"
         "\nBelow is a sample of the JSON you will receive. Notice that each "
-        "'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, w):\n"
+        "'word' has a 'text', a 'centroid' [x, y], and a line/word ID (l, "
+        "w):\n"
         "\n```json\n"
         "\n{"
         '  "receipt": {\n'
@@ -329,8 +334,8 @@ def _llm_prompt_initial_tagging(
         '       {"l": 0, "w": 0},\n'
         '       {"l": 0, "w": 1}\n'
         "]\n"
-        "   - If you cannot find a particular field, return an empty array for "
-        "it.\n\n"
+        "   - If you cannot find a particular field, return an empty array "
+        "for it.\n\n"
         "**Output Requirements**:\n"
         " - Output must be valid JSON.\n"
         " - Do not return additional keys or text.\n"
@@ -363,39 +368,48 @@ def _llm_prompt_tagging_validation(
     receipt_word_tags: list[ReceiptWordLabel],
 ) -> str:
     """
-    Generates a prompt string for validating and potentially revising receipt word tags.
+    Generates a prompt string for validating and potentially revising
+    receipt word tags.
 
-    This function constructs a detailed prompt intended for a language model (such as ChatGPT)
-    to review receipt data that includes receipt dimensions, lines, words, and their associated tags.
-    It formats the receipt information as a JSON structure that describes:
+    This function constructs a detailed prompt intended for a language
+    model (such as ChatGPT) to review receipt data that includes receipt
+    dimensions, lines, words, and their associated tags. It formats the
+    receipt information as a JSON structure that describes:
       - The receipt metadata (e.g., width and height).
       - A list of receipt lines, where each line contains:
           - A unique line identifier and bounding box.
           - The full text of the line.
-          - A list of tagged words, with each word including its identifier, text,
-            bounding box, and a list of tag objects (each with a tag name and a validation flag).
+          - A list of tagged words, with each word including its
+            identifier, text, bounding box, and a list of tag objects
+            (each with a tag name and a validation flag).
 
-    The prompt then provides instructions on how to generate a structured JSON output. The expected
-    output should be a list of dictionaries, each containing:
+    The prompt then provides instructions on how to generate a structured
+    JSON output. The expected output should be a list of dictionaries,
+    each containing:
       - "line_id": The unique identifier of the line.
       - "word_id": The unique identifier of the word.
       - "initial_tag": The tag originally provided in the data.
       - "revised_tag": The corrected tag suggested by the language model.
-      - "confidence": A numeric confidence level (from 1 to 5) indicating certainty.
-      - "flag": A status string ("ok" if the tag is correct, or "needs_review" if it is uncertain).
+      - "confidence": A numeric confidence level (from 1 to 5) indicating
+        certainty.
+      - "flag": A status string ("ok" if the tag is correct, or
+        "needs_review" if it is uncertain).
 
     Parameters:
-        receipt (Receipt): The receipt object containing metadata such as width and height.
+        receipt (Receipt): The receipt object containing metadata such as
+            width and height.
         receipt_lines (list[ReceiptLine]): A list of receipt line objects.
         receipt_words (list[ReceiptWord]): A list of receipt word objects.
-        receipt_word_tags (list[ReceiptWordTag]): A list of tags associated with receipt words.
+        receipt_word_tags (list[ReceiptWordTag]): A list of tags associated
+            with receipt words.
 
     Returns:
         str: A prompt string that includes:
             - A description of the expected JSON structure.
             - The receipt data formatted as a JSON string.
             - Detailed instructions for reviewing and revising word tags,
-              ensuring the output is a structured JSON matching the specified schema.
+              ensuring the output is a structured JSON matching the
+              specified schema.
     """
     receipt_dict = {
         "width": receipt.width,
@@ -462,7 +476,8 @@ def _llm_prompt_tagging_validation(
     context_json = dumps({"receipt": receipt_dict, "lines": line_dicts})
 
     return (
-        "You are provided with JSON data that conforms to the following structure:\n"
+        "You are provided with JSON data that conforms to the following "
+        "structure:\n"
         "```json\n"
         "{\n"
         '    "receipt": {\n'
@@ -504,7 +519,8 @@ def _llm_prompt_tagging_validation(
         f"Here is the data (JSON):\n"
         f"{context_json}\n"
         "\n"
-        "I'm expecting a structured output in JSON format with the following fields:\n"
+        "I'm expecting a structured output in JSON format with the "
+        "following fields:\n"
         "```json\n"
         "[\n"
         "  {\n"
@@ -526,15 +542,19 @@ def _llm_prompt_tagging_validation(
         "]\n"
         "```\n"
         "\n"
-        "- The 'line_id' and 'word_id' fields are the unique identifiers for each line and word. They should match the data provided.\n"
+        "- The 'line_id' and 'word_id' fields are the unique identifiers for "
+        "each line and word. They should match the data provided.\n"
         "- 'initial_tag' is the tag provided in the data.\n"
         "- 'revised_tag' is the corrected tag you suggest.\n"
         "- 'confidence' is your confidence level from 1 to 5.\n"
         "- 'flag' is 'ok' if the tag is correct, 'needs_review' if unsure.\n"
         "\n"
-        "You must review each word in \"tagged_words\" and provide the correct tag. If the tag is correct, mark 'ok' and provide a high confidence level.\n"
+        'You must review each word in "tagged_words" and provide the '
+        "correct tag. If the tag is correct, mark 'ok' and provide a high "
+        "confidence level.\n"
         'Return all the "tagged_words" with the structure above.\n'
-        "Do not create new 'line_id' or 'word_id' pairs. Only use the ones provided in the data.\n"
+        "Do not create new 'line_id' or 'word_id' pairs. Only use the ones "
+        "provided in the data.\n"
         "Return this JSON structure. Nothing else.\n"
     )
 
@@ -549,9 +569,9 @@ def gpt_request_structure_analysis(
     """
     Makes a request to the OpenAI API to analyze the structure of a receipt.
 
-    This function analyzes the spatial and content patterns in the receipt to identify
-    natural sections and their relationships, using both the receipt data and
-    Google Places API context.
+    This function analyzes the spatial and content patterns in the receipt to
+    identify natural sections and their relationships, using both the receipt
+    data and Google Places API context.
 
     Args:
         receipt (Receipt): The receipt object containing metadata.
@@ -581,7 +601,9 @@ def gpt_request_structure_analysis(
         "messages": [
             {
                 "role": "system",
-                "content": "You analyze receipt structure to identify natural sections based on spatial and content patterns, using business context from Google Places API.",
+                "content": "You analyze receipt structure to identify natural "
+                "sections based on spatial and content patterns, using "
+                "business context from Google Places API.",
             },
             {"role": "user", "content": query},
         ],
@@ -680,7 +702,8 @@ def _llm_prompt_structure_analysis(
     }
 
     return (
-        "Analyze this receipt's structure by identifying natural sections based on spatial and content patterns.\n\n"
+        "Analyze this receipt's structure by identifying natural sections "
+        "based on spatial and content patterns.\n\n"
         "Business Context:\n"
         f"Name: {business_context['name']}\n"
         f"Type: {', '.join(business_context['type'])}\n"
@@ -693,7 +716,8 @@ def _llm_prompt_structure_analysis(
         "{\n"
         '  "discovered_sections": [\n'
         "    {\n"
-        '      "name": <string, one of: "business_info", "transaction_details", "items", "payment", "footer">,\n'
+        '      "name": <string, one of: "business_info", '
+        '"transaction_details", "items", "payment", "footer">,\n'
         '      "line_ids": <array of integers>,\n'
         '      "spatial_patterns": <array with exactly one string>,\n'
         '      "content_patterns": <array with exactly one string>,\n'
@@ -704,14 +728,16 @@ def _llm_prompt_structure_analysis(
         "}\n\n"
         "2. CRITICAL RULES:\n"
         "   - ALL arrays MUST be properly defined, even if empty\n"
-        "   - EVERY section MUST have exactly one spatial_pattern and one content_pattern\n"
+        "   - EVERY section MUST have exactly one spatial_pattern and one "
+        "content_pattern\n"
         "   - ALL line_ids MUST be valid integers from the input\n"
         "   - ALL confidence scores MUST be between 0 and 1\n"
         "   - Section names MUST be from the predefined list\n\n"
         "3. Section Guidelines:\n"
         "   - Group lines that are spatially close and logically related\n"
         "   - Use business context to validate section content\n"
-        "   - Match business name, address, and hours against receipt content\n\n"
+        "   - Match business name, address, and hours against receipt "
+        "content\n\n"
         "4. Pattern Types:\n"
         "   Spatial Patterns (choose one):\n"
         "   - 'aligned_left': Text aligned to left margin\n"
@@ -914,7 +940,8 @@ def gpt_request_field_labeling(
 ) -> tuple[dict, str, str]:
     """
     Makes a request to the OpenAI API to label individual words in a receipt.
-    Now uses a simpler format for GPT responses and maps the labels back to word IDs.
+    Now uses a simpler format for GPT responses and maps the labels back to
+    word IDs.
     """
     if not gpt_api_key and not getenv("OPENAI_API_KEY"):
         raise ValueError("The OPENAI_API_KEY environment variable is not set.")
@@ -960,7 +987,10 @@ def gpt_request_field_labeling(
             "messages": [
                 {
                     "role": "system",
-                    "content": f"You label words in the {section['name']} section of receipts, using business context for accuracy.",
+                    "content": (
+                        f"You label words in the {section['name']} section of "
+                        "receipts, using business context for accuracy."
+                    ),
                 },
                 {"role": "user", "content": query},
             ],
@@ -980,14 +1010,16 @@ def gpt_request_field_labeling(
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the timeout error
                     print(
-                        f"Timeout processing section {section['name']}, attempt {attempt + 1}/3"
+                        f"Timeout processing section {section['name']}, "
+                        f"attempt {attempt + 1}/3"
                     )
                     continue  # Try again
                 except requests.RequestException as e:
                     if attempt == 2:  # Last attempt
                         raise  # Re-raise the error
                     print(
-                        f"Error processing section {section['name']}, attempt {attempt + 1}/3: {str(e)}"
+                        f"Error processing section {section['name']}, "
+                        f"attempt {attempt + 1}/3: {str(e)}"
                     )
                     continue  # Try again
 
@@ -1069,25 +1101,38 @@ def _llm_prompt_field_labeling_section(
     examples = []
     if "business_info" in section_info["name"].lower():
         examples = [
-            '{"text": "COSTCO WHOLESALE", "label": "business_name", "confidence": 0.95}',
-            '{"text": "5700 Lindero Canyon Rd", "label": "address_line", "confidence": 0.95}',
+            (
+                '{"text": "COSTCO WHOLESALE", "label": "business_name", '
+                '"confidence": 0.95}'
+            ),
+            (
+                '{"text": "5700 Lindero Canyon Rd", "label": "address_line", '
+                '"confidence": 0.95}'
+            ),
             '{"text": "#117", "label": "store_id", "confidence": 0.90}',
         ]
     elif "payment" in section_info["name"].lower():
         examples = [
             '{"text": "TOTAL", "label": "total", "confidence": 0.95}',
             '{"text": "$63.27", "label": "amount", "confidence": 0.95}',
-            '{"text": "APPROVED", "label": "payment_status", "confidence": 0.90}',
+            (
+                '{"text": "APPROVED", "label": "payment_status", '
+                '"confidence": 0.90}'
+            ),
         ]
     elif "transaction" in section_info["name"].lower():
         examples = [
             '{"text": "12/17/2024", "label": "date", "confidence": 0.95}',
             '{"text": "17:19", "label": "time", "confidence": 0.95}',
-            '{"text": "Tran ID#: 12345", "label": "transaction_id", "confidence": 0.90}',
+            (
+                '{"text": "Tran ID#: 12345", "label": "transaction_id", '
+                '"confidence": 0.90}'
+            ),
         ]
 
     return (
-        f"Label words in the {section_info['name'].upper()} section of this receipt.\n\n"
+        f"Label words in the {section_info['name'].upper()} section of this "
+        f"receipt.\n\n"
         f"Business Context:\n{dumps(business_context, indent=2)}\n\n"
         f"Receipt Content:\n"
         + "\n".join(formatted_lines)
@@ -1098,10 +1143,13 @@ def _llm_prompt_field_labeling_section(
         + "\n\nExample Labelings:\n"
         + "\n".join(examples)
         + "\n\nINSTRUCTIONS:\n"
-        "1. Label each piece of meaningful text with the most specific applicable label\n"
-        "2. Combine words that form a single meaningful unit (e.g., 'Lindero Canyon Rd' as one address_line)\n"
+        "1. Label each piece of meaningful text with the most specific "
+        "applicable label\n"
+        "2. Combine words that form a single meaningful unit (e.g., 'Lindero "
+        "Canyon Rd' as one address_line)\n"
         "3. Never use 'unknown' or labels not in the list above\n"
-        "4. Set high confidence (0.9+) for clear matches, lower (0.7-0.8) if uncertain\n"
+        "4. Set high confidence (0.9+) for clear matches, lower (0.7-0.8) "
+        "if uncertain\n"
         "5. Mark requires_review true if you're unsure about any labels\n\n"
         "Return this JSON structure:\n"
         "{\n"
@@ -1147,7 +1195,8 @@ def _detect_line_pattern(
 
     # Street address pattern
     if re.match(
-        r"^\d+\s+[A-Za-z\s]+(?:St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Ln|Lane|Dr|Drive|Way|Ct|Court|Circle|Cir)\.?",
+        r"^\d+\s+[A-Za-z\s]+(?:St|Street|Rd|Road|Ave|Avenue|Blvd|"
+        r"Boulevard|Ln|Lane|Dr|Drive|Way|Ct|Court|Circle|Cir)\.?",
         text,
     ):
         return "street_address"
@@ -1282,7 +1331,9 @@ def _get_section_label_types(section_name: str) -> Dict[str, Any]:
     if "business_info" in section_name_lower or "header" in section_name_lower:
         return {
             "business_name": "Store or company name (e.g., COSTCO WHOLESALE)",
-            "address_line": "Any part of the address (e.g., street, city, state, ZIP)",
+            "address_line": (
+                "Any part of the address (e.g., street, city, state, ZIP)"
+            ),
             "phone": "Phone number in any format",
             "store_id": "Store number or identifier (e.g., #117)",
         }
