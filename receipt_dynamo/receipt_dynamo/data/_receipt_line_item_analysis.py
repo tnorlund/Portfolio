@@ -1,19 +1,21 @@
 """Receipt Line Item Analysis data access using base operations framework.
 
-This refactored version reduces code from ~652 lines to ~210 lines (68% reduction)
-while maintaining full backward compatibility and all functionality.
+This refactored version reduces code from ~652 lines to ~210 lines
+(68% reduction) while maintaining full backward compatibility and all
+functionality.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_line_item_analysis import ReceiptLineItemAnalysis
-from receipt_dynamo.entities import item_to_receipt_line_item_analysis
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.entities import item_to_receipt_line_item_analysis
+from receipt_dynamo.entities.receipt_line_item_analysis import (
+    ReceiptLineItemAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -51,16 +53,22 @@ class _ReceiptLineItemAnalysis(
         """Adds a ReceiptLineItemAnalysis to DynamoDB.
 
         Args:
-            analysis (ReceiptLineItemAnalysis): The ReceiptLineItemAnalysis to add.
+            analysis (ReceiptLineItemAnalysis):
+                The ReceiptLineItemAnalysis to add.
 
         Raises:
-            ValueError: If the analysis is None or not an instance of ReceiptLineItemAnalysis.
+            ValueError:
+                If the analysis is None or not an instance of
+                ReceiptLineItemAnalysis.
             Exception: If the analysis cannot be added to DynamoDB.
         """
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
+        condition_expression = (
+            "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        )
         self._add_entity(
             analysis,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=condition_expression,
         )
 
     @handle_dynamodb_errors("add_receipt_line_item_analyses")
@@ -70,7 +78,8 @@ class _ReceiptLineItemAnalysis(
         """Adds multiple ReceiptLineItemAnalyses to DynamoDB in batches.
 
         Args:
-            analyses (list[ReceiptLineItemAnalysis]): The ReceiptLineItemAnalyses to add.
+            analyses (list[ReceiptLineItemAnalysis]):
+                The ReceiptLineItemAnalyses to add.
 
         Raises:
             ValueError: If the analyses are None or not a list.
@@ -95,16 +104,20 @@ class _ReceiptLineItemAnalysis(
         """Updates an existing ReceiptLineItemAnalysis in the database.
 
         Args:
-            analysis (ReceiptLineItemAnalysis): The ReceiptLineItemAnalysis to update.
+            analysis (ReceiptLineItemAnalysis):
+                The ReceiptLineItemAnalysis to update.
 
         Raises:
-            ValueError: If the analysis is None or not an instance of ReceiptLineItemAnalysis.
+            ValueError:
+                If the analysis is None or not an instance of
+                ReceiptLineItemAnalysis.
             Exception: If the analysis cannot be updated in DynamoDB.
         """
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
+        condition_expression = "attribute_exists(PK) AND attribute_exists(SK)"
         self._update_entity(
             analysis,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=condition_expression,
         )
 
     @handle_dynamodb_errors("update_receipt_line_item_analyses")
@@ -114,7 +127,8 @@ class _ReceiptLineItemAnalysis(
         """Updates multiple ReceiptLineItemAnalyses in the database.
 
         Args:
-            analyses (list[ReceiptLineItemAnalysis]): The ReceiptLineItemAnalyses to update.
+            analyses (list[ReceiptLineItemAnalysis]):
+                The ReceiptLineItemAnalyses to update.
 
         Raises:
             ValueError: If the analyses are None or not a list.
@@ -139,7 +153,8 @@ class _ReceiptLineItemAnalysis(
         """Deletes a single ReceiptLineItemAnalysis.
 
         Args:
-            analysis (ReceiptLineItemAnalysis): The ReceiptLineItemAnalysis to delete.
+            analysis (ReceiptLineItemAnalysis):
+                The ReceiptLineItemAnalysis to delete.
 
         Raises:
             ValueError: If the analysis is invalid.
@@ -155,7 +170,8 @@ class _ReceiptLineItemAnalysis(
         """Deletes multiple ReceiptLineItemAnalyses in batch.
 
         Args:
-            analyses (list[ReceiptLineItemAnalysis]): The ReceiptLineItemAnalyses to delete.
+            analyses (list[ReceiptLineItemAnalysis]):
+                The ReceiptLineItemAnalyses to delete.
 
         Raises:
             ValueError: If the analyses are invalid.
@@ -188,7 +204,9 @@ class _ReceiptLineItemAnalysis(
 
         Raises:
             ValueError: If the receipt_id or image_id are invalid.
-            Exception: If the ReceiptLineItemAnalysis cannot be retrieved from DynamoDB.
+            Exception:
+                If the ReceiptLineItemAnalysis cannot be retrieved from
+                DynamoDB.
         """
         if not isinstance(image_id, str):
             raise ValueError(
@@ -196,7 +214,8 @@ class _ReceiptLineItemAnalysis(
             )
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got"
+                f" {type(receipt_id).__name__}"
             )
         assert_valid_uuid(image_id)
 
@@ -225,7 +244,8 @@ class _ReceiptLineItemAnalysis(
 
         Args:
             limit (Optional[int]): The maximum number of items to return.
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from.
+            last_evaluated_key (Optional[Dict[str, Any]]):
+                The key to start from.
 
         Returns:
             Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]:
@@ -309,9 +329,10 @@ class _ReceiptLineItemAnalysis(
         assert_valid_uuid(image_id)
 
         line_item_analyses = []
+        key_condition = "#pk = :pk AND begins_with(#sk, :sk_prefix)"
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": key_condition,
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
