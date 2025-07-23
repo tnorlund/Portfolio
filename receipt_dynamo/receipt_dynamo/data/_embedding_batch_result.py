@@ -62,11 +62,13 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         """
         if embedding_batch_result is None:
             raise ValueError(
-                "EmbeddingBatchResult parameter is required and cannot be None."
+                "EmbeddingBatchResult parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_result, EmbeddingBatchResult):
             raise ValueError(
-                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+                "embedding_batch_result must be an instance of "
+                "EmbeddingBatchResult."
             )
 
         try:
@@ -79,7 +81,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' already exists"
+                    "Embedding batch result for Batch ID "
+                    f"'{embedding_batch_result.batch_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -98,18 +101,21 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         """
         if embedding_batch_results is None:
             raise ValueError(
-                "EmbeddingBatchResults parameter is required and cannot be None."
+                "EmbeddingBatchResults parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_results, list):
             raise ValueError(
-                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+                "embedding_batch_results must be a list of "
+                "EmbeddingBatchResult instances."
             )
         if not all(
             isinstance(r, EmbeddingBatchResult)
             for r in embedding_batch_results
         ):
             raise ValueError(
-                "All embedding batch results must be instances of EmbeddingBatchResult."
+                "All embedding batch results must be instances of "
+                "EmbeddingBatchResult."
             )
 
         try:
@@ -139,15 +145,18 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         self, embedding_batch_result: EmbeddingBatchResult
     ):
         """
-        Updates an EmbeddingBatchResult in DynamoDB. Raises if it does not exist.
+        Updates an EmbeddingBatchResult in DynamoDB.
+        Raises if it does not exist.
         """
         if embedding_batch_result is None:
             raise ValueError(
-                "EmbeddingBatchResult parameter is required and cannot be None."
+                "EmbeddingBatchResult parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_result, EmbeddingBatchResult):
             raise ValueError(
-                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+                "embedding_batch_result must be an instance of "
+                "EmbeddingBatchResult."
             )
 
         try:
@@ -160,7 +169,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
+                    "Embedding batch result for Batch ID "
+                    f"'{embedding_batch_result.batch_id}' does not exist"
                 ) from e
             else:
                 raise BatchOperationError(
@@ -175,18 +185,21 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         """
         if embedding_batch_results is None:
             raise ValueError(
-                "EmbeddingBatchResults parameter is required and cannot be None."
+                "EmbeddingBatchResults parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_results, list):
             raise ValueError(
-                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+                "embedding_batch_results must be a list of "
+                "EmbeddingBatchResult instances."
             )
         if not all(
             isinstance(r, EmbeddingBatchResult)
             for r in embedding_batch_results
         ):
             raise ValueError(
-                "All embedding batch results must be instances of EmbeddingBatchResult."
+                "All embedding batch results must be instances of "
+                "EmbeddingBatchResult."
             )
 
         for i in range(0, len(embedding_batch_results), 25):
@@ -216,11 +229,13 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         """
         if embedding_batch_result is None:
             raise ValueError(
-                "EmbeddingBatchResult parameter is required and cannot be None."
+                "EmbeddingBatchResult parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_result, EmbeddingBatchResult):
             raise ValueError(
-                "embedding_batch_result must be an instance of EmbeddingBatchResult."
+                "embedding_batch_result must be an instance of "
+                "EmbeddingBatchResult."
             )
 
         try:
@@ -233,7 +248,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Embedding batch result for Batch ID '{embedding_batch_result.batch_id}' does not exist"
+                    "Embedding batch result for Batch ID "
+                    f"'{embedding_batch_result.batch_id}' does not exist"
                 ) from e
             else:
                 raise BatchOperationError(
@@ -248,18 +264,21 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
         """
         if embedding_batch_results is None:
             raise ValueError(
-                "EmbeddingBatchResults parameter is required and cannot be None."
+                "EmbeddingBatchResults parameter is required and cannot be "
+                "None."
             )
         if not isinstance(embedding_batch_results, list):
             raise ValueError(
-                "embedding_batch_results must be a list of EmbeddingBatchResult instances."
+                "embedding_batch_results must be a list of "
+                "EmbeddingBatchResult instances."
             )
         if not all(
             isinstance(r, EmbeddingBatchResult)
             for r in embedding_batch_results
         ):
             raise ValueError(
-                "All embedding batch results must be instances of EmbeddingBatchResult."
+                "All embedding batch results must be instances of "
+                "EmbeddingBatchResult."
             )
 
         for i in range(0, len(embedding_batch_results), 25):
@@ -307,7 +326,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 Key={
                     "PK": {"S": f"BATCH#{batch_id}"},
                     "SK": {
-                        "S": f"RESULT#IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:03d}#WORD#{word_id:03d}"
+                        "S": (
+                            f"RESULT#IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                            f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
+                        )
                     },
                 },
             )
@@ -315,7 +337,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 return item_to_embedding_batch_result(response["Item"])
             else:
                 raise ValueError(
-                    f"Embedding batch result for Batch ID '{batch_id}', Image ID {image_id}, Receipt ID {receipt_id}, Line ID {line_id}, Word ID {word_id} does not exist."
+                    "Embedding batch result for Batch ID "
+                    f"'{batch_id}', Image ID {image_id}, "
+                    f"Receipt ID {receipt_id}, Line ID {line_id}, "
+                    f"Word ID {word_id} does not exist."
                 )
         except ClientError as e:
             raise Exception(
