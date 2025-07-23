@@ -16,28 +16,39 @@ from receipt_dynamo.entities.util import (
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptLetter(GeometryMixin, DynamoDBEntity):
     """
-    Represents a receipt letter and its associated metadata stored in a DynamoDB table.
+    Represents a receipt letter and its associated metadata stored in a
+    DynamoDB table.
 
-    This class encapsulates receipt letter-related information such as the receipt identifier,
-    image UUID, line identifier, word identifier, letter identifier, text content (exactly one character),
-    geometric properties, rotation angles, and detection confidence. It is designed to support operations
-    such as generating DynamoDB keys and converting the receipt letter to a DynamoDB item.
+    This class encapsulates receipt letter-related information such as the
+    receipt identifier, image UUID, line identifier, word identifier,
+    letter identifier, text content (exactly one character), geometric
+    properties, rotation angles, and detection confidence. It is designed to
+    support operations such as generating DynamoDB keys and converting the
+    receipt letter to a DynamoDB item.
 
     Attributes:
         receipt_id (int): Identifier for the receipt.
-        image_id (str): UUID identifying the image to which the receipt letter belongs.
+        image_id (str): UUID identifying the image to which the receipt letter
+            belongs.
         line_id (int): Identifier for the receipt line.
-        word_id (int): Identifier for the receipt word that this letter belongs to.
+        word_id (int): Identifier for the receipt word that this letter belongs
+            to.
         letter_id (int): Identifier for the receipt letter.
-        text (str): The text content of the receipt letter (must be exactly one character).
-        bounding_box (dict): The bounding box of the receipt letter with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        text (str): The text content of the receipt letter (must be exactly one
+            character).
+        bounding_box (dict): The bounding box of the receipt letter with keys
+            'x', 'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and
+            'y'.
         top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x'
+            and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x'
+            and 'y'.
         angle_degrees (float): The angle of the receipt letter in degrees.
         angle_radians (float): The angle of the receipt letter in radians.
-        confidence (float): The confidence level of the receipt letter (between 0 and 1).
+        confidence (float): The confidence level of the receipt letter (between
+            0 and 1).
     """
 
     receipt_id: int
@@ -130,7 +141,8 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         Converts the ReceiptLetter object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptLetter object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptLetter object as a
+            DynamoDB item.
         """
         return {
             **self.key,
@@ -211,7 +223,8 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         Returns an iterator over the ReceiptLetter object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its value.
+            Tuple[str, any]: A tuple containing the attribute name and its
+            value.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -297,24 +310,28 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         flip_y: bool = False,
     ):
         """
-        Receipt-specific inverse perspective transform from 'new' space back to 'old' space.
+        Receipt-specific inverse perspective transform from 'new' space back to
+        'old' space.
 
-        This implementation uses the 2x2 linear system approach optimized for receipt
-        coordinate systems, independent of the GeometryMixin's vision-based implementation.
+        This implementation uses the 2x2 linear system approach optimized for
+        receipt coordinate systems, independent of the GeometryMixin's
+        vision-based implementation.
 
         Args:
-            a, b, c, d, e, f, g, h (float): The perspective coefficients that mapped
-                the original image -> new image.  We will invert them here
-                so we can map new coords -> old coords.
+            a, b, c, d, e, f, g, h (float): The perspective coefficients that
+                mapped the original image -> new image.
+                We will invert them here so we can map new coords ->
+                old coords.
             src_width (int): The original (old) image width in pixels.
             src_height (int): The original (old) image height in pixels.
             dst_width (int): The new (warped) image width in pixels.
             dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, we treat the new coordinate system as flipped in Y
-                (e.g. some OCR engines treat top=0).  Mirrors the logic in
-                warp_affine_normalized_forward(...).
+            flip_y (bool): If True, we treat the new coordinate system as
+                flipped in Y (e.g. some OCR engines treat top=0). Mirrors the
+                logic in warp_affine_normalized_forward(...).
         """
-        # For each corner in the new space, we want to find (x_old_px, y_old_px).
+        # For each corner in the new space, we want to find
+        # (x_old_px, y_old_px).
         # The forward perspective mapping was:
         #   x_new = (a*x_old + b*y_old + c) / (1 + g*x_old + h*y_old)
         #   y_new = (d*x_old + e*y_old + f) / (1 + g*x_old + h*y_old)
@@ -336,11 +353,12 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
             y_new_px = corner["y"] * dst_height
 
             if flip_y:
-                # If the new system’s Y=0 was at the top, then from the perspective
-                # of a typical "bottom=0" system, we flip:
+                # If the new system’s Y=0 was at the top, then from the
+                # perspective of a typical "bottom=0" system, we flip:
                 y_new_px = dst_height - y_new_px
 
-            # 2) Solve the perspective equations for old pixel coords (X_old, Y_old).
+            # 2) Solve the perspective equations for old pixel coords
+            # (X_old, Y_old).
             # We have the system:
             #   x_new_px = (a*X_old + b*Y_old + c) / (1 + g*X_old + h*Y_old)
             #   y_new_px = (d*X_old + e*Y_old + f) / (1 + g*X_old + h*Y_old)
@@ -363,7 +381,8 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
                 # Degenerate or singular.  You can raise an exception or skip.
                 # For robust code, handle it gracefully:
                 raise ValueError(
-                    "Inverse perspective transform is singular for this corner."
+                    "Inverse perspective transform is singular "
+                    "for this corner."
                 )
 
             x_old_px = (b1 * a22 - b2 * a12) / det
@@ -401,10 +420,12 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptLetter: The ReceiptLetter object represented by the DynamoDB item.
+        ReceiptLetter: The ReceiptLetter object represented by the DynamoDB
+        item.
 
     Raises:
-        ValueError: When the item format is invalid or required keys are missing.
+        ValueError: When the item format is invalid or required keys are
+        missing.
     """
     required_keys = {
         "PK",
