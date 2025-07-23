@@ -31,15 +31,21 @@ class Word(GeometryMixin, DynamoDBEntity):
         line_id (int): Identifier for the line containing the word.
         word_id (int): Identifier for the word.
         text (str): The text of the word.
-        bounding_box (dict): The bounding box of the word with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bounding_box (dict): The bounding box of the word with keys 'x',
+            'y', 'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x'
+            and 'y'.
+        top_left (dict): The top-left corner coordinates with keys 'x' and
+            'y'.
+        bottom_right (dict): The bottom-right corner coordinates with
+            keys 'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys
+            'x' and 'y'.
         angle_degrees (float): The angle of the word in degrees.
         angle_radians (float): The angle of the word in radians.
         confidence (float): The confidence level of the word (between 0 and 1).
-        histogram (dict): A histogram representing character frequencies in the word.
+        histogram (dict): A histogram representing character frequencies in
+            the word.
         num_chars (int): The number of characters in the word.
     """
 
@@ -194,9 +200,12 @@ class Word(GeometryMixin, DynamoDBEntity):
         """Calculates the centroid of the Word.
 
         Args:
-            width (int, optional): The width of the image to scale coordinates. Defaults to None.
-            height (int, optional): The height of the image to scale coordinates. Defaults to None.
-            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+            width (int, optional): The width of the image to scale
+                coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale
+                coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate.
+                Defaults to False.
 
         Returns:
             Tuple[float, float]: The (x, y) coordinates of the centroid.
@@ -226,12 +235,16 @@ class Word(GeometryMixin, DynamoDBEntity):
         """Calculates the bounding box of the Word.
 
         Args:
-            width (int, optional): The width of the image to scale coordinates. Defaults to None.
-            height (int, optional): The height of the image to scale coordinates. Defaults to None.
-            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+            width (int, optional): The width of the image to scale
+                coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale
+                coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate.
+                Defaults to False.
 
         Returns:
-            Tuple[float, float, float, float]: The bounding box of the Word with keys 'x', 'y', 'width', and 'height'.
+            Tuple[float, float, float, float]: The bounding box of the Word
+                with keys 'x', 'y', 'width', and 'height'.
 
         Raises:
             ValueError: If only one of width or height is provided.
@@ -263,15 +276,24 @@ class Word(GeometryMixin, DynamoDBEntity):
         Tuple[float, float],
         Tuple[float, float],
     ]:
-        """Calculates the top-left, top-right, bottom-left, and bottom-right corners of the Word in image coordinates.
+        """Calculates the top-left, top-right, bottom-left, and bottom-right
+        corners of the Word in image coordinates.
 
         Args:
-            width (int, optional): The width of the image to scale coordinates. Defaults to None.
-            height (int, optional): The height of the image to scale coordinates. Defaults to None.
-            flip_y (bool, optional): Whether to flip the y coordinate. Defaults to False.
+            width (int, optional): The width of the image to scale
+                coordinates. Defaults to None.
+            height (int, optional): The height of the image to scale
+                coordinates. Defaults to None.
+            flip_y (bool, optional): Whether to flip the y coordinate.
+                Defaults to False.
 
         Returns:
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float]]: The corners of the Word.
+            Tuple[
+                Tuple[float, float],
+                Tuple[float, float],
+                Tuple[float, float],
+                Tuple[float, float],
+            ]: The corners of the Word.
 
         Raises:
             ValueError: If only one of width or height is provided.
