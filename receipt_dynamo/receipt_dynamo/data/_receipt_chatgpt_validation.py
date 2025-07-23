@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
-    item_to_receipt_chat_gpt_validation,
 )
+from receipt_dynamo.entities import item_to_receipt_chat_gpt_validation
 from receipt_dynamo.data._base import DynamoClientProtocol
 
 if TYPE_CHECKING:

@@ -7,15 +7,15 @@ while maintaining full backward compatibility and all functionality.
 """
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
-from receipt_dynamo import (
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
+from receipt_dynamo.entities.image import Image
+from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.word import Word
+from receipt_dynamo.entities import (
     item_to_image,
     item_to_letter,
     item_to_line,

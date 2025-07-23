@@ -68,7 +68,8 @@ class _BatchSummary(DynamoClientProtocol):
             batch_summary (BatchSummary): The BatchSummary instance to add.
 
         Raises:
-            ValueError: If batch_summary is None, not a BatchSummary, or if DynamoDB conditions fail.
+            ValueError: If batch_summary is None, not a BatchSummary, or if
+                DynamoDB conditions fail.
         """
         if batch_summary is None:
             raise ValueError("batch_summary cannot be None")
@@ -79,7 +80,9 @@ class _BatchSummary(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=batch_summary.to_item(),
-                ConditionExpression="attribute_not_exists(PK) and attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -101,10 +104,12 @@ class _BatchSummary(DynamoClientProtocol):
         Adds multiple BatchSummary records to DynamoDB in batches.
 
         Args:
-            batch_summaries (List[BatchSummary]): A list of BatchSummary instances to add.
+            batch_summaries (List[BatchSummary]): A list of BatchSummary
+                instances to add.
 
         Raises:
-            ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
+            ValueError: If batch_summaries is None, not a list, or contains
+                invalid BatchSummary objects.
         """
         if batch_summaries is None:
             raise ValueError("batch_summaries cannot be None")

@@ -1,6 +1,7 @@
 """Receipt Label Analysis data access using base operations framework.
 
-This refactored version reduces code from ~944 lines to ~300 lines (68% reduction)
+This refactored version reduces code from ~944 lines to ~300 lines
+(68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
 
@@ -157,7 +158,9 @@ class _ReceiptLabelAnalysis(
                 "Put": {
                     "TableName": self.table_name,
                     "Item": analysis.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for analysis in receipt_label_analyses
@@ -211,7 +214,9 @@ class _ReceiptLabelAnalysis(
                 "Delete": {
                     "TableName": self.table_name,
                     "Key": analysis.key,
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for analysis in receipt_label_analyses
@@ -243,10 +248,13 @@ class _ReceiptLabelAnalysis(
 
         # Then check types
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise ValueError(
+                "image_id must be a string"
+            )
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, "
+                f"got {type(receipt_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(
@@ -266,15 +274,18 @@ class _ReceiptLabelAnalysis(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"
+                        )
                     },
                 },
             )
             item = response.get("Item")
             if not item:
                 raise ValueError(
-                    f"No ReceiptLabelAnalysis found for receipt {receipt_id}, "
-                    f"image {image_id}, and version {version}"
+                    f"No ReceiptLabelAnalysis found for "
+                    f"receipt {receipt_id}, image {image_id}, "
+                    f"and version {version}"
                 )
             return item_to_receipt_label_analysis(item)
         else:
@@ -306,7 +317,9 @@ class _ReceiptLabelAnalysis(
 
             return item_to_receipt_label_analysis(items[0])
 
-    @handle_dynamodb_errors("list_receipt_label_analyses")
+    @handle_dynamodb_errors(
+        "list_receipt_label_analyses"
+    )
     def list_receipt_label_analyses(
         self,
         limit: Optional[int] = None,
@@ -363,17 +376,23 @@ class _ReceiptLabelAnalysis(
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
-                        item_to_receipt_label_analysis(item)
+                        item_to_receipt_label_analysis(
+                            item
+                        )
                         for item in response["Items"]
                     ]
                 )
             last_evaluated_key = None
         else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
+            last_evaluated_key = response.get(
+                "LastEvaluatedKey", None
+            )
 
         return label_analyses, last_evaluated_key
 
-    @handle_dynamodb_errors("list_receipt_label_analyses_for_image")
+    @handle_dynamodb_errors(
+        "list_receipt_label_analyses_for_image"
+    )
     def list_receipt_label_analyses_for_image(
         self, image_id: str
     ) -> List[ReceiptLabelAnalysis]:
@@ -417,7 +436,9 @@ class _ReceiptLabelAnalysis(
 
         # Continue querying if there are more results
         while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            query_params["ExclusiveStartKey"] = response[
+                "LastEvaluatedKey"
+            ]
             response = self._client.query(**query_params)
             label_analyses.extend(
                 [
@@ -504,7 +525,9 @@ class _ReceiptLabelAnalysis(
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
-                        item_to_receipt_label_analysis(item)
+                        item_to_receipt_label_analysis(
+                            item
+                        )
                         for item in response["Items"]
                     ]
                 )
@@ -540,7 +563,9 @@ class _ReceiptLabelAnalysis(
         assert_valid_uuid(image_id)
 
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be a positive integer")
+            raise ValueError(
+                "receipt_id must be a positive integer"
+            )
         if receipt_id <= 0:
             raise ValueError("receipt_id must be a positive integer")
 
@@ -596,7 +621,9 @@ class _ReceiptLabelAnalysis(
                 response = self._client.query(**query_params)
                 label_analyses.extend(
                     [
-                        item_to_receipt_label_analysis(item)
+                        item_to_receipt_label_analysis(
+                            item
+                        )
                         for item in response["Items"]
                     ]
                 )

@@ -7,7 +7,10 @@ from typing import Any, Dict, List, Optional, cast
 import requests
 from requests.models import Response
 
-from receipt_dynamo import Receipt, ReceiptLine, ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 def gpt_request_tagging_validation(

@@ -62,7 +62,8 @@ class _ReceiptField(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptField" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptField" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt field records.
 
@@ -78,7 +79,8 @@ class _ReceiptField(
     add_receipt_field(receipt_field: ReceiptField):
         Adds a single ReceiptField item to the database, ensuring unique ID.
     add_receipt_fields(receipt_fields: List[ReceiptField]):
-        Adds multiple ReceiptField items to the database in chunks of up to 25 items.
+        Adds multiple ReceiptField items to the database in chunks of up to
+        25 items.
     update_receipt_field(receipt_field: ReceiptField):
         Updates an existing ReceiptField item in the database.
     update_receipt_fields(receipt_fields: List[ReceiptField]):
@@ -87,9 +89,13 @@ class _ReceiptField(
         Deletes a single ReceiptField item from the database.
     delete_receipt_fields(receipt_fields: List[ReceiptField]):
         Deletes multiple ReceiptField items using transactions.
-    get_receipt_field(field_type: str, image_id: str, receipt_id: int) -> ReceiptField:
+    get_receipt_field(
+        field_type: str, image_id: str, receipt_id: int
+    ) -> ReceiptField:
         Retrieves a single ReceiptField item by its composite key.
-    list_receipt_fields(...) -> Tuple[List[ReceiptField], dict | None]:
+    list_receipt_fields(
+        ...
+    ) -> Tuple[List[ReceiptField], dict | None]:
         Lists ReceiptField records with optional pagination.
     get_receipt_fields_by_image(...) -> Tuple[List[ReceiptField], dict | None]:
         Retrieves ReceiptField records by image ID.
@@ -128,7 +134,8 @@ class _ReceiptField(
         Raises
         ------
         ValueError
-            If receipt_fields is invalid or if an error occurs during batch write.
+            If receipt_fields is invalid or if an error occurs during
+            batch write.
         """
         self._validate_entity_list(
             receipt_fields, ReceiptField, "receiptFields"
@@ -295,7 +302,9 @@ class _ReceiptField(
                 return item_to_receipt_field(response["Item"])
             else:
                 raise ValueError(
-                    f"Receipt field for Field Type '{field_type}', Image ID '{image_id}', and Receipt ID {receipt_id} does not exist."
+                    f"Receipt field for Field Type '{field_type}', "
+                    f"Image ID '{image_id}', and Receipt ID {receipt_id} "
+                    f"does not exist."
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -320,7 +329,8 @@ class _ReceiptField(
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
-        Retrieve receipt field records from the database with support for precise pagination.
+        Retrieve receipt field records from the database with support for
+        precise pagination.
 
         Parameters
         ----------
@@ -333,7 +343,8 @@ class _ReceiptField(
         -------
         tuple
             - A list of ReceiptField objects.
-            - A dict representing the LastEvaluatedKey from the final query page, or None if there are no further pages.
+            - A dict representing the LastEvaluatedKey from the final query
+              page, or None if there are no further pages.
 
         Raises
         ------
@@ -539,7 +550,8 @@ class _ReceiptField(
         Raises
         ------
         ValueError
-            If the image_id or receipt_id is invalid or if pagination parameters are invalid.
+            If the image_id or receipt_id is invalid or if pagination
+            parameters are invalid.
         """
         if not isinstance(image_id, str):
             raise ValueError("Image ID must be a string")
@@ -560,7 +572,9 @@ class _ReceiptField(
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)",
+                "KeyConditionExpression": (
+                    "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)"
+                ),
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
