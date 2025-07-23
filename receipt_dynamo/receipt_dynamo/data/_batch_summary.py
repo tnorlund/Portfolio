@@ -68,7 +68,8 @@ class _BatchSummary(DynamoClientProtocol):
             batch_summary (BatchSummary): The BatchSummary instance to add.
 
         Raises:
-            ValueError: If batch_summary is None, not a BatchSummary, or if DynamoDB conditions fail.
+            ValueError: If batch_summary is None, not a BatchSummary,
+            or if DynamoDB conditions fail.
         """
         if batch_summary is None:
             raise ValueError("batch_summary cannot be None")
@@ -79,7 +80,9 @@ class _BatchSummary(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=batch_summary.to_item(),
-                ConditionExpression="attribute_not_exists(PK) and attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -101,10 +104,12 @@ class _BatchSummary(DynamoClientProtocol):
         Adds multiple BatchSummary records to DynamoDB in batches.
 
         Args:
-            batch_summaries (List[BatchSummary]): A list of BatchSummary instances to add.
+            batch_summaries (List[BatchSummary]):
+                A list of BatchSummary instances to add.
 
         Raises:
-            ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
+            ValueError: If batch_summaries is None, not a list, or
+            contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
             raise ValueError("batch_summaries cannot be None")
@@ -154,7 +159,8 @@ class _BatchSummary(DynamoClientProtocol):
             batch_summary (BatchSummary): The BatchSummary instance to update.
 
         Raises:
-            ValueError: If batch_summary is None, not a BatchSummary, or if the record does not exist.
+            ValueError: If batch_summary is None, not a BatchSummary,
+            or if the record does not exist.
         """
         if batch_summary is None:
             raise ValueError("batch_summary cannot be None")
@@ -165,7 +171,9 @@ class _BatchSummary(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=batch_summary.to_item(),
-                ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) and attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -189,10 +197,12 @@ class _BatchSummary(DynamoClientProtocol):
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]): A list of BatchSummary instances to update.
+            batch_summaries (List[BatchSummary]):
+                A list of BatchSummary instances to update.
 
         Raises:
-            ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
+            ValueError: If batch_summaries is None, not a list, or
+            contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
             raise ValueError("batch_summaries cannot be None")
@@ -210,7 +220,9 @@ class _BatchSummary(DynamoClientProtocol):
                         Put=PutTypeDef(
                             TableName=self.table_name,
                             Item=item.to_item(),
-                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                            ConditionExpression=(
+                                "attribute_exists(PK) and attribute_exists(SK)"
+                            ),
                         )
                     )
                 )
@@ -260,7 +272,8 @@ class _BatchSummary(DynamoClientProtocol):
             batch_summary (BatchSummary): The BatchSummary instance to delete.
 
         Raises:
-            ValueError: If batch_summary is None, not a BatchSummary, or if the record does not exist.
+            ValueError: If batch_summary is None, not a BatchSummary,
+            or if the record does not exist.
         """
         if batch_summary is None:
             raise ValueError("batch_summary cannot be None")
@@ -271,7 +284,9 @@ class _BatchSummary(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key=batch_summary.key,
-                ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) and attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -295,10 +310,12 @@ class _BatchSummary(DynamoClientProtocol):
         Deletes multiple BatchSummary records from DynamoDB using transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]): A list of BatchSummary instances to delete.
+            batch_summaries (List[BatchSummary]):
+                A list of BatchSummary instances to delete.
 
         Raises:
-            ValueError: If batch_summaries is None, not a list, or contains invalid BatchSummary objects.
+            ValueError: If batch_summaries is None, not a list, or
+            contains invalid BatchSummary objects.
         """
         if batch_summaries is None:
             raise ValueError("batch_summaries cannot be None")
@@ -316,7 +333,9 @@ class _BatchSummary(DynamoClientProtocol):
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
                             Key=item.key,
-                            ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                            ConditionExpression=(
+                                "attribute_exists(PK) and attribute_exists(SK)"
+                            ),
                         )
                     )
                 )
@@ -369,7 +388,8 @@ class _BatchSummary(DynamoClientProtocol):
             BatchSummary: The corresponding BatchSummary instance.
 
         Raises:
-            ValueError: If batch_id is not a valid string, UUID, or if the record does not exist.
+            ValueError: If batch_id is not a valid string, UUID, or if the
+            record does not exist.
         """
         if not isinstance(batch_id, str):
             raise ValueError("batch_id must be a string")
@@ -407,10 +427,13 @@ class _BatchSummary(DynamoClientProtocol):
 
         Args:
             limit (int, optional): Maximum number of records to retrieve.
-            last_evaluated_key (dict, optional): The key to start pagination from.
+            last_evaluated_key (dict, optional):
+                The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]: A tuple containing the list of BatchSummary records and the last evaluated key.
+            Tuple[List[BatchSummary], dict | None]:
+                A tuple containing the list of BatchSummary records and
+                the last evaluated key.
 
         Raises:
             ValueError: If limit or last_evaluated_key are invalid.
@@ -481,18 +504,23 @@ class _BatchSummary(DynamoClientProtocol):
         last_evaluated_key: dict | None = None,
     ) -> Tuple[List[BatchSummary], dict | None]:
         """
-        Retrieves BatchSummary records filtered by status with optional pagination.
+        Retrieves BatchSummary records filtered by status with optional
+        pagination.
 
         Args:
             status (str): The status to filter by.
             limit (int, optional): Maximum number of records to retrieve.
-            last_evaluated_key (dict, optional): The key to start pagination from.
+            last_evaluated_key (dict, optional):
+                The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]: A tuple containing the list of BatchSummary records and the last evaluated key.
+            Tuple[List[BatchSummary], dict | None]:
+                A tuple containing the list of BatchSummary records and
+                the last evaluated key.
 
         Raises:
-            ValueError: If status is invalid or if pagination parameters are invalid.
+            ValueError: If status is invalid or if pagination parameters are
+            invalid.
         """
         if isinstance(status, BatchStatus):
             status_str = status.value
@@ -500,12 +528,14 @@ class _BatchSummary(DynamoClientProtocol):
             status_str = status
         else:
             raise ValueError(
-                f"status must be either a BatchStatus enum or a string; got {type(status).__name__}"
+                "status must be either a BatchStatus enum or a string; got"
+                f" {type(status).__name__}"
             )
         valid_statuses = [s.value for s in BatchStatus]
         if status_str not in valid_statuses:
             raise ValueError(
-                f"Invalid status: {status_str} must be one of {', '.join(valid_statuses)}"
+                "Invalid status: "
+                f"{status_str} must be one of {', '.join(valid_statuses)}"
             )
 
         if isinstance(batch_type, BatchType):
@@ -514,14 +544,16 @@ class _BatchSummary(DynamoClientProtocol):
             batch_type_str = batch_type
         else:
             raise ValueError(
-                f"batch_type must be either a BatchType enum or a string; got {type(batch_type).__name__}"
+                "batch_type must be either a BatchType enum or a string; got"
+                f" {type(batch_type).__name__}"
             )
 
         # Validate batch_type_str against allowed values
         valid_types = [t.value for t in BatchType]
         if batch_type_str not in valid_types:
             raise ValueError(
-                f"Invalid batch type: {batch_type_str} must be one of {', '.join(valid_types)}"
+                "Invalid batch type: "
+                f"{batch_type_str} must be one of {', '.join(valid_types)}"
             )
 
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
@@ -536,7 +568,9 @@ class _BatchSummary(DynamoClientProtocol):
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+                "KeyConditionExpression": (
+                    "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
+                ),
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"STATUS#{status_str}"},
                     ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
