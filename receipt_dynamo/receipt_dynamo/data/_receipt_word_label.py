@@ -1,7 +1,8 @@
 """Receipt Word Label data access using base operations framework.
 
-This refactored version reduces code from ~969 lines to ~310 lines (68% reduction)
-while maintaining full backward compatibility and all functionality.
+This refactored version reduces code from ~969 lines to ~310 lines
+(68% reduction) while maintaining full backward compatibility and all
+functionality.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
@@ -40,7 +41,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
-                f"last_evaluated_key[{key}] must be a dict containing a key 'S'"
+                f"last_evaluated_key[{key}] must be a dict containing a key "
+                f"'S'"
             )
 
 
@@ -61,10 +63,12 @@ class _ReceiptWordLabel(
         """Adds a receipt word label to the database
 
         Args:
-            receipt_word_label (ReceiptWordLabel): The receipt word label to add to the database
+            receipt_word_label (ReceiptWordLabel): The receipt word label to
+                add to the database
 
         Raises:
-            ValueError: When a receipt word label with the same ID already exists
+            ValueError: When a receipt word label with the same ID
+                already exists
         """
         if receipt_word_label is None:
             raise ValueError(
@@ -72,7 +76,8 @@ class _ReceiptWordLabel(
             )
         if not isinstance(receipt_word_label, ReceiptWordLabel):
             raise ValueError(
-                "receipt_word_label must be an instance of the ReceiptWordLabel class."
+                "receipt_word_label must be an instance of the "
+                "ReceiptWordLabel class."
             )
 
         try:
@@ -97,7 +102,8 @@ class _ReceiptWordLabel(
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
             raise ValueError(
-                f"Receipt word label for Image ID '{receipt_word_label.image_id}' already exists"
+                "Receipt word label for Image ID "
+                f"'{receipt_word_label.image_id}' already exists"
             ) from error
         elif error_code == "ResourceNotFoundException":
             raise DynamoDBError(
@@ -122,10 +128,12 @@ class _ReceiptWordLabel(
         """Adds a list of receipt word labels to the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word labels to add to the database
+            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+                labels to add to the database
 
         Raises:
-            ValueError: When a receipt word label with the same ID already exists
+            ValueError: When a receipt word label with the same ID
+                already exists
         """
         if receipt_word_labels is None:
             raise ValueError(
@@ -133,14 +141,16 @@ class _ReceiptWordLabel(
             )
         if not isinstance(receipt_word_labels, list):
             raise ValueError(
-                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+                "receipt_word_labels must be a list of ReceiptWordLabel "
+                "instances."
             )
         if not all(
             isinstance(label, ReceiptWordLabel)
             for label in receipt_word_labels
         ):
             raise ValueError(
-                "All receipt word labels must be instances of the ReceiptWordLabel class."
+                "All receipt word labels must be instances of the "
+                "ReceiptWordLabel class."
             )
 
         try:
@@ -185,7 +195,8 @@ class _ReceiptWordLabel(
         """Updates a receipt word label in the database
 
         Args:
-            receipt_word_label (ReceiptWordLabel): The receipt word label to update
+            receipt_word_label (ReceiptWordLabel): The receipt word label to
+                update
 
         Raises:
             ValueError: When the receipt word label does not exist
@@ -202,7 +213,8 @@ class _ReceiptWordLabel(
         """Updates multiple receipt word labels in the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word labels to update
+            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+                labels to update
 
         Raises:
             ValueError: When any receipt word label validation fails
@@ -229,7 +241,8 @@ class _ReceiptWordLabel(
         """Deletes a receipt word label from the database
 
         Args:
-            receipt_word_label (ReceiptWordLabel): The receipt word label to delete
+            receipt_word_label (ReceiptWordLabel): The receipt word label to
+                delete
 
         Raises:
             ValueError: When the receipt word label does not exist
@@ -246,7 +259,8 @@ class _ReceiptWordLabel(
         """Deletes multiple receipt word labels from the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word labels to delete
+            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+                labels to delete
 
         Raises:
             ValueError: When any receipt word label validation fails
@@ -261,7 +275,9 @@ class _ReceiptWordLabel(
                 "Delete": {
                     "TableName": self.table_name,
                     "Key": label.key,
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for label in receipt_word_labels
@@ -307,23 +323,24 @@ class _ReceiptWordLabel(
         # Then check types
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(line_id, int):
             raise ValueError(
-                f"line_id must be an integer, got {type(line_id).__name__}"
+                "line_id must be an integer, got " f"{type(line_id).__name__}"
             )
         if not isinstance(word_id, int):
             raise ValueError(
-                f"word_id must be an integer, got {type(word_id).__name__}"
+                "word_id must be an integer, got " f"{type(word_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
-                f"image_id must be a string, got {type(image_id).__name__}"
+                "image_id must be a string, got " f"{type(image_id).__name__}"
             )
         if not isinstance(label, str):
             raise ValueError(
-                f"label must be a string, got {type(label).__name__}"
+                "label must be a string, got " f"{type(label).__name__}"
             )
 
         # Check for positive integers
@@ -345,15 +362,19 @@ class _ReceiptWordLabel(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}#LABEL#{label}"
+                    )
                 },
             },
         )
         item = response.get("Item")
         if not item:
             raise ValueError(
-                f"Receipt Word Label for Receipt ID {receipt_id}, Line ID {line_id}, "
-                f"Word ID {word_id}, Label '{label}', and Image ID {image_id} does not exist"
+                f"Receipt Word Label for Receipt ID {receipt_id}, "
+                f"Line ID {line_id}, Word ID {word_id}, Label '{label}', "
+                f"and Image ID {image_id} does not exist"
             )
         return item_to_receipt_word_label(item)
 
@@ -364,7 +385,8 @@ class _ReceiptWordLabel(
         """Retrieves multiple receipt word labels from the database
 
         Args:
-            keys (List[Tuple[int, int, str]]): List of (receipt_id, word_id, image_id) tuples
+            keys (List[Tuple[int, int, str]]): List of
+                (receipt_id, word_id, image_id) tuples
 
         Returns:
             List[ReceiptWordLabel]: The receipt word labels from the database
@@ -417,10 +439,12 @@ class _ReceiptWordLabel(
 
         Args:
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+                from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+                and last evaluated key
         """
         if limit is not None:
             if not isinstance(limit, int):
@@ -490,7 +514,9 @@ class _ReceiptWordLabel(
         word_labels = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -498,11 +524,9 @@ class _ReceiptWordLabel(
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": "RECEIPT#"},
+                ":label_suffix": {"S": "#LABEL"},
             },
             "FilterExpression": "contains(#sk, :label_suffix)",
-        }
-        query_params["ExpressionAttributeValues"][":label_suffix"] = {
-            "S": "#LABEL"
         }
 
         response = self._client.query(**query_params)
@@ -535,10 +559,12 @@ class _ReceiptWordLabel(
         Args:
             status (ValidationStatus): The validation status to filter by
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+                from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+                and last evaluated key
         """
         if not isinstance(status, ValidationStatus):
             raise ValueError("status must be a ValidationStatus instance")
@@ -600,10 +626,12 @@ class _ReceiptWordLabel(
         Args:
             label (str): The label to filter by
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+                from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+                and last evaluated key
         """
         # Validate label
         if not isinstance(label, str) or not label:
@@ -680,10 +708,12 @@ class _ReceiptWordLabel(
         Args:
             validation_status (str): The validation status to filter by
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+                from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+                and last evaluated key
         """
         # Validate validation_status
         if not isinstance(validation_status, str) or not validation_status:
@@ -693,7 +723,8 @@ class _ReceiptWordLabel(
         valid_statuses = [status.value for status in ValidationStatus]
         if validation_status not in valid_statuses:
             raise ValueError(
-                f"validation status must be one of the following: {', '.join(valid_statuses)}"
+                "validation status must be one of the following: "
+                f"{', '.join(valid_statuses)}"
             )
 
         # Validate limit
