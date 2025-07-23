@@ -8,15 +8,19 @@ class JobDependency:
     """
     Represents a dependency relationship between jobs stored in DynamoDB.
 
-    This class encapsulates job dependency information including the dependent job,
-    dependency job, type of dependency, condition, and when it was created.
-    It supports operations like generating DynamoDB keys and converting dependency
-    data to DynamoDB-compatible items.
+    This class encapsulates job dependency information including the
+    dependent job, dependency job, type of dependency, condition, and
+    when it was created.
+    It supports operations like generating DynamoDB keys and converting
+    dependency data to DynamoDB-compatible items.
 
     Attributes:
-        dependent_job_id (str): UUID identifying the job that depends on another.
-        dependency_job_id (str): UUID identifying the job that is depended on.
-        type (str): The type of dependency (e.g., "COMPLETION", "SUCCESS", "ARTIFACT").
+        dependent_job_id (str): UUID identifying the job that depends on
+            another.
+        dependency_job_id (str): UUID identifying the job that is
+            depended on.
+        type (str): The type of dependency (e.g., "COMPLETION", "SUCCESS",
+            "ARTIFACT").
         condition (str, optional): Specific condition for the dependency.
         created_at (str): The timestamp when the dependency was created.
     """
@@ -32,14 +36,20 @@ class JobDependency:
         """Initializes a new JobDependency object for DynamoDB.
 
         Args:
-            dependent_job_id (str): UUID identifying the job that depends on another.
-            dependency_job_id (str): UUID identifying the job that is depended on.
-            type (str): The type of dependency (COMPLETION, SUCCESS, ARTIFACT, etc).
-            created_at (datetime): The timestamp when the dependency was created.
-            condition (str, optional): Specific condition for the dependency. Defaults to None.
+            dependent_job_id (str): UUID identifying the job that depends on
+                another.
+            dependency_job_id (str): UUID identifying the job that is
+                depended on.
+            type (str): The type of dependency (COMPLETION, SUCCESS,
+                ARTIFACT, etc).
+            created_at (datetime): The timestamp when the dependency was
+                created.
+            condition (str, optional): Specific condition for the dependency.
+                Defaults to None.
 
         Raises:
-            ValueError: If any parameter is of invalid type or has invalid value.
+            ValueError: If any parameter is of invalid type or has
+                invalid value.
         """
         assert_valid_uuid(dependent_job_id)
         self.dependent_job_id = dependent_job_id
@@ -90,7 +100,10 @@ class JobDependency:
         return {
             "GSI1PK": {"S": "DEPENDENCY"},
             "GSI1SK": {
-                "S": f"DEPENDENT#{self.dependent_job_id}#DEPENDENCY#{self.dependency_job_id}"
+                "S": (
+                    f"DEPENDENT#{self.dependent_job_id}"
+                    f"#DEPENDENCY#{self.dependency_job_id}"
+                )
             },
         }
 
@@ -103,7 +116,10 @@ class JobDependency:
         return {
             "GSI2PK": {"S": "DEPENDENCY"},
             "GSI2SK": {
-                "S": f"DEPENDED_BY#{self.dependency_job_id}#DEPENDENT#{self.dependent_job_id}"
+                "S": (
+                    f"DEPENDED_BY#{self.dependency_job_id}"
+                    f"#DEPENDENT#{self.dependent_job_id}"
+                )
             },
         }
 
@@ -111,7 +127,8 @@ class JobDependency:
         """Converts the JobDependency object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobDependency object as a DynamoDB item.
+            dict: A dictionary representing the JobDependency object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -149,7 +166,8 @@ class JobDependency:
         """Returns an iterator over the JobDependency object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobDependency object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobDependency object's attribute name/value pairs.
         """
         yield "dependent_job_id", self.dependent_job_id
         yield "dependency_job_id", self.dependency_job_id
@@ -203,7 +221,8 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        JobDependency: The JobDependency object represented by the DynamoDB item.
+        JobDependency: The JobDependency object represented by the
+            DynamoDB item.
 
     Raises:
         ValueError: When the item format is invalid.
@@ -221,7 +240,9 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            "Invalid item format\n"
+            f"missing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:
