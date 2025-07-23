@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient

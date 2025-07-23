@@ -20,8 +20,6 @@ if TYPE_CHECKING:
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 
