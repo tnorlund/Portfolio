@@ -55,9 +55,9 @@ class _ReceiptMetadata(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptMetadata" entities in DynamoDB.
-    This class is typically used within a DynamoClient to access and manage
-    receipt metadata records.
+    A class providing methods to interact with "ReceiptMetadata" entities in
+    DynamoDB. This class is typically used within a DynamoClient to access and
+    manage receipt metadata records.
 
     Attributes
     ----------
@@ -71,7 +71,8 @@ class _ReceiptMetadata(
     add_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Adds a single ReceiptMetadata item to the database, ensuring unique ID.
     add_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
-        Adds multiple ReceiptMetadata items to the database in chunks of up to 25 items.
+        Adds multiple ReceiptMetadata items to the database in chunks of up to
+        25 items.
     update_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Updates an existing ReceiptMetadata item in the database.
     update_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
@@ -82,17 +83,25 @@ class _ReceiptMetadata(
         Deletes multiple ReceiptMetadata items using transactions.
     get_receipt_metadata(image_id: str, receipt_id: int) -> ReceiptMetadata:
         Retrieves a single ReceiptMetadata item by image and receipt IDs.
-    get_receipt_metadatas_by_indices(indices: list[tuple[str, int]]) -> list[ReceiptMetadata]:
+    get_receipt_metadatas_by_indices(
+        indices: list[tuple[str, int]]
+    ) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items by their indices.
     get_receipt_metadatas(keys: list[dict]) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items using batch get.
     list_receipt_metadatas(...) -> Tuple[List[ReceiptMetadata], dict | None]:
         Lists ReceiptMetadata records with optional pagination.
-    get_receipt_metadatas_by_merchant(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    get_receipt_metadatas_by_merchant(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by merchant name.
-    list_receipt_metadatas_with_place_id(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    list_receipt_metadatas_with_place_id(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records that have a specific place_id.
-    get_receipt_metadatas_by_confidence(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    get_receipt_metadatas_by_confidence(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by confidence score.
     """
 
@@ -109,14 +118,17 @@ class _ReceiptMetadata(
         Raises
         ------
         ValueError
-            If receipt_metadata is None, not a ReceiptMetadata, or if the record already exists.
+            If receipt_metadata is None, not a ReceiptMetadata, or if the
+            record already exists.
         """
         self._validate_entity(
             receipt_metadata, ReceiptMetadata, "receipt_metadata"
         )
         self._add_entity(
             receipt_metadata,
-            condition_expression="attribute_not_exists(PK) and attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) and attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_receipt_metadatas")
@@ -134,7 +146,8 @@ class _ReceiptMetadata(
         Raises
         ------
         ValueError
-            If receipt_metadatas is invalid or if an error occurs during batch write.
+            If receipt_metadatas is invalid or if an error occurs during batch
+            write.
         """
         self._validate_entity_list(
             receipt_metadatas, ReceiptMetadata, "receipt_metadatas"
@@ -170,7 +183,9 @@ class _ReceiptMetadata(
         )
         self._update_entity(
             receipt_metadata,
-            condition_expression="attribute_exists(PK) and attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) and attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_metadatas")
@@ -178,7 +193,8 @@ class _ReceiptMetadata(
         self, receipt_metadatas: List[ReceiptMetadata]
     ) -> None:
         """
-        Updates multiple ReceiptMetadata records in DynamoDB using transactions.
+        Updates multiple ReceiptMetadata records in DynamoDB using
+        transactions.
 
         Parameters
         ----------
@@ -199,7 +215,9 @@ class _ReceiptMetadata(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=item.to_item(),
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) and attribute_exists(SK)"
+                    ),
                 )
             )
             for item in receipt_metadatas
@@ -254,7 +272,9 @@ class _ReceiptMetadata(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=item.key,
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) and attribute_exists(SK)"
+                    ),
                 )
             )
             for item in receipt_metadatas
@@ -440,7 +460,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -516,7 +537,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -589,7 +611,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -670,7 +693,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -720,7 +744,10 @@ class _ReceiptMetadata(
             error_code = e.response["Error"]["Code"]
             if error_code == "ValidationException":
                 raise ValueError(
-                    f"receipt_metadata contains invalid attributes or values: {e}"
+                    (
+                        "receipt_metadata contains invalid attributes or "
+                        f"values: {e}"
+                    )
                 )
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
