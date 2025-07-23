@@ -95,7 +95,10 @@ class _Receipt(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' already exists"
+                    (
+                        f"Receipt with ID {receipt.receipt_id} and Image ID "
+                        f"'{receipt.image_id}' already exists"
+                    )
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -196,7 +199,10 @@ class _Receipt(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exist"
+                    (
+                        f"Receipt with ID {receipt.receipt_id} and Image ID "
+                        f"'{receipt.image_id}' does not exist"
+                    )
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -218,9 +224,9 @@ class _Receipt(DynamoClientProtocol):
         Updates a list of receipts in the database using transactions.
         Each receipt update is conditional upon the receipt already existing.
 
-        Since DynamoDB's transact_write_items supports a maximum of 25 operations per call,
-        the list of receipts is split into chunks of 25 items or less. Each chunk is updated
-        in a separate transaction.
+        Since DynamoDB's ``transact_write_items`` supports a maximum of 25
+        operations per call, the list of receipts is split into chunks of 25
+        items or less. Each chunk is updated in a separate transaction.
 
         Args:
             receipts (list[Receipt]): The receipts to update in the database.
@@ -321,7 +327,10 @@ class _Receipt(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"Receipt with ID {receipt.receipt_id} and Image ID '{receipt.image_id}' does not exists"
+                    (
+                        f"Receipt with ID {receipt.receipt_id} and Image ID "
+                        f"'{receipt.image_id}' does not exists"
+                    )
                 )
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -344,15 +353,15 @@ class _Receipt(DynamoClientProtocol):
         Each delete operation is conditional upon the receipt existing
         (using the ConditionExpression "attribute_exists(PK)").
 
-        Since DynamoDB's transact_write_items supports a maximum of 25 operations
-        per transaction, the receipts list is split into chunks of 25 or fewer,
-        with each chunk processed in a separate transaction.
+        Since DynamoDB's ``transact_write_items`` supports a maximum of 25
+        operations per transaction, the receipts list is split into chunks of
+        25 or fewer. Each chunk is processed in a separate transaction.
 
         Args:
             receipts (list[Receipt]): The receipts to delete from the database.
 
         Raises:
-            ValueError: When a receipt does not exist or if another error occurs.
+            ValueError: When a receipt does not exist or another error occurs.
         """
         if receipts is None:
             raise ValueError(
@@ -423,7 +432,8 @@ class _Receipt(DynamoClientProtocol):
             Receipt: The receipt object.
 
         Raises:
-            ValueError: If input parameters are invalid or if the receipt does not exist.
+            ValueError: If input parameters are invalid or the receipt does not
+                exist.
             Exception: For underlying DynamoDB errors such as:
                 - ResourceNotFoundException (table or index not found)
                 - ProvisionedThroughputExceededException (exceeded capacity)
@@ -456,7 +466,10 @@ class _Receipt(DynamoClientProtocol):
                 return item_to_receipt(response["Item"])
             else:
                 raise ValueError(
-                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist."
+                    (
+                        f"Receipt with ID {receipt_id} and Image ID "
+                        f"'{image_id}' does not exist."
+                    )
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -518,7 +531,10 @@ class _Receipt(DynamoClientProtocol):
                     break
             if receipt is None:
                 raise ValueError(
-                    f"Receipt not found for image_id={image_id}, receipt_id={receipt_id}"
+                    (
+                        "Receipt not found for "
+                        f"image_id={image_id}, receipt_id={receipt_id}"
+                    )
                 )
             return ReceiptDetails(
                 receipt=receipt,
@@ -536,33 +552,43 @@ class _Receipt(DynamoClientProtocol):
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Receipt], dict | None]:
         """
-        Retrieve receipt records from the database with support for precise pagination.
+        Retrieve receipt records from the database with support for precise
+        pagination.
 
-        This method queries the database for items identified as receipts and returns a list of corresponding
-        Receipt objects along with a pagination key (LastEvaluatedKey) for subsequent queries. When a limit is provided,
-        the method will continue to paginate through the data until it accumulates exactly that number of receipts (or
-        until no more items are available). If no limit is specified, the method retrieves all available receipts.
+        This method queries the database for items identified as receipts and
+        returns a list of corresponding Receipt objects along with a pagination
+        key (LastEvaluatedKey) for subsequent queries. When a limit is
+        provided, the method continues paginating until it accumulates exactly
+        that number of receipts (or until no more items are available). If no
+        limit is specified, the method retrieves all available receipts.
 
         Parameters:
-            limit (int, optional): The maximum number of receipt items to return. If set to None, all receipts are fetched.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query, used to continue a
-                previous pagination session.
+            limit (int, optional): The maximum number of receipt items to
+                return. If ``None``, all receipts are fetched.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query, used to continue a previous pagination
+                session.
 
         Returns:
             tuple:
-                - A list of Receipt objects, containing up to 'limit' items if a limit is specified.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if there are no further pages.
+                - A list of Receipt objects, containing up to ``limit`` items
+                      if a limit is specified.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or ``None`` if there are no further pages.
 
         Raises:
-            ValueError: If the limit is not an integer or is less than or equal to 0.
+            ValueError: If the limit is not an integer or is less than or equal
+                to 0.
             ValueError: If the last_evaluated_key is not a dictionary.
             Exception: If the underlying database query fails.
 
         Notes:
-            - For each query iteration, if a limit is provided, the method dynamically calculates the remaining number of
-            items needed and adjusts the query's Limit parameter accordingly.
-            - This approach ensures that exactly the specified number of receipts is returned (when available),
-            even if it requires multiple query operations.
+            - For each query iteration, if a limit is provided, the method
+                dynamically calculates the remaining number of items needed and
+                adjusts the query's ``Limit`` parameter accordingly.
+            - This approach ensures that exactly the specified number of
+                receipts is returned (when available), even if it requires
+                multiple query operations.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -691,16 +717,20 @@ class _Receipt(DynamoClientProtocol):
     ]:
         """List receipts with their words and word labels using GSI2.
 
-        This method queries the database for all receipt items using GSI2 (where GSI2PK = 'RECEIPT')
-        and returns a dictionary containing the receipt details, including associated words and word labels.
+        This method queries the database for all receipt items using GSI2
+        (where GSI2PK = 'RECEIPT') and returns a dictionary containing the
+        receipt details, including associated words and word labels.
 
         Args:
-            limit (Optional[int], optional): The maximum number of receipt details to return. Defaults to None.
-            last_evaluated_key (Optional[dict], optional): The key to start the query from for pagination. Defaults to None.
+            limit (Optional[int], optional): The maximum number of receipt
+                details to return. Defaults to ``None``.
+            last_evaluated_key (Optional[dict], optional): The key to start the
+                query from for pagination. Defaults to ``None``.
 
         Returns:
             Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
-                - Dictionary mapping "<image_id>_<receipt_id>" to a dictionary with:
+                - Dictionary mapping
+                    "<image_id>_<receipt_id>" to a dictionary with:
                     - "receipt": The Receipt object
                     - "words": List of ReceiptWord objects
                     - "word_labels": List of ReceiptWordLabel objects
@@ -808,7 +838,8 @@ class _Receipt(DynamoClientProtocol):
                 - List of receipt words sorted by line_id and word_id
 
         Raises:
-            ValueError: When input parameters are invalid or if the receipt doesn't exist
+            ValueError: When input parameters are invalid or if the receipt
+                does not exist.
             Exception: For underlying DynamoDB errors
         """
         if image_id is None:
@@ -826,7 +857,9 @@ class _Receipt(DynamoClientProtocol):
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSI3",
-                KeyConditionExpression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+                KeyConditionExpression=(
+                    "GSI3PK = :pk AND begins_with(GSI3SK, :sk)"
+                ),
                 ExpressionAttributeValues={
                     ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
@@ -851,7 +884,10 @@ class _Receipt(DynamoClientProtocol):
 
             if not receipt:
                 raise ValueError(
-                    f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                    (
+                        f"Receipt with ID {receipt_id} and Image ID "
+                        f"'{image_id}' does not exist"
+                    )
                 )
 
             # Sort words by line_id and word_id
