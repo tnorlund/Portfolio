@@ -60,7 +60,7 @@ Here's the file content:
 
 ## File-Specific Prompts
 
-### 1. data/base_operations.py (113 line-too-long errors)
+### 1. data/base_operations.py (113 line-too-long errors) - ✅ FIXED
 
 ```
 Please fix all 113 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
@@ -80,7 +80,7 @@ Only return the fixed code, no explanations needed.
 File: receipt_dynamo/data/base_operations.py
 ```
 
-### 2. data/_receipt_chatgpt_validation.py (54 line-too-long errors)
+### 2. data/_receipt_chatgpt_validation.py (54 line-too-long errors) - ✅ FIXED
 
 ```
 Please fix all 54 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
@@ -99,7 +99,7 @@ Only return the fixed code, no explanations needed.
 File: receipt_dynamo/data/_receipt_chatgpt_validation.py
 ```
 
-### 3. data/_gpt.py (42 line-too-long errors)
+### 3. data/_gpt.py (42 line-too-long errors) - ✅ FIXED
 
 ```
 Please fix all 42 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
@@ -118,7 +118,7 @@ Only return the fixed code, no explanations needed.
 File: receipt_dynamo/data/_gpt.py
 ```
 
-### 4. entities/receipt_line_item_analysis.py (32 line-too-long errors)
+### 4. entities/receipt_line_item_analysis.py (32 line-too-long errors) - ✅ FIXED
 
 ```
 Please fix all 32 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
@@ -137,7 +137,7 @@ Only return the fixed code, no explanations needed.
 File: receipt_dynamo/entities/receipt_line_item_analysis.py
 ```
 
-### 5. data/_instance.py (32 line-too-long errors)
+### 5. data/_instance.py (32 line-too-long errors) - ✅ FIXED
 
 ```
 Please fix all 32 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
@@ -272,6 +272,310 @@ Guidelines:
 Only return the fixed code, no explanations needed.
 
 File: receipt_dynamo/data/_queue.py
+```
+
+### 10. entities/receipt_metadata.py (28 line-too-long errors)
+
+```
+Please fix all 28 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file contains receipt metadata entity definitions with complex nested structures.
+
+Guidelines:
+1. Break long dataclass field definitions at appropriate points
+2. For nested dictionary type hints, use multi-line formatting
+3. Long validation messages should use implicit string concatenation
+4. Method signatures with multiple type parameters should break cleanly
+5. Complex property return types should be on separate lines
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt_metadata.py
+```
+
+### 11. entities/receipt_letter.py (26 line-too-long errors)
+
+```
+Please fix all 26 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines receipt letter entities with coordinate and text data.
+
+Guidelines:
+1. Break long coordinate calculations across multiple lines
+2. For bounding box representations, use multi-line formatting
+3. Long string representations should use proper concatenation
+4. Method signatures with coordinate parameters should break after commas
+5. Complex type annotations for geometric data should be split
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt_letter.py
+```
+
+### 12. data/_batch_summary.py (26 line-too-long errors)
+
+```
+Please fix all 26 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages batch summary operations with aggregation and statistics.
+
+Guidelines:
+1. Break long aggregation expressions at operator boundaries
+2. For statistical calculations, use intermediate variables if needed
+3. Long DynamoDB update expressions should be multi-line
+4. Method names describing batch operations should break at underscores
+5. Complex return type annotations should use line breaks
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_batch_summary.py
+```
+
+### 13. data/_receipt_structure_analysis.py (25 line-too-long errors)
+
+```
+Please fix all 25 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles receipt structure analysis with complex hierarchical data.
+
+Guidelines:
+1. Break long analysis method names at logical boundaries
+2. For nested structure representations, use proper indentation
+3. Long validation logic should use parentheses for grouping
+4. Complex query conditions should break at AND/OR operators
+5. Type hints for hierarchical data should be multi-line
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_receipt_structure_analysis.py
+```
+
+### 14. data/_embedding_batch_result.py (21 line-too-long errors)
+
+```
+Please fix all 21 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages embedding batch results with vector data operations.
+
+Guidelines:
+1. Break long vector operation expressions appropriately
+2. For embedding dimension specifications, use clear line breaks
+3. Long batch processing method names should break at underscores
+4. Complex numpy/tensor operations should use intermediate variables
+5. Error messages about dimension mismatches should be multi-line
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_embedding_batch_result.py
+```
+
+### 15. entities/receipt_line.py (20 line-too-long errors)
+
+```
+Please fix all 20 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines receipt line entities with text and position data.
+
+Guidelines:
+1. Break long line position calculations across multiple lines
+2. For text concatenation operations, use proper line breaks
+3. Bounding box calculations should be clearly formatted
+4. Method signatures with position parameters should break cleanly
+5. String representations of lines should use proper formatting
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt_line.py
+```
+
+### 16. data/_receipt_word.py (20 line-too-long errors)
+
+```
+Please fix all 20 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages receipt word data with position and label information.
+
+Guidelines:
+1. Break long word position queries at logical points
+2. For label association methods, use clear parameter breaks
+3. Complex filter conditions should use parentheses
+4. Long error messages about word positions should be multi-line
+5. Batch operations on words should have clear formatting
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_receipt_word.py
+```
+
+### 17. data/_receipt_metadata.py (18 line-too-long errors)
+
+```
+Please fix all 18 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles receipt metadata operations with nested attribute updates.
+
+Guidelines:
+1. Break long metadata attribute paths at dot boundaries
+2. For nested update expressions, use proper indentation
+3. Complex metadata validation should use multi-line conditions
+4. Long attribute names in queries should break appropriately
+5. Error messages about metadata structure should be clear
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_receipt_metadata.py
+```
+
+### 18. entities/word.py (17 line-too-long errors)
+
+```
+Please fix all 17 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines word entities with character-level information.
+
+Guidelines:
+1. Break long character position lists appropriately
+2. For word boundary calculations, use clear formatting
+3. Type annotations for character data should be multi-line
+4. Validation messages about word structure should break cleanly
+5. String representations should use proper concatenation
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/word.py
+```
+
+### 19. entities/receipt.py (17 line-too-long errors)
+
+```
+Please fix all 17 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines the main receipt entity with relationships to other entities.
+
+Guidelines:
+1. Break long relationship definitions across lines
+2. For aggregate property calculations, use clear formatting
+3. Complex validation logic should use parentheses
+4. Method signatures with multiple entity parameters should break
+5. String representations of receipts should be well-formatted
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt.py
+```
+
+### 20. entities/receipt_word_label.py (17 line-too-long errors)
+
+```
+Please fix all 17 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines receipt word label entities with classification data.
+
+Guidelines:
+1. Break long label category lists across lines
+2. For confidence score calculations, use clear formatting
+3. Validation messages about label constraints should be multi-line
+4. Complex type hints for label data should break appropriately
+5. String representations should show label hierarchy clearly
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt_word_label.py
+```
+
+### 21. data/_job.py (17 line-too-long errors)
+
+```
+Please fix all 17 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages job data with status tracking and dependencies.
+
+Guidelines:
+1. Break long job status transition logic at appropriate points
+2. For dependency chain queries, use clear formatting
+3. Complex job filtering conditions should use parentheses
+4. Long error messages about job states should be multi-line
+5. Timestamp formatting in queries should break cleanly
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_job.py
+```
+
+### 22. entities/job_dependency.py (16 line-too-long errors)
+
+```
+Please fix all 16 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines job dependency relationships and validation.
+
+Guidelines:
+1. Break long dependency chain representations across lines
+2. For circular dependency checks, use clear formatting
+3. Complex validation messages should be multi-line
+4. Type annotations for dependency graphs should break appropriately
+5. String representations of dependencies should be hierarchical
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/job_dependency.py
+```
+
+### 23. data/_receipt_line_item_analysis.py (16 line-too-long errors)
+
+```
+Please fix all 16 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles receipt line item analysis with price and quantity extraction.
+
+Guidelines:
+1. Break long analysis method names at logical boundaries
+2. For price calculation expressions, use clear formatting
+3. Complex regex patterns should be split with comments
+4. Long validation messages about item formats should be multi-line
+5. Aggregate calculations should use intermediate variables
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_receipt_line_item_analysis.py
+```
+
+### 24. data/_job_metric.py (16 line-too-long errors)
+
+```
+Please fix all 16 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages job metrics with performance and resource tracking.
+
+Guidelines:
+1. Break long metric aggregation queries at operator boundaries
+2. For statistical calculations, use clear variable names
+3. Complex metric filtering should use parentheses
+4. Long metric names in updates should break appropriately
+5. Time series queries should have clear date formatting
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_job_metric.py
+```
+
+### 25. data/_job_checkpoint.py (16 line-too-long errors)
+
+```
+Please fix all 16 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles job checkpoint operations for resumable processing.
+
+Guidelines:
+1. Break long checkpoint state serialization at logical points
+2. For checkpoint comparison logic, use clear formatting
+3. Complex state validation should use multi-line conditions
+4. Long error messages about checkpoint conflicts should break
+5. Timestamp and version handling should be clearly formatted
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_job_checkpoint.py
 ```
 
 ## Additional Prompts Template
