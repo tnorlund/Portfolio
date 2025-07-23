@@ -84,11 +84,22 @@ class _Job(
         Gets a job from the database.
     get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
         Gets a job with all its status updates.
-    list_jobs(limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs(
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[Job], dict | None]
         Lists all jobs from the database.
-    list_jobs_by_status(status: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs_by_status(
+        status: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[Job], dict | None]
         Lists jobs filtered by status.
-    list_jobs_by_user(user_id: str, limit: Optional[int] = None, last_evaluated_key: dict | None = None) -> tuple[list[Job], dict | None]
+    list_jobs_by_user(
+        user_id: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[Job], dict | None]
         Lists jobs created by a specific user.
     """
 
@@ -144,9 +155,9 @@ class _Job(
         Updates a list of jobs in the database using transactions.
         Each job update is conditional upon the job already existing.
 
-        Since DynamoDB's transact_write_items supports a maximum of 25 operations per call,
-        the list of jobs is split into chunks of 25 items or less. Each chunk is updated
-        in a separate transaction.
+        Since DynamoDB's transact_write_items supports a maximum of 25
+        operations per call, the list of jobs is split into chunks of 25 items
+        or less. Each chunk is updated in a separate transaction.
 
         Args:
             jobs (list[Job]): The jobs to update in the database.
@@ -220,7 +231,8 @@ class _Job(
             Job: The job object.
 
         Raises:
-            ValueError: If input parameters are invalid or if the job does not exist.
+            ValueError: If input parameters are invalid or if the job does not
+                exist.
             Exception: For underlying DynamoDB errors.
         """
         if job_id is None:
@@ -249,7 +261,8 @@ class _Job(
             job_id (str): The ID of the job to get
 
         Returns:
-            Tuple[Job, List[JobStatus]]: A tuple containing the job and a list of its status updates
+            Tuple[Job, List[JobStatus]]: A tuple containing the job and a list
+                of its status updates
         """
         if job_id is None:
             raise ValueError("Job ID is required and cannot be None.")
@@ -288,13 +301,17 @@ class _Job(
         Retrieve job records from the database with support for pagination.
 
         Parameters:
-            limit (int, optional): The maximum number of job items to return. If None, all jobs are fetched.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            limit (int, optional): The maximum number of job items to return.
+                If None, all jobs are fetched.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
-                - A list of Job objects, containing up to 'limit' items if specified.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A list of Job objects, containing up to 'limit' items if
+                    specified.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -362,12 +379,14 @@ class _Job(
         Parameters:
             status (str): The status to filter by.
             limit (int, optional): The maximum number of job items to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
                 - A list of Job objects with the specified status.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -397,7 +416,8 @@ class _Job(
                 for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
                 raise ValueError(
-                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK"
+                    " keys"
                 )
 
         jobs: List[Job] = []
@@ -457,12 +477,14 @@ class _Job(
         Parameters:
             user_id (str): The ID of the user who created the jobs.
             limit (int, optional): The maximum number of job items to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
                 - A list of Job objects created by the specified user.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -484,7 +506,8 @@ class _Job(
                 for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise ValueError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK"
+                    " keys"
                 )
 
         jobs: List[Job] = []
