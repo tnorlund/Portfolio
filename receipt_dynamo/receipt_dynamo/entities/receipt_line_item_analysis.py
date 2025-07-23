@@ -1,3 +1,5 @@
+"""Receipt line item analysis entity definitions."""
+
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
@@ -9,16 +11,19 @@ class ReceiptLineItemAnalysis:
     """
     Represents a receipt line item analysis stored in a DynamoDB table.
 
-    This class encapsulates the results of line item analysis for a receipt,
-    including individual line items identified, financial totals (subtotal, tax, total),
-    and detailed reasoning explaining how the analysis was performed.
+    This class encapsulates the results of line item analysis for a receipt.
+    It includes individual line items identified, financial totals
+    (subtotal, tax, total), and detailed reasoning explaining how the
+    analysis was performed.
 
     Attributes:
         image_id (str): UUID identifying the image the receipt is from.
         receipt_id (str): UUID identifying the receipt.
-        timestamp_added (datetime or str): The timestamp when the analysis was added.
+        timestamp_added (datetime or str):
+            The timestamp when the analysis was added.
         items (List[Dict]): List of line items identified in the receipt.
-        reasoning (str): Detailed reasoning explaining how the analysis was performed.
+        reasoning (str):
+            Detailed reasoning explaining how the analysis was performed.
         subtotal (Decimal, optional): The subtotal amount from the receipt.
         tax (Decimal, optional): The tax amount from the receipt.
         total (Decimal, optional): The total amount from the receipt.
@@ -29,8 +34,10 @@ class ReceiptLineItemAnalysis:
         discrepancies (List[str]): Any discrepancies found during analysis.
         version (str): Version of the analysis.
         metadata (Dict): Additional metadata about the analysis.
-        word_labels (Dict): Dictionary mapping (line_id, word_id) tuples to label information.
-        timestamp_updated (Optional[str]): The timestamp when the analysis was last updated.
+        word_labels (Dict):
+            Mapping of (line_id, word_id) tuples to label information.
+        timestamp_updated (Optional[str]):
+            The timestamp when the analysis was last updated.
     """
 
     def __init__(
@@ -58,22 +65,35 @@ class ReceiptLineItemAnalysis:
         Args:
             image_id (str): UUID identifying the image the receipt is from.
             receipt_id (int): Identifier for the receipt.
-            timestamp_added (Union[datetime, str]): The timestamp when the analysis was added.
-            items (List[Dict]): List of line items identified in the receipt.
-            reasoning (str): Detailed reasoning explaining how the analysis was performed.
+            timestamp_added (Union[datetime, str]):
+                The timestamp when the analysis was added.
+            items (List[Dict]):
+                List of line items identified in the receipt.
+            reasoning (str):
+                Detailed reasoning explaining how the analysis was performed.
             version (str): Version of the analysis.
-            subtotal (Optional[Union[Decimal, str]], optional): The subtotal amount. Defaults to None.
-            tax (Optional[Union[Decimal, str]], optional): The tax amount. Defaults to None.
-            total (Optional[Union[Decimal, str]], optional): The total amount. Defaults to None.
-            fees (Optional[Union[Decimal, str]], optional): Any fees on the receipt. Defaults to None.
-            discounts (Optional[Union[Decimal, str]], optional): Any discounts on the receipt. Defaults to None.
-            tips (Optional[Union[Decimal, str]], optional): Any tips on the receipt. Defaults to None.
-            total_found (Optional[int], optional): The number of line items found. Defaults to None.
-            discrepancies (Optional[List[str]], optional): Any discrepancies found during analysis. Defaults to None.
-            metadata (Optional[Dict], optional): Additional metadata about the analysis. Defaults to None.
+            subtotal (Optional[Union[Decimal, str]], optional):
+                The subtotal amount. Defaults to None.
+            tax (Optional[Union[Decimal, str]], optional):
+                The tax amount. Defaults to None.
+            total (Optional[Union[Decimal, str]], optional):
+                The total amount. Defaults to None.
+            fees (Optional[Union[Decimal, str]], optional):
+                Any fees on the receipt. Defaults to None.
+            discounts (Optional[Union[Decimal, str]], optional):
+                Any discounts on the receipt. Defaults to None.
+            tips (Optional[Union[Decimal, str]], optional):
+                Any tips on the receipt. Defaults to None.
+            total_found (Optional[int], optional):
+                The number of line items found. Defaults to None.
+            discrepancies (Optional[List[str]], optional):
+                Any discrepancies found during analysis. Defaults to None.
+            metadata (Optional[Dict], optional):
+                Additional metadata about the analysis. Defaults to None.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError:
+                If any parameter is of an invalid type or has an invalid value.
         """
         assert_valid_uuid(image_id)
         self.image_id = image_id
@@ -220,7 +240,9 @@ class ReceiptLineItemAnalysis:
         """Converts the ReceiptLineItemAnalysis object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptLineItemAnalysis object as a DynamoDB item.
+            dict:
+                A dictionary representing the ReceiptLineItemAnalysis object as
+                a DynamoDB item.
         """
         item: Dict[str, Any] = {
             **self.key,
@@ -428,7 +450,8 @@ class ReceiptLineItemAnalysis:
 
         Args:
             event_type (str): The type of event.
-            details (Dict, optional): Additional details about the event. Defaults to None.
+            details (Dict, optional):
+                Additional details about the event. Defaults to None.
         """
         if "processing_history" not in self.metadata:
             self.metadata["processing_history"] = []
@@ -444,10 +467,13 @@ class ReceiptLineItemAnalysis:
         self.metadata["processing_history"].append(event)
 
     def generate_reasoning(self) -> str:
-        """Generate a comprehensive reasoning explanation for the line item analysis.
+        """Generate a comprehensive reasoning explanation for the line item
+        analysis.
 
         Returns:
-            str: A detailed explanation of how items were identified and calculations performed.
+            str:
+                A detailed explanation of how items were identified and
+                calculations performed.
         """
         reasoning_parts = [
             f"Analyzed {self.total_found} line items from the receipt."
@@ -486,9 +512,11 @@ class ReceiptLineItemAnalysis:
             if item.get("reasoning")
         ]
         if item_reasons:
-            # Just include a summary count to avoid extremely long reasoning strings
+            # Just include a summary count to avoid extremely long reasoning
+            # strings
             reasoning_parts.append(
-                f"Detailed reasoning provided for {len(item_reasons)} individual line items."
+                "Detailed reasoning provided for "
+                f"{len(item_reasons)} individual line items."
             )
 
         return " ".join(reasoning_parts)
@@ -511,10 +539,11 @@ class ReceiptLineItemAnalysis:
         return None
 
     def __repr__(self) -> str:
-        """Returns a string representation of the ReceiptLineItemAnalysis object.
+        """Return a string representation of the
+        :class:`ReceiptLineItemAnalysis` object.
 
         Returns:
-            str: A string representation of the ReceiptLineItemAnalysis object.
+            str: A string representation of the object.
         """
         return (
             "ReceiptLineItemAnalysis("
@@ -532,10 +561,11 @@ class ReceiptLineItemAnalysis:
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the ReceiptLineItemAnalysis object's attributes.
+        """Return an iterator over the object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the ReceiptLineItemAnalysis object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]:
+                An iterator over attribute name/value pairs.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -556,16 +586,18 @@ class ReceiptLineItemAnalysis:
         yield "word_labels", self.word_labels
 
     def __eq__(self, other) -> bool:
-        """Determines whether two ReceiptLineItemAnalysis objects are equal.
+        """Determine whether two objects are equal.
 
         Args:
-            other (ReceiptLineItemAnalysis): The other ReceiptLineItemAnalysis object to compare.
+            other (ReceiptLineItemAnalysis):
+                The other :class:`ReceiptLineItemAnalysis` to compare.
 
         Returns:
-            bool: True if the ReceiptLineItemAnalysis objects are equal, False otherwise.
+            bool: True if the objects are equal, False otherwise.
 
         Note:
-            If other is not an instance of ReceiptLineItemAnalysis, False is returned.
+            If ``other`` is not an instance of ``ReceiptLineItemAnalysis``,
+            ``False`` is returned.
         """
         if not isinstance(other, ReceiptLineItemAnalysis):
             return False
@@ -629,7 +661,9 @@ def item_to_receipt_line_item_analysis(
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptLineItemAnalysis: The ReceiptLineItemAnalysis object represented by the DynamoDB item.
+        ReceiptLineItemAnalysis:
+            The ReceiptLineItemAnalysis object
+            represented by the DynamoDB item.
 
     Raises:
         ValueError: When the item format is invalid.
@@ -648,7 +682,8 @@ def item_to_receipt_line_item_analysis(
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            "Invalid item format\nmissing keys: "
+            f"{missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
         # Extract primary identifiers
@@ -784,7 +819,8 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
 
 
 def _convert_dynamo_to_dict(dynamo_dict: Dict) -> Dict:
-    """Recursively converts a DynamoDB format dictionary to a Python dictionary.
+    """Recursively convert a DynamoDB format dictionary to a Python
+    dictionary.
 
     Args:
         dynamo_dict (Dict): The DynamoDB format dictionary.
