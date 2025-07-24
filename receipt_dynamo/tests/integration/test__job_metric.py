@@ -122,7 +122,7 @@ def test_addJobMetric_success(
 def test_addJobMetric_raises_value_error(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is None"""
     with pytest.raises(
-        ValueError, match="JobMetric parameter is required and cannot be None."
+        ValueError, match="Job_metric parameter is required and cannot be None."
     ):
         job_metric_dynamo.add_job_metric(None)
 
@@ -135,7 +135,7 @@ def test_addJobMetric_raises_value_error_not_instance(job_metric_dynamo):
     """
     with pytest.raises(
         ValueError,
-        match="job_metric must be an instance of the JobMetric class.",
+        match="Job_metric must be an instance of the JobMetric class.",
     ):
         job_metric_dynamo.add_job_metric("not a job metric")
 
@@ -156,9 +156,7 @@ def test_addJobMetric_raises_conditional_check_failed(
     # Try to add it again
     with pytest.raises(
         ValueError,
-        match=f"JobMetric with name {sample_job_metric.metric_name} and "
-        f"timestamp {sample_job_metric.timestamp} for job "
-        f"{sample_job_metric.job_id} already exists",
+        match="Entity already exists: JobMetric",
     ):
         job_metric_dynamo.add_job_metric(sample_job_metric)
 
@@ -183,7 +181,7 @@ def test_addJobMetric_raises_resource_not_found(
     )
 
     with pytest.raises(
-        Exception, match="Could not add job metric to DynamoDB"
+        Exception, match="Table not found for operation add_job_metric"
     ):
         job_metric_dynamo.add_job_metric(sample_job_metric)
     mock_put.assert_called_once()
@@ -722,7 +720,7 @@ def test_listJobMetrics_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list job metrics from the database"
+        Exception, match="Table not found for operation list_job_metrics"
     ):
         job_metric_dynamo.list_job_metrics(sample_job.job_id)
     mock_query.assert_called_once()
@@ -750,7 +748,7 @@ def test_getMetricsByName_raises_client_error(job_metric_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not query metrics by name from the database"
+        Exception, match="Table not found for operation get_metrics_by_name"
     ):
         job_metric_dynamo.get_metrics_by_name("loss")
     mock_query.assert_called_once()
