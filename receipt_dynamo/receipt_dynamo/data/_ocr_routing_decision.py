@@ -42,7 +42,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
         try:
             self._client.put_item(
@@ -53,7 +54,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' already exists"
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -82,7 +84,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             for decision in ocr_routing_decisions
         ):
             raise ValueError(
-                "All items in ocr_routing_decisions must be instances of OCRRoutingDecision"
+                "All items in ocr_routing_decisions must be instances of "
+                "OCRRoutingDecision"
             )
 
         for i in range(0, len(ocr_routing_decisions), 25):
@@ -124,7 +127,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
 
         try:
@@ -136,7 +140,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' not found"
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' and Job ID "
+                    f"'{ocr_routing_decision.job_id}' not found"
                 ) from e
             else:
                 raise OperationError(
@@ -168,13 +174,15 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                 return item_to_ocr_routing_decision(response["Item"])
             else:
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' and Job ID '{job_id}' not found"
+                    f"OCR routing decision for Image ID '{image_id}' "
+                    f"and Job ID '{job_id}' not found"
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' and Job ID '{job_id}' not found"
+                    f"OCR routing decision for Image ID '{image_id}' "
+                    f"and Job ID '{job_id}' not found"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -194,7 +202,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
         try:
             self._client.delete_item(
@@ -209,7 +218,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' does not exist."
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' and Job ID "
+                    f"'{ocr_routing_decision.job_id}' does not exist."
                 ) from e
             else:
                 raise OperationError(
@@ -228,7 +239,8 @@ class _OCRRoutingDecision(DynamoClientProtocol):
             for decision in ocr_routing_decisions
         ):
             raise ValueError(
-                "All ocr_routing_decisions must be instances of OCRRoutingDecision"
+                "All ocr_routing_decisions must be instances of "
+                "OCRRoutingDecision"
             )
         for i in range(0, len(ocr_routing_decisions), 25):
             chunk = ocr_routing_decisions[i : i + 25]
@@ -239,7 +251,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
                             Key=item.key,
-                            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                            ConditionExpression=(
+                                "attribute_exists(PK) AND attribute_exists(SK)"
+                            ),
                         )
                     )
                 )

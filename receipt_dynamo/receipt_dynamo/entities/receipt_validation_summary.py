@@ -33,11 +33,13 @@ class ReceiptValidationSummary:
             overall_status: The overall validation status
             overall_reasoning: The overall reasoning for the validation
             field_summary: Dictionary mapping field names to validation results
-            validation_timestamp: When the validation was performed (ISO format)
+            validation_timestamp: When the validation was performed
+                (ISO format)
             version: The version of the validation
             metadata: Additional metadata including:
                      - processing_metrics: Metrics related to the processing
-                     - source_info: Information about the source of the validation
+                     - source_info: Information about the source of the
+                       validation
                      - processing_history: History of processing events
             timestamp_added: When the summary was first created
             timestamp_updated: When the summary was last updated
@@ -348,7 +350,8 @@ class ReceiptValidationSummary:
 
         Args:
             event_type (str): The type of event.
-            details (Dict, optional): Additional details about the event. Defaults to None.
+            details (Dict, optional): Additional details about the event.
+                Defaults to None.
         """
         if "processing_history" not in self.metadata:
             self.metadata["processing_history"] = []
@@ -374,10 +377,12 @@ def item_to_receipt_validation_summary(
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptValidationSummary: The ReceiptValidationSummary object represented by the DynamoDB item.
+        ReceiptValidationSummary: The ReceiptValidationSummary object
+            represented by the DynamoDB item.
 
     Raises:
-        ValueError: When the item format is invalid or required keys are missing.
+        ValueError: When the item format is invalid or required keys are
+            missing.
     """
     required_keys = {
         "PK",

@@ -48,7 +48,9 @@ class _OCRJob(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=ocr_job.to_item(),
-                ConditionExpression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -75,7 +77,8 @@ class _OCRJob(DynamoClientProtocol):
         """Adds a list of OCR jobs to the database
 
         Args:
-            ocr_jobs (list[OCRJob]): The list of OCR jobs to add to the database
+            ocr_jobs (list[OCRJob]): The list of OCR jobs to add to the
+                database
 
         Raises:
             ValueError: When a OCR job with the same ID already exists
@@ -144,7 +147,9 @@ class _OCRJob(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=ocr_job.to_item(),
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -190,7 +195,8 @@ class _OCRJob(DynamoClientProtocol):
                 return item_to_ocr_job(response["Item"])
             else:
                 raise ValueError(
-                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' does not exist."
+                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' "
+                    "does not exist."
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -231,7 +237,8 @@ class _OCRJob(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR job for Image ID '{ocr_job.image_id}' and Job ID '{ocr_job.job_id}' does not exist."
+                    f"OCR job for Image ID '{ocr_job.image_id}' and "
+                    f"Job ID '{ocr_job.job_id}' does not exist."
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise RuntimeError(
@@ -267,7 +274,9 @@ class _OCRJob(DynamoClientProtocol):
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
                             Key=item.key,
-                            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                            ConditionExpression=(
+                                "attribute_exists(PK) AND attribute_exists(SK)"
+                            ),
                         )
                     )
                 )
@@ -296,11 +305,14 @@ class _OCRJob(DynamoClientProtocol):
         """Lists all OCR jobs from the database
 
         Args:
-            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            limit (int, optional): The maximum number of OCR jobs to return.
+                Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key
+                from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR
+                jobs and the last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -369,11 +381,14 @@ class _OCRJob(DynamoClientProtocol):
 
         Args:
             status (OCRStatus): The status of the OCR jobs to get
-            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            limit (int, optional): The maximum number of OCR jobs to return.
+                Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key
+                from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR
+                jobs and the last evaluated key
         """
         if status is None:
             raise ValueError("Status is required and cannot be None.")

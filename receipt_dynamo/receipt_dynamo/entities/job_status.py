@@ -8,14 +8,16 @@ class JobStatus:
     """
     Represents a status update for a job stored in a DynamoDB table.
 
-    This class encapsulates job status information such as the current status,
-    progress, message, and update timestamp. It is designed to support operations
+    This class encapsulates job status information such as the current
+    status, progress, message, and update timestamp. It is designed to support
+    operations
     such as generating DynamoDB keys and converting job status data to a
     DynamoDB-compatible item.
 
     Attributes:
         job_id (str): UUID identifying the job.
-        status (str): The status of the job (pending, running, succeeded, failed, cancelled).
+        status (str): The status of the job (pending, running, succeeded,
+            failed, cancelled).
         updated_at (datetime): The timestamp when the status was updated.
         progress (float): The progress of the job as a percentage (0-100).
         message (str): A message describing the status update.
@@ -39,13 +41,17 @@ class JobStatus:
             job_id (str): UUID identifying the job.
             status (str): The status of the job.
             updated_at (datetime): The timestamp when the status was updated.
-            progress (float, optional): The progress of the job as a percentage (0-100).
+            progress (float, optional): The progress of the job as a
+                percentage (0-100).
             message (str, optional): A message describing the status update.
-            updated_by (str, optional): The user or system that updated the status.
-            instance_id (str, optional): The ID of the instance that updated the status.
+            updated_by (str, optional): The user or system that updated the
+                status.
+            instance_id (str, optional): The ID of the instance that
+                updated the status.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -123,7 +129,8 @@ class JobStatus:
         """Converts the JobStatus object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobStatus object as a DynamoDB item.
+            dict: A dictionary representing the JobStatus object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -169,7 +176,8 @@ class JobStatus:
         """Returns an iterator over the JobStatus object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobStatus object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobStatus object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "status", self.status
@@ -245,7 +253,8 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

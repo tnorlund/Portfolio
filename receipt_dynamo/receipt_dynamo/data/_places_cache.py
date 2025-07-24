@@ -56,13 +56,15 @@ class _PlacesCache(DynamoClientProtocol):
 
     def add_places_cache(self, item: PlacesCache):
         """
-        Adds a PlacesCache to the database with a conditional check that it does not already exist.
+        Adds a PlacesCache to the database with a conditional check that it
+        does not already exist.
 
         Args:
             item (PlacesCache): The PlacesCache object to add.
 
         Raises:
-            ValueError: If a PlacesCache with the same PK/SK already exists or if invalid parameters.
+            ValueError: If a PlacesCache with the same PK/SK already exists
+                or if invalid parameters.
         """
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
@@ -136,7 +138,8 @@ class _PlacesCache(DynamoClientProtocol):
 
     def increment_query_count(self, item: PlacesCache) -> PlacesCache:
         """
-        Increments the query count for a PlacesCache item and updates its last_updated timestamp.
+        Increments the query count for a PlacesCache item and updates its
+        last_updated timestamp.
         If the item doesn't exist, it will be created with a query count of 1.
 
         Args:
@@ -160,7 +163,10 @@ class _PlacesCache(DynamoClientProtocol):
             response = self._client.update_item(
                 TableName=self.table_name,
                 Key=item.key,
-                UpdateExpression="SET query_count = if_not_exists(query_count, :zero) + :inc, last_updated = :now",
+                UpdateExpression=(
+                    "SET query_count = if_not_exists(query_count, :zero) "
+                    "+ :inc, last_updated = :now"
+                ),
                 ExpressionAttributeValues={
                     ":inc": {"N": "1"},
                     ":zero": {"N": "0"},
@@ -245,7 +251,8 @@ class _PlacesCache(DynamoClientProtocol):
             seen_keys = set()
             deduped_items = []
             for tx in transact_items:
-                # Type ignore needed because mypy has trouble with deeply nested TypedDicts
+                # Type ignore needed because mypy has trouble with deeply
+                # nested TypedDicts
                 key = tx["Delete"]["Key"]  # type: ignore[index]
                 pk = key["PK"]["S"]  # type: ignore[index,call-overload]
                 sk = key["SK"]["S"]  # type: ignore[index,call-overload]
@@ -260,11 +267,13 @@ class _PlacesCache(DynamoClientProtocol):
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
                     raise ValueError(
-                        "places_cache_items contains invalid attributes or values"
+                        "places_cache_items contains invalid attributes "
+                        "or values"
                     ) from e
                 elif error_code == "ValidationException":
                     raise ValueError(
-                        "places_cache_items contains invalid attributes or values"
+                        "places_cache_items contains invalid attributes "
+                        "or values"
                     ) from e
                 elif error_code == "InternalServerError":
                     raise ValueError("internal server error") from e
@@ -288,7 +297,8 @@ class _PlacesCache(DynamoClientProtocol):
             search_value (str): The search value.
 
         Returns:
-            Optional[PlacesCache]: The PlacesCache object if found, None otherwise.
+            Optional[PlacesCache]: The PlacesCache object if found, None
+                otherwise.
         """
         temp_cache = PlacesCache(
             search_type=search_type,  # type: ignore[arg-type]
@@ -319,13 +329,16 @@ class _PlacesCache(DynamoClientProtocol):
             place_id (str): The Google Places place_id.
 
         Returns:
-            Optional[PlacesCache]: The PlacesCache object if found, None otherwise.
+            Optional[PlacesCache]: The PlacesCache object if found, None
+                otherwise.
         """
         try:
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSI1",
-                KeyConditionExpression="#gsi1pk = :gsi1pk AND #gsi1sk = :gsi1sk",
+                KeyConditionExpression=(
+                    "#gsi1pk = :gsi1pk AND #gsi1sk = :gsi1sk"
+                ),
                 ExpressionAttributeNames={
                     "#gsi1pk": "GSI1PK",
                     "#gsi1sk": "GSI1SK",
@@ -354,10 +367,12 @@ class _PlacesCache(DynamoClientProtocol):
 
         Args:
             limit (Optional[int]): Maximum number of items to return.
-            last_evaluated_key (Optional[Dict]): Key to continue from a previous query.
+            last_evaluated_key (Optional[Dict]): Key to continue from a
+                previous query.
 
         Returns:
-            Tuple[List[PlacesCache], Optional[Dict]]: List of items and last evaluated key.
+            Tuple[List[PlacesCache], Optional[Dict]]: List of items and last
+                evaluated key.
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
@@ -432,7 +447,8 @@ class _PlacesCache(DynamoClientProtocol):
         Deletes cache items that are older than the specified number of days.
 
         Args:
-            days_old (int): Number of days after which items should be considered old.
+            days_old (int): Number of days after which items should be
+                considered old.
         """
         from datetime import datetime, timedelta, timezone
 

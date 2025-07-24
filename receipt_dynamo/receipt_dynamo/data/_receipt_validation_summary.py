@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_validation_summary import ReceiptValidationSummary
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
+)
 from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -158,7 +160,9 @@ class _ReceiptValidationSummary(
             Key={
                 "PK": {"S": f"IMAGE#{summary.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
+                    "S": (
+                        f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
+                    )
                 },
             },
         )
@@ -183,7 +187,8 @@ class _ReceiptValidationSummary(
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -241,7 +246,9 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -321,7 +328,9 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise ValueError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,

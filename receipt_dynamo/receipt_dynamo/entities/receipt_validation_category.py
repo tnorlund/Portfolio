@@ -76,7 +76,10 @@ class ReceiptValidationCategory:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
 
@@ -86,7 +89,10 @@ class ReceiptValidationCategory:
         return {
             "GSI1PK": {"S": f"VALIDATION_STATUS#{self.status}"},
             "GSI1SK": {
-                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}"
+                "S": (
+                    f"VALIDATION#{self.validation_timestamp}#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
 
@@ -234,7 +240,8 @@ def dynamo_to_python(dynamo_value):
             like S, N, BOOL, M, L, etc.
 
     Returns:
-        The equivalent Python native value (str, int, float, bool, dict, list, None)
+        The equivalent Python native value (str, int, float, bool, dict,
+        list, None)
     """
     if not dynamo_value or not isinstance(dynamo_value, dict):
         return dynamo_value
@@ -352,7 +359,8 @@ def item_to_receipt_validation_category(
     if "field_category" in item:
         field_category = item["field_category"]["S"]
     else:
-        # Try to extract from SK if it follows a pattern like CATEGORY#<field_name>#<category>
+        # Try to extract from SK if it follows a pattern like
+        # CATEGORY#<field_name>#<category>
         field_category = None
         for i, part in enumerate(sk_parts):
             if part == "CATEGORY" and i + 2 < len(sk_parts):

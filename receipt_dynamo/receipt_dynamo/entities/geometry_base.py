@@ -364,10 +364,13 @@ class GeometryMixin:
         flip_y: bool = False,
     ):
         """
-        Vision-specific inverse perspective transform from warped space back to original space.
+        Vision-specific inverse perspective transform from warped space back
+        to original space.
 
-        This implementation uses the inverse perspective algorithm optimized for Vision
-        coordinate systems (bottom-left origin). Receipt classes should override this
+        This implementation uses the inverse perspective algorithm optimized
+        for Vision
+        coordinate systems (bottom-left origin). Receipt classes should
+        override this
         method with their own 2x2 linear system implementation.
 
         Args:
@@ -378,7 +381,8 @@ class GeometryMixin:
             src_height (int): The original (old) image height in pixels.
             dst_width (int): The new (warped) image width in pixels.
             dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, treat input coordinates as having Y=0 at top
+            flip_y (bool): If True, treat input coordinates as having Y=0 at
+                top
                 instead of bottom. Defaults to False (Y=0 at bottom).
         """
         corners = [

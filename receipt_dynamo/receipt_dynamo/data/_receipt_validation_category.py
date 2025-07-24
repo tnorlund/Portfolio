@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_validation_category import ReceiptValidationCategory
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+)
 from receipt_dynamo.entities import item_to_receipt_validation_category
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -175,7 +177,9 @@ class _ReceiptValidationCategory(
                 "Put": {
                     "TableName": self.table_name,
                     "Item": category.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for category in categories
@@ -249,7 +253,8 @@ class _ReceiptValidationCategory(
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -270,7 +275,10 @@ class _ReceiptValidationCategory(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}"
+                    )
                 },
             },
         )
@@ -468,7 +476,8 @@ class _ReceiptValidationCategory(
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -488,7 +497,9 @@ class _ReceiptValidationCategory(
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -496,7 +507,10 @@ class _ReceiptValidationCategory(
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        "CATEGORY#"
+                    )
                 },
             },
         }

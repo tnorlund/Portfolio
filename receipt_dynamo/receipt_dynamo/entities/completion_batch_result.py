@@ -78,7 +78,8 @@ class CompletionBatchResult:
     @property
     def key(self) -> Dict[str, Any]:
         """
-        The key for the completion batch result is a composite key that consists of the batch id and the receipt id, line id, and word id.
+        The key for the completion batch result is a composite key that
+        consists of the batch id and the receipt id, line id, and word id.
 
         PK: BATCH#<batch_id>
         SK: RESULT#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>
@@ -89,7 +90,10 @@ class CompletionBatchResult:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
             "SK": {
-                "S": f"RESULT#RECEIPT#{self.receipt_id}#LINE#{self.line_id}#WORD#{self.word_id}#LABEL#{self.original_label}"
+                "S": (
+                    f"RESULT#RECEIPT#{self.receipt_id}#LINE#{self.line_id}#"
+                    f"WORD#{self.word_id}#LABEL#{self.original_label}"
+                )
             },
         }
 

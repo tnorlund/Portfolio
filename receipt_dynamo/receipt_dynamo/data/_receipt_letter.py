@@ -53,7 +53,8 @@ class _ReceiptLetter(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptLetter" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptLetter" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt letter records.
 
@@ -287,7 +288,10 @@ class _ReceiptLetter(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                            f"WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        )
                     },
                 },
             )
@@ -461,7 +465,9 @@ class _ReceiptLetter(
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
@@ -481,7 +487,9 @@ class _ReceiptLetter(
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {

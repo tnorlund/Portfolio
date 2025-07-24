@@ -26,7 +26,8 @@ class OCRRoutingDecision(DynamoDBEntity):
         s3_bucket (str): S3 bucket containing the image.
         s3_key (str): S3 key for the image.
         created_at (datetime): When the routing decision was created.
-        updated_at (Optional[datetime]): When the routing decision was last updated.
+        updated_at (Optional[datetime]): When the routing decision was last
+            updated.
         receipt_count (int): Number of receipts detected.
         status (str): Status of the OCR routing decision.
     """
@@ -101,10 +102,13 @@ class OCRRoutingDecision(DynamoDBEntity):
 
     def __repr__(self) -> str:
         return (
-            f"OCRRoutingDecision(image_id={_repr_str(self.image_id)}, job_id={_repr_str(self.job_id)}, "
-            f"s3_bucket={_repr_str(self.s3_bucket)}, s3_key={_repr_str(self.s3_key)}, "
+            f"OCRRoutingDecision(image_id={_repr_str(self.image_id)}, "
+            f"job_id={_repr_str(self.job_id)}, "
+            f"s3_bucket={_repr_str(self.s3_bucket)}, "
+            f"s3_key={_repr_str(self.s3_key)}, "
             f"created_at={self.created_at}, updated_at={self.updated_at}, "
-            f"receipt_count={self.receipt_count}, status={_repr_str(self.status)})"
+            f"receipt_count={self.receipt_count}, "
+            f"status={_repr_str(self.status)})"
         )
 
     def __hash__(self) -> int:

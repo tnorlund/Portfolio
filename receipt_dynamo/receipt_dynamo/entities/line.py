@@ -18,24 +18,30 @@ class Line(GeometryMixin, DynamoDBEntity):
     """
     Represents a line and its associated metadata stored in a DynamoDB table.
 
-    This class encapsulates line-related information such as its unique identifier,
-    text content, geometric properties, rotation angles, and detection confidence.
-    It is designed to support operations such as generating DynamoDB keys and applying
-    geometric transformations including translation, scaling, rotation, shear, and affine warping.
+    This class encapsulates line-related information such as its unique
+    identifier, text content, geometric properties, rotation angles, and
+    detection confidence. It is designed to support operations such as
+    generating DynamoDB keys and applying geometric transformations including
+    translation, scaling, rotation, shear, and affine warping.
 
     Attributes:
         image_id (str): UUID identifying the image to which the line belongs.
         line_id (int): Identifier for the line.
         text (str): The text content of the line.
-        bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        bounding_box (dict): The bounding box of the line with keys 'x', 'y',
+            'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and
+            'y'.
         top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys
+            'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x'
+            and 'y'.
         angle_degrees (float): The angle of the line in degrees.
         angle_radians (float): The angle of the line in radians.
         confidence (float): The confidence level of the line (between 0 and 1).
-        histogram (dict): A histogram representing character frequencies in the text.
+        histogram (dict): A histogram representing character frequencies in
+            the text.
         num_chars (int): The number of characters in the line.
     """
 

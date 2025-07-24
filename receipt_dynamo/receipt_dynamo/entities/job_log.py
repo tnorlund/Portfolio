@@ -42,7 +42,8 @@ class JobLog:
             exception (str, optional): Exception details. Defaults to None.
 
         Raises:
-            ValueError: If any parameter is of invalid type or has invalid value.
+            ValueError: If any parameter is of invalid type or has invalid
+                value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -102,7 +103,8 @@ class JobLog:
         """Converts the JobLog object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobLog object as a DynamoDB item.
+            dict: A dictionary representing the JobLog object as a DynamoDB
+                item.
         """
         item = {
             **self.key,
@@ -141,7 +143,8 @@ class JobLog:
         """Returns an iterator over the JobLog object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobLog object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobLog object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "timestamp", self.timestamp
@@ -214,7 +217,8 @@ def item_to_job_log(item: Dict[str, Any]) -> JobLog:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

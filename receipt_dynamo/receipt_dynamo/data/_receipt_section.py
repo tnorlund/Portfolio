@@ -55,7 +55,8 @@ class _ReceiptSection(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptSection" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptSection" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt section records.
 
@@ -80,9 +81,11 @@ class _ReceiptSection(
         Deletes a single ReceiptSection by IDs.
     delete_receipt_sections(sections: list[ReceiptSection]):
         Deletes multiple ReceiptSections.
-    get_receipt_section(receipt_id: int, image_id: str, section_type: str) -> ReceiptSection:
+    get_receipt_section(receipt_id: int, image_id: str, section_type: str)
+        -> ReceiptSection:
         Retrieves a single ReceiptSection by IDs.
-    get_receipt_sections_from_receipt(image_id: str, receipt_id: int) -> list[ReceiptSection]:
+    get_receipt_sections_from_receipt(image_id: str, receipt_id: int)
+        -> list[ReceiptSection]:
         Retrieves all ReceiptSections for a given receipt.
     list_receipt_sections(...) -> tuple[list[ReceiptSection], dict | None]:
         Returns all ReceiptSections from the table with pagination.
@@ -213,7 +216,9 @@ class _ReceiptSection(
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
+                    f"ReceiptSection with receipt_id {receipt_id}, "
+                    f"image_id {image_id}, and section_type {section_type} "
+                    "not found"
                 )
             else:
                 raise
@@ -295,7 +300,9 @@ class _ReceiptSection(
             return item_to_receipt_section(response["Item"])
         except KeyError:
             raise ValueError(
-                f"ReceiptSection with receipt_id {receipt_id}, image_id {image_id}, and section_type {section_type} not found"
+                f"ReceiptSection with receipt_id {receipt_id}, "
+                f"image_id {image_id}, and section_type {section_type} "
+                "not found"
             )
 
     def get_receipt_sections_from_receipt(

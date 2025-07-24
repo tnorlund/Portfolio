@@ -8,17 +8,19 @@ class Queue:
     """
     Represents a queue for organizing training jobs in DynamoDB.
 
-    This class encapsulates queue-related information such as its name, description,
-    creation time, maximum concurrent jobs, priority, and job count. It is designed
-    to support operations such as generating DynamoDB keys and converting queue
-    metadata to a DynamoDB-compatible item.
+    This class encapsulates queue-related information such as its name,
+    description, creation time, maximum concurrent jobs, priority, and job
+    count. It is designed to support operations such as generating DynamoDB
+    keys and converting queue metadata to a DynamoDB-compatible item.
 
     Attributes:
         queue_name (str): The name of the queue (unique identifier).
         description (str): A description of the queue.
         created_at (datetime or str): The timestamp when the queue was created.
-        max_concurrent_jobs (int): Maximum number of jobs that can run concurrently.
-        priority (str): The priority level of the queue (low, medium, high, critical).
+        max_concurrent_jobs (int): Maximum number of jobs that can run
+            concurrently.
+        priority (str): The priority level of the queue (low, medium, high,
+            critical).
         job_count (int): The current number of jobs in the queue.
     """
 
@@ -36,13 +38,17 @@ class Queue:
         Args:
             queue_name (str): The name of the queue (unique identifier).
             description (str): A description of the queue.
-            created_at (datetime or str): The timestamp when the queue was created.
-            max_concurrent_jobs (int, optional): Maximum concurrent jobs. Defaults to 1.
-            priority (str, optional): Queue priority level. Defaults to "medium".
+            created_at (datetime or str): The timestamp when the queue was
+                created.
+            max_concurrent_jobs (int, optional): Maximum concurrent jobs.
+                Defaults to 1.
+            priority (str, optional): Queue priority level. Defaults to
+                "medium".
             job_count (int, optional): Current job count. Defaults to 0.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(queue_name, str) or not queue_name:
             raise ValueError("queue_name must be a non-empty string")
@@ -102,7 +108,8 @@ class Queue:
         """Converts the Queue object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Queue object as a DynamoDB item.
+            dict: A dictionary representing the Queue object as a DynamoDB
+                item.
         """
         item = {
             **self.key,
@@ -137,7 +144,8 @@ class Queue:
         """Returns an iterator over the Queue object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over
+                attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
         yield "description", self.description
@@ -210,7 +218,8 @@ def item_to_queue(item: Dict[str, Any]) -> Queue:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

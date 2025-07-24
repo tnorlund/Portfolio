@@ -34,7 +34,8 @@ class BatchSummary:
                 submitted_at = datetime.fromisoformat(submitted_at)
             except ValueError:
                 raise ValueError(
-                    f"submitted_at must be a datetime object or a string in ISO format; got {submitted_at}"
+                    f"submitted_at must be a datetime object or a string in "
+                    f"ISO format; got {submitted_at}"
                 )
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
@@ -188,7 +189,8 @@ def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         batch_id = item["PK"]["S"].split("#")[1]

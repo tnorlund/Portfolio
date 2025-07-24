@@ -1,8 +1,10 @@
 # receipt_dynamo/receipt_dynamo/data/_image_refactored.py
 """
-Refactored Image data access class using base operations to eliminate code duplication.
+Refactored Image data access class using base operations to eliminate code
+duplication.
 
-This refactored version reduces code from ~792 lines to ~250 lines (68% reduction)
+This refactored version reduces code from ~792 lines to ~250 lines
+(68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
@@ -91,7 +93,8 @@ class _Image(
         Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
         Optional[Dict],
     ]:
-        """Lists images (via GSI) with optional pagination and returns their basic details."""
+        """Lists images (via GSI) with optional pagination and returns their
+        basic details."""
         raise NotImplementedError(
             "This method should be implemented by subclasses"
         )
@@ -247,7 +250,8 @@ class _Image(
     def get_image_cluster_details(
         self, image_id: str
     ) -> tuple[Image, list[Line], list[Receipt]]:
-        """Retrieves comprehensive details for an Image, including lines and receipts."""
+        """Retrieves comprehensive details for an Image, including lines and
+        receipts."""
         if image_id is None:
             raise ValueError("Image ID is required and cannot be None.")
         assert_valid_uuid(image_id)
@@ -343,7 +347,9 @@ class _Image(
                 raise ValueError("image_type must be a ImageType or a string")
             if image_type not in [t.value for t in ImageType]:
                 raise ValueError(
-                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                    f"image_type must be one of: "
+                    f"{', '.join(t.value for t in ImageType)}\n"
+                    f"Got: {image_type}"
                 )
         if isinstance(image_type, ImageType):
             image_type = image_type.value
