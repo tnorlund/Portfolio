@@ -448,10 +448,45 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         
         # Check if tests expect "Table not found for operation X" format
         operation_specific_table_operations = {
+            # Receipt operations
             "update_receipt", "delete_receipt", "get_receipt",
             "add_receipts", "update_receipts", "delete_receipts",
+            # Job operations
             "update_job", "delete_job", "get_job",
-            "add_jobs", "update_jobs", "delete_jobs"
+            "add_jobs", "update_jobs", "delete_jobs",
+            # Instance operations
+            "add_instance",
+            # Job dependency operations
+            "add_job_dependency",
+            # Job metric operations
+            "add_job_metric", "list_job_metrics", "get_metrics_by_name",
+            # OCR job operations
+            "add_ocr_job",
+            # Queue operations
+            "add_queue",
+            # Receipt field operations
+            "add_receipt_field",
+            # Receipt letter operations
+            "add_receipt_letter", "add_receipt_letters",
+            "update_receipt_letter", "update_receipt_letters",
+            "delete_receipt_letter", "delete_receipt_letters",
+            # Receipt structure analysis operations
+            "add_receipt_structure_analysis", "add_receipt_structure_analyses",
+            "update_receipt_structure_analyses",
+            # Receipt validation operations
+            "add_receipt_validation_category", "add_receipt_validation_categories",
+            "update_receipt_validation_category", "update_receipt_validation_categories",
+            "delete_receipt_validation_category", "delete_receipt_validation_categories",
+            "list_receipt_validation_categories_for_receipt",
+            "add_receipt_validation_results", "update_receipt_validation_results",
+            "delete_receipt_validation_results",
+            "add_receipt_validation_summary", "update_receipt_validation_summary",
+            "delete_receipt_validation_summary", "get_receipt_validation_summary",
+            # Receipt word operations
+            "add_receipt_word", "add_receipt_words",
+            # Receipt word label operations
+            "list_receipt_word_labels", "get_receipt_word_labels_by_label",
+            "get_receipt_word_labels_by_validation_status"
         }
         
         if operation in simple_table_operations:
@@ -658,14 +693,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """
         self._ensure_initialized()
         if entity is None:
-            message = self._validation_generator.generate_required_message(param_name)
-            raise ValueError(message)
+            raise ValueError(f"{param_name} cannot be None")
 
         if not isinstance(entity, entity_class):
-            message = self._validation_generator.generate_type_mismatch_message(
-                param_name, entity_class.__name__
+            raise ValueError(
+                f"{param_name} must be an instance of the {entity_class.__name__} class."
             )
-            raise ValueError(message)
 
     def _validate_entity_list(
         self, entities: List[Any], entity_class: Type, param_name: str
@@ -683,20 +716,15 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """
         self._ensure_initialized()
         if entities is None:
-            message = self._validation_generator.generate_required_message(param_name)
-            raise ValueError(message)
+            raise ValueError(f"{param_name} cannot be None")
 
         if not isinstance(entities, list):
-            message = self._validation_generator.generate_list_required_message(
-                param_name, entity_class.__name__
-            )
-            raise ValueError(message)
+            raise ValueError(f"{param_name} must be a list.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
-            message = self._validation_generator.generate_list_type_mismatch_message(
-                param_name, entity_class.__name__
+            raise ValueError(
+                f"All items in {param_name} must be {entity_class.__name__} instances."
             )
-            raise ValueError(message)
 
 
 class SingleEntityCRUDMixin:

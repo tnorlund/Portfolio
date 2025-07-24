@@ -51,9 +51,7 @@ class _JobStatus(
                 exists
         """
         if job_status is None:
-            raise ValueError(
-                "JobStatus parameter is required and cannot be None."
-            )
+            raise ValueError("jobstatus cannot be None")
         if not isinstance(job_status, JobStatus):
             raise ValueError(
                 "job_status must be an instance of the JobStatus class."

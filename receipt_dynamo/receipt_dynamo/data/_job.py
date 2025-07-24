@@ -226,7 +226,7 @@ class _Job(
             Exception: For underlying DynamoDB errors.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
@@ -255,7 +255,7 @@ class _Job(
                 of its status updates
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)

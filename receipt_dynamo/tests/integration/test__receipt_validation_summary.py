@@ -136,7 +136,7 @@ def test_addReceiptValidationSummary_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Summary parameter is required and cannot be None."),
+        (None, "summary cannot be None"),
         (
             "not-a-validation-summary",
             "Summary must be an instance of the ReceiptValidationSummary class.",
@@ -195,7 +195,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_validation_summary",
+            "Could not add receipt validation summary to DynamoDB",
         ),
         (
             "ValidationException",
@@ -363,7 +363,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Summary parameter is required and cannot be None."),
+        (None, "summary cannot be None"),
         (
             "not a ReceiptValidationSummary",
             "Summary must be an instance of the ReceiptValidationSummary class.",
@@ -432,7 +432,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_validation_summary",
+            "Could not update receipt validation summary in DynamoDB",
         ),
     ],
 )
@@ -628,7 +628,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_validation_summary",
+            "Could not delete receipt validation summary from DynamoDB",
         ),
     ],
 )
@@ -818,7 +818,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in get_receipt_validation_summary",
+            "Error getting receipt validation summary",
         ),
     ],
 )

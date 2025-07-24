@@ -72,7 +72,7 @@ def test_addJob_success(job_dynamo, sample_job):
 def test_addJob_raises_value_error(job_dynamo):
     """Test that addJob raises ValueError when job is None"""
     with pytest.raises(
-        ValueError, match="Job parameter is required and cannot be None."
+        ValueError, match="job cannot be None"
     ):
         job_dynamo.add_job(None)
 
@@ -237,7 +237,7 @@ def test_addJobs_success(job_dynamo, sample_job):
 def test_addJobs_raises_value_error_jobs_none(job_dynamo):
     """Test that addJobs raises ValueError when jobs is None"""
     with pytest.raises(
-        ValueError, match="Jobs parameter is required and cannot be None."
+        ValueError, match="jobs cannot be None"
     ):
         job_dynamo.add_jobs(None)
 
@@ -477,7 +477,7 @@ def test_addJobs_unprocessed_items_retry(job_dynamo, sample_job, mocker):
 def test_getJob_raises_value_error_job_id_none(job_dynamo):
     """Test that getJob raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_dynamo.get_job(None)
 
@@ -516,7 +516,7 @@ def test_updateJob_success(job_dynamo, sample_job):
 def test_updateJob_raises_value_error_job_none(job_dynamo):
     """Test that updateJob raises ValueError when job is None"""
     with pytest.raises(
-        ValueError, match="Job parameter is required and cannot be None."
+        ValueError, match="job cannot be None"
     ):
         job_dynamo.update_job(None)
 
@@ -569,7 +569,7 @@ def test_deleteJob_success(job_dynamo, sample_job):
 def test_deleteJob_raises_value_error_job_none(job_dynamo):
     """Test that deleteJob raises ValueError when job is None"""
     with pytest.raises(
-        ValueError, match="Job parameter is required and cannot be None."
+        ValueError, match="job cannot be None"
     ):
         job_dynamo.delete_job(None)
 
@@ -618,7 +618,7 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 def test_addJobStatus_raises_value_error_status_none(job_dynamo):
     """Test that addJobStatus raises ValueError when status is None"""
     with pytest.raises(
-        ValueError, match="JobStatus parameter is required and cannot be None."
+        ValueError, match="jobstatus cannot be None"
     ):
         job_dynamo.add_job_status(None)
 
@@ -753,7 +753,7 @@ def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
 def test_listJobStatuses_raises_value_error_job_id_none(job_dynamo):
     """Test listJobStatuses raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_dynamo.list_job_statuses(None)
 

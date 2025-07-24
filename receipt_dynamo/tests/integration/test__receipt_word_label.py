@@ -79,7 +79,7 @@ def test_addReceiptWordLabel_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "receiptwordlabel cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -234,7 +234,7 @@ def test_addReceiptWordLabels_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receiptwordlabels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -414,7 +414,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.update_receipt_word_label(sample_receipt_word_label)
 
 
@@ -422,7 +422,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "receiptwordlabel cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -606,7 +606,7 @@ def test_updateReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receiptwordlabels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -775,7 +775,7 @@ def test_deleteReceiptWordLabel_success(
     client.delete_receipt_word_label(sample_receipt_word_label)
 
     # Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -794,7 +794,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.delete_receipt_word_label(sample_receipt_word_label)
 
 
@@ -802,7 +802,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "receiptwordlabel cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -929,7 +929,7 @@ def test_deleteReceiptWordLabels_success(
 
     # Assert
     for label in labels:
-        with pytest.raises(EntityNotFoundError, match="does not exist"):
+        with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
             client.get_receipt_word_label(
                 label.image_id,
                 label.receipt_id,
@@ -959,7 +959,7 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receiptwordlabels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -1135,7 +1135,7 @@ def test_getReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -1233,7 +1233,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in get_receipt_word_label",
+            "Error getting receipt word label",
         ),
     ],
 )
@@ -1459,7 +1459,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in list_receipt_word_labels",
+            "Could not list receipt word label from DynamoDB",
         ),
     ],
 )
@@ -1554,7 +1554,7 @@ def test_listReceiptWordLabels_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Unknown error in list_receipt_word_labels"
+        Exception, match="Could not list receipt word label from DynamoDB"
     ):
         client.list_receipt_word_labels()
     assert mock_query.call_count == 2
@@ -1761,7 +1761,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in get_receipt_word_labels_by_label",
+            "Could not list receipt word label from DynamoDB",
         ),
     ],
 )
@@ -1856,7 +1856,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Unknown error in get_receipt_word_labels_by_label"
+        Exception, match="Could not list receipt word label from DynamoDB"
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     assert mock_query.call_count == 2
@@ -2034,7 +2034,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
 
     with pytest.raises(
         Exception,
-        match="Unknown error in get_receipt_word_labels_by_validation_status",
+        match="Could not list receipt word label from DynamoDB",
     ):
         client.get_receipt_word_labels_by_validation_status("VALID")
     assert mock_query.call_count == 2

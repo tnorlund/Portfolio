@@ -81,7 +81,7 @@ def test_addReceiptField_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receiptfield cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -132,7 +132,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_field",
+            "Could not add receipt field to DynamoDB",
         ),
         (
             "ValidationException",
@@ -248,14 +248,14 @@ def test_addReceiptFields_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receiptfields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receiptfields must be a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All items in receiptFields must be ReceiptField instances.",
         ),
     ],
 )
@@ -304,7 +304,7 @@ def test_addReceiptFields_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_fields",
+            "Could not add receipt field to DynamoDB",
         ),
     ],
 )
@@ -439,7 +439,7 @@ def test_updateReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receiptfield cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -495,7 +495,7 @@ def test_updateReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in update_receipt_field",
+            "Could not update receipt field in DynamoDB",
         ),
     ],
 )
@@ -625,14 +625,14 @@ def test_updateReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receiptfields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receiptfields must be a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All items in receiptFields must be ReceiptField instances.",
         ),
     ],
 )
@@ -691,7 +691,7 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in update_receipt_fields",
+            "Could not update receipt field in DynamoDB",
             DynamoDBError,
         ),
     ],
@@ -823,7 +823,7 @@ def test_deleteReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receiptfield cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -879,7 +879,7 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in delete_receipt_field",
+            "Could not delete receipt field from DynamoDB",
         ),
     ],
 )
@@ -986,14 +986,14 @@ def test_deleteReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receiptfields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receiptfields must be a list.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All items in receiptFields must be ReceiptField instances.",
         ),
     ],
 )
@@ -1047,7 +1047,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in delete_receipt_fields",
+            "Could not delete receipt field from DynamoDB",
         ),
     ],
 )

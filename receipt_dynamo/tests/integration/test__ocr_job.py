@@ -116,7 +116,7 @@ def test_addOCRJob_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_ocr_job",
+            "Could not add ocr job to DynamoDB",
         ),
         (
             "ValidationException",

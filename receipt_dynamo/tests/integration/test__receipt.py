@@ -195,7 +195,7 @@ def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipt parameter is required and cannot be None."
+        ValueError, match="receipt cannot be None"
     ):
         client.add_receipt(None)  # type: ignore
 
@@ -388,7 +388,7 @@ def test_addReceipts_raises_value_error_receipts_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipts parameter is required and cannot be None."
+        ValueError, match="receipts cannot be None"
     ):
         client.add_receipts(None)  # type: ignore
 
@@ -645,7 +645,7 @@ def test_updateReceipt_raises_value_error_receipt_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipt parameter is required and cannot be None."
+        ValueError, match="receipt cannot be None"
     ):
         client.update_receipt(None)  # type: ignore
 
@@ -871,7 +871,7 @@ def test_updateReceipts_raises_value_error_receipts_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipts parameter is required and cannot be None."
+        ValueError, match="receipts cannot be None"
     ):
         client.update_receipts(None)  # type: ignore
 
@@ -1104,7 +1104,7 @@ def test_deleteReceipt_raises_value_error_receipt_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipt parameter is required and cannot be None."
+        ValueError, match="receipt cannot be None"
     ):
         client.delete_receipt(None)  # type: ignore
 
@@ -1318,7 +1318,7 @@ def test_deleteReceipts_raises_value_error_receipts_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipts parameter is required and cannot be None."
+        ValueError, match="receipts cannot be None"
     ):
         client.delete_receipts(None)  # type: ignore
 

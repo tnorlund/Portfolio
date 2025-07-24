@@ -84,7 +84,7 @@ def test_addReceiptLetter_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None."),
+        (None, "letter cannot be None"),
         (
             "not-a-receipt-letter",
             "letter must be an instance of the ReceiptLetter class.",
@@ -135,7 +135,7 @@ def test_addReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_letter",
+            "Could not add receipt letter to DynamoDB",
         ),
         (
             "ValidationException",
@@ -296,11 +296,11 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None."),
-        ("not-a-list", "Letters must be provided as a list."),
+        (None, "letters cannot be None"),
+        ("not-a-list", "letters must be a list."),
         (
             ["not-a-receipt-letter"],
-            "All items in the letters list must be instances of the ReceiptLetter class.",
+            "All items in letters must be ReceiptLetter instances.",
         ),
     ],
 )
@@ -353,7 +353,7 @@ def test_addReceiptLetters_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_letters",
+            "Could not add receipt letter to DynamoDB",
         ),
     ],
 )
@@ -419,7 +419,7 @@ def test_updateReceiptLetter_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None."),
+        (None, "letter cannot be None"),
         (
             "not a ReceiptLetter",
             "letter must be an instance of the ReceiptLetter class.",
@@ -477,7 +477,7 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_letter",
+            "Could not update receipt letter in DynamoDB",
         ),
     ],
 )
@@ -708,7 +708,7 @@ def test_updateReceiptLetters_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_letters",
+            "Could not update receipt letter in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -875,7 +875,7 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_letter",
+            "Could not delete receipt letter from DynamoDB",
         ),
     ],
 )
@@ -1050,11 +1050,11 @@ def test_deleteReceiptLetters_with_unprocessed_items(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None."),
-        ("not a list", "Letters must be provided as a list."),
+        (None, "letters cannot be None"),
+        ("not a list", "letters must be a list."),
         (
             [1, 2, 3],
-            "All items in the letters list must be instances of the ReceiptLetter class.",
+            "All items in letters must be ReceiptLetter instances.",
         ),
     ],
 )
@@ -1119,7 +1119,7 @@ def test_deleteReceiptLetters_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_letters",
+            "Could not delete receipt letter from DynamoDB",
         ),
     ],
 )
@@ -1221,31 +1221,31 @@ def test_getReceiptLetter_not_found(
         (
             "receipt_id",
             None,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
             {},
         ),
         (
             "image_id",
             None,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
             {},
         ),
         (
             "line_id",
             None,
-            "line_id parameter is required and cannot be None.",
+            "line_id cannot be None",
             {},
         ),
         (
             "word_id",
             None,
-            "word_id parameter is required and cannot be None.",
+            "word_id cannot be None",
             {},
         ),
         (
             "letter_id",
             None,
-            "letter_id parameter is required and cannot be None.",
+            "letter_id cannot be None",
             {},
         ),
         # Invalid type tests
@@ -1927,22 +1927,22 @@ def test_listReceiptLettersFromWord_success(
         (
             "receipt_id",
             None,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "image_id",
             None,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             "line_id",
             None,
-            "line_id parameter is required and cannot be None.",
+            "line_id cannot be None",
         ),
         (
             "word_id",
             None,
-            "word_id parameter is required and cannot be None.",
+            "word_id cannot be None",
         ),
         # Invalid type tests
         (

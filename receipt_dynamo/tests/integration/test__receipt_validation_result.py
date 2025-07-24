@@ -388,7 +388,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_validation_results",
+            "Could not add receipt validation result to DynamoDB",
         ),
     ],
 )
@@ -760,7 +760,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_validation_results",
+            "Could not update receipt validation result in DynamoDB",
             None,
             DynamoDBError,
         ),
@@ -1077,7 +1077,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_validation_results",
+            "Could not delete receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -1286,14 +1286,14 @@ def test_getReceiptValidationResult_not_found(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field",
             0,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             1,
             None,
             "field",
             0,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             1,
@@ -2327,7 +2327,7 @@ def test_listReceiptValidationResultsForField_empty_results(
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field_name",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "not_an_int",
@@ -2339,7 +2339,7 @@ def test_listReceiptValidationResultsForField_empty_results(
             1,
             None,
             "field_name",
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (1, "invalid-uuid", "field_name", "uuid must be a valid UUIDv4"),
         (

@@ -73,7 +73,7 @@ def test_add_receipt_word_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Word parameter is required and cannot be None."),
+        (None, "word cannot be None"),
         (
             "not-a-receipt-word",
             "Word must be an instance of the ReceiptWord class.",
@@ -133,7 +133,7 @@ def test_addReceiptWord_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_word",
+            "Could not add receipt word to DynamoDB",
         ),
     ],
 )
@@ -276,10 +276,10 @@ def test_addReceiptWords_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Words parameter is required and cannot be None."),
+        (None, "words cannot be None"),
         (
             "not-a-receipt-word",
-            "Words must be provided as a list.",
+            "words must be a list.",
         ),
         (
             ["not-a-receipt-word"],
@@ -341,7 +341,7 @@ def test_addReceiptWords_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_words",
+            "Could not add receipt word to DynamoDB",
         ),
     ],
 )

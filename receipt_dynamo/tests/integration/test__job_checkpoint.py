@@ -120,7 +120,7 @@ def test_addJobCheckpoint_raises_value_error(job_checkpoint_dynamo):
     """
     with pytest.raises(
         ValueError,
-        match="JobCheckpoint parameter is required and cannot be None.",
+        match="job_checkpoint cannot be None",
     ):
         job_checkpoint_dynamo.add_job_checkpoint(None)
 

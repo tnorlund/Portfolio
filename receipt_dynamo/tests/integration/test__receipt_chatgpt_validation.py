@@ -1501,13 +1501,13 @@ def test_getReceiptChatGPTValidation_not_found(
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "2023-01-01T12:00:00",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             1,
             None,
             "2023-01-01T12:00:00",
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             1,
@@ -2019,14 +2019,14 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
         (
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "receipt_id must be an integer.",
         ),
-        (1, None, "image_id parameter is required and cannot be None."),
+        (1, None, "image_id cannot be None"),
         (1, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )

@@ -84,7 +84,7 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+            "receiptlabelanalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
@@ -234,7 +234,7 @@ def test_addReceiptLabelAnalyses_success(
     [
         (
             None,
-            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+            "receiptlabelanalyses cannot be None",
         ),
         (
             "not-a-list",
@@ -433,7 +433,7 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+            "receiptlabelanalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
@@ -636,7 +636,7 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+            "receiptlabelanalyses cannot be None",
         ),
         (
             "not-a-list",
@@ -839,7 +839,7 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis parameter is required and cannot be None.",
+            "receiptlabelanalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
@@ -1002,7 +1002,7 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalyses parameter is required and cannot be None.",
+            "receiptlabelanalyses cannot be None",
         ),
         (
             "not-a-list",

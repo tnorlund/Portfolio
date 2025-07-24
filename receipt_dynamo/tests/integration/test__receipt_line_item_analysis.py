@@ -119,7 +119,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analysis parameter is required and cannot be None."),
+        (None, "analysis cannot be None"),
         (
             "not-a-receipt-line-item-analysis",
             "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
@@ -347,7 +347,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None."),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
             "Analyses must be a list of ReceiptLineItemAnalysis instances.",
@@ -489,7 +489,7 @@ def test_updateReceiptLineItemAnalysis_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analysis parameter is required and cannot be None."),
+        (None, "analysis cannot be None"),
         (
             "not a ReceiptLineItemAnalysis",
             "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
@@ -1183,7 +1183,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None."),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
             "Analyses must be a list of ReceiptLineItemAnalysis instances.",

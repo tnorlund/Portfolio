@@ -288,7 +288,7 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Words parameter is required and cannot be None."
+        ValueError, match="words cannot be None"
     ):
         client.update_words(None)  # type: ignore
 
@@ -300,7 +300,7 @@ def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
     list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Words must be provided as a list."):
+    with pytest.raises(ValueError, match="words must be a list."):
         client.update_words("not-a-list")  # type: ignore
 
 

@@ -114,7 +114,7 @@ def test_addReceiptStructureAnalysis_success(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_structure_analysis",
+            "Could not add receipt structure analysis to DynamoDB",
         ),
     ],
 )
@@ -223,7 +223,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_structure_analyses",
+            "Could not add receipt structure analysis to DynamoDB",
         ),
     ],
 )
@@ -412,7 +412,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_structure_analyses",
+            "Could not update receipt structure analysis in DynamoDB",
             None,
         ),
     ],
