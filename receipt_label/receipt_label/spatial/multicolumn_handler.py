@@ -165,7 +165,7 @@ class MultiColumnHandler:
         if not quantity_patterns:
             return []
         
-        # Group quantities by X-coordinate
+        # Group quantities by X-coordinate using dynamic averaging
         x_groups = defaultdict(list)
         
         for pattern in quantity_patterns:
@@ -173,24 +173,33 @@ class MultiColumnHandler:
             x_pos = self._get_x_center(word)
             
             if x_pos is not None:
-                # Find existing group or create new one
-                found_group = False
-                for group_x, group_patterns in x_groups.items():
-                    if abs(group_x - x_pos) < self.alignment_tolerance:
-                        group_patterns.append(pattern)
-                        found_group = True
-                        break
+                # Find the closest existing group within tolerance
+                best_group_x = None
+                min_distance = float('inf')
                 
-                if not found_group:
+                for group_x, group_patterns in x_groups.items():
+                    # Calculate current average X position of the group
+                    current_avg_x = sum(self._get_x_center(p.word) for p in group_patterns) / len(group_patterns)
+                    distance = abs(current_avg_x - x_pos)
+                    
+                    if distance < self.alignment_tolerance and distance < min_distance:
+                        best_group_x = group_x
+                        min_distance = distance
+                
+                if best_group_x is not None:
+                    x_groups[best_group_x].append(pattern)
+                else:
                     x_groups[x_pos] = [pattern]
         
         # Convert groups to column structures
         columns = []
         for idx, (x_center, patterns) in enumerate(x_groups.items()):
             if len(patterns) >= self.min_column_items:
+                # Calculate final average X position for the column
+                final_avg_x = sum(self._get_x_center(p.word) for p in patterns) / len(patterns)
                 columns.append({
                     'column_id': 1000 + idx,  # Use high IDs to avoid conflicts
-                    'x_center': x_center,
+                    'x_center': final_avg_x,  # Use calculated average instead of initial position
                     'patterns': patterns,
                     'confidence': len(patterns) / len(quantity_patterns)
                 })
