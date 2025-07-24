@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
@@ -39,7 +39,8 @@ class Receipt(DynamoDBEntity):
             receipt's bounding box.
         bottom_right (dict): Coordinates of the bottom-right corner of the
             receipt's bounding box.
-        sha256 (str, optional): SHA256 hash of the receipt image, if available.
+        sha256 (str, optional): SHA256 hash of the receipt image,
+            if available.
         cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted
             receipt image, if available.
         cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt
@@ -482,12 +483,18 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             ),
             cdn_webp_s3_key=(
                 item["cdn_webp_s3_key"]["S"]
-                if "cdn_webp_s3_key" in item and "S" in item["cdn_webp_s3_key"]
+                if (
+                    "cdn_webp_s3_key" in item
+                    and "S" in item["cdn_webp_s3_key"]
+                )
                 else None
             ),
             cdn_avif_s3_key=(
                 item["cdn_avif_s3_key"]["S"]
-                if "cdn_avif_s3_key" in item and "S" in item["cdn_avif_s3_key"]
+                if (
+                    "cdn_avif_s3_key" in item
+                    and "S" in item["cdn_avif_s3_key"]
+                )
                 else None
             ),
             # Thumbnail versions
