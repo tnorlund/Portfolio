@@ -181,6 +181,32 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     )
                 ) from error
 
+        # Special handling for receipt operations for backward compatibility
+        if operation == "add_receipt":
+            args = context.get("args", []) if context else []
+            if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
+                receipt = args[0]
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID "
+                    f"'{receipt.image_id}' already exists"
+                ) from error
+        elif operation == "update_receipt":
+            args = context.get("args", []) if context else []
+            if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
+                receipt = args[0]
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID "
+                    f"'{receipt.image_id}' does not exist"
+                ) from error
+        elif operation == "delete_receipt":
+            args = context.get("args", []) if context else []
+            if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
+                receipt = args[0]
+                raise ValueError(
+                    f"Receipt with ID {receipt.receipt_id} and Image ID "
+                    f"'{receipt.image_id}' does not exists"
+                ) from error
+        
         # Special handling for job operations for backward compatibility
         if operation == "add_job":
             args = context.get("args", []) if context else []
@@ -833,6 +859,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     "job_metric parameter is required and cannot be None."
                 )
+            elif param_name == "receipt":
+                raise ValueError(
+                    "Receipt parameter is required and cannot be None."
+                )
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -930,6 +960,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                         f"{entity_class.__name__} class."
                     )
                 )
+            elif param_name == "receipt":
+                raise ValueError(
+                    (
+                        "receipt must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
+                )
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -985,6 +1022,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                         "cannot be None."
                     )
                 )
+            elif param_name == "receipts":
+                raise ValueError(
+                    "Receipts parameter is required and cannot be None."
+                )
             else:
                 # Capitalize first letter for backward compatibility
                 param_display = param_name[0].upper() + param_name[1:]
@@ -1034,6 +1075,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                         "receipt_word_labels must be a list of "
                         "ReceiptWordLabel instances."
                     )
+                )
+            elif param_name == "receipts":
+                raise ValueError(
+                    "receipts must be a list of Receipt instances."
                 )
             else:
                 # Default handling for other parameters
@@ -1086,6 +1131,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(
                     (
                         "All receipt word labels must be instances of the "
+                        f"{entity_class.__name__} class."
+                    )
+                )
+            elif param_name == "receipts":
+                raise ValueError(
+                    (
+                        "All receipts must be instances of the "
                         f"{entity_class.__name__} class."
                     )
                 )
