@@ -107,19 +107,21 @@ def convert_to_receipt_words(words_data: List[Dict]) -> List[ReceiptWord]:
                 # Default bounding box if missing
                 bbox = {'x': 0.0, 'y': 0.0, 'width': 0.1, 'height': 0.02}
             
-            # Create ReceiptWord with required fields
+            # Create ReceiptWord with proper constructor parameters
             word = ReceiptWord(
-                id=i + 1,
+                receipt_id=1,  # Dummy receipt ID
+                image_id=word_data.get('image_id', 'dummy-image-id'),
+                line_id=i // 10,  # Group words into lines
+                word_id=i + 1,
                 text=word_data.get('text', ''),
-                confidence=word_data.get('confidence', 1.0),
-                x=bbox['x'],
-                y=bbox['y'],
-                width=bbox['width'],
-                height=bbox['height'],
-                receipt_id=word_data.get('receipt_id', 'unknown'),
-                page_number=word_data.get('page_number', 1),
-                created_at=word_data.get('created_at', '2024-01-01T00:00:00Z'),
-                updated_at=word_data.get('updated_at', '2024-01-01T00:00:00Z')
+                bounding_box=bbox,
+                top_right={'x': bbox['x'] + bbox['width'], 'y': bbox['y']},
+                top_left={'x': bbox['x'], 'y': bbox['y']},
+                bottom_right={'x': bbox['x'] + bbox['width'], 'y': bbox['y'] + bbox['height']},
+                bottom_left={'x': bbox['x'], 'y': bbox['y'] + bbox['height']},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=word_data.get('confidence', 1.0)
             )
             receipt_words.append(word)
             

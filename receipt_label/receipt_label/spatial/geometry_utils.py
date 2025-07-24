@@ -541,11 +541,12 @@ def group_words_into_line_items(
     pattern_map = {}
     if pattern_matches:
         for i, match in enumerate(pattern_matches):
-            # Map by word ID if available, otherwise by index
+            # Map by word ID if available, otherwise use negative index to avoid collision
             if hasattr(match.word, 'id'):
                 pattern_map[match.word.id] = match
             else:
-                pattern_map[i] = match
+                # Use negative index to avoid collision with word IDs
+                pattern_map[-i-1] = match
                 
     spatial_words = []
     for i, word in enumerate(words):

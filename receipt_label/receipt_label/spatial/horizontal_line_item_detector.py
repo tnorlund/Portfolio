@@ -124,11 +124,12 @@ class HorizontalLineItemDetector:
         pattern_map = {}
         if pattern_matches:
             for i, match in enumerate(pattern_matches):
-                # Map by word ID if available
+                # Map by word ID if available, otherwise use negative index to avoid collision
                 if hasattr(match.word, 'id'):
                     pattern_map[match.word.id] = match
-                # Also store by index for fallback
-                pattern_map[i] = match
+                else:
+                    # Use negative index to avoid collision with word IDs
+                    pattern_map[-i-1] = match
         return pattern_map
         
     def _analyze_word_group(
