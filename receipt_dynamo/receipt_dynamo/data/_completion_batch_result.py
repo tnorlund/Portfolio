@@ -4,6 +4,13 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -16,6 +23,13 @@ if TYPE_CHECKING:
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.completion_batch_result import (
@@ -45,7 +59,13 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _CompletionBatchResult(DynamoClientProtocol):
+class _CompletionBatchResult(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
+    @handle_dynamodb_errors("add_completion_batch_result")
     def add_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
@@ -55,22 +75,16 @@ class _CompletionBatchResult(DynamoClientProtocol):
             result: The CompletionBatchResult to add.
 
         Raises:
-            ValueError: If result is None or not a CompletionBatchResult.
-            OperationError: If the DynamoDB operation fails.
+            EntityAlreadyExistsError: If the result already exists
+            EntityValidationError: If result parameters are invalid
         """
-        if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.")
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=result.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            raise OperationError(
-                f"Could not add completion batch result: {e}"
-            ) from e
+        self._validate_entity(result, CompletionBatchResult, "result")
+        self._add_entity(
+            result,
+            condition_expression="attribute_not_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("add_completion_batch_results")
     def add_completion_batch_results(
         self, results: List[CompletionBatchResult]
     ):
@@ -107,6 +121,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 )
                 unprocessed = response.get("UnprocessedItems", {})
 
+    @handle_dynamodb_errors("update_completion_batch_result")
     def update_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
@@ -123,6 +138,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not update completion batch result: {e}"
             ) from e
 
+    @handle_dynamodb_errors("delete_completion_batch_result")
     def delete_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
@@ -139,6 +155,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not delete completion batch result: {e}"
             ) from e
 
+    @handle_dynamodb_errors("get_completion_batch_result")
     def get_completion_batch_result(
         self,
         batch_id: str,
@@ -165,6 +182,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Could not retrieve completion batch result: {e}"
             ) from e
 
+    @handle_dynamodb_errors("list_completion_batch_results")
     def list_completion_batch_results(
         self,
         limit: Optional[int] = None,
@@ -212,6 +230,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 f"Error listing completion batch results: {e}"
             ) from e
 
+    @handle_dynamodb_errors("get_completion_batch_results_by_status")
     def get_completion_batch_results_by_status(
         self,
         status: str,
@@ -252,6 +271,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
             else:
                 return results, None
 
+    @handle_dynamodb_errors("get_completion_batch_results_by_label_target")
     def get_completion_batch_results_by_label_target(
         self,
         label_target: str,
@@ -292,6 +312,7 @@ class _CompletionBatchResult(DynamoClientProtocol):
             else:
                 return results, None
 
+    @handle_dynamodb_errors("get_completion_batch_results_by_receipt")
     def get_completion_batch_results_by_receipt(
         self,
         receipt_id: int,
