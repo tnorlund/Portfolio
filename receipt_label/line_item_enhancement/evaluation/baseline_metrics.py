@@ -52,17 +52,28 @@ class EnhancedMetrics(BaselineMetrics):
 def create_receipt_word_from_data(word_data: Dict[str, Any]) -> ReceiptWord:
     """Create ReceiptWord from exported JSON data."""
     try:
+        # Ensure bounding box has required fields
+        bounding_box = word_data.get('bounding_box', {})
+        if not all(key in bounding_box for key in ['x', 'y', 'width', 'height']):
+            bounding_box = {"x": 0, "y": 0, "width": 0.1, "height": 0.02}
+        
+        # Ensure corner points have required fields
+        def ensure_point(point_data):
+            if isinstance(point_data, dict) and 'x' in point_data and 'y' in point_data:
+                return point_data
+            return {"x": 0, "y": 0}
+        
         return ReceiptWord(
             receipt_id=word_data.get('receipt_id', 1),
             image_id=word_data.get('image_id', '00000000-0000-0000-0000-000000000000'),
             line_id=word_data.get('line_id', 1),
             word_id=word_data.get('word_id', 1),
             text=word_data.get('text', ''),
-            bounding_box=word_data.get('bounding_box', {}),
-            top_left=word_data.get('top_left', {}),
-            top_right=word_data.get('top_right', {}),
-            bottom_left=word_data.get('bottom_left', {}),
-            bottom_right=word_data.get('bottom_right', {}),
+            bounding_box=bounding_box,
+            top_left=ensure_point(word_data.get('top_left', {})),
+            top_right=ensure_point(word_data.get('top_right', {})),
+            bottom_left=ensure_point(word_data.get('bottom_left', {})),
+            bottom_right=ensure_point(word_data.get('bottom_right', {})),
             angle_degrees=word_data.get('angle_degrees', 0.0),
             angle_radians=word_data.get('angle_radians', 0.0),
             confidence=word_data.get('confidence', 0.9),
@@ -269,12 +280,20 @@ def print_metrics_comparison(baseline: BaselineMetrics, enhanced: EnhancedMetric
     # Processing metrics
     print(f"\n🔍 Processing Metrics:")
     print(f"  Receipts processed:     {baseline.receipts_processed}")
-    print(f"  Avg processing time:    {baseline.total_processing_time/baseline.receipts_processed*1000:.1f}ms (basic) vs {enhanced.total_processing_time/enhanced.receipts_processed*1000:.1f}ms (enhanced)")
-    print(f"  Error rate:             {baseline.error_count/baseline.receipts_processed*100:.1f}% (basic) vs {enhanced.error_count/enhanced.receipts_processed*100:.1f}% (enhanced)")
+    
+    if baseline.receipts_processed > 0 and enhanced.receipts_processed > 0:
+        print(f"  Avg processing time:    {baseline.total_processing_time/baseline.receipts_processed*1000:.1f}ms (basic) vs {enhanced.total_processing_time/enhanced.receipts_processed*1000:.1f}ms (enhanced)")
+        print(f"  Error rate:             {baseline.error_count/baseline.receipts_processed*100:.1f}% (basic) vs {enhanced.error_count/enhanced.receipts_processed*100:.1f}% (enhanced)")
+    else:
+        print("  Avg processing time:    N/A (no receipts processed)")
+        print("  Error rate:             N/A (no receipts processed)")
     
     # Column detection
     print(f"\n📋 Column Detection:")
-    print(f"  Avg columns detected:   {baseline.columns_detected/baseline.receipts_processed:.1f} (basic) vs {enhanced.columns_detected/enhanced.receipts_processed:.1f} (enhanced)")
+    if baseline.receipts_processed > 0 and enhanced.receipts_processed > 0:
+        print(f"  Avg columns detected:   {baseline.columns_detected/baseline.receipts_processed:.1f} (basic) vs {enhanced.columns_detected/enhanced.receipts_processed:.1f} (enhanced)")
+    else:
+        print(f"  Avg columns detected:   N/A (no receipts processed)")
     print(f"  Column types detected:  N/A (basic) vs {enhanced.column_types_detected} unique types (enhanced)")
     
     # Line item extraction
@@ -285,10 +304,17 @@ def print_metrics_comparison(baseline: BaselineMetrics, enhanced: EnhancedMetric
     
     # LLM dependency
     print(f"\n🤖 LLM Dependency:")
-    print(f"  Needs LLM:              {baseline.needs_llm}/{baseline.receipts_processed} ({baseline.needs_llm/baseline.receipts_processed*100:.1f}%) (basic)")
-    print(f"                          {enhanced.needs_llm}/{enhanced.receipts_processed} ({enhanced.needs_llm/enhanced.receipts_processed*100:.1f}%) (enhanced)")
+    if baseline.receipts_processed > 0:
+        print(f"  Needs LLM:              {baseline.needs_llm}/{baseline.receipts_processed} ({baseline.needs_llm/baseline.receipts_processed*100:.1f}%) (basic)")
+    else:
+        print(f"  Needs LLM:              N/A (no receipts processed) (basic)")
     
-    if baseline.needs_llm > enhanced.needs_llm:
+    if enhanced.receipts_processed > 0:
+        print(f"                          {enhanced.needs_llm}/{enhanced.receipts_processed} ({enhanced.needs_llm/enhanced.receipts_processed*100:.1f}%) (enhanced)")
+    else:
+        print(f"                          N/A (no receipts processed) (enhanced)")
+    
+    if baseline.needs_llm > enhanced.needs_llm and baseline.needs_llm > 0:
         reduction = (baseline.needs_llm - enhanced.needs_llm) / baseline.needs_llm * 100
         print(f"  🎯 LLM reduction:       {reduction:.1f}%")
     
@@ -375,15 +401,15 @@ def main():
     # Summary insights
     print(f"\n💡 Key Insights:")
     
-    if enhanced_metrics.columns_detected > baseline_metrics.columns_detected:
+    if enhanced_metrics.columns_detected > baseline_metrics.columns_detected and baseline_metrics.columns_detected > 0:
         improvement = (enhanced_metrics.columns_detected - baseline_metrics.columns_detected) / baseline_metrics.columns_detected * 100
         print(f"  • {improvement:.1f}% more columns detected with enhanced handler")
     
-    if enhanced_metrics.validated_items > 0:
+    if enhanced_metrics.validated_items > 0 and enhanced_metrics.line_items_found > 0:
         validation_rate = enhanced_metrics.validated_items / enhanced_metrics.line_items_found * 100
         print(f"  • {validation_rate:.1f}% of line items mathematically validated")
     
-    if baseline_metrics.needs_llm > enhanced_metrics.needs_llm:
+    if baseline_metrics.needs_llm > enhanced_metrics.needs_llm and baseline_metrics.receipts_processed > 0:
         cost_reduction = (baseline_metrics.needs_llm - enhanced_metrics.needs_llm) / baseline_metrics.receipts_processed * 100
         print(f"  • {cost_reduction:.1f}% reduction in LLM dependency per receipt")
     

@@ -143,18 +143,33 @@ def extract_patterns_from_receipt(receipt_data: Dict) -> Tuple[List[ReceiptWord]
     
     # Convert receipt data to ReceiptWord objects
     for word_data in receipt_data.get('words', []):
-        # Create ReceiptWord with available fields
-        word = ReceiptWord(
-            word_id=word_data.get('word_id', ''),
-            text=word_data.get('text', ''),
-            x=word_data.get('x', 0),
-            y=word_data.get('y', 0),
-            width=word_data.get('width', 0),
-            height=word_data.get('height', 0),
-            line_id=word_data.get('line_id', 0),
-            bounding_box=word_data.get('bounding_box', {})
-        )
-        words.append(word)
+        # Skip if missing required fields
+        if not all(key in word_data for key in ['receipt_id', 'image_id', 'word_id', 'text']):
+            continue
+            
+        # Create ReceiptWord with proper fields
+        try:
+            word = ReceiptWord(
+                receipt_id=word_data['receipt_id'],
+                image_id=word_data['image_id'],
+                line_id=word_data.get('line_id', 1),
+                word_id=word_data['word_id'],
+                text=word_data['text'],
+                bounding_box=word_data.get('bounding_box', {"x": 0, "y": 0, "width": 0, "height": 0}),
+                top_left=word_data.get('top_left', {"x": 0, "y": 0}),
+                top_right=word_data.get('top_right', {"x": 0, "y": 0}),
+                bottom_left=word_data.get('bottom_left', {"x": 0, "y": 0}),
+                bottom_right=word_data.get('bottom_right', {"x": 0, "y": 0}),
+                angle_degrees=word_data.get('angle_degrees', 0.0),
+                angle_radians=word_data.get('angle_radians', 0.0),
+                confidence=word_data.get('confidence', 0.9),
+                extracted_data=word_data.get('extracted_data', {}),
+                embedding_status=word_data.get('embedding_status', 'NONE')
+            )
+            words.append(word)
+        except Exception:
+            # Skip malformed words
+            continue
         
         # Check if word has a label that indicates a pattern
         label = word_data.get('label', '')
@@ -325,15 +340,21 @@ def main():
     receipts_with_patterns = len([r for r in receipts if any(extract_patterns_from_receipt(r)[1].values())])
     
     print(f"\n🔍 Basic Vertical Alignment Detector:")
-    print(f"  - Needs LLM: {basic_results['needs_llm']}/{receipts_with_patterns} ({basic_results['needs_llm']/receipts_with_patterns*100:.1f}%)")
-    print(f"  - Extracted structured data: {basic_results['structured_data']}/{receipts_with_patterns}")
-    print(f"  - Average columns detected: {basic_results['total_columns']/receipts_with_patterns:.1f}")
+    if receipts_with_patterns > 0:
+        print(f"  - Needs LLM: {basic_results['needs_llm']}/{receipts_with_patterns} ({basic_results['needs_llm']/receipts_with_patterns*100:.1f}%)")
+        print(f"  - Extracted structured data: {basic_results['structured_data']}/{receipts_with_patterns}")
+        print(f"  - Average columns detected: {basic_results['total_columns']/receipts_with_patterns:.1f}")
+    else:
+        print(f"  - No receipts with patterns to analyze")
     print(f"  - Total line items found: {basic_results['total_items']}")
     
     print(f"\n🚀 MultiColumn Handler:")
-    print(f"  - Needs LLM: {multi_results['needs_llm']}/{receipts_with_patterns} ({multi_results['needs_llm']/receipts_with_patterns*100:.1f}%)")
-    print(f"  - Extracted structured data: {multi_results['structured_data']}/{receipts_with_patterns}")
-    print(f"  - Average columns detected: {multi_results['total_columns']/receipts_with_patterns:.1f}")
+    if receipts_with_patterns > 0:
+        print(f"  - Needs LLM: {multi_results['needs_llm']}/{receipts_with_patterns} ({multi_results['needs_llm']/receipts_with_patterns*100:.1f}%)")
+        print(f"  - Extracted structured data: {multi_results['structured_data']}/{receipts_with_patterns}")
+        print(f"  - Average columns detected: {multi_results['total_columns']/receipts_with_patterns:.1f}")
+    else:
+        print(f"  - No receipts with patterns to analyze")
     print(f"  - Total line items found: {multi_results['total_items']}")
     print(f"  - Validated items (math verified): {multi_results['validated_items']}")
     
@@ -342,8 +363,15 @@ def main():
         print(f"  - {col_type}: {count}")
     
     # Calculate improvement
-    llm_reduction = (basic_results['needs_llm'] - multi_results['needs_llm']) / basic_results['needs_llm'] * 100
-    item_increase = (multi_results['total_items'] - basic_results['total_items']) / (basic_results['total_items'] or 1) * 100
+    if basic_results['needs_llm'] > 0:
+        llm_reduction = (basic_results['needs_llm'] - multi_results['needs_llm']) / basic_results['needs_llm'] * 100
+    else:
+        llm_reduction = 0.0
+    
+    if basic_results['total_items'] > 0:
+        item_increase = (multi_results['total_items'] - basic_results['total_items']) / basic_results['total_items'] * 100
+    else:
+        item_increase = 0.0 if multi_results['total_items'] == 0 else 100.0
     
     print(f"\n✅ Improvement Metrics:")
     print(f"  - LLM dependency reduction: {llm_reduction:.1f}%")

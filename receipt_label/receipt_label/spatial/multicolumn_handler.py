@@ -560,10 +560,20 @@ class MultiColumnHandler:
                 expected_total = item.quantity * item.unit_price
                 difference = abs(expected_total - item.line_total)
                 
-                validation_results['quantity_price_total'] = (
-                    difference <= self.validation_threshold or
-                    difference / item.line_total <= 0.01  # 1% tolerance
-                )
+                # Handle edge cases: negative, zero, or very small totals
+                if abs(item.line_total) < 0.01:  # Very small or zero total
+                    validation_results['quantity_price_total'] = difference <= self.validation_threshold
+                elif item.line_total < 0:  # Negative total (e.g., refunds, credits)
+                    # For negative totals, use absolute value for percentage calculation
+                    validation_results['quantity_price_total'] = (
+                        difference <= self.validation_threshold or
+                        difference / abs(item.line_total) <= 0.01  # 1% tolerance
+                    )
+                else:  # Normal positive total
+                    validation_results['quantity_price_total'] = (
+                        difference <= self.validation_threshold or
+                        difference / item.line_total <= 0.01  # 1% tolerance
+                    )
                 
                 if validation_results['quantity_price_total']:
                     # Boost confidence for validated items
