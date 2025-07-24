@@ -115,7 +115,8 @@ class _ReceiptWord(
 
     @handle_dynamodb_errors("add_receipt_words")
     def add_receipt_words(self, words: list[ReceiptWord]) -> None:
-        """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
+        """Adds multiple ReceiptWords to DynamoDB in batches of
+        CHUNK_SIZE."""
         self._validate_entity_list(words, ReceiptWord, "words")
 
         request_items = [
@@ -167,9 +168,13 @@ class _ReceiptWord(
         self._batch_write_with_retry(request_items)
 
     def delete_receipt_words_from_line(
-        self, receipt_id: int, image_id: str, line_id: int
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
     ):
-        """Deletes all ReceiptWords from a given line within a receipt/image."""
+        """Deletes all ReceiptWords from a given line within a
+        receipt/image."""
         words = self.list_receipt_words_from_line(
             receipt_id, image_id, line_id
         )
@@ -375,7 +380,8 @@ class _ReceiptWord(
     def list_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
-        """Returns all ReceiptWords that match the given receipt/image/line IDs."""
+        """Returns all ReceiptWords that match the given
+        receipt/image/line IDs."""
         receipt_words = []
         try:
             response = self._client.query(
@@ -470,7 +476,8 @@ class _ReceiptWord(
                     ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                     ":sk_end": {
                         "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
+                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#"
+                            "\uffff"
                         )
                     },
                 },
@@ -539,14 +546,14 @@ class _ReceiptWord(
             status_str = embedding_status
         else:
             raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
+                "embedding_status must be a string or " "EmbeddingStatus enum"
             )
         # Ensure the status_str is a valid EmbeddingStatus value
         valid_values = [s.value for s in EmbeddingStatus]
         if status_str not in valid_values:
             raise ValueError(
-                f"embedding_status must be one of: {', '.join(valid_values)}; "
-                f"Got: {status_str}"
+                f"embedding_status must be one of: {', '.join(valid_values)};"
+                f" Got: {status_str}"
             )
         try:
             # Query the GSI1 index on embedding status
