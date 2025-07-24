@@ -1,6 +1,8 @@
+"""Word entity with geometry and character information for DynamoDB."""
+
 # infra/lambda_layer/python/dynamo/entities/word.py
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.geometry_base import GeometryMixin
@@ -11,7 +13,6 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
-    format_type_error,
 )
 
 
@@ -20,11 +21,11 @@ class Word(GeometryMixin, DynamoDBEntity):
     """Represents a word extracted from an image for DynamoDB.
 
     This class encapsulates word-related information such as its unique
-    identifiers, text content, geometric properties (bounding box and corner
-    coordinates), rotation angles, detection confidence, character
-    histogram, and character count. It supports operations such as generating
-    DynamoDB keys and applying geometric transformations including translation,
-    scaling, rotation, shear, and affine warping.
+    identifiers, text content, geometric properties (bounding box and
+    corner coordinates), rotation angles, detection confidence,
+    character histogram, and character count. It supports operations such
+    as generating DynamoDB keys and applying geometric transformations
+    including translation, scaling, rotation, shear, and affine warping.
 
     Attributes:
         image_id (str): UUID identifying the image.
@@ -43,7 +44,8 @@ class Word(GeometryMixin, DynamoDBEntity):
             'x' and 'y'.
         angle_degrees (float): The angle of the word in degrees.
         angle_radians (float): The angle of the word in radians.
-        confidence (float): The confidence level of the word (between 0 and 1).
+        confidence (float): The confidence level of the word
+            (between 0 and 1).
         histogram (dict): A histogram representing character frequencies in
             the word.
         num_chars (int): The number of characters in the word.
@@ -130,7 +132,8 @@ class Word(GeometryMixin, DynamoDBEntity):
         """Converts the Word object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Word object as a DynamoDB item.
+            dict: A dictionary representing the Word object as a DynamoDB
+            item.
         """
         item: Dict[str, Any] = {
             **self.key,
@@ -139,42 +142,122 @@ class Word(GeometryMixin, DynamoDBEntity):
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bounding_box["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bounding_box["y"],
+                            20,
+                            22,
+                        )
+                    },
                     "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["width"],
+                            20,
+                            22,
+                        )
                     },
                     "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["height"],
+                            20,
+                            22,
+                        )
                     },
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
+            "angle_degrees": {
+                "N": _format_float(
+                    self.angle_degrees,
+                    18,
+                    20,
+                )
+            },
+            "angle_radians": {
+                "N": _format_float(
+                    self.angle_radians,
+                    18,
+                    20,
+                )
+            },
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
         }
 
@@ -214,7 +297,9 @@ class Word(GeometryMixin, DynamoDBEntity):
             ValueError: If only one of width or height is provided.
         """
         if (width is None) != (height is None):
-            raise ValueError("Both width and height must be provided together")
+            raise ValueError(
+                "Both width and height must be provided together",
+            )
 
         x, y = super().calculate_centroid()
 
@@ -250,7 +335,9 @@ class Word(GeometryMixin, DynamoDBEntity):
             ValueError: If only one of width or height is provided.
         """
         if (width is None) != (height is None):
-            raise ValueError("Both width and height must be provided together")
+            raise ValueError(
+                "Both width and height must be provided together",
+            )
 
         x = self.bounding_box["x"]
         y = self.bounding_box["y"]
@@ -276,8 +363,8 @@ class Word(GeometryMixin, DynamoDBEntity):
         Tuple[float, float],
         Tuple[float, float],
     ]:
-        """Calculates the top-left, top-right, bottom-left, and bottom-right
-        corners of the Word in image coordinates.
+        """Calculates the top-left and top-right, and the bottom-left and
+        bottom-right corners of the Word in image coordinates.
 
         Args:
             width (int, optional): The width of the image to scale
@@ -299,7 +386,9 @@ class Word(GeometryMixin, DynamoDBEntity):
             ValueError: If only one of width or height is provided.
         """
         if (width is None) != (height is None):
-            raise ValueError("Both width and height must be provided together")
+            raise ValueError(
+                "Both width and height must be provided together",
+            )
 
         if width is not None and height is not None:
             x_scale: float = float(width)
