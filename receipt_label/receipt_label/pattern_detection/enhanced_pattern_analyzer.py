@@ -101,15 +101,31 @@ class QuantityPatternMatcher:
 class SpatialAnalyzer:
     """Analyzes spatial relationships between receipt elements."""
     
-    # Financial keywords grouped by type
+    # Financial keywords grouped by type (with OCR error variants)
     FINANCIAL_KEYWORDS = {
-        'subtotal': {'subtotal', 'sub total', 'sub-total', 'net total', 'net amount', 'merchandise'},
-        'tax': {'tax', 'vat', 'gst', 'hst', 'sales tax', 'state tax', 'local tax', 'city tax'},
-        'total': {'total', 'balance due', 'amount due', 'grand total', 'payment due', 'due', 
-                  'pay', 'balance', 'payment total', 'order total', 'final amount', 'to pay',
-                  'please pay', 'amount', 'charge', 'sum', 'final'},
-        'discount': {'discount', 'coupon', 'sale', 'markdown', 'promo', 'savings', 'off', 'save'},
-        'fee': {'fee', 'service charge', 'delivery', 'tip', 'gratuity', 'surcharge'},
+        'subtotal': {
+            'subtotal', 'sub total', 'sub-total', 'net total', 'net amount', 'merchandise',
+            'subtot', 'sub tot', 'subt', 'nettotal', 'netamt'  # OCR variants
+        },
+        'tax': {
+            'tax', 'vat', 'gst', 'hst', 'sales tax', 'state tax', 'local tax', 'city tax',
+            'ta', 'tx', 'salestax', 'statetax'  # OCR variants
+        },
+        'total': {
+            'total', 'balance due', 'amount due', 'grand total', 'payment due', 'due', 
+            'pay', 'balance', 'payment total', 'order total', 'final amount', 'to pay',
+            'please pay', 'amount', 'charge', 'sum', 'final',
+            'tot', 'totl', 'grandtotal', 'paymenttotal', 'ordertotal', 'amountdue',  # OCR variants
+            'balancedue', 'grandtot', 'finaltotal'
+        },
+        'discount': {
+            'discount', 'coupon', 'sale', 'markdown', 'promo', 'savings', 'off', 'save',
+            'disc', 'discnt', 'coup', 'prm'  # OCR variants
+        },
+        'fee': {
+            'fee', 'service charge', 'delivery', 'tip', 'gratuity', 'surcharge',
+            'svc', 'srvc', 'deliv', 'chg', 'charge'  # OCR variants
+        },
     }
     
     # Product/item related keywords
@@ -146,6 +162,9 @@ class SpatialAnalyzer:
                         if category not in keyword_scores:
                             keyword_scores[category] = 0.5
         
+        # Check for fuzzy keyword matches to handle OCR errors
+        cls._check_fuzzy_keywords(combined_text, found_keywords, keyword_scores)
+        
         # Check for item keywords
         item_score = 0
         for keyword in cls.ITEM_KEYWORDS:
@@ -156,6 +175,23 @@ class SpatialAnalyzer:
             keyword_scores['item'] = item_score
         
         return found_keywords, keyword_scores
+    
+    @classmethod
+    def _check_fuzzy_keywords(cls, text: str, found_keywords: Set[str], keyword_scores: Dict[str, float]):
+        """Check for fuzzy keyword matches to handle OCR errors."""
+        # Check for partial matches for important keywords
+        fuzzy_patterns = {
+            'total': ['utal', 'otal', 'ttal', 'toal', 'totl'],  # Missing letters
+            'tax': ['ta', 'tx', 'ax'],  # Very short OCR errors
+            'subtotal': ['subtot', 'subt', 'sub'],  # Truncated
+        }
+        
+        for category, patterns in fuzzy_patterns.items():
+            for pattern in patterns:
+                if pattern in text and len(pattern) >= 2:  # Minimum 2 chars
+                    found_keywords.add(category)
+                    if category not in keyword_scores:
+                        keyword_scores[category] = 0.6  # Lower confidence for fuzzy
     
     @classmethod
     def group_by_lines(cls, currency_contexts: List[EnhancedCurrencyContext]) -> Dict[str, List[EnhancedCurrencyContext]]:
