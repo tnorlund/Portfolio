@@ -19,9 +19,9 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
     """Receipt line metadata stored in DynamoDB.
 
     This class encapsulates receipt line information such as the receipt
-    identifier, image UUID, text, geometric properties, rotation angles, and
-    detection confidence. It supports generating DynamoDB keys and converting
-    the line to a DynamoDB item.
+    identifier, image UUID, text, geometric properties, and rotation angles.
+    It includes detection confidence and supports generating DynamoDB keys
+    before converting the line to a DynamoDB item.
 
     Attributes:
         receipt_id (int): Identifier for the receipt.
@@ -96,10 +96,11 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
         if isinstance(self.embedding_status, EmbeddingStatus):
             self.embedding_status = self.embedding_status.value
         elif isinstance(self.embedding_status, str):
-            if self.embedding_status not in [s.value for s in EmbeddingStatus]:
+            allowed_statuses = [s.value for s in EmbeddingStatus]
+            if self.embedding_status not in allowed_statuses:
                 error_message = (
                     "embedding_status must be one of: "
-                    f"{', '.join(s.value for s in EmbeddingStatus)}\n"
+                    f"{', '.join(allowed_statuses)}\n"
                     f"Got: {self.embedding_status}"
                 )
                 raise ValueError(error_message)
@@ -153,42 +154,122 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bounding_box["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bounding_box["y"],
+                            20,
+                            22,
+                        )
+                    },
                     "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["width"],
+                            20,
+                            22,
+                        )
                     },
                     "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["height"],
+                            20,
+                            22,
+                        )
                     },
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
+            "angle_degrees": {
+                "N": _format_float(
+                    self.angle_degrees,
+                    18,
+                    20,
+                )
+            },
+            "angle_radians": {
+                "N": _format_float(
+                    self.angle_radians,
+                    18,
+                    20,
+                )
+            },
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "embedding_status": {"S": self.embedding_status},
         }
@@ -256,8 +337,8 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
 
         Args:
             a, b, c, d, e, f, g, h (float): Coefficients that mapped the
-                original image to the warped image. They are inverted so we can
-                map warped coordinates back to the original space.
+                original image to the warped image. They are inverted so we
+                can map warped coordinates back to the original space.
             src_width (int): Original image width in pixels.
             src_height (int): Original image height in pixels.
             dst_width (int): Warped image width in pixels.
