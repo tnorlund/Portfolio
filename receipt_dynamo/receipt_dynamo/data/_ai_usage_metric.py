@@ -54,7 +54,8 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
 
         self._validate_entity_list(metrics, AIUsageMetric, "metrics")
 
-        # Convert metrics to DynamoDB items and create mapping for failure tracking
+        # Convert metrics to DynamoDB items and create mapping for failure
+        # tracking
         items = [metric.to_dynamodb_item() for metric in metrics]
         failed_metrics = []
 
@@ -97,7 +98,8 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
                     if "PutRequest" in request:
                         # Find the corresponding metric by matching the item
                         unprocessed_item = request["PutRequest"]["Item"]
-                        # Match by requestId (camelCase as per DynamoDB item format)
+                        # Match by requestId (camelCase as per DynamoDB item
+                        # format)
                         request_id = unprocessed_item.get("requestId", {}).get(
                             "S"
                         )

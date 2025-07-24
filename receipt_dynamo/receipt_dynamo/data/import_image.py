@@ -112,15 +112,11 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["receipt_word_labels"]:
         # type: ignore[arg-type]
-        dynamo_client.add_receipt_word_labels(
-            entities["receipt_word_labels"]
-        )
+        dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])
 
     if entities["receipt_metadatas"]:
         # type: ignore[arg-type]
-        dynamo_client.add_receipt_metadatas(
-            entities["receipt_metadatas"]
-        )
+        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])
 
     if entities["ocr_jobs"]:
         # type: ignore[arg-type]

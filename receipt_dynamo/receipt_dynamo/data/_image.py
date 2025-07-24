@@ -9,24 +9,6 @@ while maintaining full backward compatibility and all functionality.
 """
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
-from receipt_dynamo.entities.image import Image
-from receipt_dynamo.entities.letter import Letter
-from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.word import Word
-from receipt_dynamo.entities import (
-    item_to_image,
-    item_to_letter,
-    item_to_line,
-    item_to_receipt,
-    item_to_receipt_letter,
-    item_to_receipt_line,
-    item_to_receipt_word,
-    item_to_word,
-)
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
@@ -44,11 +26,27 @@ from receipt_dynamo.entities import (
     ImageDetails,
     ReceiptMetadata,
     assert_valid_uuid,
+    item_to_image,
+    item_to_letter,
+    item_to_line,
     item_to_ocr_job,
     item_to_ocr_routing_decision,
+    item_to_receipt,
+    item_to_receipt_letter,
+    item_to_receipt_line,
     item_to_receipt_metadata,
+    item_to_receipt_word,
     item_to_receipt_word_label,
+    item_to_word,
 )
+from receipt_dynamo.entities.image import Image
+from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (

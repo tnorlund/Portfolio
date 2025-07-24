@@ -1,15 +1,15 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_validation_result import (
-    ReceiptValidationResult,
-)
-from receipt_dynamo.entities import item_to_receipt_validation_result
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.entities import item_to_receipt_validation_result
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
 )
 
 if TYPE_CHECKING:
@@ -309,8 +309,10 @@ class _ReceiptValidationResult(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": (f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
-                          f"CATEGORY#{field_name}#RESULT#{result_index}")
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#{result_index}"
+                    )
                 },
             },
         )
@@ -480,8 +482,10 @@ class _ReceiptValidationResult(
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": (f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
-                          f"CATEGORY#{field_name}#RESULT#")
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#"
+                    )
                 },
             },
         }

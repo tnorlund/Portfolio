@@ -153,7 +153,10 @@ class _CompletionBatchResult(DynamoClientProtocol):
                 Key={
                     "PK": {"S": f"BATCH#{batch_id}"},
                     "SK": {
-                        "S": f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}#LABEL#{label}"
+                        "S": (
+                            f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
+                            f"#WORD#{word_id}#LABEL#{label}"
+                        )
                     },
                 },
             )

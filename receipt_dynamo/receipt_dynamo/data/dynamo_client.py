@@ -103,7 +103,8 @@ class DynamoClient(
 
         Args:
             table_name (str): The name of the DynamoDB table.
-            region (str, optional): The AWS region where the DynamoDB table is located. Defaults to "us-east-1".
+            region (str, optional): The AWS region where the DynamoDB table is
+                located. Defaults to "us-east-1".
 
         Attributes:
             _client (DynamoDBClient): The Boto3 DynamoDB client.
@@ -119,5 +120,6 @@ class DynamoClient(
             self._client.describe_table(TableName=self.table_name)
         except self._client.exceptions.ResourceNotFoundException:
             raise ValueError(
-                f"The table '{self.table_name}' does not exist in region '{region}'."
+                f"The table '{self.table_name}' does not exist in region "
+                f"'{region}'."
             )

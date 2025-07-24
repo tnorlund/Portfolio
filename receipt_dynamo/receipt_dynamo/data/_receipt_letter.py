@@ -3,8 +3,6 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities import item_to_receipt_letter
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -21,6 +19,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_letter
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:

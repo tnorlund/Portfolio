@@ -627,8 +627,10 @@ class ReceiptStructureAnalysis:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": (f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#"
-                      f"{self.version}")
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#"
+                    f"{self.version}"
+                )
             },
         }
 

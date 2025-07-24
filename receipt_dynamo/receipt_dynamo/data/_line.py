@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -9,6 +7,8 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.entities import item_to_line
+from receipt_dynamo.entities.line import Line
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (

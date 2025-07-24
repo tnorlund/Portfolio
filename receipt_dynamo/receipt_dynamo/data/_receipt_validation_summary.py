@@ -1,14 +1,14 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.receipt_validation_summary import (
-    ReceiptValidationSummary,
-)
-from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.entities import item_to_receipt_validation_summary
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
 )
 
 if TYPE_CHECKING:
@@ -246,9 +246,7 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
-                "last_evaluated_key must be a dictionary or None"
-            )
+            raise ValueError("last_evaluated_key must be a dictionary or None")
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
@@ -328,9 +326,7 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
-                "last_evaluated_key must be a dictionary or None"
-            )
+            raise ValueError("last_evaluated_key must be a dictionary or None")
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,

@@ -2,8 +2,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities import item_to_receipt_line
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
@@ -19,6 +17,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_line
+from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:

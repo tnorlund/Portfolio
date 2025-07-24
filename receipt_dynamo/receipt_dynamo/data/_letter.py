@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.letter import Letter
-from receipt_dynamo.entities import item_to_letter
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.entities import item_to_letter
+from receipt_dynamo.entities.letter import Letter
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
