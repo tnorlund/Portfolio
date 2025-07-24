@@ -9,16 +9,11 @@ from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+
+if TYPE_CHECKING:
+    pass
 
 
 class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):

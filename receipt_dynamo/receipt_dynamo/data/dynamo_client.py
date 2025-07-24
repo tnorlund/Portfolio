@@ -1,17 +1,11 @@
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 import boto3
 
-if TYPE_CHECKING:
-    from mypy_boto3_dynamodb import DynamoDBClient
-
 from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
 from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
-
-# Import all the modules needed for multiple inheritance
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
@@ -56,6 +50,9 @@ from receipt_dynamo.data._receipt_validation_summary import (
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._word import _Word
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
 
 
 class DynamoClient(

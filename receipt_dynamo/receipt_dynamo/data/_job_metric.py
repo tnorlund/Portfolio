@@ -7,10 +7,6 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -21,6 +17,9 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

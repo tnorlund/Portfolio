@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -7,26 +9,9 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.entities import item_to_receipt_validation_result
-from receipt_dynamo.entities.receipt_validation_result import (
-    ReceiptValidationResult,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    QueryInputTypeDef,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -36,7 +21,14 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
 )
+from receipt_dynamo.entities import item_to_receipt_validation_result
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 class _ReceiptValidationResult(

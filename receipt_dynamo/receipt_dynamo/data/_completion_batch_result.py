@@ -3,17 +3,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
+from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
     OperationError,
@@ -22,6 +16,9 @@ from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
     item_to_completion_batch_result,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

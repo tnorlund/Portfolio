@@ -1,20 +1,9 @@
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-from receipt_dynamo.entities import (
-    item_to_receipt_chat_gpt_validation,
-)
-from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     DeleteRequestTypeDef,
     PutRequestTypeDef,
     PutTypeDef,
@@ -29,7 +18,16 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
+from receipt_dynamo.entities import (
+    item_to_receipt_chat_gpt_validation,
+)
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 class _ReceiptChatGPTValidation(DynamoClientProtocol):

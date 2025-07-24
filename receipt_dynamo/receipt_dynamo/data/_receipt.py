@@ -33,12 +33,7 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    ReceiptLetter,
-    item_to_receipt_letter,
-)
 from receipt_dynamo.entities.receipt_line import (
-    ReceiptLine,
     item_to_receipt_line,
 )
 from receipt_dynamo.entities.receipt_word import (

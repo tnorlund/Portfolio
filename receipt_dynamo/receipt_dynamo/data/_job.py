@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -10,15 +8,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBResourceNotFoundError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
-    OperationError,
 )
 from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status

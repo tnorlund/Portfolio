@@ -7,26 +7,19 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.entities import item_to_receipt_validation_category
-from receipt_dynamo.entities.receipt_validation_category import (
-    ReceiptValidationCategory,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
     WriteRequestTypeDef,
 )
+from receipt_dynamo.entities import item_to_receipt_validation_category
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 class _ReceiptValidationCategory(

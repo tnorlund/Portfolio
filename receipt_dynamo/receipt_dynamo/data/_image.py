@@ -10,7 +10,6 @@ while maintaining full backward compatibility and all functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from receipt_dynamo.constants import ImageType
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -18,13 +17,8 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    OperationError,
-    ReceiptDynamoError,
-)
 from receipt_dynamo.entities import (
     ImageDetails,
-    ReceiptMetadata,
     assert_valid_uuid,
     item_to_image,
     item_to_letter,

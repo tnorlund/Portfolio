@@ -2,8 +2,7 @@
 
 import threading
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric

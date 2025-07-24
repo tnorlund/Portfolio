@@ -6,7 +6,7 @@ DynamoDB data access classes in the receipt_dynamo package.
 """
 
 from functools import wraps
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from botocore.exceptions import ClientError
 
@@ -17,7 +17,6 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
-    OperationError,
 )
 
 # Type variable for entity types

@@ -3,19 +3,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        DeleteTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     DeleteRequestTypeDef,
     DeleteTypeDef,
     PutRequestTypeDef,
@@ -35,6 +24,9 @@ from receipt_dynamo.entities.places_cache import (
     PlacesCache,
     item_to_places_cache,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25

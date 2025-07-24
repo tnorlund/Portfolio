@@ -3,17 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import botocore
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     PutRequestTypeDef,
     WriteRequestTypeDef,
 )
@@ -31,6 +22,9 @@ from receipt_dynamo.entities.instance_job import (
     InstanceJob,
     item_to_instance_job,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 class _Instance(DynamoClientProtocol):

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
-    PutRequestTypeDef,
     WriteRequestTypeDef,
 )
 

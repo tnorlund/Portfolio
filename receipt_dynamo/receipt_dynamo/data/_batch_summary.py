@@ -1,21 +1,17 @@
+"""
+This module provides the _BatchSummary class for managing BatchSummary
+records in DynamoDB. It includes operations for inserting, updating,
+deleting, and querying batch summary data, including support for pagination
+and GSI lookups by status.
+"""
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     DeleteTypeDef,
     PutRequestTypeDef,
     PutTypeDef,
@@ -29,20 +25,14 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
 )
-
-"""
-This module provides the _BatchSummary class for managing BatchSummary
-records in DynamoDB. It includes operations for inserting, updating,
-deleting, and querying batch summary data, including support for pagination
-and GSI lookups by status.
-"""
-
-from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     item_to_batch_summary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
