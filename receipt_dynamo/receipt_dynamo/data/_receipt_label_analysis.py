@@ -1,7 +1,8 @@
 """Receipt Label Analysis data access using base operations framework.
 
-This refactored version reduces code from ~944 lines to ~300 lines (68% reduction)
-while maintaining full backward compatibility and all functionality.
+This refactored version reduces code from ~944 lines to ~300 lines
+(68% reduction) while maintaining full backward compatibility and all
+functionality.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -156,7 +157,9 @@ class _ReceiptLabelAnalysis(
                 "Put": {
                     "TableName": self.table_name,
                     "Item": analysis.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for analysis in receipt_label_analyses
@@ -210,7 +213,9 @@ class _ReceiptLabelAnalysis(
                 "Delete": {
                     "TableName": self.table_name,
                     "Key": analysis.key,
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for analysis in receipt_label_analyses
@@ -245,11 +250,13 @@ class _ReceiptLabelAnalysis(
             raise ValueError("image_id must be a string")
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
             raise ValueError(
-                f"version must be a string or None, got {type(version).__name__}"
+                "version must be a string or None, got "
+                f"{type(version).__name__}"
             )
 
         # Check for positive integers
@@ -265,7 +272,10 @@ class _ReceiptLabelAnalysis(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
+                            f"LABELS#{version}"
+                        )
                     },
                 },
             )
@@ -280,7 +290,9 @@ class _ReceiptLabelAnalysis(
             # Query for any version and return first
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
-                "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+                "KeyConditionExpression": (
+                    "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+                ),
                 "ExpressionAttributeNames": {
                     "#pk": "PK",
                     "#sk": "SK",
@@ -315,7 +327,9 @@ class _ReceiptLabelAnalysis(
 
         Args:
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (
+                Optional[Dict[str, Any]]
+            ): The key to start from
 
         Returns:
             Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: The
@@ -382,7 +396,8 @@ class _ReceiptLabelAnalysis(
             image_id (str): The image ID
 
         Returns:
-            List[ReceiptLabelAnalysis]: The receipt label analyses for the image
+            List[ReceiptLabelAnalysis]:
+                The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string")
@@ -391,7 +406,9 @@ class _ReceiptLabelAnalysis(
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -434,7 +451,8 @@ class _ReceiptLabelAnalysis(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
-        """Gets receipt label analyses for a given image with pagination support
+        """Gets receipt label analyses for a given image with pagination
+        support
 
         Args:
             image_id (str): The image ID
@@ -463,7 +481,9 @@ class _ReceiptLabelAnalysis(
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -522,7 +542,8 @@ class _ReceiptLabelAnalysis(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
-        """Gets receipt label analyses for a given image and receipt with pagination support
+        """Gets receipt label analyses for a given image and receipt with
+        pagination support
 
         Args:
             image_id (str): The image ID
@@ -557,7 +578,9 @@ class _ReceiptLabelAnalysis(
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
