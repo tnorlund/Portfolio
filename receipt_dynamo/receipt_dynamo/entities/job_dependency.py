@@ -36,16 +36,16 @@ class JobDependency:
         """Initializes a new JobDependency object for DynamoDB.
 
         Args:
-            dependent_job_id (str): UUID identifying the job that depends on
-                another.
-            dependency_job_id (str): UUID identifying the job that is
-                depended on.
-            type (str): The type of dependency (COMPLETION, SUCCESS,
-                ARTIFACT, etc).
-            created_at (datetime): The timestamp when the dependency was
-                created.
-            condition (str, optional): Specific condition for the dependency.
-                Defaults to None.
+            dependent_job_id (str):
+                UUID identifying the job that depends on another.
+            dependency_job_id (str):
+                UUID identifying the job that is depended on.
+            type (str):
+                The type of dependency (COMPLETION, SUCCESS, ARTIFACT, etc).
+            created_at (datetime):
+                The timestamp when the dependency was created.
+            condition (str, optional):
+                Specific condition for the dependency. Defaults to None.
 
         Raises:
             ValueError: If any parameter is of invalid type or has
@@ -154,12 +154,12 @@ class JobDependency:
         """
         return (
             "JobDependency("
-            f"dependent_job_id={_repr_str(self.dependent_job_id)}, "
-            f"dependency_job_id={_repr_str(self.dependency_job_id)}, "
-            f"type={_repr_str(self.type)}, "
-            f"created_at={_repr_str(self.created_at)}, "
-            f"condition={_repr_str(self.condition)}"
-            ")"
+            f"\n  dependent_job_id={_repr_str(self.dependent_job_id)},"
+            f"\n  dependency_job_id={_repr_str(self.dependency_job_id)},"
+            f"\n  type={_repr_str(self.type)},"
+            f"\n  created_at={_repr_str(self.created_at)},"
+            f"\n  condition={_repr_str(self.condition)}"
+            "\n)"
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
@@ -179,13 +179,17 @@ class JobDependency:
         """Determines whether two JobDependency objects are equal.
 
         Args:
-            other (JobDependency): The other JobDependency object to compare.
+            other (JobDependency):
+                The other JobDependency object to compare.
 
         Returns:
-            bool: True if the JobDependency objects are equal, False otherwise.
+            bool:
+                True if the JobDependency objects are equal,
+                False otherwise.
 
         Note:
-            If other is not an instance of JobDependency, False is returned.
+            If other is not an instance of JobDependency,
+            False is returned.
         """
         if not isinstance(other, JobDependency):
             return False
@@ -239,11 +243,12 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
     if not required_keys.issubset(item.keys()):
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
-        raise ValueError(
+        message = (
             "Invalid item format\n"
             f"missing keys: {missing_keys}\n"
             f"additional keys: {additional_keys}"
         )
+        raise ValueError(message)
 
     try:
         # Extract required fields
