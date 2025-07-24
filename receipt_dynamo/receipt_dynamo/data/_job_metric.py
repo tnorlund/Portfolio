@@ -32,7 +32,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+                f"LastEvaluatedKey[{key}] must be a dict containing "
+                "a key 'S'"
             )
 
 
@@ -84,7 +85,9 @@ class _JobMetric(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
             else:
                 raise DynamoDBError(
                     f"Could not add job metric to DynamoDB: {e}"
@@ -146,7 +149,9 @@ class _JobMetric(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
             else:
                 raise OperationError(f"Error getting job metric: {e}") from e
 
@@ -165,14 +170,14 @@ class _JobMetric(
             job_id (str): The ID of the job to get metrics for.
             metric_name (str, optional): Filter by specific metric name.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the
-                starting point for the query.
+            last_evaluated_key (dict, optional):
+                A key that marks the starting point for the query.
 
         Returns:
             tuple:
                 - A list of JobMetric objects for the specified job.
-                - A dict representing the LastEvaluatedKey from the final query
-                    page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the
+                    final query page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -228,7 +233,10 @@ class _JobMetric(
 
                 if limit is not None and len(metrics) >= limit:
                     metrics = metrics[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -255,7 +263,9 @@ class _JobMetric(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
             else:
                 raise DynamoDBError(
                     f"Could not list job metrics from the database: {e}"
@@ -274,14 +284,14 @@ class _JobMetric(
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the starting
-                point for the query.
+            last_evaluated_key (dict, optional):
+                A key that marks the starting point for the query.
 
         Returns:
             tuple:
                 - A list of JobMetric objects with the specified name.
-                - A dict representing the LastEvaluatedKey from the final query
-                    page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the
+                    final query page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -328,7 +338,10 @@ class _JobMetric(
 
                 if limit is not None and len(metrics) >= limit:
                     metrics = metrics[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -355,7 +368,9 @@ class _JobMetric(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
             else:
                 raise DynamoDBError(
                     f"Could not query metrics by name from the database: {e}"
@@ -370,22 +385,22 @@ class _JobMetric(
         """
         Retrieve metrics with a specific name across all jobs, grouped by job.
 
-        This method is optimized for comparing the same metric across different
-        jobs. Results are automatically grouped by job_id and then ordered by
-        timestamp.
+        This method is optimized for comparing the same metric across
+        different jobs. Results are automatically grouped by job_id and then
+        ordered by timestamp.
 
         Parameters:
             metric_name (str): The name of the metric to search for.
             limit (int, optional): The maximum number of metrics to return.
-            last_evaluated_key (dict, optional): A key that marks the
-                starting point for the query.
+            last_evaluated_key (dict, optional):
+                A key that marks the starting point for the query.
 
         Returns:
             tuple:
                 - A list of JobMetric objects with the specified name,
                     sorted by job_id and timestamp.
-                - A dict representing the LastEvaluatedKey from the final query
-                    page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the
+                    final query page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -432,7 +447,10 @@ class _JobMetric(
 
                 if limit is not None and len(metrics) >= limit:
                     metrics = metrics[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -460,7 +478,9 @@ class _JobMetric(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
             else:
                 raise DynamoDBError(
                     f"Could not query metrics by name across jobs from the "
