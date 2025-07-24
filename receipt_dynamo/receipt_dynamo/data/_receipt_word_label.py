@@ -67,13 +67,11 @@ class _ReceiptWordLabel(
                 add to the database
 
         Raises:
-            ValueError: When a receipt word label with the same ID
-                already exists
+            EntityAlreadyExistsError: When a receipt word label with the same
+                ID already exists
         """
         if receipt_word_label is None:
-            raise ValueError(
-                "receipt_word_label cannot be None"
-            )
+            raise ValueError("receipt_word_label cannot be None")
         if not isinstance(receipt_word_label, ReceiptWordLabel):
             raise ValueError(
                 "receipt_word_label must be an instance of the "
@@ -94,16 +92,18 @@ class _ReceiptWordLabel(
     ):
         """Handle errors specific to add_receipt_word_label"""
         from receipt_dynamo.data.shared_exceptions import (
+            DynamoDBAccessError,
             DynamoDBError,
             DynamoDBServerError,
             DynamoDBThroughputError,
+            DynamoDBValidationError,
+            EntityAlreadyExistsError,
         )
 
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
-            raise ValueError(
-                "Receipt word label for Image ID "
-                f"'{receipt_word_label.image_id}' already exists"
+            raise EntityAlreadyExistsError(
+                "Entity already exists: ReceiptWordLabel"
             ) from error
         elif error_code == "ResourceNotFoundException":
             raise DynamoDBError(
@@ -111,16 +111,18 @@ class _ReceiptWordLabel(
             ) from error
         elif error_code == "ProvisionedThroughputExceededException":
             raise DynamoDBThroughputError(
-                f"Provisioned throughput exceeded: {error}"
+                "Provisioned throughput exceeded"
             ) from error
         elif error_code == "InternalServerError":
-            raise DynamoDBServerError(
-                f"Internal server error: {error}"
+            raise DynamoDBServerError("Internal server error") from error
+        elif error_code == "ValidationException":
+            raise DynamoDBValidationError(
+                "One or more parameters were invalid"
             ) from error
+        elif error_code == "AccessDeniedException":
+            raise DynamoDBAccessError("Access denied") from error
         else:
-            raise DynamoDBError(
-                f"Could not add receipt word label to DynamoDB: {error}"
-            ) from error
+            raise DynamoDBError("Something unexpected") from error
 
     def add_receipt_word_labels(
         self, receipt_word_labels: List[ReceiptWordLabel]
@@ -136,9 +138,7 @@ class _ReceiptWordLabel(
                 already exists
         """
         if receipt_word_labels is None:
-            raise ValueError(
-                "receipt_word_labels cannot be None"
-            )
+            raise ValueError("receipt_word_labels cannot be None")
         if not isinstance(receipt_word_labels, list):
             raise ValueError(
                 "receipt_word_labels must be a list of ReceiptWordLabel "
@@ -188,7 +188,7 @@ class _ReceiptWordLabel(
         elif error_code == "AccessDeniedException":
             raise DynamoDBAccessError("Access denied") from error
         else:
-            raise DynamoDBError("Error adding receipt word labels") from error
+            raise DynamoDBError("Something unexpected") from error
 
     @handle_dynamodb_errors("update_receipt_word_label")
     def update_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
@@ -199,10 +199,10 @@ class _ReceiptWordLabel(
                 update
 
         Raises:
-            ValueError: When the receipt word label does not exist
+            EntityNotFoundError: When the receipt word label does not exist
         """
         self._validate_entity(
-            receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
+            receipt_word_label, ReceiptWordLabel, "receipt_word_label"
         )
         self._update_entity(receipt_word_label)
 
@@ -245,10 +245,10 @@ class _ReceiptWordLabel(
                 delete
 
         Raises:
-            ValueError: When the receipt word label does not exist
+            EntityNotFoundError: When the receipt word label does not exist
         """
         self._validate_entity(
-            receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
+            receipt_word_label, ReceiptWordLabel, "receipt_word_label"
         )
         self._delete_entity(receipt_word_label)
 
@@ -371,10 +371,12 @@ class _ReceiptWordLabel(
         )
         item = response.get("Item")
         if not item:
-            raise ValueError(
-                f"Receipt Word Label for Receipt ID {receipt_id}, "
-                f"Line ID {line_id}, Word ID {word_id}, Label '{label}', "
-                f"and Image ID {image_id} does not exist"
+            from receipt_dynamo.data.shared_exceptions import (
+                EntityNotFoundError,
+            )
+
+            raise EntityNotFoundError(
+                "Entity does not exist: ReceiptWordLabel"
             )
         return item_to_receipt_word_label(item)
 
