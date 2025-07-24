@@ -51,7 +51,8 @@ class _JobResource(
             job_resource (JobResource): The job resource to add to the database
 
         Raises:
-            ValueError: When a job resource with the same resource ID already exists
+            ValueError: When a job resource with the same resource ID
+                already exists
         """
         if job_resource is None:
             raise ValueError(
@@ -65,13 +66,19 @@ class _JobResource(
             self._client.put_item(
                 TableName=self.table_name,
                 Item=job_resource.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"JobResource with resource ID {job_resource.resource_id} for job {job_resource.job_id} already exists"
+                    (
+                        "JobResource with resource ID "
+                        f"{job_resource.resource_id} for job "
+                        f"{job_resource.job_id} already exists"
+                    )
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -121,7 +128,10 @@ class _JobResource(
 
             if "Item" not in response:
                 raise ValueError(
-                    f"No job resource found with job ID {job_id} and resource ID {resource_id}"
+                    (
+                        "No job resource found with job ID "
+                        f"{job_id} and resource ID {resource_id}"
+                    )
                 )
 
             return item_to_job_resource(response["Item"])
@@ -153,10 +163,12 @@ class _JobResource(
             job_id (str): The ID of the job
             resource_id (str): The ID of the resource
             status (str): The new status of the resource
-            released_at (str, optional): The timestamp when the resource was released (required for 'released' status)
+            released_at (str, optional): The timestamp when the resource was
+                released (required for 'released' status)
 
         Raises:
-            ValueError: If the job resource does not exist or parameters are invalid
+            ValueError: If the job resource does not exist or parameters are
+                invalid
         """
         if job_id is None:
             raise ValueError("Job ID is required and cannot be None.")
@@ -201,13 +213,18 @@ class _JobResource(
                 UpdateExpression=update_expression,
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"No job resource found with job ID {job_id} and resource ID {resource_id}"
+                    (
+                        "No job resource found with job ID "
+                        f"{job_id} and resource ID {resource_id}"
+                    )
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise ReceiptDynamoError(
@@ -236,12 +253,14 @@ class _JobResource(
         Parameters:
             job_id (str): The ID of the job to get resources for.
             limit (int, optional): The maximum number of resources to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
                 - A list of JobResource objects for the specified job.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -332,12 +351,14 @@ class _JobResource(
         Parameters:
             resource_type (str): The type of resource to search for.
             limit (int, optional): The maximum number of resources to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            last_evaluated_key (dict, optional): A key that marks the starting
+                point for the query.
 
         Returns:
             tuple:
                 - A list of JobResource objects with the specified type.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final query
+                    page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
@@ -423,7 +444,8 @@ class _JobResource(
         self, resource_id: str
     ) -> tuple[list[JobResource], dict | None]:
         """
-        Retrieve a specific resource by its ID (may be attached to multiple jobs).
+        Retrieve a specific resource by its ID (may be attached to multiple
+            jobs).
 
         Parameters:
             resource_id (str): The ID of the resource to search for.
@@ -431,7 +453,8 @@ class _JobResource(
         Returns:
             tuple:
                 - A list of JobResource objects with the specified resource ID.
-                - A dict representing the LastEvaluatedKey from the query, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the query, or
+                    None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
