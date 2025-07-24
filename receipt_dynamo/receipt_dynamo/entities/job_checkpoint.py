@@ -5,20 +5,23 @@ from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 class JobCheckpoint:
     """
-    Represents a model checkpoint for a training job stored in S3 and tracked in DynamoDB.
+    Represents a model checkpoint for a training job stored in S3 and
+    tracked in DynamoDB.
 
-    This class tracks model checkpoints created during training jobs, including their
-    location in S3, metadata about the checkpoint, and training metrics at the time
-    the checkpoint was created.
+    This class tracks model checkpoints created during training jobs.
+    It stores their location in S3, metadata about the checkpoint, and
+    training metrics at the time the checkpoint was created.
 
     Attributes:
         job_id (str): UUID identifying the job.
-        timestamp (str): Timestamp when the checkpoint was created, used as unique identifier.
+        timestamp (str): Timestamp when the checkpoint was created. Used as
+            unique identifier.
         s3_bucket (str): S3 bucket where the checkpoint is stored.
         s3_key (str): S3 key (path) where the checkpoint is stored.
         size_bytes (int): Size of the checkpoint file in bytes.
         model_state (bool): Whether the checkpoint includes model state.
-        optimizer_state (bool): Whether the checkpoint includes optimizer state.
+        optimizer_state (bool): Whether the checkpoint includes optimizer
+            state.
         metrics (Dict): Key-value pairs of metrics at the time of checkpoint.
         step (int): Training step when the checkpoint was created.
         epoch (int): Training epoch when the checkpoint was created.
@@ -49,13 +52,18 @@ class JobCheckpoint:
             size_bytes (int): Size of the checkpoint file in bytes.
             step (int): Training step when the checkpoint was created.
             epoch (int): Training epoch when the checkpoint was created.
-            model_state (bool, optional): Whether the checkpoint includes model state. Defaults to True.
-            optimizer_state (bool, optional): Whether the checkpoint includes optimizer state. Defaults to True.
-            metrics (Optional[Dict], optional): Key-value pairs of metrics at checkpoint creation. Defaults to None.
-            is_best (bool, optional): Whether this is the best checkpoint for the job. Defaults to False.
+            model_state (bool, optional): Whether the checkpoint includes
+                model state. Defaults to True.
+            optimizer_state (bool, optional): Whether the checkpoint
+                includes optimizer state. Defaults to True.
+            metrics (Optional[Dict], optional): Key-value pairs of metrics at
+                checkpoint creation. Defaults to None.
+            is_best (bool, optional): Whether this is the best checkpoint for
+                the job. Defaults to False.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -127,7 +135,8 @@ class JobCheckpoint:
         """Converts the JobCheckpoint object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobCheckpoint object as a DynamoDB item.
+            dict: A dictionary representing the JobCheckpoint object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -213,13 +222,15 @@ class JobCheckpoint:
             "JobCheckpoint("
             f"job_id={_repr_str(self.job_id)}, "
             f"timestamp={_repr_str(self.timestamp)}, "
+            "storage={"
             f"s3_bucket={_repr_str(self.s3_bucket)}, "
             f"s3_key={_repr_str(self.s3_key)}, "
-            f"size_bytes={self.size_bytes}, "
-            f"step={self.step}, "
-            f"epoch={self.epoch}, "
+            f"size_bytes={self.size_bytes}}}, "
+            "training={"
+            f"step={self.step}, epoch={self.epoch}}}, "
+            "state={"
             f"model_state={self.model_state}, "
-            f"optimizer_state={self.optimizer_state}, "
+            f"optimizer_state={self.optimizer_state}}}, "
             f"is_best={self.is_best}, "
             f"metrics={self.metrics}"
             ")"
@@ -229,7 +240,9 @@ class JobCheckpoint:
         """Returns an iterator over the JobCheckpoint object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobCheckpoint object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]:
+                An iterator over the JobCheckpoint object's attribute
+                name/value pairs.
         """
         yield "job_id", self.job_id
         yield "timestamp", self.timestamp
@@ -254,9 +267,11 @@ class JobCheckpoint:
         """
         if not isinstance(other, JobCheckpoint):
             return False
+        timestamps_match = self.timestamp == other.timestamp
+
         return (
             self.job_id == other.job_id
-            and self.timestamp == other.timestamp
+            and timestamps_match
             and self.s3_bucket == other.s3_bucket
             and self.s3_key == other.s3_key
             and self.size_bytes == other.size_bytes
@@ -356,10 +371,12 @@ def item_to_job_checkpoint(item: Dict[str, Any]) -> JobCheckpoint:
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        JobCheckpoint: The JobCheckpoint object represented by the DynamoDB item.
+        JobCheckpoint: The JobCheckpoint object represented by the
+            DynamoDB item.
 
     Raises:
-        ValueError: If the DynamoDB item cannot be converted to a JobCheckpoint.
+        ValueError: If the DynamoDB item cannot be converted to a
+            JobCheckpoint.
     """
     try:
         metrics: Dict[str, Any] = {}
