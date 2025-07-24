@@ -1,432 +1,453 @@
 #!/usr/bin/env python3
 """
-Baseline metrics evaluation for the enhanced pattern analyzer.
+Baseline metrics for line item detection enhancement evaluation.
 
-This script evaluates the enhanced pattern analyzer against real production
-receipts and compares performance with the previous GPT-based approach.
+This script evaluates the performance of different line item detection approaches:
+1. Pattern-only detection (existing baseline)
+2. Spatial detection (Phase 2)
+3. Negative space detection (this enhancement)
+4. Combined approach
+
+Metrics measured:
+- Line items detected per receipt
+- Processing time
+- Cost reduction estimates
+- Accuracy indicators
 """
 
 import json
-import logging
-import os
-import sys
 import time
-import traceback
+import logging
+import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from decimal import Decimal
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass, asdict
+from collections import defaultdict
 
-# Add parent directories to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+# Add parent paths for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# Import detection components
+from receipt_label.models.receipt import ReceiptWord
+from receipt_label.pattern_detection.base import PatternMatch, PatternType
+from receipt_label.spatial.vertical_alignment_detector import VerticalAlignmentDetector
+from receipt_label.spatial.math_solver_detector import MathSolverDetector
+from receipt_label.spatial.negative_space_detector import NegativeSpaceDetector
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
-
-# Import our components
-from receipt_label.pattern_detection.enhanced_pattern_analyzer import enhanced_pattern_analysis
-from receipt_label.processors.line_item_processor import FastPatternMatcher
-from receipt_label.data.local_data_loader import LocalDataLoader
+logging.basicConfig(level=logging.WARNING)  # Suppress info logs during evaluation
 
 
-class BaselineMetricsEvaluator:
-    """Evaluate baseline metrics for line item detection improvements."""
+@dataclass
+class DetectionMetrics:
+    """Metrics for a single detection approach"""
+    approach_name: str
+    processing_time_ms: float
+    line_items_detected: int
+    boundaries_found: int
+    has_column_structure: bool
+    confidence_scores: List[float]
+    whitespace_regions: int = 0
+    new_items_vs_baseline: int = 0
     
-    def __init__(self, data_dir: str):
-        """Initialize evaluator with exported receipt data."""
-        self.data_dir = Path(data_dir)
-        if not self.data_dir.exists():
-            raise ValueError(f"Data directory does not exist: {data_dir}")
-        
-        self.loader = LocalDataLoader(str(self.data_dir))
-        self.pattern_matcher = FastPatternMatcher()
-        
-        # Metrics tracking
-        self.evaluation_results = []
-        self.processing_times = []
-        self.error_count = 0
-        
-    def load_receipt_files(self) -> List[str]:
-        """Get list of receipt JSON files to process."""
-        json_files = list(self.data_dir.glob("*.json"))
-        logger.info(f"Found {len(json_files)} receipt files to process")
-        return [f.stem for f in json_files]
+
+@dataclass
+class ReceiptEvaluation:
+    """Complete evaluation results for a single receipt"""
+    receipt_id: str
+    word_count: int
+    pattern_matches_count: int
+    baseline_metrics: DetectionMetrics
+    spatial_metrics: DetectionMetrics
+    negative_space_metrics: DetectionMetrics
+    combined_metrics: DetectionMetrics
     
-    def extract_currency_contexts_from_receipt(
-        self, 
-        receipt_data: Dict
-    ) -> Optional[List[Dict]]:
-        """Extract currency contexts from receipt data structure."""
-        try:
-            # Look for receipt words and lines in the data structure
-            receipt_words = None
-            receipt_lines = None
+
+def load_receipt_data(file_path: Path) -> Tuple[List[ReceiptWord], List[PatternMatch], str]:
+    """Load receipt data from exported JSON file"""
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    
+    receipt_id = file_path.stem
+    
+    # Convert to ReceiptWord objects
+    words = []
+    for i, word_data in enumerate(data.get('words', [])):
+        word = ReceiptWord(
+            text=word_data.get('text', ''),
+            line_id=word_data.get('line_id', 0),
+            word_id=word_data.get('word_id', i),
+            confidence=word_data.get('confidence', 0.0),
+            bounding_box=word_data.get('bounding_box', {}),
+            receipt_id=1,
+            image_id=word_data.get('image_id', receipt_id)
+        )
+        words.append(word)
+    
+    # Create pattern matches from existing labels or currency patterns
+    pattern_matches = []
+    
+    # Try to load existing pattern matches
+    for match_data in data.get('pattern_matches', []):
+        matched_text = match_data.get('matched_text', '')
+        matching_word = next((w for w in words if w.text == matched_text), None)
+        
+        if matching_word:
+            pattern_type = PatternType.CURRENCY if match_data.get('pattern_type', '') == 'CURRENCY' else PatternType.PRODUCT_NAME
             
-            # The exported data structure varies, so we need to find the right fields
-            if 'receipt_words' in receipt_data:
-                receipt_words = receipt_data['receipt_words']
-            elif 'words' in receipt_data:
-                receipt_words = receipt_data['words']
-            
-            if 'receipt_lines' in receipt_data:
-                receipt_lines = receipt_data['receipt_lines']
-            elif 'lines' in receipt_data:
-                receipt_lines = receipt_data['lines']
-            
-            if not receipt_words:
-                logger.warning("No receipt words found in data structure")
-                return None
-            
-            # Convert to currency contexts format
-            currency_contexts = []
-            
-            for word in receipt_words:
-                # Extract required fields
-                word_text = word.get('text', '')
-                if not word_text:
+            # Handle currency parsing safely
+            if pattern_type == PatternType.CURRENCY:
+                try:
+                    # Remove currency symbols and commas before converting to float
+                    cleaned_text = matched_text.replace('$', '').replace(',', '').strip()
+                    extracted_value = float(cleaned_text)
+                except ValueError:
+                    # Skip this match if we can't parse the currency
                     continue
-                
-                # Look for currency patterns
-                currency_matches = self.pattern_matcher.find_currency_amounts(
-                    word_text,
-                    word.get('line_id', '0'),
-                    {
-                        'x': word.get('bounding_box', {}).get('x', 0),
-                        'y': word.get('bounding_box', {}).get('y', 0)
-                    },
-                    word.get('word_id')
-                )
-                
-                for match in currency_matches:
-                    # Find the full line text
-                    line_id = match.line_id
-                    full_line = ""
-                    left_text = ""
-                    
-                    if receipt_lines:
-                        for line in receipt_lines:
-                            if str(line.get('line_id', '')) == str(line_id):
-                                full_line = line.get('text', '')
-                                break
-                    
-                    # If no line found, construct from word
-                    if not full_line:
-                        # Find all words on this line
-                        line_words = [
-                            w for w in receipt_words 
-                            if str(w.get('line_id', '')) == str(line_id)
-                        ]
-                        # Sort by x position
-                        line_words.sort(key=lambda w: w.get('bounding_box', {}).get('x', 0))
-                        full_line = ' '.join(w.get('text', '') for w in line_words)
-                    
-                    # Extract left text (words to the left of currency)
-                    word_x = match.position.get('x', 0)
-                    left_words = []
-                    for w in receipt_words:
-                        if (str(w.get('line_id', '')) == str(line_id) and 
-                            w.get('bounding_box', {}).get('x', 0) < word_x):
-                            left_words.append(w)
-                    
-                    left_words.sort(key=lambda w: w.get('bounding_box', {}).get('x', 0))
-                    left_text = ' '.join(w.get('text', '') for w in left_words)
-                    
-                    currency_contexts.append({
-                        'amount': float(match.amount),
-                        'text': match.text,
-                        'line_id': match.line_id,
-                        'word_id': match.word_id,
-                        'x_position': match.position.get('x', 0),
-                        'y_position': match.position.get('y', 0),
-                        'full_line': full_line,
-                        'left_text': left_text
-                    })
+            else:
+                extracted_value = matched_text
             
-            return currency_contexts if currency_contexts else None
-            
-        except Exception as e:
-            logger.error(f"Error extracting currency contexts: {e}")
+            match = PatternMatch(
+                word=matching_word,
+                pattern_type=pattern_type,
+                matched_text=matched_text,
+                confidence=match_data.get('confidence', 0.0),
+                extracted_value=extracted_value,
+                metadata=match_data.get('metadata', {})
+            )
+            pattern_matches.append(match)
+    
+    # If no pattern matches, create basic currency matches
+    if not pattern_matches:
+        import re
+        currency_pattern = re.compile(r'\$?(\d+\.\d{2})|\$?(\d+,\d{3}(?:\.\d{2})?)')
+        
+        for word in words:
+            if currency_pattern.match(word.text):
+                try:
+                    value = float(word.text.replace('$', '').replace(',', ''))
+                    if 0.01 <= value <= 999.99:  # Reasonable price range
+                        match = PatternMatch(
+                            word=word,
+                            pattern_type=PatternType.CURRENCY,
+                            matched_text=word.text,
+                            confidence=0.8,
+                            extracted_value=value,
+                            metadata={'source': 'baseline_currency_detection'}
+                        )
+                        pattern_matches.append(match)
+                except ValueError:
+                    continue
+    
+    return words, pattern_matches, receipt_id
+
+
+def evaluate_baseline_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch]) -> DetectionMetrics:
+    """Evaluate baseline pattern-only detection"""
+    start_time = time.time()
+    
+    # Baseline just counts currency patterns as line items
+    currency_matches = [m for m in pattern_matches if m.pattern_type == PatternType.CURRENCY]
+    line_items = len(currency_matches)
+    
+    # Extract confidence scores
+    confidence_scores = [m.confidence for m in currency_matches]
+    
+    processing_time = (time.time() - start_time) * 1000
+    
+    return DetectionMetrics(
+        approach_name="Baseline (Pattern-only)",
+        processing_time_ms=processing_time,
+        line_items_detected=line_items,
+        boundaries_found=line_items,
+        has_column_structure=False,
+        confidence_scores=confidence_scores
+    )
+
+
+def evaluate_spatial_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch]) -> DetectionMetrics:
+    """Evaluate Phase 2 spatial detection"""
+    start_time = time.time()
+    
+    try:
+        # Use vertical alignment detector (Phase 2)
+        detector = VerticalAlignmentDetector(use_enhanced_clustering=True)
+        result = detector.detect_line_items_with_alignment(words, pattern_matches)
+        
+        line_items = len(result.get('line_items', []))
+        confidence_scores = [item.get('confidence', 0.0) for item in result.get('line_items', [])]
+        has_columns = len(result.get('price_columns', [])) > 0
+        
+    except Exception as e:
+        print(f"Warning: Spatial detection failed: {e}")
+        line_items = 0
+        confidence_scores = []
+        has_columns = False
+    
+    processing_time = (time.time() - start_time) * 1000
+    
+    return DetectionMetrics(
+        approach_name="Spatial (Phase 2)",
+        processing_time_ms=processing_time,
+        line_items_detected=line_items,
+        boundaries_found=line_items,
+        has_column_structure=has_columns,
+        confidence_scores=confidence_scores
+    )
+
+
+def evaluate_negative_space_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch], baseline_count: int) -> DetectionMetrics:
+    """Evaluate negative space detection"""
+    start_time = time.time()
+    
+    detector = NegativeSpaceDetector()
+    
+    # Detect whitespace regions
+    whitespace_regions = detector.detect_whitespace_regions(words)
+    
+    # Detect line item boundaries
+    boundaries = detector.detect_line_item_boundaries(words, whitespace_regions, pattern_matches)
+    
+    # Detect column structure
+    column_structure = detector.detect_column_structure(words)
+    
+    # Count items with prices (actual line items)
+    item_boundaries = [b for b in boundaries if b.has_price]
+    line_items = len(item_boundaries)
+    
+    # Extract confidence scores
+    confidence_scores = [b.confidence for b in item_boundaries]
+    
+    processing_time = (time.time() - start_time) * 1000
+    
+    return DetectionMetrics(
+        approach_name="Negative Space",
+        processing_time_ms=processing_time,
+        line_items_detected=line_items,
+        boundaries_found=len(boundaries),
+        has_column_structure=column_structure is not None,
+        confidence_scores=confidence_scores,
+        whitespace_regions=len(whitespace_regions),
+        new_items_vs_baseline=max(0, line_items - baseline_count)
+    )
+
+
+def evaluate_combined_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch], baseline_count: int) -> DetectionMetrics:
+    """Evaluate combined spatial + negative space detection"""
+    start_time = time.time()
+    
+    # Use negative space to enhance existing matches
+    ns_detector = NegativeSpaceDetector()
+    enhanced_matches = ns_detector.enhance_line_items_with_negative_space(words, pattern_matches)
+    
+    # Count enhanced line items
+    baseline_items = len([m for m in pattern_matches if m.pattern_type == PatternType.CURRENCY])
+    enhanced_items = len([m for m in enhanced_matches 
+                         if m.pattern_type == PatternType.PRODUCT_NAME 
+                         and m.metadata.get("detection_method") == "negative_space"])
+    
+    total_items = baseline_items + enhanced_items
+    
+    # Detect column structure for additional context
+    column_structure = ns_detector.detect_column_structure(words)
+    
+    # Extract confidence scores from enhanced matches
+    confidence_scores = [m.confidence for m in enhanced_matches 
+                        if m.metadata.get("detection_method") == "negative_space"]
+    
+    processing_time = (time.time() - start_time) * 1000
+    
+    return DetectionMetrics(
+        approach_name="Combined (Spatial + Negative Space)",
+        processing_time_ms=processing_time,
+        line_items_detected=total_items,
+        boundaries_found=total_items,
+        has_column_structure=column_structure is not None,
+        confidence_scores=confidence_scores,
+        new_items_vs_baseline=enhanced_items
+    )
+
+
+def evaluate_receipt(file_path: Path) -> Optional[ReceiptEvaluation]:
+    """Evaluate all detection approaches on a single receipt"""
+    try:
+        # Load receipt data
+        words, pattern_matches, receipt_id = load_receipt_data(file_path)
+        
+        if not words:
+            print(f"Skipping {receipt_id}: No words found")
             return None
+        
+        print(f"Evaluating {receipt_id}: {len(words)} words, {len(pattern_matches)} patterns")
+        
+        # Run all evaluations
+        baseline_metrics = evaluate_baseline_detection(words, pattern_matches)
+        spatial_metrics = evaluate_spatial_detection(words, pattern_matches)
+        negative_space_metrics = evaluate_negative_space_detection(words, pattern_matches, baseline_metrics.line_items_detected)
+        combined_metrics = evaluate_combined_detection(words, pattern_matches, baseline_metrics.line_items_detected)
+        
+        return ReceiptEvaluation(
+            receipt_id=receipt_id,
+            word_count=len(words),
+            pattern_matches_count=len(pattern_matches),
+            baseline_metrics=baseline_metrics,
+            spatial_metrics=spatial_metrics,
+            negative_space_metrics=negative_space_metrics,
+            combined_metrics=combined_metrics
+        )
+        
+    except Exception as e:
+        print(f"Error evaluating {file_path.name}: {e}")
+        return None
+
+
+def generate_summary_report(evaluations: List[ReceiptEvaluation]) -> Dict:
+    """Generate summary statistics across all evaluations"""
+    if not evaluations:
+        return {}
     
-    def evaluate_single_receipt(self, receipt_file: str) -> Optional[Dict]:
-        """Evaluate a single receipt file."""
-        try:
-            # Load receipt data
-            file_path = self.data_dir / f"{receipt_file}.json"
-            with open(file_path, 'r') as f:
-                receipt_data = json.load(f)
-            
-            # Extract currency contexts
-            currency_contexts = self.extract_currency_contexts_from_receipt(receipt_data)
-            if not currency_contexts:
-                return {
-                    'receipt_id': receipt_file,
-                    'status': 'no_currency_found',
-                    'error': 'No currency amounts detected',
-                    'processing_time_ms': 0,
-                    'enhanced_result': None
-                }
-            
-            logger.info(f"Processing {receipt_file}: {len(currency_contexts)} currency amounts found")
-            
-            # Time the enhanced analysis
-            start_time = time.perf_counter()
-            enhanced_result = enhanced_pattern_analysis(currency_contexts)
-            end_time = time.perf_counter()
-            
-            processing_time_ms = (end_time - start_time) * 1000
-            
-            return {
-                'receipt_id': receipt_file,
-                'status': 'success',
-                'currency_count': len(currency_contexts),
-                'processing_time_ms': processing_time_ms,
-                'enhanced_result': enhanced_result,
-                'line_items_found': len(enhanced_result.get('line_items', [])),
-                'financial_summary': enhanced_result.get('financial_summary', {}),
-                'confidence': enhanced_result.get('confidence', 0),
-                'error': None
-            }
-            
-        except Exception as e:
-            logger.error(f"Error processing {receipt_file}: {e}")
-            return {
-                'receipt_id': receipt_file,
-                'status': 'error',
-                'error': str(e),
-                'processing_time_ms': 0,
-                'enhanced_result': None
-            }
+    # Aggregate metrics by approach
+    approaches = ['baseline_metrics', 'spatial_metrics', 'negative_space_metrics', 'combined_metrics']
+    summary = {}
     
-    def evaluate_all_receipts(self, limit: Optional[int] = None) -> Dict:
-        """Evaluate all receipts and generate comprehensive metrics."""
-        receipt_files = self.load_receipt_files()
+    for approach in approaches:
+        metrics_list = [getattr(eval_result, approach) for eval_result in evaluations]
+        approach_name = metrics_list[0].approach_name
         
-        if limit:
-            receipt_files = receipt_files[:limit]
-            logger.info(f"Limited evaluation to first {limit} receipts")
-        
-        logger.info(f"Starting evaluation of {len(receipt_files)} receipts...")
-        
-        successful_evaluations = []
-        failed_evaluations = []
-        processing_times = []
-        
-        for i, receipt_file in enumerate(receipt_files):
-            logger.info(f"[{i+1}/{len(receipt_files)}] Processing {receipt_file}")
-            
-            result = self.evaluate_single_receipt(receipt_file)
-            if result:
-                if result['status'] == 'success':
-                    successful_evaluations.append(result)
-                    processing_times.append(result['processing_time_ms'])
-                else:
-                    failed_evaluations.append(result)
-        
-        # Calculate metrics
-        total_receipts = len(receipt_files)
-        successful_count = len(successful_evaluations)
-        failed_count = len(failed_evaluations)
-        
-        # Processing time statistics
-        avg_processing_time = sum(processing_times) / len(processing_times) if processing_times else 0
-        min_processing_time = min(processing_times) if processing_times else 0
-        max_processing_time = max(processing_times) if processing_times else 0
-        
-        # Line item detection statistics
-        line_item_counts = [r['line_items_found'] for r in successful_evaluations]
-        avg_line_items = sum(line_item_counts) / len(line_item_counts) if line_item_counts else 0
-        
-        # Financial field detection rates
-        subtotal_found = sum(1 for r in successful_evaluations 
-                            if r['financial_summary'].get('subtotal') is not None)
-        tax_found = sum(1 for r in successful_evaluations 
-                       if r['financial_summary'].get('tax') is not None)
-        total_found = sum(1 for r in successful_evaluations 
-                         if r['financial_summary'].get('total') is not None)
-        
-        # Confidence statistics
-        confidences = [r['confidence'] for r in successful_evaluations if r['confidence'] > 0]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-        
-        # Currency detection statistics
-        currency_counts = [r['currency_count'] for r in successful_evaluations]
-        avg_currency_count = sum(currency_counts) / len(currency_counts) if currency_counts else 0
-        
-        return {
-            'summary': {
-                'total_receipts': total_receipts,
-                'successful_processing': successful_count,
-                'failed_processing': failed_count,
-                'success_rate': (successful_count / total_receipts * 100) if total_receipts > 0 else 0,
-            },
-            'performance': {
-                'avg_processing_time_ms': avg_processing_time,
-                'min_processing_time_ms': min_processing_time,
-                'max_processing_time_ms': max_processing_time,
-                'total_processing_time_ms': sum(processing_times),
-            },
-            'line_item_detection': {
-                'avg_line_items_per_receipt': avg_line_items,
-                'total_line_items_found': sum(line_item_counts),
-                'receipts_with_line_items': sum(1 for count in line_item_counts if count > 0),
-                'line_item_detection_rate': (sum(1 for count in line_item_counts if count > 0) / 
-                                           successful_count * 100) if successful_count > 0 else 0,
-            },
-            'financial_field_detection': {
-                'subtotal_detection_rate': (subtotal_found / successful_count * 100) if successful_count > 0 else 0,
-                'tax_detection_rate': (tax_found / successful_count * 100) if successful_count > 0 else 0,
-                'total_detection_rate': (total_found / successful_count * 100) if successful_count > 0 else 0,
-                'receipts_with_subtotal': subtotal_found,
-                'receipts_with_tax': tax_found,
-                'receipts_with_total': total_found,
-            },
-            'confidence_metrics': {
-                'avg_confidence': avg_confidence,
-                'high_confidence_receipts': sum(1 for c in confidences if c >= 0.8),
-                'medium_confidence_receipts': sum(1 for c in confidences if 0.6 <= c < 0.8),
-                'low_confidence_receipts': sum(1 for c in confidences if c < 0.6),
-            },
-            'currency_detection': {
-                'avg_currency_amounts_per_receipt': avg_currency_count,
-                'total_currency_amounts_found': sum(currency_counts),
-            },
-            'detailed_results': successful_evaluations,
-            'failed_results': failed_evaluations,
+        summary[approach_name] = {
+            'total_receipts': len(evaluations),
+            'avg_processing_time_ms': sum(m.processing_time_ms for m in metrics_list) / len(metrics_list),
+            'total_line_items_detected': sum(m.line_items_detected for m in metrics_list),
+            'avg_line_items_per_receipt': sum(m.line_items_detected for m in metrics_list) / len(metrics_list),
+            'receipts_with_column_structure': sum(1 for m in metrics_list if m.has_column_structure),
+            'avg_confidence': sum(sum(m.confidence_scores) for m in metrics_list) / max(1, sum(len(m.confidence_scores) for m in metrics_list)),
+            'total_whitespace_regions': sum(getattr(m, 'whitespace_regions', 0) for m in metrics_list),
+            'total_new_items_vs_baseline': sum(getattr(m, 'new_items_vs_baseline', 0) for m in metrics_list)
         }
     
-    def print_metrics_report(self, metrics: Dict):
-        """Print a comprehensive metrics report."""
-        print("=" * 80)
-        print("ENHANCED PATTERN ANALYZER - BASELINE METRICS REPORT")
-        print("=" * 80)
-        
-        # Summary
-        summary = metrics['summary']
-        print(f"\n📊 PROCESSING SUMMARY")
-        print(f"   Total Receipts: {summary['total_receipts']}")
-        print(f"   Successfully Processed: {summary['successful_processing']}")
-        print(f"   Failed Processing: {summary['failed_processing']}")
-        print(f"   Success Rate: {summary['success_rate']:.1f}%")
-        
-        # Performance
-        perf = metrics['performance']
-        print(f"\n⚡ PERFORMANCE METRICS")
-        print(f"   Average Processing Time: {perf['avg_processing_time_ms']:.2f}ms")
-        print(f"   Min Processing Time: {perf['min_processing_time_ms']:.2f}ms")
-        print(f"   Max Processing Time: {perf['max_processing_time_ms']:.2f}ms")
-        print(f"   Total Processing Time: {perf['total_processing_time_ms']:.2f}ms")
-        
-        # Line Item Detection
-        li = metrics['line_item_detection']
-        print(f"\n🏷️  LINE ITEM DETECTION")
-        print(f"   Average Line Items per Receipt: {li['avg_line_items_per_receipt']:.1f}")
-        print(f"   Total Line Items Found: {li['total_line_items_found']}")
-        print(f"   Receipts with Line Items: {li['receipts_with_line_items']}")
-        print(f"   Line Item Detection Rate: {li['line_item_detection_rate']:.1f}%")
-        
-        # Financial Fields
-        ff = metrics['financial_field_detection']
-        print(f"\n💰 FINANCIAL FIELD DETECTION")
-        print(f"   Subtotal Detection Rate: {ff['subtotal_detection_rate']:.1f}%")
-        print(f"   Tax Detection Rate: {ff['tax_detection_rate']:.1f}%")
-        print(f"   Total Detection Rate: {ff['total_detection_rate']:.1f}%")
-        print(f"   Receipts with Subtotal: {ff['receipts_with_subtotal']}")
-        print(f"   Receipts with Tax: {ff['receipts_with_tax']}")
-        print(f"   Receipts with Total: {ff['receipts_with_total']}")
-        
-        # Confidence
-        conf = metrics['confidence_metrics']
-        print(f"\n🎯 CONFIDENCE METRICS")
-        print(f"   Average Confidence: {conf['avg_confidence']:.2f}")
-        print(f"   High Confidence (≥0.8): {conf['high_confidence_receipts']}")
-        print(f"   Medium Confidence (0.6-0.8): {conf['medium_confidence_receipts']}")
-        print(f"   Low Confidence (<0.6): {conf['low_confidence_receipts']}")
-        
-        # Currency Detection
-        cd = metrics['currency_detection']
-        print(f"\n💵 CURRENCY DETECTION")
-        print(f"   Average Currency Amounts per Receipt: {cd['avg_currency_amounts_per_receipt']:.1f}")
-        print(f"   Total Currency Amounts Found: {cd['total_currency_amounts_found']}")
-        
-        # Success Analysis
-        print(f"\n✅ SUCCESS ANALYSIS")
-        successful = len(metrics['detailed_results'])
-        if successful > 0:
-            # Find best performing receipts
-            best_receipts = sorted(
-                metrics['detailed_results'], 
-                key=lambda x: x['confidence'], 
-                reverse=True
-            )[:3]
-            
-            print(f"   Top 3 Most Confident Results:")
-            for i, receipt in enumerate(best_receipts):
-                print(f"     {i+1}. {receipt['receipt_id']}: {receipt['confidence']:.2f} confidence")
-                print(f"        Line Items: {receipt['line_items_found']}")
-                fs = receipt['financial_summary']
-                print(f"        Financial: S={fs.get('subtotal', 'None')}, T={fs.get('tax', 'None')}, Total={fs.get('total', 'None')}")
-        
-        # Error Analysis
-        failed = metrics['failed_results']
-        if failed:
-            print(f"\n❌ ERROR ANALYSIS")
-            print(f"   Failed Receipts: {len(failed)}")
-            
-            # Group errors by type
-            error_types = {}
-            for result in failed:
-                error_type = result.get('status', 'unknown')
-                if error_type not in error_types:
-                    error_types[error_type] = []
-                error_types[error_type].append(result['receipt_id'])
-            
-            for error_type, receipt_ids in error_types.items():
-                print(f"   {error_type}: {len(receipt_ids)} receipts")
-                if len(receipt_ids) <= 3:
-                    print(f"     {', '.join(receipt_ids)}")
-        
-        # Performance vs GPT Comparison
-        print(f"\n📈 PERFORMANCE VS GPT COMPARISON")
-        total_successful = summary['successful_processing']
-        if total_successful > 0:
-            estimated_gpt_cost = total_successful * 0.03  # $0.03 per receipt estimate
-            processing_time_saved = total_successful * 2000  # 2 seconds per GPT call
-            
-            print(f"   Estimated GPT Cost Saved: ${estimated_gpt_cost:.2f}")
-            print(f"   Processing Time Saved: {processing_time_saved/1000:.1f} seconds")
-            print(f"   Average Speedup: ~2000x faster than GPT calls")
-        
-        print(f"\n" + "=" * 80)
+    # Calculate improvement metrics
+    baseline_items = summary[evaluations[0].baseline_metrics.approach_name]['total_line_items_detected']
+    
+    for approach_name, stats in summary.items():
+        if approach_name != evaluations[0].baseline_metrics.approach_name:
+            improvement = stats['total_line_items_detected'] - baseline_items
+            stats['improvement_vs_baseline'] = improvement
+            stats['improvement_percentage'] = (improvement / max(1, baseline_items)) * 100
+    
+    return summary
 
 
 def main():
-    """Main evaluation function."""
-    # Check for data directory
-    data_dir = "./receipt_data_with_labels"
-    if not Path(data_dir).exists():
-        print(f"❌ Data directory not found: {data_dir}")
-        print("Please run the export script first to download production data:")
-        print("  python receipt_label/export_all_receipts.py")
+    """Main evaluation function"""
+    print("Line Item Detection Enhancement Evaluation")
+    print("=" * 60)
+    
+    # Find receipt data directory
+    data_dir = Path("receipt_data_with_labels")
+    if not data_dir.exists():
+        # Try alternative locations
+        for alt_dir in ["./receipt_data", "../receipt_data_with_labels", "../../receipt_data_with_labels", "../../../receipt_data_with_labels"]:
+            alt_path = Path(alt_dir)
+            if alt_path.exists():
+                data_dir = alt_path
+                break
+        else:
+            print(f"❌ No receipt data found. Please run export_all_receipts.py first")
+            print(f"   Looking for: {data_dir.absolute()}")
+            print(f"   Current directory: {Path.cwd()}")
+            return
+    
+    # Find JSON files
+    json_files = list(data_dir.glob("*.json"))
+    if not json_files:
+        print(f"❌ No JSON files found in {data_dir}")
         return
     
-    # Initialize evaluator
-    evaluator = BaselineMetricsEvaluator(data_dir)
+    print(f"📁 Found {len(json_files)} receipt files in {data_dir}")
     
-    # Run evaluation on larger sample now that we have more data
-    print("🚀 Starting baseline metrics evaluation...")
-    metrics = evaluator.evaluate_all_receipts(limit=50)
+    # Limit to first N receipts for testing
+    max_receipts = 20
+    if len(json_files) > max_receipts:
+        json_files = json_files[:max_receipts]
+        print(f"📊 Evaluating first {max_receipts} receipts for testing")
     
-    # Print report
-    evaluator.print_metrics_report(metrics)
+    # Evaluate all receipts
+    evaluations = []
+    failed_count = 0
+    
+    for i, file_path in enumerate(json_files, 1):
+        print(f"\n[{i}/{len(json_files)}] Processing {file_path.name}...")
+        
+        evaluation = evaluate_receipt(file_path)
+        if evaluation:
+            evaluations.append(evaluation)
+            
+            # Show quick results
+            ns_metrics = evaluation.negative_space_metrics
+            print(f"  ✅ Negative Space: {ns_metrics.line_items_detected} items, "
+                  f"{ns_metrics.processing_time_ms:.1f}ms, "
+                  f"{ns_metrics.whitespace_regions} regions")
+        else:
+            failed_count += 1
+    
+    if not evaluations:
+        print("❌ No successful evaluations")
+        return
+    
+    # Generate summary report
+    print(f"\n" + "=" * 60)
+    print("EVALUATION SUMMARY")
+    print("=" * 60)
+    
+    summary = generate_summary_report(evaluations)
+    
+    for approach_name, stats in summary.items():
+        print(f"\n📊 {approach_name}:")
+        print(f"   Receipts processed: {stats['total_receipts']}")
+        print(f"   Avg processing time: {stats['avg_processing_time_ms']:.2f}ms")
+        print(f"   Total line items: {stats['total_line_items_detected']}")
+        print(f"   Avg items per receipt: {stats['avg_line_items_per_receipt']:.1f}")
+        print(f"   Receipts with columns: {stats['receipts_with_column_structure']}")
+        print(f"   Avg confidence: {stats['avg_confidence']:.2f}")
+        
+        if 'improvement_vs_baseline' in stats:
+            improvement = stats['improvement_vs_baseline']
+            percentage = stats['improvement_percentage']
+            print(f"   📈 Improvement: +{improvement} items ({percentage:+.1f}%)")
+        
+        if stats.get('total_whitespace_regions', 0) > 0:
+            print(f"   🔍 Whitespace regions: {stats['total_whitespace_regions']}")
+        
+        if stats.get('total_new_items_vs_baseline', 0) > 0:
+            print(f"   🆕 New items detected: {stats['total_new_items_vs_baseline']}")
+    
+    # Performance comparison
+    print(f"\n📈 PERFORMANCE COMPARISON:")
+    baseline_time = summary[evaluations[0].baseline_metrics.approach_name]['avg_processing_time_ms']
+    
+    for approach_name, stats in summary.items():
+        if approach_name != evaluations[0].baseline_metrics.approach_name:
+            time_ratio = stats['avg_processing_time_ms'] / baseline_time
+            print(f"   {approach_name}: {time_ratio:.2f}x baseline processing time")
     
     # Save detailed results
-    output_file = "baseline_metrics_results.json"
-    with open(output_file, 'w') as f:
-        json.dump(metrics, f, indent=2, default=str)
+    results_file = Path("evaluation_results.json")
+    detailed_results = {
+        'summary': summary,
+        'detailed_evaluations': [asdict(eval_result) for eval_result in evaluations],
+        'metadata': {
+            'total_receipts_processed': len(evaluations),
+            'failed_evaluations': failed_count,
+            'data_directory': str(data_dir),
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    }
     
-    print(f"\n💾 Detailed results saved to: {output_file}")
+    with open(results_file, 'w') as f:
+        json.dump(detailed_results, f, indent=2)
+    
+    print(f"\n💾 Detailed results saved to: {results_file}")
+    print(f"📊 Total receipts: {len(evaluations)} successful, {failed_count} failed")
 
 
 if __name__ == "__main__":
