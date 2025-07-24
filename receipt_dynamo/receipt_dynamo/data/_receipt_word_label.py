@@ -94,9 +94,11 @@ class _ReceiptWordLabel(
     ):
         """Handle errors specific to add_receipt_word_label"""
         from receipt_dynamo.data.shared_exceptions import (
+            DynamoDBAccessError,
             DynamoDBError,
             DynamoDBServerError,
             DynamoDBThroughputError,
+            DynamoDBValidationError,
         )
 
         error_code = error.response.get("Error", {}).get("Code", "")
@@ -117,6 +119,12 @@ class _ReceiptWordLabel(
             raise DynamoDBServerError(
                 f"Internal server error: {error}"
             ) from error
+        elif error_code == "ValidationException":
+            raise DynamoDBValidationError(
+                "One or more parameters given were invalid"
+            ) from error
+        elif error_code == "AccessDeniedException":
+            raise DynamoDBAccessError("Access denied") from error
         else:
             raise DynamoDBError(
                 f"Could not add receipt word label to DynamoDB: {error}"
