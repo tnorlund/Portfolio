@@ -515,7 +515,7 @@ def group_words_into_line_items(
     words: List[ReceiptWord],
     pattern_matches: Optional[List[PatternMatch]] = None,
     y_tolerance: float = 0.02,
-    x_gap_threshold: float = 0.1
+    x_gap_threshold: float = 0.8
 ) -> List[List[ReceiptWord]]:
     """
     Group words into potential line items based on horizontal alignment and proximity.

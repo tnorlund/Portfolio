@@ -42,10 +42,10 @@ class HorizontalGroupingConfig:
     y_tolerance: float = 0.02
     
     # X-coordinate gap threshold for line item separation
-    x_gap_threshold: float = 0.1
+    x_gap_threshold: float = 0.8
     
     # Minimum confidence to accept a line item
-    min_confidence: float = 0.6
+    min_confidence: float = 0.3
     
     # Minimum words required for a valid line item
     min_words_per_item: int = 2
@@ -64,7 +64,13 @@ class HorizontalLineItemDetector:
     
     def __init__(self, config: Optional[HorizontalGroupingConfig] = None):
         self.config = config or HorizontalGroupingConfig()
-        self._currency_pattern_types = {PatternType.CURRENCY, PatternType.PRICE}
+        self._currency_pattern_types = {
+            PatternType.CURRENCY, 
+            PatternType.UNIT_PRICE,
+            PatternType.LINE_TOTAL,
+            PatternType.GRAND_TOTAL,
+            PatternType.SUBTOTAL
+        }
         self._quantity_pattern_types = {PatternType.QUANTITY}
         
     def detect_line_items(
