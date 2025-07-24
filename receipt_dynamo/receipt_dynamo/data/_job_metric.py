@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -11,14 +9,6 @@ from receipt_dynamo.data.base_operations import (
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
 
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    OperationError,
-    ReceiptDynamoError,
-)
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -52,46 +42,11 @@ class _JobMetric(
             ValueError: When a job metric with the same timestamp and name
                 already exists
         """
-        if job_metric is None:
-            raise ValueError(
-                "JobMetric parameter is required and cannot be None."
-            )
-        if not isinstance(job_metric, JobMetric):
-            raise ValueError(
-                "job_metric must be an instance of the JobMetric class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job_metric.to_item(),
-                ConditionExpression=(
-                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"JobMetric with name {job_metric.metric_name} "
-                    f"and timestamp {job_metric.timestamp} "
-                    f"for job {job_metric.job_id} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add job metric to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    f"Internal server error: {e}",
-                ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job metric to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(job_metric, JobMetric, "job_metric")
+        self._add_entity(
+            job_metric,
+            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)"
+        )
 
     @handle_dynamodb_errors("get_job_metric")
     def get_job_metric(
@@ -122,38 +77,21 @@ class _JobMetric(
                 "Timestamp is required and must be a non-empty string."
             )
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"METRIC#{metric_name}#{timestamp}"},
-                },
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"JOB#{job_id}"},
+                "SK": {"S": f"METRIC#{metric_name}#{timestamp}"},
+            },
+        )
+
+        if "Item" not in response:
+            raise ValueError(
+                f"No job metric found with job ID {job_id}, metric name "
+                f"{metric_name}, and timestamp {timestamp}"
             )
 
-            if "Item" not in response:
-                raise ValueError(
-                    f"No job metric found with job ID {job_id}, metric name "
-                    f"{metric_name}, and timestamp {timestamp}"
-                )
-
-            return item_to_job_metric(response["Item"])
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
-                    f"Could not get job metric: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    f"Internal server error: {e}",
-                ) from e
-            else:
-                raise OperationError(f"Error getting job metric: {e}") from e
+        return item_to_job_metric(response["Item"])
 
     @handle_dynamodb_errors("list_job_metrics")
     def list_job_metrics(
@@ -197,79 +135,56 @@ class _JobMetric(
             validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
-        try:
-            # Build the expression attribute values based on whether
-            # metric_name is provided
-            expression_attr_values = {
-                ":pk": {"S": f"JOB#{job_id}"},
-            }
+        # Build the expression attribute values based on whether
+        # metric_name is provided
+        expression_attr_values = {
+            ":pk": {"S": f"JOB#{job_id}"},
+        }
 
-            if metric_name:
-                key_condition = "PK = :pk AND begins_with(SK, :sk)"
-                expression_attr_values[":sk"] = {"S": f"METRIC#{metric_name}#"}
+        if metric_name:
+            key_condition = "PK = :pk AND begins_with(SK, :sk)"
+            expression_attr_values[":sk"] = {"S": f"METRIC#{metric_name}#"}
+        else:
+            key_condition = "PK = :pk AND begins_with(SK, :sk)"
+            expression_attr_values[":sk"] = {"S": "METRIC#"}
+
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": key_condition,
+            "ExpressionAttributeValues": expression_attr_values,
+            "ScanIndexForward": True,  # Ascending order by default
+        }
+
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+
+        while True:
+            if limit is not None:
+                remaining = limit - len(metrics)
+                query_params["Limit"] = remaining
+
+            response = self._client.query(**query_params)
+            for item in response["Items"]:
+                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
+                    metrics.append(item_to_job_metric(item))
+
+            if limit is not None and len(metrics) >= limit:
+                metrics = metrics[:limit]
+                last_evaluated_key = response.get(
+                    "LastEvaluatedKey",
+                    None,
+                )
+                break
+
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                key_condition = "PK = :pk AND begins_with(SK, :sk)"
-                expression_attr_values[":sk"] = {"S": "METRIC#"}
+                last_evaluated_key = None
+                break
 
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": key_condition,
-                "ExpressionAttributeValues": expression_attr_values,
-                "ScanIndexForward": True,  # Ascending order by default
-            }
-
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(metrics)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                for item in response["Items"]:
-                    if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                        metrics.append(item_to_job_metric(item))
-
-                if limit is not None and len(metrics) >= limit:
-                    metrics = metrics[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return metrics, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list job metrics from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    f"Internal server error: {e}",
-                ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list job metrics from the database: {e}"
-                ) from e
+        return metrics, last_evaluated_key
 
     @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
@@ -312,69 +227,46 @@ class _JobMetric(
             validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"METRIC#{metric_name}"},
-                },
-                "ScanIndexForward": True,  # Ascending order by default
-            }
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI1",
+            "KeyConditionExpression": "GSI1PK = :pk",
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"METRIC#{metric_name}"},
+            },
+            "ScanIndexForward": True,  # Ascending order by default
+        }
 
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                if limit is not None:
-                    remaining = limit - len(metrics)
-                    query_params["Limit"] = remaining
+        while True:
+            if limit is not None:
+                remaining = limit - len(metrics)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                for item in response["Items"]:
-                    if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                        metrics.append(item_to_job_metric(item))
+            response = self._client.query(**query_params)
+            for item in response["Items"]:
+                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
+                    metrics.append(item_to_job_metric(item))
 
-                if limit is not None and len(metrics) >= limit:
-                    metrics = metrics[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
+            if limit is not None and len(metrics) >= limit:
+                metrics = metrics[:limit]
+                last_evaluated_key = response.get(
+                    "LastEvaluatedKey",
+                    None,
+                )
+                break
 
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return metrics, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not query metrics by name from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    f"Internal server error: {e}",
-                ) from e
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                raise DynamoDBError(
-                    f"Could not query metrics by name from the database: {e}"
-                ) from e
+                last_evaluated_key = None
+                break
+
+        return metrics, last_evaluated_key
 
     def get_metrics_by_name_across_jobs(
         self,
@@ -421,68 +313,43 @@ class _JobMetric(
             validate_last_evaluated_key(last_evaluated_key)
 
         metrics: List[JobMetric] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"METRIC#{metric_name}"},
-                },
-                "ScanIndexForward": True,  # Ascending order by default
-            }
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI2",
+            "KeyConditionExpression": "GSI2PK = :pk",
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"METRIC#{metric_name}"},
+            },
+            "ScanIndexForward": True,  # Ascending order by default
+        }
 
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                if limit is not None:
-                    remaining = limit - len(metrics)
-                    query_params["Limit"] = remaining
+        while True:
+            if limit is not None:
+                remaining = limit - len(metrics)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                for item in response["Items"]:
-                    if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                        metrics.append(item_to_job_metric(item))
+            response = self._client.query(**query_params)
+            for item in response["Items"]:
+                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
+                    metrics.append(item_to_job_metric(item))
 
-                if limit is not None and len(metrics) >= limit:
-                    metrics = metrics[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
+            if limit is not None and len(metrics) >= limit:
+                metrics = metrics[:limit]
+                last_evaluated_key = response.get(
+                    "LastEvaluatedKey",
+                    None,
+                )
+                break
 
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return metrics, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not query metrics by name across jobs from the "
-                    f"database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    f"Internal server error: {e}",
-                ) from e
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
             else:
-                raise DynamoDBError(
-                    f"Could not query metrics by name across jobs from the "
-                    f"database: {e}"
-                ) from e
+                last_evaluated_key = None
+                break
+
+        return metrics, last_evaluated_key
