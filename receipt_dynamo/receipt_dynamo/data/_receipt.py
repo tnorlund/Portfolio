@@ -237,9 +237,9 @@ class _Receipt(
                 - or any other unexpected errors.
         """
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
 
         # Validate image_id as a UUID and receipt_id as a positive integer.
         assert_valid_uuid(image_id)

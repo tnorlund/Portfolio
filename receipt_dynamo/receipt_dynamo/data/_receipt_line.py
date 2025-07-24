@@ -174,7 +174,7 @@ class _ReceiptLine(
         """Retrieves multiple ReceiptLines by their indices."""
         if indices is None:
             raise ValueError(
-                "indices parameter is required and cannot be None."
+                "indices cannot be None"
             )
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
@@ -210,7 +210,7 @@ class _ReceiptLine(
     def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their keys."""
         if keys is None:
-            raise ValueError("keys parameter is required and cannot be None.")
+            raise ValueError("keys cannot be None")
         if not isinstance(keys, list):
             raise ValueError("keys must be a list of dictionaries.")
         for key in keys:

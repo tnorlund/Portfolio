@@ -231,7 +231,7 @@ def test_getJobCheckpoint_raises_value_error_job_id_none(
 ):
     """Test that getJobCheckpoint raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_checkpoint_dynamo.get_job_checkpoint(None, "timestamp")
 
@@ -308,7 +308,7 @@ def test_updateBestCheckpoint_raises_value_error_job_id_none(
 ):
     """Test that updateBestCheckpoint raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_checkpoint_dynamo.update_best_checkpoint(None, "timestamp")
 
@@ -517,7 +517,7 @@ def test_getBestCheckpoint_raises_value_error_job_id_none(
 ):
     """Test that getBestCheckpoint raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_checkpoint_dynamo.get_best_checkpoint(None)
 
@@ -558,7 +558,7 @@ def test_deleteJobCheckpoint_raises_value_error_job_id_none(
 ):
     """Test that deleteJobCheckpoint raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_checkpoint_dynamo.delete_job_checkpoint(None, "timestamp")
 

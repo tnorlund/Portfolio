@@ -248,14 +248,14 @@ def test_addReceiptFields_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfields cannot be None"),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "receiptfields must be a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in receiptFields must be ReceiptField instances.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -625,14 +625,14 @@ def test_updateReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfields cannot be None"),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "receiptfields must be a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in receiptFields must be ReceiptField instances.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -986,14 +986,14 @@ def test_deleteReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfields cannot be None"),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "receiptfields must be a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in receiptFields must be ReceiptField instances.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -1182,15 +1182,15 @@ def test_getReceiptField_nonexistent_raises(
     [
         (
             (None, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1),
-            "Field type is required and cannot be None.",
+            "field_type cannot be None",
         ),
         (
             ("BUSINESS_NAME", None, 1),
-            "Image ID is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             ("BUSINESS_NAME", "3f52804b-2fad-4e00-92c8-b593da3a8ed3", None),
-            "Receipt ID is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             ("", "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1),

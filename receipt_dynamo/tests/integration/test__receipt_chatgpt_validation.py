@@ -118,7 +118,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None."),
+        (None, "validation cannot be None"),
         (
             "not-a-validation",
             "validation must be an instance of the ReceiptChatGPTValidation class.",
@@ -387,7 +387,7 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None."),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
             "validations must be a list of ReceiptChatGPTValidation instances.",
@@ -563,7 +563,7 @@ def test_updateReceiptChatGPTValidation_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None."),
+        (None, "validation cannot be None"),
         (
             "not a ReceiptChatGPTValidation",
             "validation must be an instance of the ReceiptChatGPTValidation class.",
@@ -831,7 +831,7 @@ def test_updateReceiptChatGPTValidations_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None"),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
             "validations must be a list of ReceiptChatGPTValidation instances",
@@ -1019,7 +1019,7 @@ def test_deleteReceiptChatGPTValidation_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None"),
+        (None, "validation cannot be None"),
         (
             "not-a-validation-result",
             "validation must be an instance of the ReceiptChatGPTValidation class",
@@ -1203,7 +1203,7 @@ def test_deleteReceiptChatGPTValidations_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None"),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
             "validations must be a list of ReceiptChatGPTValidation instances",
@@ -1513,7 +1513,7 @@ def test_getReceiptChatGPTValidation_not_found(
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "timestamp parameter is required and cannot be None.",
+            "timestamp cannot be None",
         ),
         (
             1,

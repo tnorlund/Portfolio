@@ -72,7 +72,7 @@ class _ReceiptWordLabel(
         """
         if receipt_word_label is None:
             raise ValueError(
-                "ReceiptWordLabel parameter is required and cannot be None."
+                "receipt_word_label cannot be None"
             )
         if not isinstance(receipt_word_label, ReceiptWordLabel):
             raise ValueError(
@@ -137,7 +137,7 @@ class _ReceiptWordLabel(
         """
         if receipt_word_labels is None:
             raise ValueError(
-                "ReceiptWordLabels parameter is required and cannot be None."
+                "receipt_word_labels cannot be None"
             )
         if not isinstance(receipt_word_labels, list):
             raise ValueError(
@@ -310,15 +310,15 @@ class _ReceiptWordLabel(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
         if line_id is None:
-            raise ValueError("Line ID is required and cannot be None.")
+            raise ValueError("line_id cannot be None")
         if word_id is None:
-            raise ValueError("Word ID is required and cannot be None.")
+            raise ValueError("word_id cannot be None")
         if label is None:
-            raise ValueError("Label is required and cannot be None.")
+            raise ValueError("label cannot be None")
 
         # Then check types
         if not isinstance(receipt_id, int):

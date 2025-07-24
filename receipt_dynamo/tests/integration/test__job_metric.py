@@ -123,7 +123,7 @@ def test_addJobMetric_success(
 def test_addJobMetric_raises_value_error(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is None"""
     with pytest.raises(
-        ValueError, match="job_metric parameter is required and cannot be None."
+        ValueError, match="job_metric cannot be None"
     ):
         job_metric_dynamo.add_job_metric(None)
 
@@ -225,7 +225,7 @@ def test_getJobMetric_success(
 def test_getJobMetric_raises_value_error_job_id_none(job_metric_dynamo):
     """Test that getJobMetric raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_metric_dynamo.get_job_metric(None, "loss", "2021-01-01T12:30:45")
 

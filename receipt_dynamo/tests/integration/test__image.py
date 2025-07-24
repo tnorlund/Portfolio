@@ -705,7 +705,7 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
-        match="All items in images must be Image instances",
+        match="All images must be instances of the Image class.",
     ):
         client.update_images([example_image, "not-an-image"])  # type: ignore
 

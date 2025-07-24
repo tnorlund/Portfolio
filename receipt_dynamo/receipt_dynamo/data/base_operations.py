@@ -90,7 +90,7 @@ class ErrorMessageConfig:
     
     # Parameter validation messages
     PARAM_VALIDATION = {
-        "required": "{param} parameter is required and cannot be None.",
+        "required": "{param} cannot be None",
         "type_mismatch": "{param} must be an instance of the {class_name} class.",
         "list_required": "{param} must be a list of {class_name} instances.",
         "list_type_mismatch": "All {param} must be instances of the {class_name} class.",
@@ -719,11 +719,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise ValueError(f"{param_name} cannot be None")
 
         if not isinstance(entities, list):
-            raise ValueError(f"{param_name} must be a list.")
+            raise ValueError(f"{param_name} must be a list of {entity_class.__name__} instances.")
 
         if not all(isinstance(entity, entity_class) for entity in entities):
             raise ValueError(
-                f"All items in {param_name} must be {entity_class.__name__} instances."
+                f"All {param_name} must be instances of the {entity_class.__name__} class."
             )
 
 

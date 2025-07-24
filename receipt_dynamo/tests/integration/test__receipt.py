@@ -1554,7 +1554,7 @@ def test_getReceipt_raises_value_error_image_id_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Image ID is required and cannot be None."
+        ValueError, match="image_id cannot be None"
     ):
         client.get_receipt(None, sample_receipt.receipt_id)
 
@@ -1569,7 +1569,7 @@ def test_getReceipt_raises_value_error_receipt_id_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Receipt ID is required and cannot be None."
+        ValueError, match="receipt_id cannot be None"
     ):
         client.get_receipt(sample_receipt.image_id, None)
 

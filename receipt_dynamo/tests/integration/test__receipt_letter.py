@@ -300,7 +300,7 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
         ("not-a-list", "letters must be a list."),
         (
             ["not-a-receipt-letter"],
-            "All items in letters must be ReceiptLetter instances.",
+            "All letters must be instances of the ReceiptLetter class.",
         ),
     ],
 )
@@ -623,11 +623,11 @@ def test_updateReceiptLetters_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None"),
+        (None, "letters cannot be None"),
         ("not-a-list", "Letters must be provided as a list"),
         (
             [123, "not-a-receipt-letter"],
-            "All items in the letters list must be instances of the ReceiptLetter class",
+            "All letters must be instances of the ReceiptLetter class.",
         ),
     ],
 )
@@ -803,7 +803,7 @@ def test_deleteReceiptLetter_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None"),
+        (None, "letter cannot be None"),
         (
             "not-a-receipt-letter",
             "letter must be an instance of the ReceiptLetter class",
@@ -1054,7 +1054,7 @@ def test_deleteReceiptLetters_with_unprocessed_items(
         ("not a list", "letters must be a list."),
         (
             [1, 2, 3],
-            "All items in letters must be ReceiptLetter instances.",
+            "All letters must be instances of the ReceiptLetter class.",
         ),
     ],
 )

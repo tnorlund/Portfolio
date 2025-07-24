@@ -250,18 +250,18 @@ class _ReceiptChatGPTValidation(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if timestamp is None:
             raise ValueError(
-                "timestamp parameter is required and cannot be None."
+                "timestamp cannot be None"
             )
         if not isinstance(timestamp, str):
             raise ValueError("timestamp must be a string.")
@@ -434,13 +434,13 @@ class _ReceiptChatGPTValidation(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
 
@@ -544,7 +544,7 @@ class _ReceiptChatGPTValidation(
         """
         if status is None:
             raise ValueError(
-                "status parameter is required and cannot be None."
+                "status cannot be None"
             )
         if not isinstance(status, str):
             raise ValueError("status must be a string.")

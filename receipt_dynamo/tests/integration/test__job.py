@@ -799,7 +799,7 @@ def test_listJobs_raises_client_error_unknown(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list jobs from the database"
+        Exception, match="Something unexpected"
     ):
         job_dynamo.list_jobs()
 

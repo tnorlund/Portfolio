@@ -34,7 +34,7 @@ class _LabelCountCache(
     @handle_dynamodb_errors("add_label_count_cache")
     def add_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
+            raise ValueError("item cannot be None")
         if not isinstance(item, LabelCountCache):
             raise ValueError(
                 "item must be an instance of the LabelCountCache class."
@@ -59,7 +59,7 @@ class _LabelCountCache(
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
-            raise ValueError("items parameter is required and cannot be None.")
+            raise ValueError("items cannot be None")
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
@@ -100,7 +100,7 @@ class _LabelCountCache(
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
+            raise ValueError("item cannot be None")
         if not isinstance(item, LabelCountCache):
             raise ValueError(
                 "item must be an instance of the LabelCountCache class."

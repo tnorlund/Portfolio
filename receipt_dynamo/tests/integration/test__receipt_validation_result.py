@@ -98,7 +98,7 @@ def test_addReceiptValidationResult_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None."),
+        (None, "result cannot be None"),
         (
             "not-a-validation-result",
             "result must be an instance of the ReceiptValidationResult class.",
@@ -326,7 +326,7 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None."),
+        (None, "results cannot be None"),
         (
             "not-a-list",
             "results must be a list of ReceiptValidationResult instances.",
@@ -476,7 +476,7 @@ def test_updateReceiptValidationResult_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None."),
+        (None, "result cannot be None"),
         (
             "not a ReceiptValidationResult",
             "result must be an instance of the ReceiptValidationResult class.",
@@ -681,7 +681,7 @@ def test_updateReceiptValidationResults_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None"),
+        (None, "results cannot be None"),
         (
             "not-a-list",
             "results must be a list of ReceiptValidationResult instances",
@@ -857,7 +857,7 @@ def test_deleteReceiptValidationResult_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None"),
+        (None, "result cannot be None"),
         (
             "not-a-validation-result",
             "result must be an instance of the ReceiptValidationResult class",
@@ -1015,7 +1015,7 @@ def test_deleteReceiptValidationResults_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None"),
+        (None, "results cannot be None"),
         (
             "not-a-list",
             "results must be a list of ReceiptValidationResult instances",
@@ -1300,14 +1300,14 @@ def test_getReceiptValidationResult_not_found(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
             0,
-            "field_name parameter is required and cannot be None.",
+            "field_name cannot be None",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field",
             None,
-            "result_index parameter is required and cannot be None.",
+            "result_index cannot be None",
         ),
         (1, "", "field", 0, "uuid must be a valid UUIDv4"),
         (
@@ -2346,7 +2346,7 @@ def test_listReceiptValidationResultsForField_empty_results(
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "field_name parameter is required and cannot be None.",
+            "field_name cannot be None",
         ),
         (
             1,

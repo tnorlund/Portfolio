@@ -158,7 +158,7 @@ def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
     items.
     """
     with pytest.raises(
-        ValueError, match="All items in job_logs must be JobLog instances"
+        ValueError, match="All job_logs must be instances of the JobLog class."
     ):
         job_log_dynamo.add_job_logs([sample_job_log, "not a job log"])
 

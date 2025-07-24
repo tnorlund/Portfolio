@@ -69,7 +69,7 @@ def test_addOCRJob_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Ocr_job parameter is required and cannot be None"),
+        (None, "ocr_job cannot be None"),
         (
             "not-a-ocr-job",
             "Ocr_job must be an instance of the OCRJob class",

@@ -79,7 +79,7 @@ def test_addReceiptWordLabel_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabel cannot be None"),
+        (None, "receipt_word_label cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -115,7 +115,7 @@ def test_addReceiptWordLabel_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt word label to DynamoDB",
+            "Something unexpected",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -130,7 +130,7 @@ def test_addReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt word label to DynamoDB",
+            "Something unexpected",
         ),
         (
             "ValidationException",
@@ -234,7 +234,7 @@ def test_addReceiptWordLabels_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabels cannot be None"),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -286,7 +286,7 @@ def test_addReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error adding receipt word labels",
+            "Something unexpected",
         ),
     ],
 )
@@ -422,7 +422,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabel cannot be None"),
+        (None, "receipt_word_label cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -474,7 +474,7 @@ def test_updateReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt word label",
+            "Something unexpected",
         ),
     ],
 )
@@ -606,7 +606,7 @@ def test_updateReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabels cannot be None"),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -802,7 +802,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabel cannot be None"),
+        (None, "receipt_word_label cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -854,7 +854,7 @@ def test_deleteReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt word label",
+            "Something unexpected",
         ),
     ],
 )
@@ -959,7 +959,7 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptwordlabels cannot be None"),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -1016,7 +1016,7 @@ def test_deleteReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt word labels",
+            "Something unexpected",
         ),
     ],
 )
@@ -1151,23 +1151,23 @@ def test_getReceiptWordLabel_nonexistent_raises(
     [
         (
             (None, 1, 10, 5, "ITEM"),
-            "Image ID is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", None, 10, 5, "ITEM"),
-            "Receipt ID is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, None, 5, "ITEM"),
-            "Line ID is required and cannot be None.",
+            "line_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 10, None, "ITEM"),
-            "Word ID is required and cannot be None.",
+            "word_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 10, 5, None),
-            "Label is required and cannot be None.",
+            "label cannot be None",
         ),
         (
             ("invalid-uuid", 1, 10, 5, "ITEM"),
@@ -1233,7 +1233,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error getting receipt word label",
+            "Something unexpected",
         ),
     ],
 )
@@ -1459,7 +1459,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt word label from DynamoDB",
+            "Something unexpected",
         ),
     ],
 )
@@ -1761,7 +1761,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt word label from DynamoDB",
+            "Something unexpected",
         ),
     ],
 )

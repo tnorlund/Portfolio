@@ -261,7 +261,7 @@ def test_addInstances_raises_value_error_instances_not_list_of_instances(
     """
     with pytest.raises(
         ValueError,
-        match="All items in instances must be Instance instances",
+        match="All instances must be instances of the Instance class.",
     ):
         instance_dynamo.add_instances([sample_instance, "not an instance"])
 

@@ -115,9 +115,9 @@ class _OCRJob(
             ValueError: When the OCR job is not found
         """
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
         try:
@@ -278,7 +278,7 @@ class _OCRJob(
             tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
         """
         if status is None:
-            raise ValueError("Status is required and cannot be None.")
+            raise ValueError("status cannot be None")
         if not isinstance(status, OCRStatus):
             raise ValueError("Status must be a OCRStatus instance.")
         if limit is not None and not isinstance(limit, int):

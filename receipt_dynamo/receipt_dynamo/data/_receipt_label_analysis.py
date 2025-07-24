@@ -241,9 +241,9 @@ class _ReceiptLabelAnalysis(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
 
         # Then check types
         if not isinstance(image_id, str):

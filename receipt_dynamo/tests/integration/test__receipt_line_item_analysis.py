@@ -729,7 +729,7 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None"),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
             "Analyses must be a list of ReceiptLineItemAnalysis instances",

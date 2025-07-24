@@ -121,7 +121,7 @@ class _PlacesCache(
             Exception: If there's an error updating the item.
         """
         if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
+            raise ValueError("item cannot be None")
         if not isinstance(item, PlacesCache):
             raise ValueError(
                 "item must be an instance of the PlacesCache class."
@@ -174,7 +174,7 @@ class _PlacesCache(
         """
         if places_cache_items is None:
             raise ValueError(
-                "places_cache_items parameter is required and cannot be None."
+                "places_cache_items cannot be None"
             )
         if not isinstance(places_cache_items, list):
             raise ValueError("places_cache_items must be a list.")

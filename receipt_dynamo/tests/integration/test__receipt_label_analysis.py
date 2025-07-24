@@ -234,7 +234,7 @@ def test_addReceiptLabelAnalyses_success(
     [
         (
             None,
-            "receiptlabelanalyses cannot be None",
+            "receipt_label_analyses cannot be None",
         ),
         (
             "not-a-list",
@@ -636,7 +636,7 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
     [
         (
             None,
-            "receiptlabelanalyses cannot be None",
+            "receipt_label_analyses cannot be None",
         ),
         (
             "not-a-list",
@@ -1002,7 +1002,7 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
     [
         (
             None,
-            "receiptlabelanalyses cannot be None",
+            "receipt_label_analyses cannot be None",
         ),
         (
             "not-a-list",
@@ -1196,11 +1196,11 @@ def test_getReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             (None, 1),
-            "Image ID is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", None),
-            "Receipt ID is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             ("invalid-uuid", 1),

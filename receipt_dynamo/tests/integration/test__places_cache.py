@@ -65,7 +65,7 @@ def test_addPlacesCache_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "item parameter is required and cannot be None."),
+        (None, "item cannot be None"),
         (
             "not-a-places-cache-item",
             "item must be an instance of the PlacesCache class.",
