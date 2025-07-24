@@ -1621,7 +1621,7 @@ def test_getReceipt_not_found(dynamodb_table, sample_receipt):
     Tests getReceipt raises ValueError if not found.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
 
 

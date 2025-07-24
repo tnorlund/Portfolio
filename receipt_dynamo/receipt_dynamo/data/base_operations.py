@@ -223,15 +223,17 @@ class EntityErrorHandler:
         entity_context = self.context_extractor.extract_entity_context(context)
         
         # Check for entity-specific templates
-        if "receipt" in operation and "receipt_id" in entity_data and "image_id" in entity_data:
+        # Be more specific with receipt operations to avoid false matches
+        if (operation in ["add_receipt", "update_receipt", "delete_receipt"] and 
+            "receipt_id" in entity_data and "image_id" in entity_data):
             message = self.config.ENTITY_MESSAGES["receipt"]["already_exists"].format(**entity_data)
-            raise EntityAlreadyExistsError(message) from error
-        elif "job" in operation and "job_id" in entity_data:
-            message = self.config.ENTITY_MESSAGES["job"]["already_exists"].format(**entity_data)
             raise EntityAlreadyExistsError(message) from error
         elif "job_checkpoint" in operation and "timestamp" in entity_data and "job_id" in entity_data:
             message = self.config.ENTITY_MESSAGES["job_checkpoint"]["already_exists"].format(**entity_data)
             raise ValueError(message) from error
+        elif "job" in operation and "job_id" in entity_data:
+            message = self.config.ENTITY_MESSAGES["job"]["already_exists"].format(**entity_data)
+            raise EntityAlreadyExistsError(message) from error
         elif "ReceiptValidationResult with field" in entity_context:
             raise ValueError(f"{entity_context} already exists") from error
         else:
@@ -245,7 +247,9 @@ class EntityErrorHandler:
         entity_context = self.context_extractor.extract_entity_context(context)
         
         # Check for entity-specific templates
-        if "receipt" in operation and "receipt_id" in entity_data and "image_id" in entity_data:
+        # Be more specific with receipt operations to avoid false matches
+        if (operation in ["add_receipt", "update_receipt", "delete_receipt", "get_receipt"] and 
+            "receipt_id" in entity_data and "image_id" in entity_data):
             message = self.config.ENTITY_MESSAGES["receipt"]["not_found"].format(**entity_data)
             raise EntityNotFoundError(message) from error
         elif "job" in operation and "job_id" in entity_data:
@@ -253,7 +257,7 @@ class EntityErrorHandler:
             raise EntityNotFoundError(message) from error
         elif "receipt_line_item_analysis" in operation and "receipt_id" in entity_data:
             message = self.config.ENTITY_MESSAGES["receipt_line_item_analysis"]["not_found"].format(**entity_data)
-            raise ValueError(message) from error
+            raise EntityNotFoundError(message) from error
         elif "ReceiptValidationResult with field" in entity_context:
             raise ValueError(f"{entity_context} does not exist") from error
         else:
@@ -556,6 +560,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 "update_receipt_label_analyses": "One or more receipt label analyses do not exist",
                 "update_receipt_word_labels": "One or more receipt word labels do not exist",
                 "delete_receipt_word_labels": "One or more receipt word labels do not exist",
+                "update_receipt_chatgpt_validations": "One or more ReceiptChatGPTValidations do not exist",
             }
             
             message = batch_error_messages.get(

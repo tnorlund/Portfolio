@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import (
     OCRJob,
     OCRRoutingDecision,
@@ -81,7 +82,7 @@ def test_addImage_raises_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_image(example_image)
 
     mock_put.assert_called_once()

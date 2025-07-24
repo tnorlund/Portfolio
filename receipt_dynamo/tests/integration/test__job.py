@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
 
@@ -92,7 +93,7 @@ def test_addJob_raises_conditional_check_failed(job_dynamo, sample_job):
     job_dynamo.add_job(sample_job)
     # Try to add it again
     with pytest.raises(
-        ValueError, match=f"Job with ID {sample_job.job_id} already exists"
+        EntityAlreadyExistsError, match="already exists"
     ):
         job_dynamo.add_job(sample_job)
 
@@ -589,7 +590,7 @@ def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that deleteJob raises ValueError when the job does not exist"""
     # Try to delete without adding first
     with pytest.raises(
-        ValueError, match=f"Job with ID {sample_job.job_id} does not exist"
+        EntityNotFoundError, match=f"Job with ID {sample_job.job_id} does not exist"
     ):
         job_dynamo.delete_job(sample_job)
 

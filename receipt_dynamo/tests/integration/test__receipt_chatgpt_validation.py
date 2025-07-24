@@ -13,6 +13,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 
@@ -152,7 +154,7 @@ def test_addReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptChatGPTValidation for receipt .* and timestamp .* already exists",
+            "Entity already exists: ReceiptChatGPTValidation with receipt_id=.*",
         ),
         (
             "ResourceNotFoundException",
@@ -211,7 +213,7 @@ def test_addReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityAlreadyExistsError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )
@@ -597,7 +599,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptChatGPTValidation for receipt",
+            "Entity does not exist: ReceiptChatGPTValidation with receipt_id=.*",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -660,7 +662,7 @@ def test_updateReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityNotFoundError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )
@@ -1053,7 +1055,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptChatGPTValidation for receipt",
+            "Entity does not exist: ReceiptChatGPTValidation with receipt_id=.*",
         ),
         (
             "ResourceNotFoundException",
@@ -1112,7 +1114,7 @@ def test_deleteReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityNotFoundError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )

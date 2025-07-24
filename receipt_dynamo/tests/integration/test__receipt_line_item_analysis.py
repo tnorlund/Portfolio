@@ -16,6 +16,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 
@@ -200,7 +202,7 @@ def test_addReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(EntityAlreadyExistsError) as excinfo:
             client.add_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
@@ -574,7 +576,7 @@ def test_updateReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(EntityNotFoundError) as excinfo:
             client.update_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
@@ -959,7 +961,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "The conditional request failed",
-            "ReceiptLineItemAnalysis does not exist",
+            "ReceiptLineItemAnalysis for receipt ID",
         ),
         (
             "InternalServerError",
@@ -1003,11 +1005,18 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analysis(
-            sample_receipt_line_item_analysis
-        )
-    assert expected_error in str(excinfo.value)
+    if error_code == "ConditionalCheckFailedException":
+        with pytest.raises(EntityNotFoundError) as excinfo:
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
+        assert expected_error in str(excinfo.value)
+    else:
+        with pytest.raises(Exception) as excinfo:
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
+        assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration

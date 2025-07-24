@@ -10,6 +10,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
 )
 
 correct_word_params: Dict[str, Any] = {
@@ -343,7 +344,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="Entity does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist"):
         client.update_words([word])
     mock_transact.assert_called_once()
 

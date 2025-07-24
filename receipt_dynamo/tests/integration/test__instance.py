@@ -306,7 +306,7 @@ def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
     """
     Test that getInstance raises ValueError when the instance doesn't exist.
     """
-    with pytest.raises(ValueError, match="Instance .* does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Instance .* does not exist"):
         instance_dynamo.get_instance(str(uuid.uuid4()))
 
 

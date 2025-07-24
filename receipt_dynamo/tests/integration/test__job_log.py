@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data.shared_exceptions import DynamoDBError
+from receipt_dynamo.data.shared_exceptions import DynamoDBError, EntityAlreadyExistsError, EntityNotFoundError
 from receipt_dynamo.entities.job_log import JobLog
 
 
@@ -93,7 +93,7 @@ def test_addJobLog_raises_conditional_check_failed(
     job_log_dynamo.add_job_log(sample_job_log)
 
     # Try to add it again, which should raise an error
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         job_log_dynamo.add_job_log(sample_job_log)
 
 
@@ -201,8 +201,8 @@ def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
 
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_log_not_found(job_log_dynamo):
-    """Test that getJobLog raises ValueError when the job log is not found."""
-    with pytest.raises(ValueError, match="not found"):
+    """Test that getJobLog raises EntityNotFoundError when the job log is not found."""
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         job_log_dynamo.get_job_log(
             job_id="non-existent-job", timestamp="2021-01-01T12:00:00"
         )
@@ -294,7 +294,7 @@ def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
     job_log_dynamo.delete_job_log(sample_job_log)
 
     # Verify it was deleted
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         job_log_dynamo.get_job_log(
             job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
         )
@@ -322,10 +322,10 @@ def test_deleteJobLog_raises_conditional_check_failed(
     job_log_dynamo, sample_job_log
 ):
     """
-    Test that deleteJobLog raises ValueError when the job log does not exist.
+    Test that deleteJobLog raises EntityNotFoundError when the job log does not exist.
     """
     # Try to delete a job log that doesn't exist
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         job_log_dynamo.delete_job_log(sample_job_log)
 
 

@@ -10,6 +10,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 # -------------------------------------------------------------------
@@ -74,7 +76,7 @@ def test_addReceiptLetter_duplicate_raises(
     client.add_receipt_letter(sample_receipt_letter)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_letter(sample_receipt_letter)
 
 
@@ -507,7 +509,7 @@ def test_updateReceiptLetter_client_errors(
         (
             Exception
             if error_code != "ConditionalCheckFailedException"
-            else ValueError
+            else EntityNotFoundError
         ),
         match=expected_error,
     ):

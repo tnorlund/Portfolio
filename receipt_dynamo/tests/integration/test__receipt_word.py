@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -64,7 +65,7 @@ def test_add_receipt_word_duplicate_raises(
     client.add_receipt_word(sample_receipt_word)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_word(sample_receipt_word)
 
 

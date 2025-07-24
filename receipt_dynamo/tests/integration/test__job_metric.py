@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._job_metric import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_metric import JobMetric
 
@@ -155,8 +156,8 @@ def test_addJobMetric_raises_conditional_check_failed(
 
     # Try to add it again
     with pytest.raises(
-        ValueError,
-        match="Entity already exists: JobMetric",
+        EntityAlreadyExistsError,
+        match="already exists",
     ):
         job_metric_dynamo.add_job_metric(sample_job_metric)
 

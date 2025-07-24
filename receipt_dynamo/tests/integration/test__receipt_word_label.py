@@ -11,6 +11,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 # -------------------------------------------------------------------
@@ -69,7 +71,7 @@ def test_addReceiptWordLabel_duplicate_raises(
     client.add_receipt_word_label(sample_receipt_word_label)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_word_label(sample_receipt_word_label)
 
 
@@ -412,7 +414,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.update_receipt_word_label(sample_receipt_word_label)
 
 
@@ -773,7 +775,7 @@ def test_deleteReceiptWordLabel_success(
     client.delete_receipt_word_label(sample_receipt_word_label)
 
     # Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -792,7 +794,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.delete_receipt_word_label(sample_receipt_word_label)
 
 
@@ -927,7 +929,7 @@ def test_deleteReceiptWordLabels_success(
 
     # Assert
     for label in labels:
-        with pytest.raises(ValueError, match="does not exist"):
+        with pytest.raises(EntityNotFoundError, match="does not exist"):
             client.get_receipt_word_label(
                 label.image_id,
                 label.receipt_id,
@@ -1133,7 +1135,7 @@ def test_getReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,

@@ -10,6 +10,10 @@ from receipt_dynamo import DynamoClient, ReceiptValidationSummary
 from receipt_dynamo.data._receipt_validation_summary import (
     _ReceiptValidationSummary,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 
 
 @pytest.fixture
@@ -230,7 +234,7 @@ def test_addReceiptValidationSummary_client_errors(
 
     # Attempt to add the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_exception):
+        with pytest.raises(EntityAlreadyExistsError, match=expected_exception):
             client.add_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
@@ -461,7 +465,7 @@ def test_updateReceiptValidationSummary_client_errors(
 
     # Attempt to update the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(EntityNotFoundError, match=expected_error):
             client.update_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
@@ -657,7 +661,7 @@ def test_deleteReceiptValidationSummary_client_errors(
 
     # Attempt to delete the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(EntityNotFoundError, match=expected_error):
             client.delete_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
