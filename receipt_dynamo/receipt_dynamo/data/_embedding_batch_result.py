@@ -215,7 +215,9 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 for r in chunk
             ]
             try:
-                self._client.transact_write_items(TransactItems=transact_items)
+                self._client.transact_write_items(
+                    TransactItems=transact_items,
+                )
             except ClientError as e:
                 raise BatchOperationError(
                     f"Error updating embedding batch results: {e}"
@@ -294,7 +296,9 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 for r in chunk
             ]
             try:
-                self._client.transact_write_items(TransactItems=transact_items)
+                self._client.transact_write_items(
+                    TransactItems=transact_items,
+                )
             except ClientError as e:
                 raise BatchOperationError(
                     f"Error deleting embedding batch results: {e}"
@@ -327,7 +331,8 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                     "PK": {"S": f"BATCH#{batch_id}"},
                     "SK": {
                         "S": (
-                            f"RESULT#IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                            f"RESULT#IMAGE#{image_id}"
+                            f"#RECEIPT#{receipt_id:05d}"
                             f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
                         )
                     },
@@ -391,7 +396,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 if limit is not None and len(results) >= limit:
                     results = results[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -459,7 +467,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 if limit is not None and len(results) >= limit:
                     results = results[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -509,13 +520,12 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
                 text="dummy",
                 error_message="dummy",
             )
+            template_key = template_embedding_batch_result.gsi3_key()["GSI3PK"]
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI3",
                 "KeyConditionExpression": "GSI3PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": template_embedding_batch_result.gsi3_key()["GSI3PK"]
-                },
+                "ExpressionAttributeValues": {":pk": template_key},
             }
             if last_evaluated_key is not None:
                 query_params["ExclusiveStartKey"] = last_evaluated_key
@@ -535,7 +545,10 @@ class _EmbeddingBatchResult(DynamoClientProtocol):
 
                 if limit is not None and len(results) >= limit:
                     results = results[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
