@@ -169,8 +169,7 @@ class _ReceiptWord(
     def delete_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ):
-        """Deletes all ReceiptWords from a given line within a receipt/"
-        "image."""
+        """Deletes all ReceiptWords from a given line within a receipt/image."""
         words = self.list_receipt_words_from_line(
             receipt_id, image_id, line_id
         )
@@ -376,8 +375,7 @@ class _ReceiptWord(
     def list_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
-        """Returns all ReceiptWords that match the given receipt/image/"
-        "line IDs."""
+        """Returns all ReceiptWords that match the given receipt/image/line IDs."""
         receipt_words = []
         try:
             response = self._client.query(
@@ -547,7 +545,7 @@ class _ReceiptWord(
         valid_values = [s.value for s in EmbeddingStatus]
         if status_str not in valid_values:
             raise ValueError(
-                "embedding_status must be one of: {', '.join(valid_values)}; "
+                f"embedding_status must be one of: {', '.join(valid_values)}; "
                 f"Got: {status_str}"
             )
         try:
