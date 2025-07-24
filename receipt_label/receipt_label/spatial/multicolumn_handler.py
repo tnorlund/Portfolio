@@ -556,7 +556,7 @@ class MultiColumnHandler:
             validation_results = {}
             
             # Validate quantity × unit_price = line_total
-            if item.quantity and item.unit_price and item.line_total:
+            if item.quantity is not None and item.unit_price is not None and item.line_total is not None:
                 expected_total = item.quantity * item.unit_price
                 difference = abs(expected_total - item.line_total)
                 
@@ -580,8 +580,8 @@ class MultiColumnHandler:
                     item.confidence = max(0.8, item.confidence * 1.2)
             
             # Check if discount is applied correctly
-            if item.discount and item.line_total and item.unit_price:
-                if item.quantity:
+            if item.discount is not None and item.line_total is not None and item.unit_price is not None:
+                if item.quantity is not None:
                     expected_total = (item.quantity * item.unit_price) + item.discount
                     validation_results['discount_calculation'] = (
                         abs(expected_total - item.line_total) <= self.validation_threshold
