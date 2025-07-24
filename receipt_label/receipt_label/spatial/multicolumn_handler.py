@@ -440,11 +440,11 @@ class MultiColumnHandler:
                 continue
             
             # Extract value based on pattern type
-            if pattern.pattern_type.name == 'QUANTITY':
+            if pattern.pattern_type == PatternType.QUANTITY:
                 line_item.quantity = self._extract_quantity_value(pattern)
                 line_item.source_columns['quantity'] = column_id
             
-            elif pattern.pattern_type.name in ['CURRENCY', 'UNIT_PRICE', 'LINE_TOTAL']:
+            elif pattern.pattern_type == PatternType.CURRENCY:
                 value = self._extract_currency_value(pattern)
                 
                 if column_class.column_type == ColumnType.UNIT_PRICE:
@@ -566,7 +566,8 @@ class MultiColumnHandler:
                 )
                 
                 if validation_results['quantity_price_total']:
-                    item.confidence *= 1.2  # Boost confidence for validated items
+                    # Boost confidence for validated items
+                    item.confidence = max(0.8, item.confidence * 1.2)
             
             # Check if discount is applied correctly
             if item.discount and item.line_total and item.unit_price:

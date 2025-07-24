@@ -226,3 +226,4 @@ PR_DESCRIPTION.md
 receipt_label/receipt_data/
 receipt_label/receipt_data_*/
 receipt_label/test_results/
+receipt_data_with_labels/
