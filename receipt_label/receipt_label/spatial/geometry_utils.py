@@ -465,6 +465,141 @@ class ColumnDetector:
         return 0.5
 
 
+def is_horizontally_aligned_group(
+    words: List[ReceiptWord], 
+    tolerance: float = 0.02,
+    min_words: int = 2
+) -> bool:
+    """
+    Check if a group of words forms a horizontally aligned line item.
+    
+    This function implements the horizontal grouping logic to detect when words
+    belong to the same line item based on their Y-coordinate alignment.
+    
+    Args:
+        words: List of words to check for horizontal alignment
+        tolerance: Y-coordinate tolerance for considering words on same line (default 0.02)
+        min_words: Minimum number of words required for a valid group (default 2)
+        
+    Returns:
+        bool: True if words form a horizontally aligned group
+    """
+    if len(words) < min_words:
+        return False
+        
+    # Convert to SpatialWords for easier processing
+    spatial_words = [SpatialWord(w) for w in words]
+    
+    # Get Y-coordinates
+    y_coords = [sw.y for sw in spatial_words]
+    
+    # Check if all words are within tolerance of the median Y
+    median_y = sorted(y_coords)[len(y_coords) // 2]
+    
+    for y in y_coords:
+        if abs(y - median_y) > tolerance:
+            return False
+            
+    # Additional check: words should span some horizontal distance
+    x_coords = [sw.x for sw in spatial_words]
+    x_span = max(x_coords) - min(x_coords)
+    
+    # If all words are at the same X position, they're not a horizontal group
+    if x_span < 0.01:  # Very small threshold
+        return False
+        
+    return True
+
+
+def group_words_into_line_items(
+    words: List[ReceiptWord],
+    pattern_matches: Optional[List[PatternMatch]] = None,
+    y_tolerance: float = 0.02,
+    x_gap_threshold: float = 0.1
+) -> List[List[ReceiptWord]]:
+    """
+    Group words into potential line items based on horizontal alignment and proximity.
+    
+    This function implements enhanced horizontal grouping logic that:
+    1. Groups words on the same Y-coordinate (within tolerance)
+    2. Splits groups if there's a large horizontal gap
+    3. Considers pattern matches to keep related words together
+    
+    Args:
+        words: List of all words on the receipt
+        pattern_matches: Optional pattern matches to consider
+        y_tolerance: Y-coordinate tolerance for same line
+        x_gap_threshold: X-coordinate gap threshold for splitting groups
+        
+    Returns:
+        List of word groups, each representing a potential line item
+    """
+    if not words:
+        return []
+        
+    # Create spatial words with pattern matches
+    pattern_map = {}
+    if pattern_matches:
+        for match in pattern_matches:
+            for word_idx in match.word_indices:
+                pattern_map[word_idx] = match
+                
+    spatial_words = []
+    for i, word in enumerate(words):
+        pattern = pattern_map.get(i)
+        spatial_words.append(SpatialWord(word, pattern))
+        
+    # Sort by Y coordinate, then X coordinate
+    spatial_words.sort(key=lambda sw: (sw.y, sw.x))
+    
+    line_items = []
+    current_line = []
+    current_y = None
+    
+    for sw in spatial_words:
+        if current_y is None:
+            current_line = [sw]
+            current_y = sw.y
+        elif abs(sw.y - current_y) <= y_tolerance:
+            # Same line - check for large horizontal gap
+            if current_line:
+                last_x = current_line[-1].x
+                x_gap = sw.x - last_x
+                
+                # Large gap might indicate separate line items
+                if x_gap > x_gap_threshold:
+                    # Check if they're related by pattern
+                    last_pattern = current_line[-1].pattern_match
+                    current_pattern = sw.pattern_match
+                    
+                    # Keep together if they're part of the same pattern match
+                    if (last_pattern and current_pattern and 
+                        last_pattern.pattern_type == current_pattern.pattern_type and
+                        last_pattern.confidence > 0.8):
+                        current_line.append(sw)
+                    else:
+                        # Start new line item
+                        if len(current_line) >= 2:  # Minimum words for line item
+                            line_items.append([w.word for w in current_line])
+                        current_line = [sw]
+                else:
+                    current_line.append(sw)
+            else:
+                current_line.append(sw)
+        else:
+            # New line
+            if len(current_line) >= 2:  # Minimum words for line item
+                line_items.append([w.word for w in current_line])
+            current_line = [sw]
+            current_y = sw.y
+            
+    # Don't forget the last line
+    if len(current_line) >= 2:
+        line_items.append([w.word for w in current_line])
+        
+    return line_items
+
+
 class LineItemSpatialDetector:
     """Main spatial detector for line items using pattern-first approach."""
 
@@ -498,14 +633,20 @@ class LineItemSpatialDetector:
 
         # Step 3: Apply spatial heuristics from the other model's recommendations
         enhanced_rows = self._apply_spatial_heuristics(rows, columns)
+        
+        # Step 4: Use horizontal grouping to detect line items
+        line_items = group_words_into_line_items(words, pattern_matches, self.y_tolerance)
+        logger.info(f"Detected {len(line_items)} potential line items using horizontal grouping")
 
         return {
             "rows": enhanced_rows,
             "columns": columns,
+            "line_items": line_items,
             "metadata": {
                 "total_words": len(words),
                 "row_count": len(rows),
                 "column_count": len(columns),
+                "line_item_count": len(line_items),
                 "column_types": [c.column_type for c in columns],
                 "avg_confidence": (
                     sum(c.confidence for c in columns) / len(columns)
