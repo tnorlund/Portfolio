@@ -75,22 +75,21 @@ class _JobMetric(
                     f"and timestamp {job_metric.timestamp} "
                     f"for job {job_metric.job_id} already exists"
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add job metric to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     f"Internal server error: {e}",
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job metric to DynamoDB: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not add job metric to DynamoDB: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_job_metric")
     def get_job_metric(
@@ -143,16 +142,15 @@ class _JobMetric(
                 raise ReceiptDynamoError(
                     f"Could not get job metric: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     f"Internal server error: {e}",
                 ) from e
-            else:
-                raise OperationError(f"Error getting job metric: {e}") from e
+            raise OperationError(f"Error getting job metric: {e}") from e
 
     @handle_dynamodb_errors("list_job_metrics")
     def list_job_metrics(
@@ -253,22 +251,21 @@ class _JobMetric(
                 raise DynamoDBError(
                     f"Could not list job metrics from the database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     f"Internal server error: {e}",
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list job metrics from the database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list job metrics from the database: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
@@ -358,22 +355,21 @@ class _JobMetric(
                 raise DynamoDBError(
                     f"Could not query metrics by name from the database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     f"Internal server error: {e}",
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not query metrics by name from the database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not query metrics by name from the database: {e}"
+            ) from e
 
     def get_metrics_by_name_across_jobs(
         self,
@@ -468,20 +464,19 @@ class _JobMetric(
                     f"Could not query metrics by name across jobs from the "
                     f"database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     f"Internal server error: {e}",
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not query metrics by name across jobs from the "
-                    f"database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not query metrics by name across jobs from the "
+                f"database: {e}"
+            ) from e

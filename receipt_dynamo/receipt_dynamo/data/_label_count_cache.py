@@ -39,10 +39,9 @@ class _LabelCountCache(DynamoClientProtocol):
                 raise ValueError(
                     f"LabelCountCache for label {item.label} already exists"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add label count cache to DynamoDB: {e}"
-                )
+            raise DynamoDBError(
+                f"Could not add label count cache to DynamoDB: {e}"
+            )
 
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
@@ -79,10 +78,9 @@ class _LabelCountCache(DynamoClientProtocol):
                 raise ValueError(
                     "LabelCountCache already exists for one or more labels"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add label count caches to DynamoDB: {e}"
-                )
+            raise DynamoDBError(
+                f"Could not add label count caches to DynamoDB: {e}"
+            )
 
     def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
@@ -103,10 +101,9 @@ class _LabelCountCache(DynamoClientProtocol):
                 raise ValueError(
                     f"LabelCountCache for label {item.label} does not exist"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not update label count cache in DynamoDB: {e}f"
-                )
+            raise DynamoDBError(
+                f"Could not update label count cache in DynamoDB: {e}f"
+            )
 
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
         try:
@@ -168,5 +165,4 @@ class _LabelCountCache(DynamoClientProtocol):
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
                 raise ValueError("LabelCountCache table does not exist")
-            else:
-                raise OperationError(f"Error listing LabelCountCaches: {e}")
+            raise OperationError(f"Error listing LabelCountCaches: {e}")

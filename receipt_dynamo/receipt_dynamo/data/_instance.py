@@ -57,20 +57,19 @@ class _Instance(DynamoClientProtocol):
                 raise ValueError(
                     f"Instance {instance.instance_id} already exists"
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add instance to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add instance to DynamoDB: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not add instance to DynamoDB: {e}"
+            ) from e
 
     def add_instances(self, instances: List[Instance]) -> None:
         """Adds multiple instances to the DynamoDB table.
@@ -136,25 +135,24 @@ class _Instance(DynamoClientProtocol):
                 raise DynamoDBThroughputError(
                     "Provisioned throughput exceeded, retry later"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise OperationError(
                     f"Validation error: {e.response['Error']['Message']}"
                 ) from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(
                     f"Access denied: {e.response['Error']['Message']}"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to add instances: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to add instances: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def update_instance(self, instance: Instance) -> None:
         """Updates an existing instance in the DynamoDB table.
@@ -183,23 +181,22 @@ class _Instance(DynamoClientProtocol):
                 raise ValueError(
                     f"Instance {instance.instance_id} does not exist"
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not update instance in DynamoDB: {e}"
                 ) from e
-            elif (
+            if (
                 e.response["Error"]["Code"]
                 == "ProvisionedThroughputExceededException"
             ):
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not update instance in DynamoDB: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not update instance in DynamoDB: {e}"
+            ) from e
 
     def delete_instance(self, instance: Instance) -> None:
         """Deletes an instance from the DynamoDB table.
@@ -233,25 +230,24 @@ class _Instance(DynamoClientProtocol):
                 raise ValueError(
                     f"Instance {instance.instance_id} does not exist"
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     "Provisioned throughput exceeded, retry later"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to delete instance: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to delete instance: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def get_instance(self, instance_id: str) -> Instance:
         """Gets an instance from the DynamoDB table.
@@ -292,14 +288,13 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    f"Failed to get instance: {e.response['Error']['Message']}"
-                ) from e
+            raise OperationError(
+                f"Failed to get instance: {e.response['Error']['Message']}"
+            ) from e
 
     def get_instance_with_jobs(
         self, instance_id: str
@@ -365,25 +360,24 @@ class _Instance(DynamoClientProtocol):
                         f"{instance_job.job_id} already exists"
                     )
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     "Provisioned throughput exceeded, retry later"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to add instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to add instance-job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def update_instance_job(self, instance_job: InstanceJob) -> None:
         """Updates an existing instance-job association in the DynamoDB table.
@@ -423,25 +417,24 @@ class _Instance(DynamoClientProtocol):
                         f"{instance_job.job_id} does not exist"
                     )
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     "Provisioned throughput exceeded, retry later"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to update instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to update instance-job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def delete_instance_job(self, instance_job: InstanceJob) -> None:
         """Deletes an instance-job association from the DynamoDB table.
@@ -481,25 +474,24 @@ class _Instance(DynamoClientProtocol):
                         f"{instance_job.job_id} does not exist"
                     )
                 )
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     "Provisioned throughput exceeded, retry later"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to delete instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to delete instance-job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def get_instance_job(self, instance_id: str, job_id: str) -> InstanceJob:
         """Gets an instance-job association from the DynamoDB table.
@@ -548,17 +540,16 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to get instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to get instance-job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def list_instances(
         self,
@@ -612,17 +603,16 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def list_instances_by_status(
         self,
@@ -683,17 +673,16 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances by status: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances by status: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def list_instance_jobs(
         self,
@@ -755,17 +744,16 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instance jobs: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instance jobs: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     def list_instances_for_job(
         self,
@@ -828,14 +816,13 @@ class _Instance(DynamoClientProtocol):
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances for job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances for job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e

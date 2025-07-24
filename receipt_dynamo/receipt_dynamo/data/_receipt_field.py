@@ -295,28 +295,26 @@ class _ReceiptField(
             )
             if "Item" in response:
                 return item_to_receipt_field(response["Item"])
-            else:
-                raise ValueError(
-                    f"Receipt field for Field Type '{field_type}', "
-                    f"Image ID '{image_id}', and Receipt ID {receipt_id} "
-                    f"does not exist."
-                )
+            raise ValueError(
+                f"Receipt field for Field Type '{field_type}', "
+                f"Image ID '{image_id}', and Receipt ID {receipt_id} "
+                f"does not exist."
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting receipt field: {e}"
-                ) from e
+            raise OperationError(
+                f"Error getting receipt field: {e}"
+            ) from e
 
     def list_receipt_fields(
         self,
@@ -397,20 +395,19 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields from the database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields from the database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields from the database: {e}"
+            ) from e
 
     def get_receipt_fields_by_image(
         self,
@@ -497,22 +494,21 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields by image ID: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields by image ID: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields by image ID: {e}"
+            ) from e
 
     def get_receipt_fields_by_receipt(
         self,
@@ -608,19 +604,18 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields by receipt ID: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields by receipt ID: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields by receipt ID: {e}"
+            ) from e

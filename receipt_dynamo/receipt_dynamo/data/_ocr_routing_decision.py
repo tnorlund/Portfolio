@@ -48,20 +48,19 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' already exists"
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add OCR routing decision to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error adding OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error adding OCR routing decision: {e}"
+            ) from e
 
     def add_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -135,10 +134,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' not found"
                 ) from e
-            else:
-                raise OperationError(
-                    f"Error updating OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error updating OCR routing decision: {e}"
+            ) from e
 
     def get_ocr_routing_decision(
         self, image_id: str, job_id: str
@@ -175,16 +173,15 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"OCR routing decision for Image ID '{image_id}' "
                     f"and Job ID '{job_id}' not found"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error getting OCR routing decision: {e}"
+            ) from e
 
     def delete_ocr_routing_decision(
         self, ocr_routing_decision: OCRRoutingDecision
@@ -213,10 +210,9 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' does not exist."
                 ) from e
-            else:
-                raise OperationError(
-                    f"Error deleting OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error deleting OCR routing decision: {e}"
+            ) from e
 
     def delete_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -256,15 +252,14 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     raise ValueError(
                         "OCR routing decision does not exist"
                     ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
+                if error_code == "ProvisionedThroughputExceededException":
                     raise RuntimeError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
+                if error_code == "InternalServerError":
                     raise RuntimeError(f"Internal server error: {e}") from e
-                elif error_code == "AccessDeniedException":
+                if error_code == "AccessDeniedException":
                     raise RuntimeError(f"Access denied: {e}") from e
-                else:
-                    raise RuntimeError(
-                        f"Error deleting OCR routing decisions: {e}"
-                    ) from e
+                raise RuntimeError(
+                    f"Error deleting OCR routing decisions: {e}"
+                ) from e
