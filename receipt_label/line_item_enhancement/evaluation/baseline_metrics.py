@@ -105,6 +105,9 @@ def extract_patterns_from_receipt(receipt_data: Dict[str, Any]) -> Tuple[List[Re
             # Extract numeric value for currency patterns
             try:
                 text = word.text.replace('$', '').replace(',', '').strip()
+                # Skip lone currency symbols or empty text after cleaning
+                if not text or text == '' or not any(c.isdigit() for c in text):
+                    continue
                 extracted_value = float(text) if text.replace('.', '').replace('-', '').isdigit() else 0.0
             except (ValueError, AttributeError):
                 extracted_value = 0.0
