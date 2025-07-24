@@ -3,6 +3,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -16,9 +23,15 @@ from receipt_dynamo.entities.label_count_cache import (
 )
 
 
-class _LabelCountCache(DynamoClientProtocol):
+class _LabelCountCache(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """Accessor methods for LabelCountCache items in DynamoDB."""
 
+    @handle_dynamodb_errors("add_label_count_cache")
     def add_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
@@ -43,6 +56,7 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"Could not add label count cache to DynamoDB: {e}"
                 )
 
+    @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
             raise ValueError("items parameter is required and cannot be None.")
@@ -83,6 +97,7 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"Could not add label count caches to DynamoDB: {e}"
                 )
 
+    @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
             raise ValueError("item parameter is required and cannot be None.")
@@ -107,6 +122,7 @@ class _LabelCountCache(DynamoClientProtocol):
                     f"Could not update label count cache in DynamoDB: {e}f"
                 )
 
+    @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
         try:
             response = self._client.get_item(
@@ -122,6 +138,7 @@ class _LabelCountCache(DynamoClientProtocol):
         except ClientError as e:
             raise OperationError(f"Error getting LabelCountCache: {e}f") from e
 
+    @handle_dynamodb_errors("list_label_count_caches")
     def list_label_count_caches(
         self,
         limit: Optional[int] = None,
