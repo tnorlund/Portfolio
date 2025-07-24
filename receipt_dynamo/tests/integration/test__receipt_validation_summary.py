@@ -139,7 +139,7 @@ def test_addReceiptValidationSummary_duplicate_raises(
         (None, "summary cannot be None"),
         (
             "not-a-validation-summary",
-            "Summary must be an instance of the ReceiptValidationSummary class.",
+            "summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -199,7 +199,7 @@ def test_addReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -366,7 +366,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
         (None, "summary cannot be None"),
         (
             "not a ReceiptValidationSummary",
-            "Summary must be an instance of the ReceiptValidationSummary class.",
+            "summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -421,7 +421,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -617,7 +617,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -807,8 +807,8 @@ def test_getReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",

@@ -84,11 +84,11 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
     [
         (
             None,
-            "receiptlabelanalysis cannot be None",
+            "ReceiptLabelAnalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
+            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -141,7 +141,7 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
@@ -179,7 +179,20 @@ def test_addReceiptLabelAnalysis_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityAlreadyExistsError,
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
 
@@ -281,7 +294,7 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -323,7 +336,18 @@ def test_addReceiptLabelAnalyses_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_label_analyses(analyses)
     mock_batch_write.assert_called_once()
 
@@ -433,11 +457,11 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "receiptlabelanalysis cannot be None",
+            "ReceiptLabelAnalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
+            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -480,7 +504,7 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -522,7 +546,19 @@ def test_updateReceiptLabelAnalysis_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityNotFoundError,  # For update operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.update_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
 
@@ -691,7 +727,7 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -839,11 +875,11 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "receiptlabelanalysis cannot be None",
+            "ReceiptLabelAnalysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
+            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -886,7 +922,7 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -928,7 +964,19 @@ def test_deleteReceiptLabelAnalysis_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityNotFoundError,  # For delete operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_label_analysis(sample_receipt_label_analysis)
     mock_delete.assert_called_once()
 
@@ -1054,7 +1102,7 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -1091,7 +1139,19 @@ def test_deleteReceiptLabelAnalyses_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": ValueError,  # For batch operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_label_analyses(analyses)
     mock_transact.assert_called_once()
 
@@ -1243,7 +1303,7 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1289,7 +1349,18 @@ def test_getReceiptLabelAnalysis_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
@@ -1473,7 +1544,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1514,7 +1585,19 @@ def test_listReceiptLabelAnalyses_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.list_receipt_label_analyses()
     mock_query.assert_called_once()
 

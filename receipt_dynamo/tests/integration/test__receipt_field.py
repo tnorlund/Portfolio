@@ -81,7 +81,7 @@ def test_addReceiptField_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfield cannot be None"),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -136,7 +136,7 @@ def test_addReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in add_receipt_field",
         ),
         (
@@ -293,7 +293,7 @@ def test_addReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in add_receipt_fields",
         ),
         (
@@ -439,7 +439,7 @@ def test_updateReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfield cannot be None"),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -484,7 +484,7 @@ def test_updateReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in update_receipt_field",
         ),
         (
@@ -678,7 +678,7 @@ def test_updateReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in update_receipt_fields",
             DynamoDBValidationError,
         ),
@@ -823,7 +823,7 @@ def test_deleteReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "receiptfield cannot be None"),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -868,7 +868,7 @@ def test_deleteReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in delete_receipt_field",
         ),
         (
@@ -1036,7 +1036,7 @@ def test_deleteReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error in delete_receipt_fields",
         ),
         (
@@ -1236,7 +1236,7 @@ def test_getReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error",
         ),
         (
@@ -1472,7 +1472,7 @@ def test_listReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1798,7 +1798,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
@@ -2166,7 +2166,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),

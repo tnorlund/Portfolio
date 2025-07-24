@@ -108,7 +108,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityAlreadyExistsError) as excinfo:
         client.add_receipt_line_item_analysis(
             sample_receipt_line_item_analysis
         )
@@ -122,7 +122,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
         (None, "analysis cannot be None"),
         (
             "not-a-receipt-line-item-analysis",
-            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -350,7 +350,7 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
@@ -492,7 +492,7 @@ def test_updateReceiptLineItemAnalysis_success(
         (None, "analysis cannot be None"),
         (
             "not a ReceiptLineItemAnalysis",
-            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -795,7 +795,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
             DynamoDBValidationError,
             None,
         ),
@@ -1186,7 +1186,7 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-an-analysis"],
@@ -1841,7 +1841,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
@@ -2001,7 +2001,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",

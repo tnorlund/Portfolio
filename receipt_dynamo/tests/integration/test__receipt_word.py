@@ -76,7 +76,7 @@ def test_add_receipt_word_duplicate_raises(
         (None, "word cannot be None"),
         (
             "not-a-receipt-word",
-            "Word must be an instance of the ReceiptWord class.",
+            "word must be an instance of the ReceiptWord class.",
         ),
     ],
 )

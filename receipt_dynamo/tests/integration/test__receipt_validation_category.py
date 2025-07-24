@@ -76,7 +76,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
 
     # Attempt to add the same category again and expect an error
     with pytest.raises(
-        ValueError,
+        EntityAlreadyExistsError,
         match=f"Entity already exists: ReceiptValidationCategory with receipt_id={sample_receipt_validation_category.receipt_id}",
     ):
         client.add_receipt_validation_category(
@@ -161,7 +161,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -442,7 +442,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -614,7 +614,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -904,7 +904,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             None,
             DynamoDBValidationError,
@@ -1075,7 +1075,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -1246,7 +1246,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1566,8 +1566,8 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
