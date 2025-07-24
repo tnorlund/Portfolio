@@ -47,12 +47,26 @@ def load_receipt_data(file_path: Path) -> Tuple[List[ReceiptWord], List[PatternM
         matching_word = next((w for w in words if w.text == matched_text), words[0] if words else None)
         
         if matching_word:
+            pattern_type = PatternType.CURRENCY if match_data.get('pattern_type', '') == 'CURRENCY' else PatternType.PRODUCT_NAME
+            
+            # Handle currency parsing safely
+            if pattern_type == PatternType.CURRENCY:
+                try:
+                    # Remove currency symbols and commas before converting to float
+                    cleaned_text = matched_text.replace('$', '').replace(',', '').strip()
+                    extracted_value = float(cleaned_text)
+                except ValueError:
+                    # Skip this match if we can't parse the currency
+                    continue
+            else:
+                extracted_value = matched_text
+            
             match = PatternMatch(
                 word=matching_word,
-                pattern_type=PatternType.CURRENCY if match_data.get('pattern_type', '') == 'CURRENCY' else PatternType.PRODUCT_NAME,
+                pattern_type=pattern_type,
                 matched_text=matched_text,
                 confidence=match_data.get('confidence', 0.0),
-                extracted_value=float(matched_text) if match_data.get('pattern_type', '') == 'CURRENCY' else matched_text,
+                extracted_value=extracted_value,
                 metadata=match_data.get('metadata', {})
             )
             pattern_matches.append(match)
