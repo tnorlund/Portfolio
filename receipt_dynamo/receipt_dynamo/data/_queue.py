@@ -44,7 +44,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
         isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]
     ):
         raise ValueError(
-            "LastEvaluatedKey values must be in DynamoDB format with 'S' attribute"
+            "LastEvaluatedKey values must be in DynamoDB format with "
+            "'S' attribute"
         )
 
 
@@ -157,28 +158,36 @@ class _Queue(DynamoClientProtocol):
             ):
                 raise ClientError(
                     e.response,
-                    "DynamoDB Provisioned Throughput Exceeded: Consider retrying with exponential backoff",
+                    "DynamoDB Provisioned Throughput Exceeded: Consider "
+                    "retrying with exponential backoff",
                 )
             elif e.response["Error"]["Code"] == "InternalServerError":
                 raise ClientError(
                     e.response,
-                    "DynamoDB Internal Server Error: Consider retrying the operation",
+                    "DynamoDB Internal Server Error: Consider retrying the "
+                    "operation",
                 )
             elif e.response["Error"]["Code"] == "ValidationException":
                 raise ClientError(
                     e.response,
-                    "DynamoDB Validation Exception: Check the format of your request",
+                    "DynamoDB Validation Exception: Check the format of your "
+                    "request",
                 )
             elif e.response["Error"]["Code"] == "AccessDeniedException":
                 raise ClientError(
                     e.response,
-                    "Access Denied: Ensure your IAM policy has the dynamodb:BatchWriteItem permission",
+                    "Access Denied: Ensure your IAM policy has the "
+                    "dynamodb:BatchWriteItem permission",
                 )
             else:
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error batch writing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    (
+                        "Error batch writing queues: "
+                        f"{e.response['Error']['Code']}: "
+                        f"{e.response['Error']['Message']}"
+                    ),
                 )
 
     def update_queue(self, queue: Queue) -> None:
@@ -206,7 +215,9 @@ class _Queue(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             if (
@@ -243,7 +254,9 @@ class _Queue(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key=queue.key,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
         except ClientError as e:
             if (
@@ -268,7 +281,8 @@ class _Queue(DynamoClientProtocol):
             Queue: The queue object.
 
         Raises:
-            ValueError: If the queue_name is invalid or the queue doesn't exist.
+            ValueError: If the queue_name is invalid or the queue doesn't
+                exist.
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
@@ -297,7 +311,8 @@ class _Queue(DynamoClientProtocol):
             elif e.response["Error"]["Code"] == "InternalServerError":
                 raise ClientError(
                     e.response,
-                    "DynamoDB Internal Server Error: Consider retrying the operation",
+                    "DynamoDB Internal Server Error: Consider retrying the "
+                    "operation",
                 )
             else:
                 # Re-raise other types of ClientError
@@ -311,11 +326,14 @@ class _Queue(DynamoClientProtocol):
         """Lists all queues in the DynamoDB table.
 
         Args:
-            limit (int, optional): The maximum number of queues to return. Defaults to None.
-            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
+            limit (int, optional): The maximum number of queues to return.
+                Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a
+                previous request. Defaults to None.
 
         Returns:
-            tuple[list[Queue], dict]: A tuple containing a list of Queue objects and the LastEvaluatedKey for pagination.
+            tuple[list[Queue], dict]: A tuple containing a list of Queue
+                objects and the LastEvaluatedKey for pagination.
 
         Raises:
             ValueError: If the last_evaluated_key is invalid.
@@ -362,7 +380,11 @@ class _Queue(DynamoClientProtocol):
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error listing queues: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    (
+                        "Error listing queues: "
+                        f"{e.response['Error']['Code']}: "
+                        f"{e.response['Error']['Message']}"
+                    ),
                 )
 
     def add_job_to_queue(self, queue_job: QueueJob) -> None:
@@ -390,7 +412,9 @@ class _Queue(DynamoClientProtocol):
             self._client.put_item(
                 TableName=self.table_name,
                 Item=item,
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                ),
             )
 
             # Update the job count for the queue
@@ -404,7 +428,8 @@ class _Queue(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"Job {queue_job.job_id} is already in queue {queue_job.queue_name}"
+                    f"Job {queue_job.job_id} is already in queue "
+                    f"{queue_job.queue_name}"
                 )
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
@@ -433,7 +458,9 @@ class _Queue(DynamoClientProtocol):
             self._client.delete_item(
                 TableName=self.table_name,
                 Key=queue_job.key,
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND attribute_exists(SK)"
+                ),
             )
 
             # Update the job count for the queue
@@ -449,7 +476,8 @@ class _Queue(DynamoClientProtocol):
                 == "ConditionalCheckFailedException"
             ):
                 raise ValueError(
-                    f"Job {queue_job.job_id} is not in queue {queue_job.queue_name}"
+                    f"Job {queue_job.job_id} is not in queue "
+                    f"{queue_job.queue_name}"
                 )
             else:
                 # Re-raise the original ClientError for other DynamoDB-related
@@ -466,14 +494,18 @@ class _Queue(DynamoClientProtocol):
 
         Args:
             queue_name (str): The name of the queue to list jobs from.
-            limit (int, optional): The maximum number of jobs to return. Defaults to None.
-            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
+            limit (int, optional): The maximum number of jobs to return.
+                Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a
+                previous request. Defaults to None.
 
         Returns:
-            tuple[list[QueueJob], dict]: A tuple containing a list of QueueJob objects and the LastEvaluatedKey for pagination.
+            tuple[list[QueueJob], dict]: A tuple containing a list of
+                QueueJob objects and the LastEvaluatedKey for pagination.
 
         Raises:
-            ValueError: If the queue_name is invalid or the last_evaluated_key is invalid.
+            ValueError: If the queue_name is invalid or the last_evaluated_key
+                is invalid.
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not queue_name:
@@ -491,7 +523,9 @@ class _Queue(DynamoClientProtocol):
         # Prepare the query parameters
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :job_prefix)",
+            "KeyConditionExpression": (
+                "PK = :pk AND begins_with(SK, :job_prefix)"
+            ),
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"QUEUE#{queue_name}"},
                 ":job_prefix": {"S": "JOB#"},
@@ -528,7 +562,11 @@ class _Queue(DynamoClientProtocol):
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error listing jobs in queue: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    (
+                        "Error listing jobs in queue: "
+                        f"{e.response['Error']['Code']}: "
+                        f"{e.response['Error']['Message']}"
+                    ),
                 )
 
     def find_queues_for_job(
@@ -541,14 +579,18 @@ class _Queue(DynamoClientProtocol):
 
         Args:
             job_id (str): The ID of the job to find queues for.
-            limit (int, optional): The maximum number of queues to return. Defaults to None.
-            last_evaluated_key (dict, optional): The pagination token from a previous request. Defaults to None.
+            limit (int, optional): The maximum number of queues to return.
+                Defaults to None.
+            last_evaluated_key (dict, optional): The pagination token from a
+                previous request. Defaults to None.
 
         Returns:
-            tuple[list[QueueJob], dict]: A tuple containing a list of QueueJob objects and the LastEvaluatedKey for pagination.
+            tuple[list[QueueJob], dict]: A tuple containing a list of
+                QueueJob objects and the LastEvaluatedKey for pagination.
 
         Raises:
-            ValueError: If the job_id is invalid or the last_evaluated_key is invalid.
+            ValueError: If the job_id is invalid or the last_evaluated_key is
+                invalid.
             ClientError: If there is a problem with the DynamoDB service.
         """
         if not job_id:
@@ -561,7 +603,9 @@ class _Queue(DynamoClientProtocol):
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)",
+            "KeyConditionExpression": (
+                "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)"
+            ),
             "ExpressionAttributeValues": {
                 ":job_type": {"S": "JOB"},
                 ":job_prefix": {"S": f"JOB#{job_id}#QUEUE#"},
@@ -598,5 +642,9 @@ class _Queue(DynamoClientProtocol):
                 # Re-raise other types of ClientError
                 raise ClientError(
                     e.response,
-                    f"Error finding queues for job: {e.response['Error']['Code']}: {e.response['Error']['Message']}",
+                    (
+                        "Error finding queues for job: "
+                        f"{e.response['Error']['Code']}: "
+                        f"{e.response['Error']['Message']}"
+                    ),
                 )
