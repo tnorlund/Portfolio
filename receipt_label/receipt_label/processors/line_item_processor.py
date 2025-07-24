@@ -11,6 +11,7 @@ from ..data.gpt import (
     gpt_request_line_item_analysis,
     gpt_request_spatial_currency_analysis,
 )
+from ..pattern_detection.enhanced_pattern_analyzer import enhanced_pattern_analysis
 from ..models.line_item import LineItem, LineItemAnalysis, Price, Quantity
 from ..models.receipt import Receipt, ReceiptLine, ReceiptWord
 from ..models.uncertainty import (
@@ -1859,31 +1860,17 @@ class LineItemProcessor:
                 receipt, receipt_lines, receipt_words, structure_analysis=None
             )
 
-            # Stage 2: Use GPT for advanced analysis
+            # Stage 2: Check if we have currency amounts to analyze
             logger.info(
-                f"Stage 2: Using GPT to classify {len(initial_result.currency_amounts) if hasattr(initial_result, 'currency_amounts') else 0} currency amounts"
+                f"Stage 2: Found {len(initial_result.currency_amounts) if hasattr(initial_result, 'currency_amounts') else 0} currency amounts to analyze"
             )
 
-            # Debug logging for API key status at the point of use
-            if self.openai_api_key:
-                logger.info("API key is available for GPT analysis")
-            else:
-                logger.warning(
-                    "GPT API key missing, using basic analysis only"
-                )
-
-            # If no need for advanced analysis or no API key, return the basic results
-            use_llm = True  # Default to using LLM if available
+            # If no currency amounts found, return the basic results
             if (
-                not use_llm
-                or not self.openai_api_key
-                or not hasattr(initial_result, "currency_amounts")
+                not hasattr(initial_result, "currency_amounts")
                 or not initial_result.currency_amounts
             ):
-                if not self.openai_api_key:
-                    logger.warning(
-                        "GPT API key missing, using basic analysis only"
-                    )
+                logger.info("No currency amounts to analyze, using basic results")
                 # Convert ProcessingResult to LineItemAnalysis and return
                 return LineItemAnalysis(
                     items=initial_result.line_items,
@@ -1912,37 +1899,28 @@ class LineItemProcessor:
                     }
                 )
 
-            # Stage 3: Use GPT to classify the detected currency amounts
+            # Stage 3: Use enhanced pattern analysis to classify currency amounts
             logger.info(
-                f"Stage 3: Using GPT to classify {len(currency_contexts)} currency amounts"
+                f"Stage 3: Using enhanced pattern analysis to classify {len(currency_contexts)} currency amounts"
             )
 
-            # Process with GPT...
+            # Process with enhanced pattern analyzer
             try:
-                # Process with GPT API (using the centralized function in gpt.py)
-                if self.openai_api_key:
-                    gpt_result, prompt, response_text = (
-                        gpt_request_spatial_currency_analysis(
-                            receipt=receipt,
-                            receipt_lines=receipt_lines,
-                            receipt_words=receipt_words,
-                            currency_contexts=currency_contexts,
-                            gpt_api_key=self.openai_api_key,
-                        )
-                    )
-
-                    # Debug: Log the GPT result
-                    logger.info(
-                        f"GPT Response: {json.dumps(gpt_result, indent=2)}"
-                    )
-
-                    # Extract information from GPT result
-                    if gpt_result:
-                        # Create line items from GPT analysis
+                # Use enhanced pattern analysis instead of GPT
+                enhanced_result = enhanced_pattern_analysis(currency_contexts)
+                
+                # Log the result
+                logger.info(
+                    f"Enhanced Pattern Analysis Result: {json.dumps(enhanced_result, indent=2)}"
+                )
+                
+                # Extract information from enhanced analysis
+                if enhanced_result:
+                        # Create line items from enhanced analysis
                         classified_items = []
 
                         # Process line items from the classification
-                        for item in gpt_result.get("line_items", []):
+                        for item in enhanced_result.get("line_items", []):
                             # Extract the amount and description
                             amount = item.get("amount")
                             description = item.get("description", "")
@@ -2003,68 +1981,68 @@ class LineItemProcessor:
                         total = None
 
                         # First check if financial_summary is present
-                        if "financial_summary" in gpt_result and isinstance(
-                            gpt_result["financial_summary"], dict
+                        if "financial_summary" in enhanced_result and isinstance(
+                            enhanced_result["financial_summary"], dict
                         ):
                             # Extract values from financial_summary
                             if (
-                                "subtotal" in gpt_result["financial_summary"]
-                                and gpt_result["financial_summary"]["subtotal"]
+                                "subtotal" in enhanced_result["financial_summary"]
+                                and enhanced_result["financial_summary"]["subtotal"]
                                 is not None
                             ):
                                 try:
                                     subtotal = Decimal(
                                         str(
-                                            gpt_result["financial_summary"][
+                                            enhanced_result["financial_summary"][
                                                 "subtotal"
                                             ]
                                         )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
-                                        f"Invalid subtotal in financial_summary: {gpt_result['financial_summary']['subtotal']}"
+                                        f"Invalid subtotal in financial_summary: {enhanced_result['financial_summary']['subtotal']}"
                                     )
 
                             if (
-                                "tax" in gpt_result["financial_summary"]
-                                and gpt_result["financial_summary"]["tax"]
+                                "tax" in enhanced_result["financial_summary"]
+                                and enhanced_result["financial_summary"]["tax"]
                                 is not None
                             ):
                                 try:
                                     tax = Decimal(
                                         str(
-                                            gpt_result["financial_summary"][
+                                            enhanced_result["financial_summary"][
                                                 "tax"
                                             ]
                                         )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
-                                        f"Invalid tax in financial_summary: {gpt_result['financial_summary']['tax']}"
+                                        f"Invalid tax in financial_summary: {enhanced_result['financial_summary']['tax']}"
                                     )
 
                             if (
-                                "total" in gpt_result["financial_summary"]
-                                and gpt_result["financial_summary"]["total"]
+                                "total" in enhanced_result["financial_summary"]
+                                and enhanced_result["financial_summary"]["total"]
                                 is not None
                             ):
                                 try:
                                     total = Decimal(
                                         str(
-                                            gpt_result["financial_summary"][
+                                            enhanced_result["financial_summary"][
                                                 "total"
                                             ]
                                         )
                                     )
                                 except (ValueError, InvalidOperation):
                                     logger.warning(
-                                        f"Invalid total in financial_summary: {gpt_result['financial_summary']['total']}"
+                                        f"Invalid total in financial_summary: {enhanced_result['financial_summary']['total']}"
                                     )
 
                         # If financial_summary didn't provide all values, fall back to classification
                         if subtotal is None or tax is None or total is None:
                             # Process the classification to find financial fields
-                            for item in gpt_result.get("classification", []):
+                            for item in enhanced_result.get("classification", []):
                                 category = item.get("category")
                                 amount = item.get("amount")
 
@@ -2231,16 +2209,16 @@ class LineItemProcessor:
                             tax=tax,
                             total=total,
                             reasoning=initial_result.reasoning
-                            + " Refined through GPT spatial analysis.",
+                            + " Refined through enhanced pattern analysis.",
                             uncertain_items=initial_result.uncertain_items,
                         )
                 else:
-                    logger.warning(
-                        "GPT API key missing, using basic analysis only"
+                    logger.info(
+                        "Enhanced pattern analysis returned no results"
                     )
 
             except Exception as e:
-                logger.error("Error in GPT classification: %s", str(e))
+                logger.error("Error in enhanced pattern analysis: %s", str(e))
                 logger.error(traceback.format_exc())
 
             # Create the final analysis
