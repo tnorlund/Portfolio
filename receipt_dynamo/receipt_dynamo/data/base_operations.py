@@ -829,6 +829,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError("job_dependency cannot be None.")
             elif param_name == "job_log":
                 raise ValueError("job_log cannot be None.")
+            elif param_name == "job_metric":
+                raise ValueError(
+                    "job_metric parameter is required and cannot be None."
+                )
             else:
                 # Default capitalization for other parameters
                 param_display = param_name[0].upper() + param_name[1:]
@@ -918,6 +922,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif param_name == "job_log":
                 raise ValueError(
                     ("job_log must be a " f"{entity_class.__name__} instance")
+                )
+            elif param_name == "job_metric":
+                raise ValueError(
+                    (
+                        "job_metric must be an instance of the "
+                        f"{entity_class.__name__} class."
+                    )
                 )
             else:
                 # Default capitalization for other parameters

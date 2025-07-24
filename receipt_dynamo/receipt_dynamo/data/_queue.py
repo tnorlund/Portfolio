@@ -67,7 +67,7 @@ class _Queue(
             ValueError: If the queue is invalid or already exists.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._add_entity(queue)
+        self._add_entity(queue, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_queues")
     def add_queues(self, queues: list[Queue]) -> None:
@@ -106,7 +106,7 @@ class _Queue(
             ValueError: If the queue is invalid or doesn't exist.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._update_entity(queue)
+        self._update_entity(queue, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
 
     @handle_dynamodb_errors("delete_queue")
     def delete_queue(self, queue: Queue) -> None:
@@ -119,7 +119,7 @@ class _Queue(
             ValueError: If the queue is invalid or doesn't exist.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._delete_entity(queue)
+        self._delete_entity(queue, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
 
     @handle_dynamodb_errors("get_queue")
     def get_queue(self, queue_name: str) -> Queue:
@@ -242,7 +242,7 @@ class _Queue(
 
         # Delete the item from the DynamoDB table with a condition
         # expression to ensure it exists
-        self._delete_entity(queue_job)
+        self._delete_entity(queue_job, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
 
         # Update the job count for the queue
         queue = self.get_queue(queue_job.queue_name)

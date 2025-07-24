@@ -122,7 +122,7 @@ def test_addJobMetric_success(
 def test_addJobMetric_raises_value_error(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is None"""
     with pytest.raises(
-        ValueError, match="Job_metric parameter is required and cannot be None."
+        ValueError, match="job_metric parameter is required and cannot be None."
     ):
         job_metric_dynamo.add_job_metric(None)
 
@@ -135,7 +135,7 @@ def test_addJobMetric_raises_value_error_not_instance(job_metric_dynamo):
     """
     with pytest.raises(
         ValueError,
-        match="Job_metric must be an instance of the JobMetric class.",
+        match="job_metric must be an instance of the JobMetric class.",
     ):
         job_metric_dynamo.add_job_metric("not a job metric")
 
