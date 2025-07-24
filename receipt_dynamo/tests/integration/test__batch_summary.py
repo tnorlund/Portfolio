@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import BatchStatus, BatchType
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities.batch_summary import BatchSummary
 
 
@@ -39,7 +40,7 @@ def test_addBatchSummary_duplicate_raises(
             "PutItem",
         ),
     )
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_batch_summary(sample_batch_summary)
 
 

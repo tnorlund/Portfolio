@@ -17,6 +17,9 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 
@@ -181,12 +184,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                     )
                 ) from error
 
-        # Special handling for receipt operations for backward compatibility
+        # Special handling for receipt operations with domain-specific exceptions
         if operation == "add_receipt":
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
                 receipt = args[0]
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID "
                     f"'{receipt.image_id}' already exists"
                 ) from error
@@ -194,7 +197,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
                 receipt = args[0]
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID "
                     f"'{receipt.image_id}' does not exist"
                 ) from error
@@ -202,24 +205,20 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "receipt_id") and hasattr(args[0], "image_id"):
                 receipt = args[0]
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"Receipt with ID {receipt.receipt_id} and Image ID "
-                    f"'{receipt.image_id}' does not exists"
+                    f"'{receipt.image_id}' does not exist"
                 ) from error
         
-        # Special handling for job operations for backward compatibility
+        # Special handling for job operations with domain-specific exceptions
         if operation == "add_job":
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     f"Job with ID {job.job_id} already exists"
                 ) from error
         elif operation == "update_job":
-            from receipt_dynamo.data.shared_exceptions import (
-                EntityNotFoundError,
-            )
-
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
@@ -231,7 +230,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             args = context.get("args", []) if context else []
             if args and hasattr(args[0], "job_id"):
                 job = args[0]
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"Job with ID {job.job_id} does not exist"
                 ) from error
 
@@ -244,11 +243,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise ValueError(f"{entity_context} does not exist") from error
 
         if "add" in operation.lower():
-            raise ValueError(
+            raise EntityAlreadyExistsError(
                 f"Entity already exists: {entity_context}"
             ) from error
         else:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Entity does not exist: {entity_context}"
             ) from error
 

@@ -15,6 +15,10 @@ from receipt_dynamo import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -175,12 +179,12 @@ def test_addReceipt_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"], sample_receipt
 ):
     """
-    Tests that addReceipt raises ValueError when the receipt already exists.
+    Tests that addReceipt raises EntityAlreadyExistsError when the receipt already exists.
     """
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
 
 
@@ -234,7 +238,7 @@ def test_addReceipt_raises_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -602,7 +606,7 @@ def test_addReceipts_raises_clienterror(
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(Exception, match="Error adding receipts: "):
+    with pytest.raises(Exception, match="Table not found for operation add_receipts"):
         client.add_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -683,7 +687,7 @@ def test_updateReceipt_raises_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -821,7 +825,7 @@ def test_updateReceipt_raises_clienterror(
             "PutItem",
         ),
     )
-    with pytest.raises(Exception, match="Error updating receipt: "):
+    with pytest.raises(Exception, match="Table not found for operation update_receipt"):
         client.update_receipt(sample_receipt)
 
     mock_put.assert_called_once()
@@ -925,7 +929,7 @@ def test_updateReceipts_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="One or more receipts do not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: list"):
         client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
@@ -1066,7 +1070,7 @@ def test_updateReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Error updating receipts"):
+    with pytest.raises(DynamoDBError, match="Table not found for operation update_receipts"):
         client.update_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1142,7 +1146,7 @@ def test_deleteReceipt_raises_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -1279,7 +1283,7 @@ def test_deleteReceipt_raises_client_error(
             "DeleteItem",
         ),
     )
-    with pytest.raises(ValueError, match="Error deleting receipt"):
+    with pytest.raises(Exception, match="Table not found for operation delete_receipt"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -1372,7 +1376,7 @@ def test_deleteReceipts_raises_clienterror_conditional_check_failed(
             "transact_write_items",
         ),
     )
-    with pytest.raises(ValueError, match="One or more receipts do not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: list"):
         client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
@@ -1516,7 +1520,7 @@ def test_deleteReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Resource not found"):
+    with pytest.raises(DynamoDBError, match="Table not found for operation delete_receipts"):
         client.delete_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1670,7 +1674,7 @@ def test_getReceipt_raises_validation_exception(
             "GetItem",
         ),
     )
-    with pytest.raises(Exception, match="Validation error"):
+    with pytest.raises(Exception, match="One or more parameters given were invalid"):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
@@ -1751,7 +1755,7 @@ def test_getReceipt_raises_client_error(
             "GetItem",
         ),
     )
-    with pytest.raises(Exception, match="Error getting receipt"):
+    with pytest.raises(Exception, match="Table not found for operation get_receipt"):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 

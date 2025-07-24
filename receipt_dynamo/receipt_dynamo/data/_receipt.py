@@ -4,6 +4,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -67,7 +74,13 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _Receipt(DynamoClientProtocol):
+class _Receipt(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
+    @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
         """Adds a receipt to the database
 
@@ -77,44 +90,13 @@ class _Receipt(DynamoClientProtocol):
         Raises:
             ValueError: When a receipt with the same ID already exists
         """
-        if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
-        if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=receipt.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        f"Receipt with ID {receipt.receipt_id} and Image ID "
-                        f"'{receipt.image_id}' already exists"
-                    )
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add receipt to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(receipt, Receipt, "receipt")
+        self._add_entity(
+            receipt,
+            condition_expression="attribute_not_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("add_receipts")
     def add_receipts(self, receipts: list[Receipt]):
         """Adds a list of receipts to the database
 
@@ -124,53 +106,17 @@ class _Receipt(DynamoClientProtocol):
         Raises:
             ValueError: When a receipt with the same ID already exists
         """
-        if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
+        self._validate_entity_list(receipts, Receipt, "receipts")
+        # Create write request items for batch operation
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=receipt.to_item())
             )
-        if not isinstance(receipts, list):
-            raise ValueError("receipts must be a list of Receipt instances.")
-        if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
-        try:
-            for i in range(0, len(receipts), 25):
-                chunk = receipts[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=receipt.to_item())
-                    )
-                    for receipt in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error adding receipts: {e}") from e
+            for receipt in receipts
+        ]
+        self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("update_receipt")
     def update_receipt(self, receipt: Receipt):
         """Updates a receipt in the database
 
@@ -180,45 +126,13 @@ class _Receipt(DynamoClientProtocol):
         Raises:
             ValueError: When the receipt does not exist
         """
-        if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
-        if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
+        self._validate_entity(receipt, Receipt, "receipt")
+        self._update_entity(
+            receipt,
+            condition_expression="attribute_exists(PK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=receipt.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        f"Receipt with ID {receipt.receipt_id} and Image ID "
-                        f"'{receipt.image_id}' does not exist"
-                    )
-                )
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error updating receipt: {e}") from e
-
+    @handle_dynamodb_errors("update_receipts")
     def update_receipts(self, receipts: list[Receipt]):
         """
         Updates a list of receipts in the database using transactions.
@@ -240,66 +154,21 @@ class _Receipt(DynamoClientProtocol):
                 - AccessDeniedException (permission issues)
                 - or any other unexpected errors.
         """
-        if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
-            )
-        if not isinstance(receipts, list):
-            raise ValueError("receipts must be a list of Receipt instances.")
-        if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
-
-        # Process receipts in chunks of 25 because transact_write_items
-        # supports a maximum of 25 operations.
-        for i in range(0, len(receipts), 25):
-            chunk = receipts[i : i + 25]
-            transact_items = []
-            for receipt in chunk:
-                transact_items.append(
-                    TransactWriteItemTypeDef(
-                        Put=PutTypeDef(
-                            TableName=self.table_name,
-                            Item=receipt.to_item(),
-                            ConditionExpression="attribute_exists(PK)",
-                        )
-                    )
+        self._validate_entity_list(receipts, Receipt, "receipts")
+        # Create transactional update items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=receipt.to_item(),
+                    ConditionExpression="attribute_exists(PK)"
                 )
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more receipts do not exist"
-                    ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
-                elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
-                elif error_code == "ValidationException":
-                    raise DynamoDBValidationError(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise DynamoDBAccessError(f"Access denied: {e}") from e
-                elif error_code == "TransactionCanceledException":
-                    if "ConditionalCheckFailed" in str(e):
-                        raise ValueError(
-                            "One or more receipts do not exist"
-                        ) from e
-                    else:
-                        raise DynamoDBError(
-                            f"Transaction canceled: {e}"
-                        ) from e
-                else:
-                    raise DynamoDBError(f"Error updating receipts: {e}") from e
+            )
+            for receipt in receipts
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("delete_receipt")
     def delete_receipt(self, receipt: Receipt):
         """Deletes a receipt from the database
 
@@ -309,44 +178,13 @@ class _Receipt(DynamoClientProtocol):
         Raises:
             ValueError: When the receipt does not exist
         """
-        if receipt is None:
-            raise ValueError(
-                "Receipt parameter is required and cannot be None."
-            )
-        if not isinstance(receipt, Receipt):
-            raise ValueError(
-                "receipt must be an instance of the Receipt class."
-            )
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=receipt.key,
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        f"Receipt with ID {receipt.receipt_id} and Image ID "
-                        f"'{receipt.image_id}' does not exists"
-                    )
-                )
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise ValueError(f"Error deleting receipt: {e}") from e
+        self._validate_entity(receipt, Receipt, "receipt")
+        self._delete_entity(
+            receipt,
+            condition_expression="attribute_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("delete_receipts")
     def delete_receipts(self, receipts: list[Receipt]):
         """
         Deletes a list of receipts from the database using transactions.
@@ -363,63 +201,21 @@ class _Receipt(DynamoClientProtocol):
         Raises:
             ValueError: When a receipt does not exist or another error occurs.
         """
-        if receipts is None:
-            raise ValueError(
-                "Receipts parameter is required and cannot be None."
+        self._validate_entity_list(receipts, Receipt, "receipts")
+        # Create transactional delete items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Delete=DeleteTypeDef(
+                    TableName=self.table_name,
+                    Key=receipt.key,
+                    ConditionExpression="attribute_exists(PK)"
+                )
             )
-        if not isinstance(receipts, list):
-            raise ValueError("receipts must be a list of Receipt instances.")
-        if not all(isinstance(receipt, Receipt) for receipt in receipts):
-            raise ValueError(
-                "All receipts must be instances of the Receipt class."
-            )
+            for receipt in receipts
+        ]
+        self._transact_write_with_chunking(transact_items)
 
-        try:
-            # Process receipts in chunks of 25 items (the maximum allowed per
-            # transaction)
-            for i in range(0, len(receipts), 25):
-                chunk = receipts[i : i + 25]
-                transact_items = []
-                for receipt in chunk:
-                    transact_items.append(
-                        TransactWriteItemTypeDef(
-                            Delete=DeleteTypeDef(
-                                TableName=self.table_name,
-                                Key=receipt.key,
-                                ConditionExpression="attribute_exists(PK)",
-                            )
-                        )
-                    )
-                # Execute the transaction for this chunk.
-                self._client.transact_write_items(TransactItems=transact_items)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("One or more receipts do not exist") from e
-            elif error_code == "TransactionCanceledException":
-                if "ConditionalCheckFailed" in str(e):
-                    raise ValueError(
-                        "One or more receipts do not exist"
-                    ) from e
-                else:
-                    raise DynamoDBError(f"Transaction canceled: {e}") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(f"Resource not found: {e}") from e
-            else:
-                raise DynamoDBError(f"Error deleting receipts: {e}") from e
-
+    @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
         """
         Retrieves a receipt from the database.
@@ -454,38 +250,24 @@ class _Receipt(DynamoClientProtocol):
         if receipt_id < 0:
             raise ValueError("Receipt ID must be a positive integer.")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-            )
-            if "Item" in response:
-                return item_to_receipt(response["Item"])
-            else:
-                raise ValueError(
-                    (
-                        f"Receipt with ID {receipt_id} and Image ID "
-                        f"'{image_id}' does not exist."
-                    )
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+        )
+        if "Item" in response:
+            return item_to_receipt(response["Item"])
+        else:
+            raise ValueError(
+                (
+                    f"Receipt with ID {receipt_id} and Image ID "
+                    f"'{image_id}' does not exist."
                 )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(f"Error getting receipt: {e}") from e
+            )
 
+    @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
         self, image_id: str, receipt_id: int
     ) -> ReceiptDetails:
@@ -498,54 +280,52 @@ class _Receipt(DynamoClientProtocol):
         Returns:
             ReceiptDetails: Dataclass with receipt and related data
         """
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-            }
-            receipt = None
-            lines, words, letters, labels = [], [], [], []
-            while True:
-                response = self._client.query(**query_params)
-                for item in response.get("Items", []):
-                    if item["TYPE"]["S"] == "RECEIPT":
-                        receipt = item_to_receipt(item)
-                    elif item["TYPE"]["S"] == "RECEIPT_LINE":
-                        lines.append(item_to_receipt_line(item))
-                    elif item["TYPE"]["S"] == "RECEIPT_WORD":
-                        words.append(item_to_receipt_word(item))
-                    elif item["TYPE"]["S"] == "RECEIPT_LETTER":
-                        letters.append(item_to_receipt_letter(item))
-                    elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
-                        labels.append(item_to_receipt_word_label(item))
-                # paginate
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    break
-            if receipt is None:
-                raise ValueError(
-                    (
-                        "Receipt not found for "
-                        f"image_id={image_id}, receipt_id={receipt_id}"
-                    )
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+        }
+        receipt = None
+        lines, words, letters, labels = [], [], [], []
+        while True:
+            response = self._client.query(**query_params)
+            for item in response.get("Items", []):
+                if item["TYPE"]["S"] == "RECEIPT":
+                    receipt = item_to_receipt(item)
+                elif item["TYPE"]["S"] == "RECEIPT_LINE":
+                    lines.append(item_to_receipt_line(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WORD":
+                    words.append(item_to_receipt_word(item))
+                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
+                    letters.append(item_to_receipt_letter(item))
+                elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
+                    labels.append(item_to_receipt_word_label(item))
+            # paginate
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+            else:
+                break
+        if receipt is None:
+            raise ValueError(
+                (
+                    "Receipt not found for "
+                    f"image_id={image_id}, receipt_id={receipt_id}"
                 )
-            return ReceiptDetails(
-                receipt=receipt,
-                lines=lines,
-                words=words,
-                letters=letters,
-                labels=labels,
             )
-        except ClientError as e:
-            raise ValueError(f"Error getting receipt details: {e}") from e
+        return ReceiptDetails(
+            receipt=receipt,
+            lines=lines,
+            words=words,
+            letters=letters,
+            labels=labels,
+        )
 
+    @handle_dynamodb_errors("list_receipts")
     def list_receipts(
         self,
         limit: Optional[int] = None,
@@ -663,6 +443,7 @@ class _Receipt(DynamoClientProtocol):
                     f"Could not list receipts from the database: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_receipts_from_image")
     def get_receipts_from_image(self, image_id: int) -> list[Receipt]:
         """List all receipts from an image using the GSI
 
@@ -702,6 +483,7 @@ class _Receipt(DynamoClientProtocol):
         except ClientError as e:
             raise ValueError(f"Error listing receipts from image: {e}")
 
+    @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
         self,
         limit: Optional[int] = None,
@@ -823,6 +605,7 @@ class _Receipt(DynamoClientProtocol):
                 "Could not list receipt details from the database"
             ) from e
 
+    @handle_dynamodb_errors("list_receipt_and_words")
     def list_receipt_and_words(
         self, image_id: str, receipt_id: int
     ) -> tuple[Receipt, list[ReceiptWord]]:
