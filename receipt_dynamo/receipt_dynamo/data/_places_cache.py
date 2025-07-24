@@ -4,6 +4,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -29,6 +36,9 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.places_cache import (
@@ -40,7 +50,12 @@ from receipt_dynamo.entities.places_cache import (
 CHUNK_SIZE = 25
 
 
-class _PlacesCache(DynamoClientProtocol):
+class _PlacesCache(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     Provides methods for accessing PlacesCache items in DynamoDB.
 
@@ -54,6 +69,7 @@ class _PlacesCache(DynamoClientProtocol):
       GSI2_SK = "<timestamp>"
     """
 
+    @handle_dynamodb_errors("add_places_cache")
     def add_places_cache(self, item: PlacesCache):
         """
         Adds a PlacesCache to the database with a conditional check that it does not already exist.
@@ -62,43 +78,16 @@ class _PlacesCache(DynamoClientProtocol):
             item (PlacesCache): The PlacesCache object to add.
 
         Raises:
-            ValueError: If a PlacesCache with the same PK/SK already exists or if invalid parameters.
+            EntityAlreadyExistsError: If a PlacesCache with the same PK/SK already exists
+            EntityValidationError: If item parameters are invalid
         """
-        if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
-        if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+        self._validate_entity(item, PlacesCache, "item")
+        self._add_entity(
+            item,
+            condition_expression="attribute_not_exists(PK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"PlacesCache for search_type={item.search_type}, "
-                    f"search_value={item.search_value} already exists."
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    "One or more parameters given were invalid"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError("Access denied") from e
-            else:
-                raise DynamoDBError(
-                    "Could not add places cache item to DynamoDB"
-                ) from e
-
+    @handle_dynamodb_errors("update_places_cache")
     def update_places_cache(self, item: PlacesCache):
         """
         Updates an existing PlacesCache in the database.
@@ -107,33 +96,16 @@ class _PlacesCache(DynamoClientProtocol):
             item (PlacesCache): The PlacesCache object to update.
 
         Raises:
-            ValueError: If the item does not exist in the table.
+            EntityNotFoundError: If the item does not exist in the table
+            EntityValidationError: If item parameters are invalid
         """
-        if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
-        if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+        self._validate_entity(item, PlacesCache, "item")
+        self._update_entity(
+            item,
+            condition_expression="attribute_exists(PK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"PlacesCache for search_type={item.search_type}, "
-                    f"search_value={item.search_value} does not exist."
-                ) from e
-            else:
-                raise OperationError(f"Error updating PlacesCache: {e}") from e
-
+    @handle_dynamodb_errors("increment_query_count")
     def increment_query_count(self, item: PlacesCache) -> PlacesCache:
         """
         Increments the query count for a PlacesCache item and updates its last_updated timestamp.
@@ -177,6 +149,7 @@ class _PlacesCache(DynamoClientProtocol):
         except ClientError as e:
             raise OperationError(f"Error incrementing query count: {e}") from e
 
+    @handle_dynamodb_errors("delete_places_cache")
     def delete_places_cache(self, item: PlacesCache):
         """
         Deletes a single PlacesCache from the database.
@@ -185,33 +158,16 @@ class _PlacesCache(DynamoClientProtocol):
             item (PlacesCache): The PlacesCache object to delete.
 
         Raises:
-            ValueError: If the item does not exist.
+            EntityNotFoundError: If the item does not exist
+            EntityValidationError: If item parameters are invalid
         """
-        if item is None:
-            raise ValueError("item parameter is required and cannot be None.")
-        if not isinstance(item, PlacesCache):
-            raise ValueError(
-                "item must be an instance of the PlacesCache class."
-            )
+        self._validate_entity(item, PlacesCache, "item")
+        self._delete_entity(
+            item,
+            condition_expression="attribute_exists(PK)"
+        )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=item.key,
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"PlacesCache with search_type={item.search_type}, "
-                    f"search_value={item.search_value} does not exist"
-                ) from e
-            else:
-                raise OperationError(f"Error deleting PlacesCache: {e}") from e
-
+    @handle_dynamodb_errors("delete_places_caches")
     def delete_places_caches(self, places_cache_items: List[PlacesCache]):
         """
         Deletes a list of PlacesCache items from the database.
@@ -277,6 +233,7 @@ class _PlacesCache(DynamoClientProtocol):
                         f"Error deleting places caches: {e}"
                     ) from e
 
+    @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
         self, search_type: str, search_value: str
     ) -> Optional[PlacesCache]:
@@ -309,6 +266,7 @@ class _PlacesCache(DynamoClientProtocol):
         except ClientError as e:
             raise OperationError(f"Error getting PlacesCache: {e}") from e
 
+    @handle_dynamodb_errors("get_places_cache_by_place_id")
     def get_places_cache_by_place_id(
         self, place_id: str
     ) -> Optional[PlacesCache]:
@@ -343,6 +301,7 @@ class _PlacesCache(DynamoClientProtocol):
                 f"Error getting PlacesCache by place_id: {e}"
             ) from e
 
+    @handle_dynamodb_errors("list_places_caches")
     def list_places_caches(
         self,
         limit: Optional[int] = None,
@@ -427,6 +386,7 @@ class _PlacesCache(DynamoClientProtocol):
                     f"Error listing places caches: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("invalidate_old_cache_items")
     def invalidate_old_cache_items(self, days_old: int):
         """
         Deletes cache items that are older than the specified number of days.
