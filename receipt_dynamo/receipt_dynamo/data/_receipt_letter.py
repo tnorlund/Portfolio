@@ -3,8 +3,6 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities import item_to_receipt_letter
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -21,6 +19,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_letter
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -53,7 +53,8 @@ class _ReceiptLetter(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptLetter" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptLetter" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt letter records.
 
@@ -287,7 +288,10 @@ class _ReceiptLetter(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                            f"WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        )
                     },
                 },
             )
@@ -461,7 +465,9 @@ class _ReceiptLetter(
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
@@ -481,7 +487,9 @@ class _ReceiptLetter(
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {

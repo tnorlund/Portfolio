@@ -4,9 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from receipt_dynamo.entities.job_resource import JobResource
-from receipt_dynamo.entities import item_to_job_resource
 from receipt_dynamo.data._job_resource import _JobResource
+from receipt_dynamo.entities import item_to_job_resource
+from receipt_dynamo.entities.job_resource import JobResource
 
 
 class JobResourceOperations(_JobResource):

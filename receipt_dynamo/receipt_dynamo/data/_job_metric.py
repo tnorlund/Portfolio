@@ -5,12 +5,11 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
-
-from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -184,7 +183,68 @@ class _JobMetric(
                 last_evaluated_key = None
                 break
 
+<<<<<<< HEAD
         return metrics, last_evaluated_key
+=======
+            query_params: QueryInputTypeDef = {
+                "TableName": self.table_name,
+                "KeyConditionExpression": key_condition,
+                "ExpressionAttributeValues": expression_attr_values,
+                "ScanIndexForward": True,  # Ascending order by default
+            }
+
+            if last_evaluated_key is not None:
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+
+            while True:
+                if limit is not None:
+                    remaining = limit - len(metrics)
+                    query_params["Limit"] = remaining
+
+                response = self._client.query(**query_params)
+                for item in response["Items"]:
+                    if item.get("TYPE", {}).get("S") == "JOB_METRIC":
+                        metrics.append(item_to_job_metric(item))
+
+                if limit is not None and len(metrics) >= limit:
+                    metrics = metrics[:limit]
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
+                    break
+
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return metrics, last_evaluated_key
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise DynamoDBError(
+                    f"Could not list job metrics from the database: {e}"
+                ) from e
+            if error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            if error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            if error_code == "InternalServerError":
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
+            raise DynamoDBError(
+                f"Could not list job metrics from the database: {e}"
+            ) from e
+>>>>>>> origin/fix/pylint-improvements-final
 
     @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
@@ -258,6 +318,7 @@ class _JobMetric(
                 )
                 break
 
+<<<<<<< HEAD
             if "LastEvaluatedKey" in response:
                 query_params["ExclusiveStartKey"] = response[
                     "LastEvaluatedKey"
@@ -267,6 +328,38 @@ class _JobMetric(
                 break
 
         return metrics, last_evaluated_key
+=======
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return metrics, last_evaluated_key
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise DynamoDBError(
+                    f"Could not query metrics by name from the database: {e}"
+                ) from e
+            if error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            if error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            if error_code == "InternalServerError":
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
+            raise DynamoDBError(
+                f"Could not query metrics by name from the database: {e}"
+            ) from e
+>>>>>>> origin/fix/pylint-improvements-final
 
     def get_metrics_by_name_across_jobs(
         self,
@@ -344,6 +437,7 @@ class _JobMetric(
                 )
                 break
 
+<<<<<<< HEAD
             if "LastEvaluatedKey" in response:
                 query_params["ExclusiveStartKey"] = response[
                     "LastEvaluatedKey"
@@ -353,3 +447,37 @@ class _JobMetric(
                 break
 
         return metrics, last_evaluated_key
+=======
+                if "LastEvaluatedKey" in response:
+                    query_params["ExclusiveStartKey"] = response[
+                        "LastEvaluatedKey"
+                    ]
+                else:
+                    last_evaluated_key = None
+                    break
+
+            return metrics, last_evaluated_key
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "ResourceNotFoundException":
+                raise DynamoDBError(
+                    f"Could not query metrics by name across jobs from the "
+                    f"database: {e}"
+                ) from e
+            if error_code == "ProvisionedThroughputExceededException":
+                raise DynamoDBThroughputError(
+                    f"Provisioned throughput exceeded: {e}"
+                ) from e
+            if error_code == "ValidationException":
+                raise DynamoDBValidationError(
+                    f"One or more parameters given were invalid: {e}"
+                ) from e
+            if error_code == "InternalServerError":
+                raise DynamoDBServerError(
+                    f"Internal server error: {e}",
+                ) from e
+            raise DynamoDBError(
+                f"Could not query metrics by name across jobs from the "
+                f"database: {e}"
+            ) from e
+>>>>>>> origin/fix/pylint-improvements-final

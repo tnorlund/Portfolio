@@ -13,13 +13,15 @@ class ReceiptField:
     """
     Represents a field in a receipt in DynamoDB.
 
-    This class encapsulates the field data for a receipt, including the field type,
-    associated words, reasoning for the field assignment, and timestamp. It provides methods
-    for generating primary and secondary (GSI) keys for DynamoDB operations, converting the
+    This class encapsulates the field data for a receipt, including the field
+    type, associated words, reasoning for the field assignment, and timestamp.
+    It provides methods for generating primary and secondary (GSI) keys for
+    DynamoDB operations, converting the
     field to a DynamoDB item, and iterating over its attributes.
 
     Attributes:
-        field_type (str): The type of field (e.g., "BUSINESS_NAME", "ADDRESS", etc.).
+        field_type (str): The type of field (e.g., "BUSINESS_NAME",
+            "ADDRESS", etc.).
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
         words (List[dict]): List of dictionaries containing word information:
@@ -27,7 +29,8 @@ class ReceiptField:
             - line_id (int): ID of the line containing the word
             - label (str): Label assigned to the word
         reasoning (str): Explanation for why this field was assigned.
-        timestamp_added (str): ISO formatted timestamp when the field was added.
+        timestamp_added (str): ISO formatted timestamp when the field was
+            added.
     """
 
     def __init__(
@@ -50,7 +53,8 @@ class ReceiptField:
             timestamp_added (datetime): The timestamp when the field was added.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(field_type, str):
             raise ValueError("field_type must be a string")
@@ -134,7 +138,8 @@ class ReceiptField:
         """Converts the ReceiptField object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptField object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptField object as a
+                DynamoDB item.
         """
         return {
             **self.key,
@@ -177,7 +182,8 @@ class ReceiptField:
         """Returns an iterator over the ReceiptField object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the ReceiptField object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                ReceiptField object's attribute name/value pairs.
         """
         yield "field_type", self.field_type
         yield "image_id", self.image_id
@@ -196,7 +202,8 @@ class ReceiptField:
             bool: True if the ReceiptField objects are equal, False otherwise.
 
         Note:
-            If other is not an instance of ReceiptField, NotImplemented is returned.
+            If other is not an instance of ReceiptField, NotImplemented is
+                returned.
         """
         if not isinstance(other, ReceiptField):
             return NotImplemented
@@ -250,7 +257,8 @@ def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         # Parse SK to get image_id and receipt_id

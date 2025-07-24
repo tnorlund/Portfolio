@@ -19,11 +19,15 @@ class ReceiptSection:
 
     Attributes:
         receipt_id (int): Identifier for the receipt.
-        image_id (str): UUID identifying the image to which the section belongs.
-        section_type (str): The type of section (e.g., "HEADER", "FOOTER", "LINE_ITEMS", etc.)
+        image_id (str): UUID identifying the image to which the section
+            belongs.
+        section_type (str): The type of section (e.g., "HEADER", "FOOTER",
+            "LINE_ITEMS", etc.)
         line_ids (list[int]): The line IDs in this section.
-        confidence (float): The model's confidence in this section classification.
-        embedding_status (EmbeddingStatus): The status of the embedding for this section.
+        confidence (float): The model's confidence in this section
+            classification.
+        embedding_status (EmbeddingStatus): The status of the embedding for
+            this section.
         created_at (datetime): Timestamp when this section was created.
         model_source (str): The model or pipeline that identified this section.
     """
@@ -58,7 +62,8 @@ class ReceiptSection:
         valid_section_types = [t.value for t in SectionType]
         if section_type_value not in valid_section_types:
             raise ValueError(
-                f"section_type must be one of: {', '.join(valid_section_types)}\nGot: {section_type_value}"
+                f"section_type must be one of: "
+                f"{', '.join(valid_section_types)}\nGot: {section_type_value}"
             )
         self.section_type = section_type_value
 
@@ -84,7 +89,10 @@ class ReceiptSection:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#SECTION#{self.section_type}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#"
+                    f"SECTION#{self.section_type}"
+                )
             },
         }
 

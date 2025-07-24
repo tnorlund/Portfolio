@@ -8,7 +8,8 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 class ReceiptValidationResult:
     """
     DynamoDB entity representing an individual validation result.
-    Each result represents a specific validation check with its type, message, and reasoning.
+    Each result represents a specific validation check with its type, message,
+    and reasoning.
     """
 
     def __init__(
@@ -100,7 +101,10 @@ class ReceiptValidationResult:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#"
+                    f"CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+                )
             },
         }
 
@@ -110,7 +114,10 @@ class ReceiptValidationResult:
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
-                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}#RESULT"
+                "S": (
+                    f"VALIDATION#{self.validation_timestamp}#"
+                    f"CATEGORY#{self.field_name}#RESULT"
+                )
             },
         }
 
@@ -120,7 +127,10 @@ class ReceiptValidationResult:
         return {
             "GSI3PK": {"S": f"RESULT_TYPE#{self.type}"},
             "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#CATEGORY#{self.field_name}"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
 

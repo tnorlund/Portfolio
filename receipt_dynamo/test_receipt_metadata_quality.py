@@ -203,7 +203,8 @@ class TestReceiptMetadataFieldQuality:
         assert len(metadata._get_high_quality_matched_fields()) == 0
 
     def test_future_field_types(self):
-        """Test that unknown field types are preserved for future compatibility."""
+        """Test that unknown field types are preserved for future
+        compatibility."""
         metadata = ReceiptMetadata(
             image_id="550e8400-e29b-41d4-a716-446655440008",
             receipt_id=9,

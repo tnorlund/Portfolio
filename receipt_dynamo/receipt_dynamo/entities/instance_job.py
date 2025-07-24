@@ -15,9 +15,11 @@ class InstanceJob:
     Attributes:
         instance_id (str): UUID identifying the instance.
         job_id (str): UUID identifying the job.
-        assigned_at (datetime): The timestamp when the job was assigned to the instance.
+        assigned_at (datetime): The timestamp when the job was assigned to the
+            instance.
         status (str): The current status of the job on this instance.
-        resource_utilization (Dict): Resource utilization metrics (CPU, memory, GPU, etc.)
+        resource_utilization (Dict): Resource utilization metrics (CPU, memory,
+            GPU, etc.)
     """
 
     def __init__(
@@ -33,12 +35,15 @@ class InstanceJob:
         Args:
             instance_id (str): Amazon EC2 instance ID.
             job_id (str): UUID identifying the job.
-            assigned_at (datetime): The timestamp when the job was assigned to the instance.
+            assigned_at (datetime): The timestamp when the job was assigned to
+                the instance.
             status (str): The current status of the job on this instance.
-            resource_utilization (Dict, optional): Resource utilization metrics.
+            resource_utilization (Dict, optional): Resource utilization
+                metrics.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(instance_id, str) or not instance_id:
             raise ValueError("instance_id must be a non-empty string")
@@ -101,7 +106,8 @@ class InstanceJob:
         """Converts the InstanceJob object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the InstanceJob object as a DynamoDB item.
+            dict: A dictionary representing the InstanceJob object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -191,7 +197,8 @@ class InstanceJob:
         """Returns an iterator over the InstanceJob object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the InstanceJob object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                InstanceJob object's attribute name/value pairs.
         """
         yield "instance_id", self.instance_id
         yield "job_id", self.job_id
@@ -271,7 +278,8 @@ def item_to_instance_job(item: Dict[str, Any]) -> InstanceJob:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

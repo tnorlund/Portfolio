@@ -12,7 +12,8 @@ from receipt_dynamo.entities.util import (
 
 class JobMetric:
     """
-    Represents a metric recorded during a training job stored in a DynamoDB table.
+    Represents a metric recorded during a training job stored in a DynamoDB
+    table.
 
     This class is used to track metrics such as loss, accuracy, or any other
     numerical measurements recorded during the execution of a training job.
@@ -21,10 +22,14 @@ class JobMetric:
         job_id (str): UUID identifying the job.
         metric_name (str): Name of the metric (e.g., 'loss', 'accuracy').
         timestamp (str): ISO-formatted timestamp when the metric was recorded.
-        value (Union[float, Dict]): The value of the metric (may be a simple number or a complex structure).
-        unit (Optional[str]): The unit of the metric (e.g., 'percent', 'seconds').
-        step (Optional[int]): The training step at which the metric was recorded.
-        epoch (Optional[int]): The training epoch at which the metric was recorded.
+        value (Union[float, Dict]): The value of the metric (may be a simple
+            number or a complex structure).
+        unit (Optional[str]): The unit of the metric (e.g., 'percent',
+            'seconds').
+        step (Optional[int]): The training step at which the metric was
+            recorded.
+        epoch (Optional[int]): The training epoch at which the metric was
+            recorded.
     """
 
     def __init__(
@@ -42,14 +47,18 @@ class JobMetric:
         Args:
             job_id (str): UUID identifying the job.
             metric_name (str): Name of the metric (e.g., 'loss', 'accuracy').
-            timestamp (Union[datetime, str]): Timestamp when the metric was recorded.
+            timestamp (Union[datetime, str]): Timestamp when the metric was
+                recorded.
             value (Union[float, Dict]): The metric's value.
             unit (Optional[str]): The unit of measurement for the metric.
-            step (Optional[int]): The training step at which the metric was recorded.
-            epoch (Optional[int]): The training epoch at which the metric was recorded.
+            step (Optional[int]): The training step at which the metric was
+                recorded.
+            epoch (Optional[int]): The training epoch at which the metric was
+                recorded.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -116,8 +125,9 @@ class JobMetric:
 
     def gsi2_key(self) -> Dict[str, Any]:
         """
-        Generate a second Global Secondary Index (GSI2) key for the job metric.
-        This enables efficient comparison of the same metric across different jobs.
+        Generate a second Global Secondary Index (GSI2) key for the job
+        metric. This enables efficient comparison of the same metric across
+        different jobs.
 
         Returns:
             dict: The GSI2 key mapping.
@@ -131,7 +141,8 @@ class JobMetric:
         """Converts the JobMetric object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobMetric object as a DynamoDB item.
+            dict: A dictionary representing the JobMetric object as a DynamoDB
+                item.
         """
         item = {
             **self.key,
@@ -242,7 +253,8 @@ class JobMetric:
         """Returns an iterator over the JobMetric object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobMetric object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobMetric object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "metric_name", self.metric_name
@@ -329,7 +341,8 @@ def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
             }
         )
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

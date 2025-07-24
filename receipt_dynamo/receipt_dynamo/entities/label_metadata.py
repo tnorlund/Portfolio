@@ -54,7 +54,8 @@ class LabelMetadata:
                 for ref in receipt_refs
             ):
                 raise ValueError(
-                    "receipt_refs must be a list of (image_id: str, receipt_id: int) tuples"
+                    "receipt_refs must be a list of (image_id: str, "
+                    "receipt_id: int) tuples"
                 )
         self.receipt_refs = receipt_refs
 
@@ -137,7 +138,8 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

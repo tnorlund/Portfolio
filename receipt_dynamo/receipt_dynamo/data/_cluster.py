@@ -14,14 +14,14 @@ def dbscan_lines(
 
     Args:
         lines (List[Line]): List of Line objects to cluster.
-        eps (float, optional): Maximum distance between two points to be considered
-            as neighbors. Defaults to 10.0.
-        min_samples (int, optional): Minimum number of points required to form a dense
-            region. Defaults to 2.
+        eps (float, optional): Maximum distance between two points to be
+            considered as neighbors. Defaults to 10.0.
+        min_samples (int, optional): Minimum number of points required to form
+            a dense region. Defaults to 2.
 
     Returns:
-        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists of Line objects.
-            A label of -1 indicates a noise point.
+        Dict[int, List[Line]]: A dictionary mapping cluster labels to lists
+            of Line objects. A label of -1 indicates a noise point.
     """
 
     # Extract centroids for each line.
@@ -36,7 +36,7 @@ def dbscan_lines(
     current_cluster = 0
 
     def region_query(idx: int) -> List[int]:
-        """Returns a list of indices for points within eps distance of points[idx]."""
+        """Returns indices for points within eps distance of points[idx]."""
         neighbors = []
         x1, y1 = points[idx]
         for j in range(n):

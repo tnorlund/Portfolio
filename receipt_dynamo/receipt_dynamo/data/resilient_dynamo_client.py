@@ -2,8 +2,7 @@
 
 import threading
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
@@ -199,7 +198,8 @@ class ResilientDynamoClient(DynamoClient):
             if not self._check_circuit_breaker():
                 # Circuit breaker is open, skip
                 print(
-                    f"Circuit breaker OPEN, skipping {len(remaining_metrics)} metrics"
+                    f"Circuit breaker OPEN, skipping "
+                    f"{len(remaining_metrics)} metrics"
                 )
                 return
 
@@ -229,7 +229,8 @@ class ResilientDynamoClient(DynamoClient):
         # Log final failure
         if remaining_metrics:
             print(
-                f"Failed to write {len(remaining_metrics)} metrics after {self.max_retry_attempts} attempts"
+                f"Failed to write {len(remaining_metrics)} metrics after "
+                f"{self.max_retry_attempts} attempts"
             )
 
     def flush(self) -> None:

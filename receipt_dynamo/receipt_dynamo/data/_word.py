@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.word import Word
-from receipt_dynamo.entities import item_to_word
+from receipt_dynamo.data._base import (
+    DeleteRequestTypeDef,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -9,19 +12,14 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.entities import item_to_word
+from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
         BatchGetItemInputTypeDef,
         QueryInputTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -55,7 +53,9 @@ class _Word(
         Gets a word from the database.
     get_words(keys: list[dict]) -> list[Word]
         Gets multiple words from the database.
-    list_words(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Word], Optional[Dict[str, Any]]]
+    list_words(
+        limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
+    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]
         Lists all words from the database.
     list_words_from_line(image_id: str, line_id: int) -> list[Word]
         Lists all words from a specific line.

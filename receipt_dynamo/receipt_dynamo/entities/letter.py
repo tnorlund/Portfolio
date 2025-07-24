@@ -14,11 +14,12 @@ from receipt_dynamo.entities.util import (
 class Letter(GeometryMixin):
     """Represents a single letter extracted from an image for DynamoDB.
 
-    This class encapsulates letter-related information such as its unique identifiers,
-    text content, geometric properties (bounding box and corner coordinates), rotation
-    angles, and detection confidence. It supports operations such as generating DynamoDB
-    keys and applying geometric transformations including translation, scaling, rotation,
-    shear, and affine warping.
+    This class encapsulates letter-related information such as its unique
+    identifiers, text content, geometric properties (bounding box and corner
+    coordinates), rotation angles, and detection confidence. It supports
+    operations such as generating DynamoDB keys and applying geometric
+    transformations including translation, scaling, rotation, shear, and
+    affine warping.
 
     Attributes:
         image_id (str): UUID identifying the image.
@@ -26,14 +27,19 @@ class Letter(GeometryMixin):
         word_id (int): Identifier for the word containing the letter.
         letter_id (int): Identifier for the letter.
         text (str): The text of the letter (must be exactly one character).
-        bounding_box (dict): The bounding box of the letter with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        bounding_box (dict): The bounding box of the letter with keys 'x', 'y',
+            'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and
+            'y'.
         top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys 'x'
+            and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x'
+            and 'y'.
         angle_degrees (float): The angle of the letter in degrees.
         angle_radians (float): The angle of the letter in radians.
-        confidence (float): The confidence level of the letter (between 0 and 1).
+        confidence (float): The confidence level of the letter (between 0 and
+            1).
     """
 
     image_id: str
@@ -115,7 +121,8 @@ class Letter(GeometryMixin):
         """Converts the Letter object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Letter object as a DynamoDB item.
+            dict: A dictionary representing the Letter object as a DynamoDB
+                item.
         """
         return {
             **self.key,
@@ -187,7 +194,8 @@ class Letter(GeometryMixin):
         """Returns an iterator over the Letter object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]: A tuple containing the attribute name and its
+                value.
         """
         yield "image_id", self.image_id
         yield "word_id", self.word_id
@@ -228,7 +236,8 @@ class Letter(GeometryMixin):
             other (object): The object to compare.
 
         Returns:
-            bool: True if the Letter objects have the same attributes, False otherwise.
+            bool: True if the Letter objects have the same attributes, False
+                otherwise.
         """
         if not isinstance(other, Letter):
             return False
@@ -283,7 +292,8 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
         Letter: The Letter object represented by the DynamoDB item.
 
     Raises:
-        ValueError: If the item is missing required keys or has malformed fields.
+        ValueError: If the item is missing required keys or has malformed
+            fields.
     """
     required_keys = {
         "PK",

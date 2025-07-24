@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -9,13 +7,6 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
@@ -23,6 +14,11 @@ from receipt_dynamo.data._base import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
+from receipt_dynamo.entities import item_to_line
+from receipt_dynamo.entities.line import Line
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -54,7 +50,8 @@ class _Line(
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]
+    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict]
+        = None) -> Tuple[list[Line], Optional[Dict]]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -225,7 +222,8 @@ class _Line(
             "KeyConditionExpression": "#t = :val",
             "ExpressionAttributeNames": {"#t": "TYPE"},
             "ExpressionAttributeValues": {":val": {"S": "LINE"}},
-            "ScanIndexForward": True,  # Sorts the results in ascending order by PK
+            "ScanIndexForward": True,  # Sorts the results in ascending order
+            # by PK
         }
 
         if last_evaluated_key is not None:
@@ -269,7 +267,9 @@ class _Line(
         response = self._client.query(
             TableName=self.table_name,
             IndexName="GSI1",
-            KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+            KeyConditionExpression=(
+                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+            ),
             ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
             ExpressionAttributeValues={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
@@ -282,7 +282,9 @@ class _Line(
             response = self._client.query(
                 TableName=self.table_name,
                 IndexName="GSI1",
-                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                KeyConditionExpression=(
+                    "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+                ),
                 ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},

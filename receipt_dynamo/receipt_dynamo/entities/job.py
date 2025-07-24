@@ -6,11 +6,13 @@ from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 class Job:
     """
-    Represents a training job and its associated metadata stored in a DynamoDB table.
+    Represents a training job and its associated metadata stored in a DynamoDB
+    table.
 
-    This class encapsulates job-related information such as its unique identifier,
-    name, description, status, priority, and configuration. It is designed to support
-    operations such as generating DynamoDB keys and converting job metadata to a
+    This class encapsulates job-related information such as its unique
+    identifier, name, description, status, priority, and configuration. It is
+    designed to support operations such as generating DynamoDB keys and
+    converting job metadata to a
     DynamoDB-compatible item.
 
     Attributes:
@@ -19,8 +21,10 @@ class Job:
         description (str): A description of the job.
         created_at (datetime): The timestamp when the job was created.
         created_by (str): The user who created the job.
-        status (str): The current status of the job (pending, running, succeeded, failed, cancelled).
-        priority (str): The priority level of the job (low, medium, high, critical).
+        status (str): The current status of the job (pending, running,
+            succeeded, failed, cancelled).
+        priority (str): The priority level of the job (low, medium, high,
+            critical).
         job_config (Dict): The configuration for the job (stored as a JSON).
         estimated_duration (int): The estimated duration of the job in seconds.
         tags (Dict[str, str]): Tags associated with the job.
@@ -50,11 +54,13 @@ class Job:
             status (str): The current status of the job.
             priority (str): The priority level of the job.
             job_config (Dict): The configuration for the job.
-            estimated_duration (int, optional): The estimated duration in seconds.
+            estimated_duration (int, optional): The estimated duration in
+                seconds.
             tags (Dict[str, str], optional): Tags associated with the job.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -244,7 +250,8 @@ class Job:
         """Returns an iterator over the Job object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the Job object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the Job
+                object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "name", self.name
@@ -336,7 +343,8 @@ def item_to_job(item: Dict[str, Any]) -> Job:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

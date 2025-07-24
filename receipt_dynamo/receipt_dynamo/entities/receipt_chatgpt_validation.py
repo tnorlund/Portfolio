@@ -8,7 +8,8 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 class ReceiptChatGPTValidation:
     """
     DynamoDB entity representing a second-pass validation by ChatGPT.
-    This item contains ChatGPT's assessment of validation results and any corrections.
+    This item contains ChatGPT's assessment of validation results and any
+    corrections.
     """
 
     def __init__(
@@ -71,7 +72,10 @@ class ReceiptChatGPTValidation:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CHATGPT#{self.timestamp}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#"
+                    f"CHATGPT#{self.timestamp}"
+                )
             },
         }
 
