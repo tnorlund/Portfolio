@@ -609,9 +609,11 @@ class LineItemSpatialDetector:
         x_tolerance: float = 0.05,
         min_confidence: float = 0.3,
     ):
+        self.y_tolerance = y_tolerance
+        self.x_tolerance = x_tolerance
+        self.min_confidence = min_confidence
         self.row_grouper = RowGrouper(y_tolerance)
         self.column_detector = ColumnDetector(x_tolerance)
-        self.min_confidence = min_confidence
 
     def detect_spatial_structure(
         self,
