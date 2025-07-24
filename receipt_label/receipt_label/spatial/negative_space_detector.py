@@ -333,6 +333,10 @@ class NegativeSpaceDetector:
         """Detect vertical whitespace channels that might indicate columns"""
         channels = []
         
+        # Avoid division by zero if all words have same x-coordinate
+        if doc_width == 0:
+            return channels
+        
         # Create a grid to track word coverage
         grid_resolution = 50  # Number of horizontal bins
         x_coverage = [0] * grid_resolution

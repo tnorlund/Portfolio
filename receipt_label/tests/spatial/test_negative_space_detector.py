@@ -324,6 +324,56 @@ class TestNegativeSpaceDetector:
         
         # More lenient assertion - just check we get some gaps
         assert len(vertical_regions) >= min(expected_gaps, 1)
+    
+    def test_zero_width_document(self, detector):
+        """Test handling of documents where all words have the same x-coordinate"""
+        # Create words all at the same x position
+        words = [
+            create_receipt_word("Item1", 0.5, 0.1, 0.1, 0.02),
+            create_receipt_word("Item2", 0.5, 0.2, 0.1, 0.02),
+            create_receipt_word("Item3", 0.5, 0.3, 0.1, 0.02),
+        ]
+        
+        # Should not raise ZeroDivisionError
+        regions = detector.detect_whitespace_regions(words)
+        
+        # Should return regions but no column channels
+        column_channels = [r for r in regions if r.region_type == 'column_channel']
+        assert len(column_channels) == 0
+        
+        # Column detection should also handle this gracefully
+        column_structure = detector.detect_column_structure(words)
+        # With same x-coordinate, might detect as single column or no structure
+        assert column_structure is None or len(column_structure.columns) <= 1
+    
+    def test_pattern_type_filtering(self, detector, simple_receipt_words):
+        """Test correct filtering of enhanced matches by PatternType"""
+        # Create currency pattern matches
+        price_words = [w for w in simple_receipt_words if w.text in ["5.99", "3.49"]]
+        pattern_matches = [
+            create_pattern_match(price_words[0], "5.99"),
+            create_pattern_match(price_words[1], "3.49"),
+        ]
+        
+        # Enhance with negative space
+        enhanced_matches = detector.enhance_line_items_with_negative_space(
+            simple_receipt_words, pattern_matches
+        )
+        
+        # Filter by correct PatternType (not string)
+        new_product_matches = [
+            m for m in enhanced_matches 
+            if m.pattern_type == PatternType.PRODUCT_NAME 
+            and m.metadata.get("detection_method") == "negative_space"
+        ]
+        
+        # Should find some new product matches
+        assert len(new_product_matches) >= 1
+        
+        # Verify they have the correct type
+        for match in new_product_matches:
+            assert match.pattern_type == PatternType.PRODUCT_NAME
+            assert not isinstance(match.pattern_type, str)  # It's an enum, not string
 
 
 @pytest.mark.integration

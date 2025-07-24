@@ -81,7 +81,7 @@ def analyze_negative_space_performance(words: List[ReceiptWord], pattern_matches
     end_time = time.time()
     
     # Calculate metrics
-    new_line_items = [m for m in enhanced_matches if m.pattern_type == "LINE_ITEM" and m not in pattern_matches]
+    new_line_items = [m for m in enhanced_matches if m.pattern_type == PatternType.PRODUCT_NAME and m not in pattern_matches]
     
     return {
         'processing_time': end_time - start_time,
