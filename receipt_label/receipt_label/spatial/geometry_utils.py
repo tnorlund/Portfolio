@@ -540,13 +540,25 @@ def group_words_into_line_items(
     # Create spatial words with pattern matches
     pattern_map = {}
     if pattern_matches:
-        for match in pattern_matches:
-            for word_idx in match.word_indices:
-                pattern_map[word_idx] = match
+        for i, match in enumerate(pattern_matches):
+            # Map by word ID if available, otherwise by index
+            if hasattr(match.word, 'id'):
+                pattern_map[match.word.id] = match
+            else:
+                pattern_map[i] = match
                 
     spatial_words = []
     for i, word in enumerate(words):
-        pattern = pattern_map.get(i)
+        # Try to find pattern by word ID first, then by word object
+        pattern = None
+        if hasattr(word, 'id'):
+            pattern = pattern_map.get(word.id)
+        if not pattern:
+            # Check if this word matches any pattern's word
+            for match in (pattern_matches or []):
+                if match.word == word:
+                    pattern = match
+                    break
         spatial_words.append(SpatialWord(word, pattern))
         
     # Sort by Y coordinate, then X coordinate

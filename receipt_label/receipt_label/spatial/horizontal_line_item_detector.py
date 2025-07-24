@@ -123,9 +123,12 @@ class HorizontalLineItemDetector:
         """Create a mapping from word index to pattern match."""
         pattern_map = {}
         if pattern_matches:
-            for match in pattern_matches:
-                for word_idx in match.word_indices:
-                    pattern_map[word_idx] = match
+            for i, match in enumerate(pattern_matches):
+                # Map by word ID if available
+                if hasattr(match.word, 'id'):
+                    pattern_map[match.word.id] = match
+                # Also store by index for fallback
+                pattern_map[i] = match
         return pattern_map
         
     def _analyze_word_group(
@@ -184,10 +187,13 @@ class HorizontalLineItemDetector:
         pattern_map: Dict[int, PatternMatch]
     ) -> Optional[int]:
         """Find the index of a word in the pattern map."""
-        # This is a simplified approach - in practice you'd need to maintain
-        # word indices throughout the pipeline
+        # Check if word has an ID and if it's in the pattern map
+        if hasattr(word, 'id') and word.id in pattern_map:
+            return word.id
+        
+        # Otherwise check if word matches any pattern's word
         for idx, pattern in pattern_map.items():
-            if hasattr(pattern, 'words') and word in pattern.words:
+            if pattern.word == word:
                 return idx
         return None
         

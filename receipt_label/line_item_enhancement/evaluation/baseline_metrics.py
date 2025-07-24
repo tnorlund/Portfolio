@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import time
 
+# Set up logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Add project root to path  
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -40,10 +44,6 @@ except ImportError as e:
     print(f"Current working directory: {os.getcwd()}")
     print(f"Python path: {sys.path[:3]}")
     raise
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 @dataclass
