@@ -81,7 +81,7 @@ class _BatchSummary(DynamoClientProtocol):
                 TableName=self.table_name,
                 Item=batch_summary.to_item(),
                 ConditionExpression=(
-                    "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                    "attribute_not_exists(PK) and " "attribute_not_exists(SK)"
                 ),
             )
         except ClientError as e:
@@ -99,7 +99,10 @@ class _BatchSummary(DynamoClientProtocol):
             else:
                 raise ValueError(f"Error adding batch summary: {e}") from e
 
-    def add_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
+    def add_batch_summaries(
+        self,
+        batch_summaries: List[BatchSummary],
+    ) -> None:
         """
         Adds multiple BatchSummary records to DynamoDB in batches.
 
@@ -172,7 +175,7 @@ class _BatchSummary(DynamoClientProtocol):
                 TableName=self.table_name,
                 Item=batch_summary.to_item(),
                 ConditionExpression=(
-                    "attribute_exists(PK) and attribute_exists(SK)"
+                    "attribute_exists(PK) and " "attribute_exists(SK)"
                 ),
             )
         except ClientError as e:
@@ -221,7 +224,8 @@ class _BatchSummary(DynamoClientProtocol):
                             TableName=self.table_name,
                             Item=item.to_item(),
                             ConditionExpression=(
-                                "attribute_exists(PK) and attribute_exists(SK)"
+                                "attribute_exists(PK) and "
+                                "attribute_exists(SK)"
                             ),
                         )
                     )
@@ -285,7 +289,7 @@ class _BatchSummary(DynamoClientProtocol):
                 TableName=self.table_name,
                 Key=batch_summary.key,
                 ConditionExpression=(
-                    "attribute_exists(PK) and attribute_exists(SK)"
+                    "attribute_exists(PK) and " "attribute_exists(SK)"
                 ),
             )
         except ClientError as e:
@@ -306,8 +310,8 @@ class _BatchSummary(DynamoClientProtocol):
     def delete_batch_summaries(
         self, batch_summaries: List[BatchSummary]
     ) -> None:
-        """
-        Deletes multiple BatchSummary records from DynamoDB using transactions.
+        """Deletes multiple BatchSummary records from DynamoDB using
+        transactions.
 
         Args:
             batch_summaries (List[BatchSummary]):
@@ -334,7 +338,8 @@ class _BatchSummary(DynamoClientProtocol):
                             TableName=self.table_name,
                             Key=item.key,
                             ConditionExpression=(
-                                "attribute_exists(PK) and attribute_exists(SK)"
+                                "attribute_exists(PK) and "
+                                "attribute_exists(SK)"
                             ),
                         )
                     )
@@ -421,7 +426,10 @@ class _BatchSummary(DynamoClientProtocol):
         self,
         limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[BatchSummary], dict | None]:
+    ) -> Tuple[
+        List[BatchSummary],
+        dict | None,
+    ]:
         """
         Lists BatchSummary records from DynamoDB with optional pagination.
 
@@ -471,7 +479,10 @@ class _BatchSummary(DynamoClientProtocol):
 
                 if limit is not None and len(summaries) >= limit:
                     summaries = summaries[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -502,7 +513,10 @@ class _BatchSummary(DynamoClientProtocol):
         batch_type: str | BatchType = "EMBEDDING",
         limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[BatchSummary], dict | None]:
+    ) -> Tuple[
+        List[BatchSummary],
+        dict | None,
+    ]:
         """
         Retrieves BatchSummary records filtered by status with optional
         pagination.
@@ -591,7 +605,10 @@ class _BatchSummary(DynamoClientProtocol):
 
                 if limit is not None and len(summaries) >= limit:
                     summaries = summaries[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
