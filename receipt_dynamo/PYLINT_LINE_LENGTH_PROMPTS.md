@@ -168,7 +168,7 @@ File: receipt_dynamo/data/_instance.py
 
 ## Progress Tracking
 
-**Total errors reduced from 1139 to 866 (273 fixed!)**
+**Total errors reduced from 1139 to 462 (677 fixed! 59% reduction)**
 
 | File | Line-too-long errors | Status | PR # |
 |------|---------------------|---------|------|
@@ -177,26 +177,54 @@ File: receipt_dynamo/data/_instance.py
 | data/_gpt.py | 42 → 0 | ✅ Fixed | #227 |
 | entities/receipt_line_item_analysis.py | 32 → 0 | ✅ Fixed | #227 |
 | data/_instance.py | 32 → 0 | ✅ Fixed | #227 |
-| entities/receipt_word.py | 30 | 🔄 Next | - |
-| data/_receipt.py | 30 | 🔄 Next | - |
-| data/_receipt_word_label.py | 30 | 🔄 Next | - |
-| data/_queue.py | 30 | 🔄 Next | - |
-| entities/receipt_metadata.py | 28 | ❌ Not started | - |
-| entities/receipt_letter.py | 26 | ❌ Not started | - |
-| data/_batch_summary.py | 26 | ❌ Not started | - |
-| data/_receipt_structure_analysis.py | 25 | ❌ Not started | - |
-| data/_embedding_batch_result.py | 21 | ❌ Not started | - |
-| entities/receipt_line.py | 20 | ❌ Not started | - |
-| data/_receipt_word.py | 20 | ❌ Not started | - |
-| data/_receipt_metadata.py | 18 | ❌ Not started | - |
-| entities/word.py | 17 | ❌ Not started | - |
-| entities/receipt.py | 17 | ❌ Not started | - |
-| entities/receipt_word_label.py | 17 | ❌ Not started | - |
-| data/_job.py | 17 | ❌ Not started | - |
-| entities/job_dependency.py | 16 | ❌ Not started | - |
-| data/_receipt_line_item_analysis.py | 16 | ❌ Not started | - |
-| data/_job_metric.py | 16 | ❌ Not started | - |
-| data/_job_checkpoint.py | 16 | ❌ Not started | - |
+| entities/receipt_word.py | 30 → 0 | ✅ Fixed | #227 |
+| data/_receipt.py | 30 → 0 | ✅ Fixed | #227 |
+| data/_receipt_word_label.py | 30 → 0 | ✅ Fixed | #227 |
+| data/_queue.py | 30 | 🚫 Still has errors | - |
+| entities/receipt_metadata.py | 28 → 0 | ✅ Fixed | #227 |
+| entities/receipt_letter.py | 26 → 0 | ✅ Fixed | #227 |
+| data/_batch_summary.py | 26 → 0 | ✅ Fixed | #227 |
+| data/_receipt_structure_analysis.py | 25 → 0 | ✅ Fixed | #227 |
+| data/_embedding_batch_result.py | 21 → 0 | ✅ Fixed | #227 |
+| entities/receipt_line.py | 20 → 0 | ✅ Fixed | #227 |
+| data/_receipt_word.py | 20 → 0 | ✅ Fixed | #227 |
+| data/_receipt_metadata.py | 18 → 0 | ✅ Fixed | #227 |
+| entities/word.py | 17 → 0 | ✅ Fixed | #227 |
+| entities/receipt.py | 17 → 0 | ✅ Fixed | #227 |
+| entities/receipt_word_label.py | 17 → 0 | ✅ Fixed | #227 |
+| data/_job.py | 17 → 0 | ✅ Fixed | #227 |
+| entities/job_dependency.py | 16 → 0 | ✅ Fixed | #227 |
+| data/_receipt_line_item_analysis.py | 16 → 0 | ✅ Fixed | #227 |
+| data/_job_metric.py | 16 → 0 | ✅ Fixed | #227 |
+| data/_job_checkpoint.py | 16 → 0 | ✅ Fixed | #227 |
+
+## Files Still Needing Fixes
+
+| File | Line-too-long errors | Status | Notes |
+|------|---------------------|---------|-------|
+| data/_queue.py | 30 | 🚫 Still has errors | File #9 - prompt available above |
+| entities/receipt_label_analysis.py | 15 | ❌ Not started | New file |
+| entities/job_checkpoint.py | 14 | ❌ Not started | New file |
+| data/_receipt_label_analysis.py | 14 | ❌ Not started | New file |
+| data/_job_resource.py | 14 | ❌ Not started | New file |
+| entities/letter.py | 13 | ❌ Not started | New file |
+| entities/job_resource.py | 13 | ❌ Not started | New file |
+| entities/job_metric.py | 13 | ❌ Not started | New file |
+| data/_places_cache.py | 13 | ❌ Not started | New file |
+| data/_ocr_job.py | 12 | ❌ Not started | New file |
+| data/_job_dependency.py | 12 | ❌ Not started | New file |
+| entities/rwl_queue.py | 11 | ❌ Not started | New file |
+| entities/receipt_structure_analysis.py | 11 | ❌ Not started | New file |
+| entities/places_cache.py | 11 | ❌ Not started | New file |
+| entities/instance.py | 11 | ❌ Not started | New file |
+| data/_receipt_validation_result.py | 11 | ❌ Not started | New file |
+| data/_ocr_routing_decision.py | 11 | ❌ Not started | New file |
+| entities/receipt_field.py | 10 | ❌ Not started | New file |
+| entities/job.py | 10 | ❌ Not started | New file |
+| data/import_image.py | 10 | ❌ Not started | New file |
+| data/_receipt_field.py | 10 | ❌ Not started | New file |
+| data/_job_status.py | 10 | ❌ Not started | New file |
+| **Plus 84 more files** | 242 total | ❌ Not started | Files with <10 errors each |
 
 ### 6. entities/receipt_word.py (30 line-too-long errors)
 
@@ -576,6 +604,108 @@ Guidelines:
 Only return the fixed code, no explanations needed.
 
 File: receipt_dynamo/data/_job_checkpoint.py
+```
+
+### 26. entities/receipt_label_analysis.py (15 line-too-long errors)
+
+```
+Please fix all 15 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file contains receipt label analysis entities with ML-based classifications.
+
+Guidelines:
+1. Break long confidence score calculations at operator boundaries
+2. For label category mappings, use multi-line dictionaries
+3. Complex validation rules should use parentheses for grouping
+4. Long method names for analysis operations should break at underscores
+5. Type annotations for ML model outputs should be clearly formatted
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/receipt_label_analysis.py
+```
+
+### 27. entities/job_checkpoint.py (14 line-too-long errors)
+
+```
+Please fix all 14 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file defines job checkpoint entities for resumable processing.
+
+Guidelines:
+1. Break long checkpoint state representations across lines
+2. For serialization methods, use clear formatting
+3. Timestamp comparisons should use intermediate variables
+4. Complex state validation should be multi-line
+5. String representations of checkpoints should be hierarchical
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/entities/job_checkpoint.py
+```
+
+### 28. data/_receipt_label_analysis.py (14 line-too-long errors)
+
+```
+Please fix all 14 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file manages receipt label analysis data operations.
+
+Guidelines:
+1. Break long ML model query parameters at boundaries
+2. For batch analysis operations, use clear formatting
+3. Complex filtering conditions should use parentheses
+4. Long error messages about analysis failures should be multi-line
+5. Confidence threshold comparisons should be clearly formatted
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_receipt_label_analysis.py
+```
+
+### 29. data/_job_resource.py (14 line-too-long errors)
+
+```
+Please fix all 14 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles job resource allocation and tracking.
+
+Guidelines:
+1. Break long resource allocation expressions at logical points
+2. For resource limit validations, use clear formatting
+3. Complex resource calculations should use intermediate variables
+4. Long error messages about resource conflicts should be multi-line
+5. Resource utilization queries should break at operator boundaries
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_job_resource.py
+```
+
+### 30. data/_queue.py (30 line-too-long errors) - RETRY NEEDED
+
+```
+Please fix all 30 line-too-long (C0301) pylint errors in this Python file. The maximum line length is 79 characters.
+
+This file handles queue operations with timestamp-based sorting and status updates. Previous attempts to fix this file may have missed some errors.
+
+Guidelines:
+1. Check ALL string literals - break long ones with parentheses for implicit concatenation
+2. Break ALL method signatures that exceed 79 characters
+3. Split long DynamoDB key constructions (PK/SK) at component boundaries
+4. For update expressions with multiple attributes, use multi-line format
+5. Ensure NO line exceeds 79 characters - count carefully!
+
+Common issues to check:
+- Long f-strings in error messages
+- Method names with many underscores
+- DynamoDB expression attribute values
+- Complex conditional expressions
+- Long docstring lines
+
+Only return the fixed code, no explanations needed.
+
+File: receipt_dynamo/data/_queue.py
 ```
 
 ## Additional Prompts Template
