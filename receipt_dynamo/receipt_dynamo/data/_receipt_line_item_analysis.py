@@ -330,21 +330,17 @@ class _ReceiptLineItemAnalysis(
 
         line_item_analyses = []
         key_condition = "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+        expr_values = {
+            ":pk": {"S": f"IMAGE#{image_id}"},
+            ":sk_prefix": {"S": "RECEIPT#"},
+            ":analysis_type": {"S": "#ANALYSIS#LINE_ITEMS"},
+        }
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
             "KeyConditionExpression": key_condition,
-            "ExpressionAttributeNames": {
-                "#pk": "PK",
-                "#sk": "SK",
-            },
-            "ExpressionAttributeValues": {
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": "RECEIPT#"},
-            },
+            "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
+            "ExpressionAttributeValues": expr_values,
             "FilterExpression": "contains(#sk, :analysis_type)",
-        }
-        query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LINE_ITEMS"
         }
 
         response = self._client.query(**query_params)
