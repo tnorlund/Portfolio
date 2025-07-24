@@ -4,6 +4,13 @@ import botocore
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -23,7 +30,9 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.instance import Instance, item_to_instance
@@ -33,9 +42,15 @@ from receipt_dynamo.entities.instance_job import (
 )
 
 
-class _Instance(DynamoClientProtocol):
+class _Instance(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """Class for interacting with instance-related data in DynamoDB."""
 
+    @handle_dynamodb_errors("add_instance")
     def add_instance(self, instance: Instance) -> None:
         """Adds a new instance to the DynamoDB table.
 
@@ -43,41 +58,16 @@ class _Instance(DynamoClientProtocol):
             instance (Instance): The instance to add.
 
         Raises:
-            ValueError: If the instance is invalid or already exists.
-            Exception: If the request failed due to an unknown error.
+            EntityAlreadyExistsError: If the instance already exists.
+            EntityValidationError: If instance parameters are invalid.
         """
-        if instance is None:
-            raise ValueError("instance cannot be None")
-        if not isinstance(instance, Instance):
-            raise ValueError("instance must be an instance of Instance")
+        self._validate_entity(instance, Instance, "instance")
+        self._add_entity(
+            instance,
+            condition_expression="attribute_not_exists(PK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=instance.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} already exists"
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add instance to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add instance to DynamoDB: {e}"
-                ) from e
-
+    @handle_dynamodb_errors("add_instances")
     def add_instances(self, instances: List[Instance]) -> None:
         """Adds multiple instances to the DynamoDB table.
 
@@ -85,83 +75,19 @@ class _Instance(DynamoClientProtocol):
             instances (List[Instance]): The instances to add.
 
         Raises:
-            ValueError: If instances is invalid.
-            DynamoRetryableException:
-                If the request failed due to a transient error.
-            DynamoCriticalErrorException:
-                If the request failed due to a critical error.
+            EntityValidationError: If instances parameters are invalid.
         """
-        if instances is None:
-            raise ValueError("instances cannot be None")
-        if not isinstance(instances, list):
-            raise ValueError("instances must be a list")
-        if not all(isinstance(instance, Instance) for instance in instances):
-            raise ValueError(
-                "All elements in instances must be instances of Instance"
+        self._validate_entity_list(instances, Instance, "instances")
+        # Create write request items for batch operation
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=instance.to_item())
             )
+            for instance in instances
+        ]
+        self._batch_write_with_retry(request_items)
 
-        if not instances:
-            return  # Nothing to do if the list is empty
-
-        try:
-            # Convert instances to DynamoDB items
-            items = [instance.to_item() for instance in instances]
-
-            # Batch write the items to DynamoDB
-            request_items = {
-                self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item)
-                    )
-                    for item in items
-                ]
-            }
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            # Handle unprocessed items
-            unprocessed_items = response.get("UnprocessedItems", {})
-            max_retries = 3
-            retry_count = 0
-
-            while unprocessed_items and retry_count < max_retries:
-                retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
-                unprocessed_items = response.get("UnprocessedItems", {})
-
-            if unprocessed_items:
-                raise OperationError(
-                    "Failed to process all items after retries"
-                )
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded, retry later"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(
-                    f"Validation error: {e.response['Error']['Message']}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(
-                    f"Access denied: {e.response['Error']['Message']}"
-                ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to add instances: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
-
+    @handle_dynamodb_errors("update_instance")
     def update_instance(self, instance: Instance) -> None:
         """Updates an existing instance in the DynamoDB table.
 
@@ -169,44 +95,16 @@ class _Instance(DynamoClientProtocol):
             instance (Instance): The instance to update.
 
         Raises:
-            ValueError: If the instance is invalid or doesn't exist.
-            Exception: If the request failed due to an unknown error.
+            EntityNotFoundError: If the instance does not exist.
+            EntityValidationError: If instance parameters are invalid.
         """
-        if instance is None:
-            raise ValueError("instance cannot be None")
-        if not isinstance(instance, Instance):
-            raise ValueError("instance must be an instance of Instance")
+        self._validate_entity(instance, Instance, "instance")
+        self._update_entity(
+            instance,
+            condition_expression="attribute_exists(PK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=instance.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not update instance in DynamoDB: {e}"
-                ) from e
-            elif (
-                e.response["Error"]["Code"]
-                == "ProvisionedThroughputExceededException"
-            ):
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not update instance in DynamoDB: {e}"
-                ) from e
-
+    @handle_dynamodb_errors("delete_instance")
     def delete_instance(self, instance: Instance) -> None:
         """Deletes an instance from the DynamoDB table.
 
@@ -214,51 +112,16 @@ class _Instance(DynamoClientProtocol):
             instance (Instance): The instance to delete.
 
         Raises:
-            ValueError: If the instance is invalid or doesn't exist.
-            Exception: If the request failed due to an unknown error.
+            EntityNotFoundError: If the instance does not exist.
+            EntityValidationError: If instance parameters are invalid.
         """
-        if instance is None:
-            raise ValueError("instance cannot be None")
-        if not isinstance(instance, Instance):
-            raise ValueError("instance must be an instance of Instance")
+        self._validate_entity(instance, Instance, "instance")
+        self._delete_entity(
+            instance,
+            condition_expression="attribute_exists(PK)"
+        )
 
-        try:
-            # Delete the instance from DynamoDB with a condition expression
-            # to ensure it exists
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"INSTANCE#{instance.instance_id}"},
-                    "SK": {"S": "INSTANCE"},
-                },
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"Instance {instance.instance_id} does not exist"
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded, retry later"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to delete instance: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
-
+    @handle_dynamodb_errors("get_instance")
     def get_instance(self, instance_id: str) -> Instance:
         """Gets an instance from the DynamoDB table.
 
@@ -307,6 +170,7 @@ class _Instance(DynamoClientProtocol):
                     f"Failed to get instance: {e.response['Error']['Message']}"
                 ) from e
 
+    @handle_dynamodb_errors("get_instance_with_jobs")
     def get_instance_with_jobs(
         self, instance_id: str
     ) -> Tuple[Instance, List[InstanceJob]]:
@@ -333,6 +197,7 @@ class _Instance(DynamoClientProtocol):
 
         return instance, instance_jobs
 
+    @handle_dynamodb_errors("add_instance_job")
     def add_instance_job(self, instance_job: InstanceJob) -> None:
         """Adds a new instance-job association to the DynamoDB table.
 
@@ -340,57 +205,16 @@ class _Instance(DynamoClientProtocol):
             instance_job (InstanceJob): The instance-job association to add.
 
         Raises:
-            ValueError: If the instance-job is invalid or already exists.
-            Exception: If the request failed due to an unknown error.
+            EntityAlreadyExistsError: If the instance-job already exists.
+            EntityValidationError: If instance_job parameters are invalid.
         """
-        if instance_job is None:
-            raise ValueError("instance_job cannot be None")
-        if not isinstance(instance_job, InstanceJob):
-            raise ValueError("instance_job must be an instance of InstanceJob")
+        self._validate_entity(instance_job, InstanceJob, "instance_job")
+        self._add_entity(
+            instance_job,
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        )
 
-        try:
-            # Convert the instance-job to a DynamoDB item
-            item = instance_job.to_item()
-
-            # Add the instance-job to DynamoDB with a condition expression
-            # to ensure it doesn't already exist
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item,
-                ConditionExpression=(
-                    "attribute_not_exists(PK) " "AND attribute_not_exists(SK)"
-                ),
-            )
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        "InstanceJob for instance "
-                        f"{instance_job.instance_id} and job "
-                        f"{instance_job.job_id} already exists"
-                    )
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded, retry later"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to add instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
-
+    @handle_dynamodb_errors("update_instance_job")
     def update_instance_job(self, instance_job: InstanceJob) -> None:
         """Updates an existing instance-job association in the DynamoDB table.
 
@@ -398,57 +222,16 @@ class _Instance(DynamoClientProtocol):
             instance_job (InstanceJob): The instance-job association to update.
 
         Raises:
-            ValueError: If the instance-job is invalid or doesn't exist.
-            Exception: If the request failed due to an unknown error.
+            EntityNotFoundError: If the instance-job does not exist.
+            EntityValidationError: If instance_job parameters are invalid.
         """
-        if instance_job is None:
-            raise ValueError("instance_job cannot be None")
-        if not isinstance(instance_job, InstanceJob):
-            raise ValueError("instance_job must be an instance of InstanceJob")
+        self._validate_entity(instance_job, InstanceJob, "instance_job")
+        self._update_entity(
+            instance_job,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )
 
-        try:
-            # Convert the instance-job to a DynamoDB item
-            item = instance_job.to_item()
-
-            # Update the instance-job in DynamoDB with a condition expression
-            # to ensure it exists
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item,
-                ConditionExpression=(
-                    "attribute_exists(PK) " "AND attribute_exists(SK)"
-                ),
-            )
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        "InstanceJob for instance "
-                        f"{instance_job.instance_id} and job "
-                        f"{instance_job.job_id} does not exist"
-                    )
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded, retry later"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to update instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
-
+    @handle_dynamodb_errors("delete_instance_job")
     def delete_instance_job(self, instance_job: InstanceJob) -> None:
         """Deletes an instance-job association from the DynamoDB table.
 
@@ -456,57 +239,16 @@ class _Instance(DynamoClientProtocol):
             instance_job (InstanceJob): The instance-job association to delete.
 
         Raises:
-            ValueError: If the instance-job is invalid or doesn't exist.
-            Exception: If the request failed due to an unknown error.
+            EntityNotFoundError: If the instance-job does not exist.
+            EntityValidationError: If instance_job parameters are invalid.
         """
-        if instance_job is None:
-            raise ValueError("instance_job cannot be None")
-        if not isinstance(instance_job, InstanceJob):
-            raise ValueError("instance_job must be an instance of InstanceJob")
+        self._validate_entity(instance_job, InstanceJob, "instance_job")
+        self._delete_entity(
+            instance_job,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )
 
-        try:
-            # Delete the instance-job from DynamoDB with a condition expression
-            # to ensure it exists
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"INSTANCE#{instance_job.instance_id}"},
-                    "SK": {"S": f"JOB#{instance_job.job_id}"},
-                },
-                ConditionExpression=(
-                    "attribute_exists(PK) " "AND attribute_exists(SK)"
-                ),
-            )
-        except botocore.exceptions.ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    (
-                        "InstanceJob for instance "
-                        f"{instance_job.instance_id} and job "
-                        f"{instance_job.job_id} does not exist"
-                    )
-                )
-            elif error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    "Provisioned throughput exceeded, retry later"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to delete instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
-
+    @handle_dynamodb_errors("get_instance_job")
     def get_instance_job(self, instance_id: str, job_id: str) -> InstanceJob:
         """Gets an instance-job association from the DynamoDB table.
 
@@ -566,6 +308,7 @@ class _Instance(DynamoClientProtocol):
                     )
                 ) from e
 
+    @handle_dynamodb_errors("list_instances")
     def list_instances(
         self,
         limit: Optional[int] = None,
@@ -630,6 +373,7 @@ class _Instance(DynamoClientProtocol):
                     )
                 ) from e
 
+    @handle_dynamodb_errors("list_instances_by_status")
     def list_instances_by_status(
         self,
         status: str,
@@ -701,6 +445,7 @@ class _Instance(DynamoClientProtocol):
                     )
                 ) from e
 
+    @handle_dynamodb_errors("list_instance_jobs")
     def list_instance_jobs(
         self,
         instance_id: str,
@@ -773,6 +518,7 @@ class _Instance(DynamoClientProtocol):
                     )
                 ) from e
 
+    @handle_dynamodb_errors("list_instances_for_job")
     def list_instances_for_job(
         self,
         job_id: str,
