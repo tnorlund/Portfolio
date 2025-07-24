@@ -34,7 +34,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise ValueError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+                f"LastEvaluatedKey[{key}] must be a dict "
+                "containing a key 'S'"
             )
 
 
@@ -77,7 +78,11 @@ class _JobCheckpoint(
             ValueError: When a job checkpoint with the same timestamp
                 already exists
         """
-        self._validate_entity(job_checkpoint, JobCheckpoint, "job_checkpoint")
+        self._validate_entity(
+            job_checkpoint,
+            JobCheckpoint,
+            "job_checkpoint",
+        )
         self._add_entity(
             job_checkpoint,
             condition_expression=(
@@ -86,7 +91,11 @@ class _JobCheckpoint(
         )
 
     @handle_dynamodb_errors("get_job_checkpoint")
-    def get_job_checkpoint(self, job_id: str, timestamp: str) -> JobCheckpoint:
+    def get_job_checkpoint(
+        self,
+        job_id: str,
+        timestamp: str,
+    ) -> JobCheckpoint:
         """Gets a specific job checkpoint by job ID and timestamp
 
         Args:
@@ -132,7 +141,8 @@ class _JobCheckpoint(
 
         Args:
             job_id (str): The ID of the job
-            timestamp (str): The timestamp of the checkpoint to mark as best
+            timestamp (str):
+                The timestamp of the checkpoint to mark as best
 
         Raises:
             ValueError:
@@ -152,7 +162,8 @@ class _JobCheckpoint(
             self.get_job_checkpoint(job_id, timestamp)
         except ValueError:
             raise ValueError(
-                "Cannot update best checkpoint: No checkpoint found with job "
+                "Cannot update best checkpoint: "
+                "No checkpoint found with job "
                 f"ID {job_id} and timestamp {timestamp}"
             )
 
@@ -196,7 +207,8 @@ class _JobCheckpoint(
 
         Parameters:
             job_id (str): The ID of the job to get checkpoints for.
-            limit (int, optional): The maximum number of checkpoints to return.
+            limit (int, optional):
+                The maximum number of checkpoints to return.
             last_evaluated_key (dict, optional):
                 A key that marks the starting point for the query.
 
@@ -227,7 +239,9 @@ class _JobCheckpoint(
         try:
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
-                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :sk)"
+                ),
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"JOB#{job_id}"},
                     ":sk": {"S": "CHECKPOINT#"},
@@ -251,7 +265,10 @@ class _JobCheckpoint(
 
                 if limit is not None and len(checkpoints) >= limit:
                     checkpoints = checkpoints[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
@@ -267,7 +284,7 @@ class _JobCheckpoint(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not list job checkpoints from the database: {e}"
+                    "Could not list job checkpoints from the database: " f"{e}"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -290,7 +307,8 @@ class _JobCheckpoint(
         Retrieve the best checkpoint for a job from the database.
 
         Parameters:
-            job_id (str): The ID of the job to get the best checkpoint for.
+            job_id (str):
+                The ID of the job to get the best checkpoint for.
 
         Returns:
             Optional[JobCheckpoint]:
@@ -308,7 +326,9 @@ class _JobCheckpoint(
         try:
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
-                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
+                "KeyConditionExpression": (
+                    "PK = :pk AND begins_with(SK, :sk)"
+                ),
                 "FilterExpression": "is_best = :is_best",
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"JOB#{job_id}"},
@@ -401,7 +421,8 @@ class _JobCheckpoint(
         Retrieve all checkpoints across all jobs from the database.
 
         Parameters:
-            limit (int, optional): The maximum number of checkpoints to return.
+            limit (int, optional):
+                The maximum number of checkpoints to return.
             last_evaluated_key (dict, optional):
                 A key that marks the starting point for the query.
 
@@ -452,7 +473,10 @@ class _JobCheckpoint(
 
                 if limit is not None and len(checkpoints) >= limit:
                     checkpoints = checkpoints[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
+                    last_evaluated_key = response.get(
+                        "LastEvaluatedKey",
+                        None,
+                    )
                     break
 
                 if "LastEvaluatedKey" in response:
