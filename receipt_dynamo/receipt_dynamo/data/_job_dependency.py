@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
     item_to_job_dependency,
@@ -104,7 +105,7 @@ class _JobDependency(
 
         item = response.get("Item")
         if not item:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Dependency between {dependent_job_id} and "
                 f"{dependency_job_id} not found"
             )

@@ -11,6 +11,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
     EntityNotFoundError,
+    EntityAlreadyExistsError,
 )
 
 correct_word_params: Dict[str, Any] = {
@@ -60,7 +61,7 @@ def test_word_add_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_word(word)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityAlreadyExistsError):
         client.add_word(word)
 
 
@@ -486,6 +487,6 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
     )
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Table not found"):
+    with pytest.raises(DynamoDBError, match="Could not update word to DynamoDB"):
         client.update_words([word])
     mock_transact.assert_called_once()

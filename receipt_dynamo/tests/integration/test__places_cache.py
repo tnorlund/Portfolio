@@ -93,7 +93,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add places cache item to DynamoDB",
+            "Could not add places cache to DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -103,7 +103,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "ValidationException",
             "Invalid parameters",
-            "One or more parameters given were invalid",
+            "Invalid parameters",
         ),
         (
             "AccessDeniedException",
@@ -113,7 +113,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add places cache item to DynamoDB",
+            "Could not add places cache to DynamoDB",
         ),
     ],
 )

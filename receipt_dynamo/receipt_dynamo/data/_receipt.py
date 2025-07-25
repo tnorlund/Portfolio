@@ -11,6 +11,7 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -258,7 +259,7 @@ class _Receipt(
         if "Item" in response:
             return item_to_receipt(response["Item"])
         else:
-            raise ValueError(
+            raise EntityNotFoundError(
                 (
                     f"Receipt with ID {receipt_id} and Image ID "
                     f"'{image_id}' does not exist."

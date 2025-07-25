@@ -108,7 +108,7 @@ def test_addJobResource_raises_value_error(job_resource_dynamo):
     """Test that addJobResource raises ValueError when job_resource is None"""
     with pytest.raises(
         ValueError,
-        match="jobresource cannot be None",
+        match="job_resource cannot be None",
     ):
         job_resource_dynamo.add_job_resource(None)
 

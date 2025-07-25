@@ -618,7 +618,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         original_message = error.response.get("Error", {}).get("Message", "")
         
         # Special handling for operations that expect specific messages
-        if "job" in operation.lower() and "receipt" not in operation.lower():
+        if "job" in operation.lower() and "receipt" not in operation.lower() and "ocr" not in operation.lower():
             message = "Something unexpected"
         elif "word" in operation.lower() and "receipt" not in operation.lower():
             message = "Something unexpected"
@@ -654,8 +654,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         entity_patterns = [
             "receipt_line_item_analysis", "receipt_label_analysis", "receipt_validation_result",
             "receipt_validation_summary", "receipt_structure_analysis", "receipt_letter",
-            "receipt_field", "receipt_word_label", "job_checkpoint", "job_log", "queue_job", 
-            "receipt", "queue", "image", "job", "word", "letter"
+            "receipt_field", "receipt_word_label", "receipt_word", "job_checkpoint", "job_log", "queue_job", 
+            "ocr_job", "places_cache", "receipt", "queue", "image", "job", "word", "letter"
         ]
         
         for pattern in entity_patterns:
@@ -710,9 +710,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise ValueError(f"{param_name} cannot be None")
 
         if not isinstance(entity, entity_class):
-            display_name = self._validation_generator._get_display_name_for_type_mismatch(param_name)
             raise ValueError(
-                f"{display_name} must be an instance of the {entity_class.__name__} class."
+                f"{param_name} must be an instance of the {entity_class.__name__} class."
             )
 
     def _validate_entity_list(
