@@ -267,7 +267,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     # Don't add the queue first
 
     with pytest.raises(
-        ValueError, match="Entity does not exist: Queue"
+        EntityNotFoundError, match="Entity does not exist: Queue"
     ):
         queue_dynamo.update_queue(sample_queue)
 
@@ -283,7 +283,7 @@ def test_deleteQueue_success(queue_dynamo, sample_queue):
 
     # Verify the queue was deleted
     with pytest.raises(
-        ValueError, match=f"Queue {sample_queue.queue_name} not found"
+        EntityNotFoundError, match=f"Queue {sample_queue.queue_name} not found"
     ):
         queue_dynamo.get_queue(sample_queue.queue_name)
 
@@ -308,7 +308,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     # Don't add the queue first
 
     with pytest.raises(
-        ValueError, match="Entity does not exist: Queue"
+        EntityNotFoundError, match="Entity does not exist: Queue"
     ):
         queue_dynamo.delete_queue(sample_queue)
 
@@ -498,7 +498,7 @@ def test_addJobToQueue_queue_not_found(queue_dynamo, sample_queue_job):
     # Don't add the queue first
 
     with pytest.raises(
-        ValueError, match=f"Queue {sample_queue_job.queue_name} not found"
+        EntityNotFoundError, match=f"Queue {sample_queue_job.queue_name} not found"
     ):
         queue_dynamo.add_job_to_queue(sample_queue_job)
 
@@ -551,7 +551,7 @@ def test_removeJobFromQueue_queue_not_found(queue_dynamo, sample_queue_job):
     # Don't add the queue first
 
     with pytest.raises(
-        ValueError,
+        EntityNotFoundError,
         match="Entity does not exist: QueueJob",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
@@ -571,7 +571,7 @@ def test_removeJobFromQueue_job_not_in_queue(
     # Don't add the job to the queue
 
     with pytest.raises(
-        ValueError,
+        EntityNotFoundError,
         match="Entity does not exist: QueueJob",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
@@ -664,9 +664,9 @@ def test_listJobsInQueue_queue_not_found(queue_dynamo, monkeypatch):
     Test that trying to list jobs in a non-existent queue raises a ValueError.
     """
 
-    # Mock the getQueue method to raise a ValueError
+    # Mock the getQueue method to raise an EntityNotFoundError
     def mock_get_queue(self, queue_name):
-        raise ValueError(f"Queue {queue_name} not found")
+        raise EntityNotFoundError(f"Queue {queue_name} not found")
 
     # Apply the mock
     monkeypatch.setattr(queue_dynamo.__class__, "get_queue", mock_get_queue)

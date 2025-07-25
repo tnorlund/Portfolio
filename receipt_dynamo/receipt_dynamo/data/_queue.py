@@ -6,6 +6,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -149,7 +150,7 @@ class _Queue(
 
         # Check if the item exists
         if "Item" not in response:
-            raise ValueError(f"Queue {queue_name} not found")
+            raise EntityNotFoundError(f"Queue {queue_name} not found")
 
         # Convert the DynamoDB item to a Queue object
         return item_to_queue(response["Item"])

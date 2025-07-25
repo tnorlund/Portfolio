@@ -24,6 +24,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
     OperationError,
 )
 from receipt_dynamo.entities.receipt_field import (
@@ -295,7 +296,7 @@ class _ReceiptField(
             )
             if "Item" in response:
                 return item_to_receipt_field(response["Item"])
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Receipt field for Field Type '{field_type}', "
                 f"Image ID '{image_id}', and Receipt ID {receipt_id} "
                 f"does not exist."

@@ -122,7 +122,7 @@ def test_addReceiptValidationSummary_duplicate_raises(
     client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Attempt to add the same validation summary again, which should raise an error
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityAlreadyExistsError) as excinfo:
         client.add_receipt_validation_summary(
             sample_receipt_validation_summary
         )
@@ -348,7 +348,7 @@ def test_updateReceiptValidationSummary_not_exists_raises(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Attempt to update a validation summary that wasn't previously added
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityNotFoundError) as excinfo:
         client.update_receipt_validation_summary(
             sample_receipt_validation_summary
         )

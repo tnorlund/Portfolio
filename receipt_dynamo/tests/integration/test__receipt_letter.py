@@ -624,7 +624,7 @@ def test_updateReceiptLetters_with_large_batch(
     "invalid_input,expected_error",
     [
         (None, "letters cannot be None"),
-        ("not-a-list", "Letters must be provided as a list"),
+        ("not-a-list", "letters must be a list of ReceiptLetter instances."),
         (
             [123, "not-a-receipt-letter"],
             "All letters must be instances of the ReceiptLetter class.",

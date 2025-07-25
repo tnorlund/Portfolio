@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
@@ -160,7 +161,7 @@ class _JobLog(
 
         item = response.get("Item")
         if not item:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Job log with job_id {job_id} and timestamp {timestamp} "
                 f"not found"
             )

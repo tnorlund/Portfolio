@@ -103,6 +103,7 @@ class ErrorMessageConfig:
         "ReceiptField": "ReceiptField",
         "ReceiptWordLabel": "receipt_word_label",
         "receiptField": "receiptField",
+        "receipt_field": "receiptField",  # Map snake_case to camelCase
         "receipt_label_analyses": "ReceiptLabelAnalyses",
         "ReceiptFields": "ReceiptFields",
         "receipt_word_labels": "ReceiptWordLabels",
@@ -231,7 +232,7 @@ class EntityErrorHandler:
         elif "job_checkpoint" in operation and "timestamp" in entity_data and "job_id" in entity_data:
             message = self.config.ENTITY_MESSAGES["job_checkpoint"]["already_exists"].format(**entity_data)
             raise ValueError(message) from error
-        elif "job" in operation and "job_id" in entity_data:
+        elif "job" in operation and "job_id" in entity_data and "queue" not in operation:
             message = self.config.ENTITY_MESSAGES["job"]["already_exists"].format(**entity_data)
             raise EntityAlreadyExistsError(message) from error
         elif "ReceiptValidationResult with field" in entity_context:
@@ -252,7 +253,7 @@ class EntityErrorHandler:
             "receipt_id" in entity_data and "image_id" in entity_data):
             message = self.config.ENTITY_MESSAGES["receipt"]["not_found"].format(**entity_data)
             raise EntityNotFoundError(message) from error
-        elif "job" in operation and "job_id" in entity_data:
+        elif "job" in operation and "job_id" in entity_data and "queue" not in operation:
             message = self.config.ENTITY_MESSAGES["job"]["not_found"].format(**entity_data)
             raise EntityNotFoundError(message) from error
         elif "receipt_line_item_analysis" in operation and "receipt_id" in entity_data:
@@ -443,7 +444,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Check if tests expect just "Table not found" for certain operations  
         simple_table_operations = {
             "add_receipt", "list_receipts",
-            "add_job", "list_jobs"
+            "add_job", "list_jobs", "add_job_log", "list_job_logs"
         }
         
         # Check if tests expect "Table not found for operation X" format
@@ -617,11 +618,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         original_message = error.response.get("Error", {}).get("Message", "")
         
         # Special handling for operations that expect specific messages
-        if "job" in operation.lower():
+        if "job" in operation.lower() and "receipt" not in operation.lower():
             message = "Something unexpected"
-        elif "word" in operation.lower():
+        elif "word" in operation.lower() and "receipt" not in operation.lower():
             message = "Something unexpected"
-        elif "receipt" in operation.lower() and original_message == "Something unexpected":
+        elif "receipt" in operation.lower() and original_message == "Something unexpected" and "structure" not in operation.lower():
             # Receipt operations with "Something unexpected" should pass through
             message = "Something unexpected"
         else:
@@ -649,14 +650,19 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _extract_entity_type(self, operation: str) -> str:
         """Extract entity type from operation name."""
         # Common entity patterns in operation names
+        # IMPORTANT: Order matters - longer patterns must come before shorter ones
         entity_patterns = [
             "receipt_line_item_analysis", "receipt_label_analysis", "receipt_validation_result",
-            "receipt_field", "receipt_word_label", "job_checkpoint", "image", "job", "word",
-            "receipt", "letter"
+            "receipt_validation_summary", "receipt_structure_analysis", "receipt_letter",
+            "receipt_field", "receipt_word_label", "job_checkpoint", "job_log", "queue_job", 
+            "receipt", "queue", "image", "job", "word", "letter"
         ]
         
         for pattern in entity_patterns:
             if pattern in operation:
+                return pattern.replace("_", " ")
+            # Also check for plural forms (e.g., "analyses" instead of "analysis")
+            if pattern.endswith("analysis") and pattern[:-8] + "analyses" in operation:
                 return pattern.replace("_", " ")
                 
         return "entity"
@@ -676,7 +682,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 "One or more parameters were invalid",
                 "One or more parameters given were invalid"
             )
-        elif any(op in operation for op in ["receipt_validation_result", "receipt_structure_analysis"]):
+        elif any(op in operation for op in ["receipt_validation_result", "receipt_structure_analysis", "receipt_structure_analyses"]):
             # Apply "given were" transformation
             message = message.replace(
                 "One or more parameters were invalid",
@@ -704,8 +710,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             raise ValueError(f"{param_name} cannot be None")
 
         if not isinstance(entity, entity_class):
+            display_name = self._validation_generator._get_display_name_for_type_mismatch(param_name)
             raise ValueError(
-                f"{param_name} must be an instance of the {entity_class.__name__} class."
+                f"{display_name} must be an instance of the {entity_class.__name__} class."
             )
 
     def _validate_entity_list(

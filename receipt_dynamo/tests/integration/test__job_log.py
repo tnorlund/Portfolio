@@ -77,7 +77,7 @@ def test_addJobLog_raises_value_error_job_not_instance(job_log_dynamo):
     Test that addJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
-    with pytest.raises(ValueError, match="job_log must be a JobLog instance"):
+    with pytest.raises(ValueError, match="job_log must be an instance of the JobLog class."):
         job_log_dynamo.add_job_log("not a job log")
 
 
@@ -158,7 +158,7 @@ def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
     items.
     """
     with pytest.raises(
-        ValueError, match="All job_logs must be instances of the JobLog class."
+        ValueError, match="All items in job_logs must be JobLog instances"
     ):
         job_log_dynamo.add_job_logs([sample_job_log, "not a job log"])
 
@@ -202,7 +202,7 @@ def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_log_not_found(job_log_dynamo):
     """Test that getJobLog raises EntityNotFoundError when the job log is not found."""
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Job log with job_id non-existent-job and timestamp 2021-01-01T12:00:00 not found"):
         job_log_dynamo.get_job_log(
             job_id="non-existent-job", timestamp="2021-01-01T12:00:00"
         )
@@ -294,7 +294,7 @@ def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
     job_log_dynamo.delete_job_log(sample_job_log)
 
     # Verify it was deleted
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="not found"):
         job_log_dynamo.get_job_log(
             job_id=sample_job_log.job_id, timestamp=sample_job_log.timestamp
         )
@@ -313,7 +313,7 @@ def test_deleteJobLog_raises_value_error_log_not_instance(job_log_dynamo):
     Test that deleteJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
-    with pytest.raises(ValueError, match="job_log must be a JobLog instance"):
+    with pytest.raises(ValueError, match="job_log must be a JobLog instance, got"):
         job_log_dynamo.delete_job_log("not a job log")
 
 
