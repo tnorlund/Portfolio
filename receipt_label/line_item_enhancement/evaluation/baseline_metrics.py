@@ -1,453 +1,430 @@
 #!/usr/bin/env python3
 """
-Baseline metrics for line item detection enhancement evaluation.
+Baseline metrics evaluation for multicolumn handler improvements.
 
-This script evaluates the performance of different line item detection approaches:
-1. Pattern-only detection (existing baseline)
-2. Spatial detection (Phase 2)
-3. Negative space detection (this enhancement)
-4. Combined approach
-
-Metrics measured:
-- Line items detected per receipt
-- Processing time
-- Cost reduction estimates
-- Accuracy indicators
+This script evaluates the performance improvements from the MultiColumn Handler
+by comparing basic spatial detection with enhanced multicolumn detection on
+real production receipt data.
 """
 
 import json
-import time
-import logging
+import os
 import sys
+import time
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass, asdict
+from typing import Dict, List, Tuple, Any
 from collections import defaultdict
+from dataclasses import dataclass
 
-# Add parent paths for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add parent directory to path
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-# Import detection components
-from receipt_label.models.receipt import ReceiptWord
-from receipt_label.pattern_detection.base import PatternMatch, PatternType
+from receipt_label.spatial.multicolumn_handler import MultiColumnHandler, create_enhanced_line_item_detector
 from receipt_label.spatial.vertical_alignment_detector import VerticalAlignmentDetector
-from receipt_label.spatial.math_solver_detector import MathSolverDetector
-from receipt_label.spatial.negative_space_detector import NegativeSpaceDetector
-
-# Configure logging
-logging.basicConfig(level=logging.WARNING)  # Suppress info logs during evaluation
+from receipt_label.pattern_detection.base import PatternMatch, PatternType
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 
 
 @dataclass
-class DetectionMetrics:
-    """Metrics for a single detection approach"""
-    approach_name: str
-    processing_time_ms: float
-    line_items_detected: int
-    boundaries_found: int
-    has_column_structure: bool
-    confidence_scores: List[float]
-    whitespace_regions: int = 0
-    new_items_vs_baseline: int = 0
-    
+class BaselineMetrics:
+    """Metrics for baseline evaluation."""
+    receipts_processed: int = 0
+    total_processing_time: float = 0.0
+    columns_detected: int = 0
+    line_items_found: int = 0
+    structured_data_extracted: int = 0
+    needs_llm: int = 0
+    validation_failures: int = 0
+    error_count: int = 0
+
 
 @dataclass
-class ReceiptEvaluation:
-    """Complete evaluation results for a single receipt"""
-    receipt_id: str
-    word_count: int
-    pattern_matches_count: int
-    baseline_metrics: DetectionMetrics
-    spatial_metrics: DetectionMetrics
-    negative_space_metrics: DetectionMetrics
-    combined_metrics: DetectionMetrics
-    
+class EnhancedMetrics(BaselineMetrics):
+    """Enhanced metrics for multicolumn handler."""
+    column_types_detected: int = 0
+    complete_items: int = 0
+    validated_items: int = 0
+    confidence_boosted: int = 0
+    mathematical_validations: int = 0
 
-def load_receipt_data(file_path: Path) -> Tuple[List[ReceiptWord], List[PatternMatch], str]:
-    """Load receipt data from exported JSON file"""
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-    
-    receipt_id = file_path.stem
-    
-    # Convert to ReceiptWord objects
-    words = []
-    for i, word_data in enumerate(data.get('words', [])):
-        word = ReceiptWord(
+
+def create_receipt_word_from_data(word_data: Dict[str, Any]) -> ReceiptWord:
+    """Create ReceiptWord from exported JSON data."""
+    try:
+        # Ensure bounding box has required fields
+        bounding_box = word_data.get('bounding_box', {})
+        if not all(key in bounding_box for key in ['x', 'y', 'width', 'height']):
+            bounding_box = {"x": 0, "y": 0, "width": 0.1, "height": 0.02}
+        
+        # Ensure corner points have required fields
+        def ensure_point(point_data):
+            if isinstance(point_data, dict) and 'x' in point_data and 'y' in point_data:
+                return point_data
+            return {"x": 0, "y": 0}
+        
+        return ReceiptWord(
+            receipt_id=word_data.get('receipt_id', 1),
+            image_id=word_data.get('image_id', '00000000-0000-0000-0000-000000000000'),
+            line_id=word_data.get('line_id', 1),
+            word_id=word_data.get('word_id', 1),
             text=word_data.get('text', ''),
-            line_id=word_data.get('line_id', 0),
-            word_id=word_data.get('word_id', i),
-            confidence=word_data.get('confidence', 0.0),
-            bounding_box=word_data.get('bounding_box', {}),
-            receipt_id=1,
-            image_id=word_data.get('image_id', receipt_id)
+            bounding_box=bounding_box,
+            top_left=ensure_point(word_data.get('top_left', {})),
+            top_right=ensure_point(word_data.get('top_right', {})),
+            bottom_left=ensure_point(word_data.get('bottom_left', {})),
+            bottom_right=ensure_point(word_data.get('bottom_right', {})),
+            angle_degrees=word_data.get('angle_degrees', 0.0),
+            angle_radians=word_data.get('angle_radians', 0.0),
+            confidence=word_data.get('confidence', 0.9),
+            extracted_data=word_data.get('extracted_data', {}),
+            embedding_status=word_data.get('embedding_status', 'NONE')
         )
-        words.append(word)
-    
-    # Create pattern matches from existing labels or currency patterns
-    pattern_matches = []
-    
-    # Try to load existing pattern matches
-    for match_data in data.get('pattern_matches', []):
-        matched_text = match_data.get('matched_text', '')
-        matching_word = next((w for w in words if w.text == matched_text), None)
-        
-        if matching_word:
-            pattern_type = PatternType.CURRENCY if match_data.get('pattern_type', '') == 'CURRENCY' else PatternType.PRODUCT_NAME
-            
-            # Handle currency parsing safely
-            if pattern_type == PatternType.CURRENCY:
-                try:
-                    # Remove currency symbols and commas before converting to float
-                    cleaned_text = matched_text.replace('$', '').replace(',', '').strip()
-                    extracted_value = float(cleaned_text)
-                except ValueError:
-                    # Skip this match if we can't parse the currency
-                    continue
-            else:
-                extracted_value = matched_text
-            
-            match = PatternMatch(
-                word=matching_word,
-                pattern_type=pattern_type,
-                matched_text=matched_text,
-                confidence=match_data.get('confidence', 0.0),
-                extracted_value=extracted_value,
-                metadata=match_data.get('metadata', {})
-            )
-            pattern_matches.append(match)
-    
-    # If no pattern matches, create basic currency matches
-    if not pattern_matches:
-        import re
-        currency_pattern = re.compile(r'\$?(\d+\.\d{2})|\$?(\d+,\d{3}(?:\.\d{2})?)')
-        
-        for word in words:
-            if currency_pattern.match(word.text):
-                try:
-                    value = float(word.text.replace('$', '').replace(',', ''))
-                    if 0.01 <= value <= 999.99:  # Reasonable price range
-                        match = PatternMatch(
-                            word=word,
-                            pattern_type=PatternType.CURRENCY,
-                            matched_text=word.text,
-                            confidence=0.8,
-                            extracted_value=value,
-                            metadata={'source': 'baseline_currency_detection'}
-                        )
-                        pattern_matches.append(match)
-                except ValueError:
-                    continue
-    
-    return words, pattern_matches, receipt_id
-
-
-def evaluate_baseline_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch]) -> DetectionMetrics:
-    """Evaluate baseline pattern-only detection"""
-    start_time = time.time()
-    
-    # Baseline just counts currency patterns as line items
-    currency_matches = [m for m in pattern_matches if m.pattern_type == PatternType.CURRENCY]
-    line_items = len(currency_matches)
-    
-    # Extract confidence scores
-    confidence_scores = [m.confidence for m in currency_matches]
-    
-    processing_time = (time.time() - start_time) * 1000
-    
-    return DetectionMetrics(
-        approach_name="Baseline (Pattern-only)",
-        processing_time_ms=processing_time,
-        line_items_detected=line_items,
-        boundaries_found=line_items,
-        has_column_structure=False,
-        confidence_scores=confidence_scores
-    )
-
-
-def evaluate_spatial_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch]) -> DetectionMetrics:
-    """Evaluate Phase 2 spatial detection"""
-    start_time = time.time()
-    
-    try:
-        # Use vertical alignment detector (Phase 2)
-        detector = VerticalAlignmentDetector(use_enhanced_clustering=True)
-        result = detector.detect_line_items_with_alignment(words, pattern_matches)
-        
-        line_items = len(result.get('line_items', []))
-        confidence_scores = [item.get('confidence', 0.0) for item in result.get('line_items', [])]
-        has_columns = len(result.get('price_columns', [])) > 0
-        
     except Exception as e:
-        print(f"Warning: Spatial detection failed: {e}")
-        line_items = 0
-        confidence_scores = []
-        has_columns = False
-    
-    processing_time = (time.time() - start_time) * 1000
-    
-    return DetectionMetrics(
-        approach_name="Spatial (Phase 2)",
-        processing_time_ms=processing_time,
-        line_items_detected=line_items,
-        boundaries_found=line_items,
-        has_column_structure=has_columns,
-        confidence_scores=confidence_scores
-    )
-
-
-def evaluate_negative_space_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch], baseline_count: int) -> DetectionMetrics:
-    """Evaluate negative space detection"""
-    start_time = time.time()
-    
-    detector = NegativeSpaceDetector()
-    
-    # Detect whitespace regions
-    whitespace_regions = detector.detect_whitespace_regions(words)
-    
-    # Detect line item boundaries
-    boundaries = detector.detect_line_item_boundaries(words, whitespace_regions, pattern_matches)
-    
-    # Detect column structure
-    column_structure = detector.detect_column_structure(words)
-    
-    # Count items with prices (actual line items)
-    item_boundaries = [b for b in boundaries if b.has_price]
-    line_items = len(item_boundaries)
-    
-    # Extract confidence scores
-    confidence_scores = [b.confidence for b in item_boundaries]
-    
-    processing_time = (time.time() - start_time) * 1000
-    
-    return DetectionMetrics(
-        approach_name="Negative Space",
-        processing_time_ms=processing_time,
-        line_items_detected=line_items,
-        boundaries_found=len(boundaries),
-        has_column_structure=column_structure is not None,
-        confidence_scores=confidence_scores,
-        whitespace_regions=len(whitespace_regions),
-        new_items_vs_baseline=max(0, line_items - baseline_count)
-    )
-
-
-def evaluate_combined_detection(words: List[ReceiptWord], pattern_matches: List[PatternMatch], baseline_count: int) -> DetectionMetrics:
-    """Evaluate combined spatial + negative space detection"""
-    start_time = time.time()
-    
-    # Use negative space to enhance existing matches
-    ns_detector = NegativeSpaceDetector()
-    enhanced_matches = ns_detector.enhance_line_items_with_negative_space(words, pattern_matches)
-    
-    # Count enhanced line items
-    baseline_items = len([m for m in pattern_matches if m.pattern_type == PatternType.CURRENCY])
-    enhanced_items = len([m for m in enhanced_matches 
-                         if m.pattern_type == PatternType.PRODUCT_NAME 
-                         and m.metadata.get("detection_method") == "negative_space"])
-    
-    total_items = baseline_items + enhanced_items
-    
-    # Detect column structure for additional context
-    column_structure = ns_detector.detect_column_structure(words)
-    
-    # Extract confidence scores from enhanced matches
-    confidence_scores = [m.confidence for m in enhanced_matches 
-                        if m.metadata.get("detection_method") == "negative_space"]
-    
-    processing_time = (time.time() - start_time) * 1000
-    
-    return DetectionMetrics(
-        approach_name="Combined (Spatial + Negative Space)",
-        processing_time_ms=processing_time,
-        line_items_detected=total_items,
-        boundaries_found=total_items,
-        has_column_structure=column_structure is not None,
-        confidence_scores=confidence_scores,
-        new_items_vs_baseline=enhanced_items
-    )
-
-
-def evaluate_receipt(file_path: Path) -> Optional[ReceiptEvaluation]:
-    """Evaluate all detection approaches on a single receipt"""
-    try:
-        # Load receipt data
-        words, pattern_matches, receipt_id = load_receipt_data(file_path)
-        
-        if not words:
-            print(f"Skipping {receipt_id}: No words found")
-            return None
-        
-        print(f"Evaluating {receipt_id}: {len(words)} words, {len(pattern_matches)} patterns")
-        
-        # Run all evaluations
-        baseline_metrics = evaluate_baseline_detection(words, pattern_matches)
-        spatial_metrics = evaluate_spatial_detection(words, pattern_matches)
-        negative_space_metrics = evaluate_negative_space_detection(words, pattern_matches, baseline_metrics.line_items_detected)
-        combined_metrics = evaluate_combined_detection(words, pattern_matches, baseline_metrics.line_items_detected)
-        
-        return ReceiptEvaluation(
-            receipt_id=receipt_id,
-            word_count=len(words),
-            pattern_matches_count=len(pattern_matches),
-            baseline_metrics=baseline_metrics,
-            spatial_metrics=spatial_metrics,
-            negative_space_metrics=negative_space_metrics,
-            combined_metrics=combined_metrics
-        )
-        
-    except Exception as e:
-        print(f"Error evaluating {file_path.name}: {e}")
+        # Handle malformed data gracefully
         return None
 
 
-def generate_summary_report(evaluations: List[ReceiptEvaluation]) -> Dict:
-    """Generate summary statistics across all evaluations"""
-    if not evaluations:
-        return {}
+def extract_patterns_from_receipt(receipt_data: Dict[str, Any]) -> Tuple[List[ReceiptWord], Dict[str, List[PatternMatch]]]:
+    """Extract words and patterns from receipt data."""
+    words = []
+    patterns = defaultdict(list)
     
-    # Aggregate metrics by approach
-    approaches = ['baseline_metrics', 'spatial_metrics', 'negative_space_metrics', 'combined_metrics']
-    summary = {}
-    
-    for approach in approaches:
-        metrics_list = [getattr(eval_result, approach) for eval_result in evaluations]
-        approach_name = metrics_list[0].approach_name
+    # Convert receipt data to ReceiptWord objects
+    for word_data in receipt_data.get('words', []):
+        word = create_receipt_word_from_data(word_data)
+        if word is None:
+            continue
+            
+        words.append(word)
         
-        summary[approach_name] = {
-            'total_receipts': len(evaluations),
-            'avg_processing_time_ms': sum(m.processing_time_ms for m in metrics_list) / len(metrics_list),
-            'total_line_items_detected': sum(m.line_items_detected for m in metrics_list),
-            'avg_line_items_per_receipt': sum(m.line_items_detected for m in metrics_list) / len(metrics_list),
-            'receipts_with_column_structure': sum(1 for m in metrics_list if m.has_column_structure),
-            'avg_confidence': sum(sum(m.confidence_scores) for m in metrics_list) / max(1, sum(len(m.confidence_scores) for m in metrics_list)),
-            'total_whitespace_regions': sum(getattr(m, 'whitespace_regions', 0) for m in metrics_list),
-            'total_new_items_vs_baseline': sum(getattr(m, 'new_items_vs_baseline', 0) for m in metrics_list)
+        # Check if word has a label that indicates a pattern
+        label = word_data.get('label', '')
+        
+        if label in ['UNIT_PRICE', 'LINE_TOTAL', 'PRICE', 'CURRENCY', 'GRAND_TOTAL', 'SUBTOTAL', 'TAX']:
+            # Extract numeric value for currency patterns
+            try:
+                text = word.text.replace('$', '').replace(',', '').strip()
+                # Skip lone currency symbols or empty text after cleaning
+                if not text or text == '' or not any(c.isdigit() for c in text):
+                    continue
+                extracted_value = float(text) if text.replace('.', '').replace('-', '').isdigit() else 0.0
+            except (ValueError, AttributeError):
+                extracted_value = 0.0
+            
+            pattern = PatternMatch(
+                word=word,
+                pattern_type=PatternType.CURRENCY,
+                confidence=0.9,
+                matched_text=word.text,
+                extracted_value=extracted_value,
+                metadata={'original_label': label}
+            )
+            patterns['currency'].append(pattern)
+        
+        elif label == 'QUANTITY':
+            # Extract numeric value for quantity patterns
+            try:
+                import re
+                match = re.search(r'(\d+(?:\.\d+)?)', word.text)
+                extracted_value = float(match.group(1)) if match else 1.0
+            except (ValueError, AttributeError):
+                extracted_value = 1.0
+                
+            pattern = PatternMatch(
+                word=word,
+                pattern_type=PatternType.QUANTITY,
+                confidence=0.8,
+                matched_text=word.text,
+                extracted_value=extracted_value,
+                metadata={'original_label': label}
+            )
+            patterns['quantity'].append(pattern)
+    
+    return words, patterns
+
+
+def evaluate_basic_detector(words: List[ReceiptWord], patterns: Dict[str, List[PatternMatch]]) -> Dict[str, Any]:
+    """Evaluate receipt using basic vertical alignment detector."""
+    start_time = time.time()
+    
+    try:
+        detector = VerticalAlignmentDetector(use_enhanced_clustering=True)
+        
+        currency_patterns = patterns.get('currency', [])
+        if not currency_patterns:
+            return {
+                'processing_time': time.time() - start_time,
+                'columns_detected': 0,
+                'line_items_found': 0,
+                'structured_data_extracted': False,
+                'needs_llm': True,
+                'error': False
+            }
+        
+        # Detect price columns
+        columns = detector.detect_price_columns(currency_patterns)
+        
+        # Try to find line items
+        try:
+            line_items_result = detector.detect_line_items_with_alignment(words, currency_patterns)
+            line_items_count = 0
+            
+            if isinstance(line_items_result, dict):
+                line_items_count = len(line_items_result.get('line_items', []))
+            elif isinstance(line_items_result, list):
+                line_items_count = len(line_items_result)
+        except Exception:
+            line_items_count = 0
+        
+        return {
+            'processing_time': time.time() - start_time,
+            'columns_detected': len(columns),
+            'line_items_found': line_items_count,
+            'structured_data_extracted': len(columns) > 0,
+            'needs_llm': len(columns) == 0 or line_items_count == 0,
+            'error': False
         }
     
-    # Calculate improvement metrics
-    baseline_items = summary[evaluations[0].baseline_metrics.approach_name]['total_line_items_detected']
+    except Exception as e:
+        return {
+            'processing_time': time.time() - start_time,
+            'columns_detected': 0,
+            'line_items_found': 0,
+            'structured_data_extracted': False,
+            'needs_llm': True,
+            'error': True,
+            'error_message': str(e)
+        }
+
+
+def evaluate_multicolumn_handler(words: List[ReceiptWord], patterns: Dict[str, List[PatternMatch]]) -> Dict[str, Any]:
+    """Evaluate receipt using multicolumn handler."""
+    start_time = time.time()
     
-    for approach_name, stats in summary.items():
-        if approach_name != evaluations[0].baseline_metrics.approach_name:
-            improvement = stats['total_line_items_detected'] - baseline_items
-            stats['improvement_vs_baseline'] = improvement
-            stats['improvement_percentage'] = (improvement / max(1, baseline_items)) * 100
+    try:
+        handler = create_enhanced_line_item_detector()
+        
+        currency_patterns = patterns.get('currency', [])
+        quantity_patterns = patterns.get('quantity', [])
+        
+        # Detect column structure
+        columns = handler.detect_column_structure(words, currency_patterns, quantity_patterns)
+        
+        # Assemble line items
+        line_items = handler.assemble_line_items(columns, words, patterns)
+        
+        # Analyze results
+        complete_items = sum(1 for item in line_items if item.description and item.line_total is not None)
+        validated_items = sum(1 for item in line_items if item.validation_status.get('quantity_price_total', False))
+        confidence_boosted = sum(1 for item in line_items if item.confidence > 0.8)
+        mathematical_validations = sum(len(item.validation_status) for item in line_items)
+        
+        has_complete_items = complete_items > 0
+        has_validated_items = validated_items > 0
+        
+        return {
+            'processing_time': time.time() - start_time,
+            'columns_detected': len(columns),
+            'column_types': [col.column_type.value for col in columns.values()],
+            'line_items_found': len(line_items),
+            'complete_items': complete_items,
+            'validated_items': validated_items,
+            'confidence_boosted': confidence_boosted,
+            'mathematical_validations': mathematical_validations,
+            'structured_data_extracted': has_complete_items,
+            'needs_llm': not has_complete_items,
+            'confidence_boost': has_validated_items,
+            'error': False
+        }
     
-    return summary
+    except Exception as e:
+        return {
+            'processing_time': time.time() - start_time,
+            'columns_detected': 0,
+            'line_items_found': 0,
+            'complete_items': 0,
+            'validated_items': 0,
+            'structured_data_extracted': False,
+            'needs_llm': True,
+            'error': True,
+            'error_message': str(e)
+        }
+
+
+def load_receipt_files(data_dir: str = "./receipt_data_with_labels", limit: int = 100) -> List[Dict[str, Any]]:
+    """Load receipt files from exported data."""
+    receipts = []
+    data_path = Path(data_dir)
+    
+    if not data_path.exists():
+        print(f"❌ Data directory not found: {data_dir}")
+        return []
+    
+    json_files = list(data_path.glob("*.json"))[:limit]
+    print(f"📂 Found {len(json_files)} receipt files, processing {min(limit, len(json_files))}")
+    
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                receipts.append(data)
+        except Exception as e:
+            print(f"❌ Error loading {json_file}: {e}")
+    
+    return receipts
+
+
+def print_metrics_comparison(baseline: BaselineMetrics, enhanced: EnhancedMetrics):
+    """Print comparison of baseline vs enhanced metrics."""
+    print("\n📊 Performance Comparison")
+    print("=" * 80)
+    
+    # Processing metrics
+    print(f"\n🔍 Processing Metrics:")
+    print(f"  Receipts processed:     {baseline.receipts_processed}")
+    
+    if baseline.receipts_processed > 0 and enhanced.receipts_processed > 0:
+        print(f"  Avg processing time:    {baseline.total_processing_time/baseline.receipts_processed*1000:.1f}ms (basic) vs {enhanced.total_processing_time/enhanced.receipts_processed*1000:.1f}ms (enhanced)")
+        print(f"  Error rate:             {baseline.error_count/baseline.receipts_processed*100:.1f}% (basic) vs {enhanced.error_count/enhanced.receipts_processed*100:.1f}% (enhanced)")
+    else:
+        print("  Avg processing time:    N/A (no receipts processed)")
+        print("  Error rate:             N/A (no receipts processed)")
+    
+    # Column detection
+    print(f"\n📋 Column Detection:")
+    if baseline.receipts_processed > 0 and enhanced.receipts_processed > 0:
+        print(f"  Avg columns detected:   {baseline.columns_detected/baseline.receipts_processed:.1f} (basic) vs {enhanced.columns_detected/enhanced.receipts_processed:.1f} (enhanced)")
+    else:
+        print(f"  Avg columns detected:   N/A (no receipts processed)")
+    print(f"  Column types detected:  N/A (basic) vs {enhanced.column_types_detected} unique types (enhanced)")
+    
+    # Line item extraction
+    print(f"\n📝 Line Item Extraction:")
+    print(f"  Total line items:       {baseline.line_items_found} (basic) vs {enhanced.line_items_found} (enhanced)")
+    print(f"  Complete items:         N/A (basic) vs {enhanced.complete_items} (enhanced)")
+    print(f"  Validated items:        N/A (basic) vs {enhanced.validated_items} (enhanced)")
+    
+    # LLM dependency
+    print(f"\n🤖 LLM Dependency:")
+    if baseline.receipts_processed > 0:
+        print(f"  Needs LLM:              {baseline.needs_llm}/{baseline.receipts_processed} ({baseline.needs_llm/baseline.receipts_processed*100:.1f}%) (basic)")
+    else:
+        print(f"  Needs LLM:              N/A (no receipts processed) (basic)")
+    
+    if enhanced.receipts_processed > 0:
+        print(f"                          {enhanced.needs_llm}/{enhanced.receipts_processed} ({enhanced.needs_llm/enhanced.receipts_processed*100:.1f}%) (enhanced)")
+    else:
+        print(f"                          N/A (no receipts processed) (enhanced)")
+    
+    if baseline.needs_llm > enhanced.needs_llm and baseline.needs_llm > 0:
+        reduction = (baseline.needs_llm - enhanced.needs_llm) / baseline.needs_llm * 100
+        print(f"  🎯 LLM reduction:       {reduction:.1f}%")
+    
+    # Enhanced-specific metrics
+    print(f"\n✨ Enhanced Features:")
+    print(f"  Mathematical validations: {enhanced.mathematical_validations}")
+    print(f"  Confidence boosted:       {enhanced.confidence_boosted} items")
+    print(f"  Structured data rate:     {enhanced.structured_data_extracted}/{enhanced.receipts_processed} ({enhanced.structured_data_extracted/enhanced.receipts_processed*100:.1f}%)")
 
 
 def main():
-    """Main evaluation function"""
-    print("Line Item Detection Enhancement Evaluation")
-    print("=" * 60)
+    """Run baseline metrics evaluation."""
+    print("📊 MultiColumn Handler Baseline Metrics Evaluation")
+    print("=" * 80)
     
-    # Find receipt data directory
-    data_dir = Path("receipt_data_with_labels")
-    if not data_dir.exists():
-        # Try alternative locations
-        for alt_dir in ["./receipt_data", "../receipt_data_with_labels", "../../receipt_data_with_labels", "../../../receipt_data_with_labels"]:
-            alt_path = Path(alt_dir)
-            if alt_path.exists():
-                data_dir = alt_path
-                break
-        else:
-            print(f"❌ No receipt data found. Please run export_all_receipts.py first")
-            print(f"   Looking for: {data_dir.absolute()}")
-            print(f"   Current directory: {Path.cwd()}")
-            return
+    # Load receipt data
+    receipts = load_receipt_files(limit=50)  # Start with 50 receipts for performance
     
-    # Find JSON files
-    json_files = list(data_dir.glob("*.json"))
-    if not json_files:
-        print(f"❌ No JSON files found in {data_dir}")
+    if not receipts:
+        print("❌ No receipt data found. Please run export_all_receipts.py first.")
         return
     
-    print(f"📁 Found {len(json_files)} receipt files in {data_dir}")
+    print(f"🔄 Processing {len(receipts)} receipts...")
     
-    # Limit to first N receipts for testing
-    max_receipts = 20
-    if len(json_files) > max_receipts:
-        json_files = json_files[:max_receipts]
-        print(f"📊 Evaluating first {max_receipts} receipts for testing")
+    # Initialize metrics
+    baseline_metrics = BaselineMetrics()
+    enhanced_metrics = EnhancedMetrics()
     
-    # Evaluate all receipts
-    evaluations = []
-    failed_count = 0
+    # Track column types
+    all_column_types = set()
     
-    for i, file_path in enumerate(json_files, 1):
-        print(f"\n[{i}/{len(json_files)}] Processing {file_path.name}...")
+    # Process each receipt
+    for i, receipt_data in enumerate(receipts):
+        print(f"\rProcessing receipt {i+1}/{len(receipts)}...", end='', flush=True)
         
-        evaluation = evaluate_receipt(file_path)
-        if evaluation:
-            evaluations.append(evaluation)
+        try:
+            # Extract words and patterns
+            words, patterns = extract_patterns_from_receipt(receipt_data)
             
-            # Show quick results
-            ns_metrics = evaluation.negative_space_metrics
-            print(f"  ✅ Negative Space: {ns_metrics.line_items_detected} items, "
-                  f"{ns_metrics.processing_time_ms:.1f}ms, "
-                  f"{ns_metrics.whitespace_regions} regions")
-        else:
-            failed_count += 1
+            # Skip if no patterns found
+            if not any(patterns.values()):
+                continue
+            
+            # Evaluate with basic detector
+            basic_result = evaluate_basic_detector(words, patterns)
+            baseline_metrics.receipts_processed += 1
+            baseline_metrics.total_processing_time += basic_result['processing_time']
+            baseline_metrics.columns_detected += basic_result['columns_detected']
+            baseline_metrics.line_items_found += basic_result['line_items_found']
+            baseline_metrics.structured_data_extracted += 1 if basic_result['structured_data_extracted'] else 0
+            baseline_metrics.needs_llm += 1 if basic_result['needs_llm'] else 0
+            baseline_metrics.error_count += 1 if basic_result['error'] else 0
+            
+            # Evaluate with multicolumn handler
+            enhanced_result = evaluate_multicolumn_handler(words, patterns)
+            enhanced_metrics.receipts_processed += 1
+            enhanced_metrics.total_processing_time += enhanced_result['processing_time']
+            enhanced_metrics.columns_detected += enhanced_result['columns_detected']
+            enhanced_metrics.line_items_found += enhanced_result['line_items_found']
+            enhanced_metrics.complete_items += enhanced_result.get('complete_items', 0)
+            enhanced_metrics.validated_items += enhanced_result.get('validated_items', 0)
+            enhanced_metrics.confidence_boosted += enhanced_result.get('confidence_boosted', 0)
+            enhanced_metrics.mathematical_validations += enhanced_result.get('mathematical_validations', 0)
+            enhanced_metrics.structured_data_extracted += 1 if enhanced_result['structured_data_extracted'] else 0
+            enhanced_metrics.needs_llm += 1 if enhanced_result['needs_llm'] else 0
+            enhanced_metrics.error_count += 1 if enhanced_result['error'] else 0
+            
+            # Track column types
+            column_types = enhanced_result.get('column_types', [])
+            all_column_types.update(column_types)
+            
+        except Exception as e:
+            print(f"\n❌ Error processing receipt {i+1}: {e}")
+            baseline_metrics.error_count += 1
+            enhanced_metrics.error_count += 1
     
-    if not evaluations:
-        print("❌ No successful evaluations")
-        return
+    enhanced_metrics.column_types_detected = len(all_column_types)
     
-    # Generate summary report
-    print(f"\n" + "=" * 60)
-    print("EVALUATION SUMMARY")
-    print("=" * 60)
+    print(f"\n\n✅ Completed processing {baseline_metrics.receipts_processed} receipts")
     
-    summary = generate_summary_report(evaluations)
+    # Print results
+    print_metrics_comparison(baseline_metrics, enhanced_metrics)
     
-    for approach_name, stats in summary.items():
-        print(f"\n📊 {approach_name}:")
-        print(f"   Receipts processed: {stats['total_receipts']}")
-        print(f"   Avg processing time: {stats['avg_processing_time_ms']:.2f}ms")
-        print(f"   Total line items: {stats['total_line_items_detected']}")
-        print(f"   Avg items per receipt: {stats['avg_line_items_per_receipt']:.1f}")
-        print(f"   Receipts with columns: {stats['receipts_with_column_structure']}")
-        print(f"   Avg confidence: {stats['avg_confidence']:.2f}")
-        
-        if 'improvement_vs_baseline' in stats:
-            improvement = stats['improvement_vs_baseline']
-            percentage = stats['improvement_percentage']
-            print(f"   📈 Improvement: +{improvement} items ({percentage:+.1f}%)")
-        
-        if stats.get('total_whitespace_regions', 0) > 0:
-            print(f"   🔍 Whitespace regions: {stats['total_whitespace_regions']}")
-        
-        if stats.get('total_new_items_vs_baseline', 0) > 0:
-            print(f"   🆕 New items detected: {stats['total_new_items_vs_baseline']}")
+    # Summary insights
+    print(f"\n💡 Key Insights:")
     
-    # Performance comparison
-    print(f"\n📈 PERFORMANCE COMPARISON:")
-    baseline_time = summary[evaluations[0].baseline_metrics.approach_name]['avg_processing_time_ms']
+    if enhanced_metrics.columns_detected > baseline_metrics.columns_detected and baseline_metrics.columns_detected > 0:
+        improvement = (enhanced_metrics.columns_detected - baseline_metrics.columns_detected) / baseline_metrics.columns_detected * 100
+        print(f"  • {improvement:.1f}% more columns detected with enhanced handler")
     
-    for approach_name, stats in summary.items():
-        if approach_name != evaluations[0].baseline_metrics.approach_name:
-            time_ratio = stats['avg_processing_time_ms'] / baseline_time
-            print(f"   {approach_name}: {time_ratio:.2f}x baseline processing time")
+    if enhanced_metrics.validated_items > 0 and enhanced_metrics.line_items_found > 0:
+        validation_rate = enhanced_metrics.validated_items / enhanced_metrics.line_items_found * 100
+        print(f"  • {validation_rate:.1f}% of line items mathematically validated")
     
-    # Save detailed results
-    results_file = Path("evaluation_results.json")
-    detailed_results = {
-        'summary': summary,
-        'detailed_evaluations': [asdict(eval_result) for eval_result in evaluations],
-        'metadata': {
-            'total_receipts_processed': len(evaluations),
-            'failed_evaluations': failed_count,
-            'data_directory': str(data_dir),
-            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
-        }
-    }
+    if baseline_metrics.needs_llm > enhanced_metrics.needs_llm and baseline_metrics.receipts_processed > 0:
+        cost_reduction = (baseline_metrics.needs_llm - enhanced_metrics.needs_llm) / baseline_metrics.receipts_processed * 100
+        print(f"  • {cost_reduction:.1f}% reduction in LLM dependency per receipt")
     
-    with open(results_file, 'w') as f:
-        json.dump(detailed_results, f, indent=2)
+    print(f"  • {len(all_column_types)} different column types detected: {', '.join(sorted(all_column_types))}")
     
-    print(f"\n💾 Detailed results saved to: {results_file}")
-    print(f"📊 Total receipts: {len(evaluations)} successful, {failed_count} failed")
+    print(f"\n🎯 Conclusion:")
+    if enhanced_metrics.structured_data_extracted > baseline_metrics.structured_data_extracted:
+        print("  The MultiColumn Handler significantly improves structured data extraction")
+        print("  and reduces reliance on expensive LLM calls for line item detection.")
+    else:
+        print("  The MultiColumn Handler provides similar performance with enhanced features")
+        print("  like mathematical validation and detailed column classification.")
 
 
 if __name__ == "__main__":
