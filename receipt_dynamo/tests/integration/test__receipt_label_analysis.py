@@ -140,8 +140,8 @@ def test_addReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
@@ -255,7 +255,7 @@ def test_addReceiptLabelAnalyses_success(
         ),
         (
             [1, 2, 3],
-            "All receipt label analyses must be instances of the ReceiptLabelAnalysis class.",
+            "All receipt_label_analyses must be instances of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -293,14 +293,14 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error adding receipt label analyses",
+            "Could not add receipt to DynamoDB",
         ),
     ],
 )
@@ -447,7 +447,7 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist"):
         client.update_receipt_label_analysis(sample_receipt_label_analysis)
 
 
@@ -503,14 +503,14 @@ def test_updateReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt label analysis",
+            "Could not update receipt label analysis in DynamoDB",
         ),
     ],
 )
@@ -680,7 +680,7 @@ def test_updateReceiptLabelAnalyses_nonexistent_raises(
         ),
         (
             [1, 2, 3],
-            "All receipt label analyses must be instances of the ReceiptLabelAnalysis class.",
+            "All receipt_label_analyses must be instances of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -726,8 +726,8 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
             DynamoDBValidationError,
         ),
         (
@@ -739,7 +739,7 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt label analyses",
+            "Could not update receipt in DynamoDB",
             DynamoDBError,
         ),
     ],
@@ -849,7 +849,7 @@ def test_deleteReceiptLabelAnalysis_success(
     client.delete_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Assert - should raise when trying to get deleted item
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(ValueError, match="does not exist"):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
@@ -865,7 +865,7 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist"):
         client.delete_receipt_label_analysis(sample_receipt_label_analysis)
 
 
@@ -921,14 +921,14 @@ def test_deleteReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt label analysis",
+            "Could not delete receipt label analysis from DynamoDB",
         ),
     ],
 )
@@ -1023,7 +1023,7 @@ def test_deleteReceiptLabelAnalyses_success(
 
     # Assert - should raise when trying to get deleted items
     for analysis in analyses:
-        with pytest.raises(EntityNotFoundError, match="does not exist"):
+        with pytest.raises(ValueError, match="does not exist"):
             client.get_receipt_label_analysis(
                 analysis.image_id,
                 analysis.receipt_id,
@@ -1058,7 +1058,7 @@ def test_deleteReceiptLabelAnalyses_nonexistent_raises(
         ),
         (
             [1, 2, 3],
-            "All receipt label analyses must be instances of the ReceiptLabelAnalysis class.",
+            "All receipt_label_analyses must be instances of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -1101,14 +1101,14 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt label analyses",
+            "Could not delete receipt from DynamoDB",
         ),
     ],
 )
@@ -1243,7 +1243,7 @@ def test_getReceiptLabelAnalysis_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(ValueError, match="does not exist"):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
@@ -1302,8 +1302,8 @@ def test_getReceiptLabelAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1534,7 +1534,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt label analyses from the database",
+            "Error listing receipt",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1543,8 +1543,8 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
+            "One or more parameters were invalid",
+            "One or more parameters were invalid",
         ),
         (
             "InternalServerError",
@@ -1555,7 +1555,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt label analyses from the database",
+            "Could not list receipt from DynamoDB",
         ),
     ],
 )

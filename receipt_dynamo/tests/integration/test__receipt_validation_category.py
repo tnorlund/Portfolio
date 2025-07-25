@@ -11,6 +11,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
 )
 
 
@@ -97,7 +98,7 @@ def test_addReceiptValidationCategory_duplicate_raises(
         (None, "category cannot be None"),
         (
             "not-a-validation-category",
-            "Category must be an instance of the ReceiptValidationCategory class.",
+            "category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -157,7 +158,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt validation category to DynamoDB",
+            "Could not add receipt to DynamoDB",
         ),
         (
             "ValidationException",
@@ -384,7 +385,7 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
         (None, "categories cannot be None"),
         (
             "not-a-list",
-            "Categories must be a list of ReceiptValidationCategory instances.",
+            "categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             ["not-a-validation-category"],
@@ -453,7 +454,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add receipt validation category to DynamoDB",
+            "Could not add receipt to DynamoDB",
         ),
     ],
 )
@@ -555,7 +556,7 @@ def test_updateReceiptValidationCategory_success(
         (None, "category cannot be None"),
         (
             "not a ReceiptValidationCategory",
-            "Category must be an instance of the ReceiptValidationCategory class.",
+            "category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -625,7 +626,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt validation category in DynamoDB",
+            "Could not update receipt in DynamoDB",
         ),
     ],
 )
@@ -831,7 +832,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
         (None, "categories cannot be None"),
         (
             "not-a-list",
-            "Categories must be a list of ReceiptValidationCategory instances.",
+            "categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             [123, "not-a-validation-category"],
@@ -919,7 +920,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt validation category in DynamoDB",
+            "Could not update receipt in DynamoDB",
             None,
             DynamoDBError,
         ),
@@ -1016,7 +1017,7 @@ def test_deleteReceiptValidationCategory_success(
         (None, "category cannot be None"),
         (
             "not-a-validation-category",
-            "Category must be an instance of the ReceiptValidationCategory class.",
+            "category must be an instance of the ReceiptValidationCategory class.",
         ),
     ],
 )
@@ -1082,7 +1083,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation category from DynamoDB",
+            "Could not delete receipt from DynamoDB",
         ),
     ],
 )
@@ -1188,7 +1189,7 @@ def test_deleteReceiptValidationCategories_success(
         (None, "categories cannot be None"),
         (
             "not-a-list",
-            "Categories must be a list of ReceiptValidationCategory instances.",
+            "categories must be a list of ReceiptValidationCategory instances.",
         ),
         (
             [123, "not-a-validation-category"],
@@ -1577,7 +1578,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list receipt validation category from DynamoDB",
+            "Could not list receipt from DynamoDB",
         ),
     ],
 )

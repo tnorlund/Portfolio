@@ -524,7 +524,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResult in the database",
+            "Could not update receipt validation result to DynamoDB",
         ),
         (
             "ValidationException",
@@ -539,7 +539,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResult in the database",
+            "Could not update receipt validation result in DynamoDB",
         ),
     ],
 )
@@ -895,7 +895,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete receipt validation result from the database",
+            "Could not delete receipt validation result from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -916,7 +916,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation result from the database",
+            "Could not delete receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -1632,7 +1632,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt validation results from DynamoDB",
+            "Could not list receipt validation result from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1657,7 +1657,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt validation results",
+            "Error listing receipt validation result",
         ),
     ],
 )
@@ -1997,7 +1997,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt validation results from DynamoDB",
+            "Could not list receipt validation result from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -2022,7 +2022,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt validation results",
+            "Error listing receipt validation result",
         ),
     ],
 )
@@ -2391,7 +2391,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list ReceiptValidationResults from the database",
+            "Could not list receipt validation result from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -2416,7 +2416,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list ReceiptValidationResults from the database",
+            "Could not list receipt validation result from DynamoDB",
         ),
     ],
 )

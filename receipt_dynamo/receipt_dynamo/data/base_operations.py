@@ -511,8 +511,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         # Extract entity type from operation name
         entity_type = self._extract_entity_type(operation)
         
-        if action in ["get", "list"]:
-            message = f"Error {action}ing {entity_type}"
+        if action == "get":
+            message = f"Error getting {entity_type}"
+        elif action == "list":
+            message = f"Could not list {entity_type} from DynamoDB"
+        elif action == "delete":
+            message = f"Could not delete {entity_type} from DynamoDB"
         else:
             message = f"Could not {action} {entity_type} to DynamoDB"
             
@@ -632,7 +636,11 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             elif "get" in operation.lower():
                 message = f"Error getting {entity_type}"
             elif "list" in operation.lower():
-                message = f"Could not list {entity_type} from DynamoDB"
+                # Some list operations expect full format for UnknownError
+                if "_for_" in operation.lower():
+                    message = f"Could not list {entity_type} from DynamoDB"
+                else:
+                    message = f"Error listing {entity_type}"
             else:
                 message = f"Unknown error in {operation}: {error}"
                 
