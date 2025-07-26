@@ -12,6 +12,12 @@ from .geometry_utils import (
     RowGrouper,
     LineItemSpatialDetector,
 )
+from .negative_space_detector import (
+    NegativeSpaceDetector,
+    WhitespaceRegion,
+    LineItemBoundary,
+    ColumnStructure,
+)
 
 __all__ = [
     "SpatialWord",
@@ -19,4 +25,8 @@ __all__ = [
     "ColumnDetector",
     "RowGrouper",
     "LineItemSpatialDetector",
+    "NegativeSpaceDetector",
+    "WhitespaceRegion",
+    "LineItemBoundary",
+    "ColumnStructure",
 ]
