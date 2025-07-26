@@ -152,12 +152,14 @@ def extract_pattern_matches(receipt_data: Dict) -> List[PatternMatch]:
                 
                 # Create a simple PatternMatch
                 # Note: This is simplified - in practice would need proper word references
+                # PatternMatch expects (word, pattern_type, confidence, matched_text, extracted_value, metadata)
                 match = PatternMatch(
+                    word=None,  # Will be set properly in real implementation
                     pattern_type=pattern_type,
-                    matched_text=label.get('text', ''),
                     confidence=label.get('confidence', 0.8),
-                    word_indices=[label.get('word_index', 0)],
-                    word=None  # Will be set properly in real implementation
+                    matched_text=label.get('text', ''),
+                    extracted_value=label.get('value', ''),
+                    metadata={}
                 )
                 pattern_matches.append(match)
                 
@@ -214,9 +216,9 @@ async def evaluate_single_receipt(receipt_data: Dict, receipt_id: str) -> Receip
         # Use HorizontalLineItemDetector for full analysis
         detector = HorizontalLineItemDetector(
             config=HorizontalGroupingConfig(
-                y_tolerance=0.02,
                 min_confidence=0.3,
-                x_gap_threshold=0.8
+                gap_multiplier=3.0,
+                alignment_threshold=0.7
             )
         )
         
