@@ -465,6 +465,127 @@ class ColumnDetector:
         return 0.5
 
 
+def is_horizontally_aligned_group(words: List[ReceiptWord]) -> bool:
+    """
+    Check if words form a horizontally aligned group using baseline geometry.
+    
+    Uses geometric line analysis to detect when words belong to the same 
+    horizontal line by checking if their baselines align.
+    
+    Args:
+        words: List of words to check for horizontal alignment
+        
+    Returns:
+        bool: True if words form a horizontally aligned group (min 2 words)
+    """
+    if len(words) < 2:
+        return False
+    
+    # Sort words by x position to process left to right
+    sorted_words = sorted(words, key=lambda w: w.bounding_box['x'])
+    
+    # For each pair of words, check if they share a baseline
+    for i in range(len(sorted_words) - 1):
+        word1 = sorted_words[i]
+        word2 = sorted_words[i + 1]
+        
+        if not _words_share_baseline(word1, word2):
+            return False
+    
+    return True
+
+
+def _words_share_baseline(word1: ReceiptWord, word2: ReceiptWord) -> bool:
+    """
+    Check if two words share a common baseline using geometric line intersection.
+    
+    Creates a line from word1's baseline (BL to BR) and checks if it passes
+    through word2's vertical band (between TL/BL or TR/BR).
+    
+    Args:
+        word1: First word
+        word2: Second word to check alignment with
+        
+    Returns:
+        bool: True if words share a baseline
+    """
+    # Get word1's baseline points
+    bl1 = word1.bottom_left
+    br1 = word1.bottom_right
+    
+    # Calculate line equation from word1's baseline: y = mx + b
+    # Handle vertical lines (shouldn't happen for baselines, but be safe)
+    if br1['x'] == bl1['x']:
+        return False
+    
+    m = (br1['y'] - bl1['y']) / (br1['x'] - bl1['x'])
+    b = bl1['y'] - m * bl1['x']
+    
+    # Check if this line passes through word2's vertical bands
+    # For left side: check at word2's left x position
+    x_left = word2.bottom_left['x']
+    y_at_left = m * x_left + b
+    
+    # For right side: check at word2's right x position  
+    x_right = word2.bottom_right['x']
+    y_at_right = m * x_right + b
+    
+    # Check if the baseline intersects word2's vertical band on either side
+    # Left side: between TL and BL
+    left_intersects = (word2.top_left['y'] <= y_at_left <= word2.bottom_left['y'] or
+                      word2.bottom_left['y'] <= y_at_left <= word2.top_left['y'])
+    
+    # Right side: between TR and BR
+    right_intersects = (word2.top_right['y'] <= y_at_right <= word2.bottom_right['y'] or
+                       word2.bottom_right['y'] <= y_at_right <= word2.top_right['y'])
+    
+    return left_intersects or right_intersects
+
+
+def group_words_into_line_items(words: List[ReceiptWord]) -> List[List[ReceiptWord]]:
+    """
+    Group words into line items based on shared baselines.
+    
+    Uses geometric baseline analysis to group words that share the same 
+    baseline into line items.
+    
+    Args:
+        words: List of all words on the receipt
+        
+    Returns:
+        List of word groups, each representing a potential line item
+    """
+    if not words or len(words) < 2:
+        return []
+    
+    # Group words by horizontal alignment
+    line_groups = []
+    remaining_words = words.copy()
+    
+    while remaining_words:
+        # Start a new line with the first remaining word
+        current_word = remaining_words.pop(0)
+        current_line = [current_word]
+        
+        # Find all other words that share a baseline with this word
+        words_to_check = remaining_words[:]
+        for word in words_to_check:
+            # Check if this word aligns with the current line
+            test_group = current_line + [word]
+            if is_horizontally_aligned_group(test_group):
+                current_line.append(word)
+                remaining_words.remove(word)
+        
+        # Sort by X position
+        current_line.sort(key=lambda w: w.bounding_box['x'])
+        
+        # Only keep groups with at least 2 words
+        if len(current_line) >= 2:
+            line_groups.append(current_line)
+    
+    return line_groups
+
+
 class LineItemSpatialDetector:
     """Main spatial detector for line items using pattern-first approach."""
 
@@ -474,9 +595,11 @@ class LineItemSpatialDetector:
         x_tolerance: float = 0.05,
         min_confidence: float = 0.3,
     ):
+        self.y_tolerance = y_tolerance
+        self.x_tolerance = x_tolerance
+        self.min_confidence = min_confidence
         self.row_grouper = RowGrouper(y_tolerance)
         self.column_detector = ColumnDetector(x_tolerance)
-        self.min_confidence = min_confidence
 
     def detect_spatial_structure(
         self,
@@ -498,14 +621,20 @@ class LineItemSpatialDetector:
 
         # Step 3: Apply spatial heuristics from the other model's recommendations
         enhanced_rows = self._apply_spatial_heuristics(rows, columns)
+        
+        # Step 4: Use horizontal grouping to detect line items
+        line_items = group_words_into_line_items(words)
+        logger.info(f"Detected {len(line_items)} potential line items using horizontal grouping")
 
         return {
             "rows": enhanced_rows,
             "columns": columns,
+            "line_items": line_items,
             "metadata": {
                 "total_words": len(words),
                 "row_count": len(rows),
                 "column_count": len(columns),
+                "line_item_count": len(line_items),
                 "column_types": [c.column_type for c in columns],
                 "avg_confidence": (
                     sum(c.confidence for c in columns) / len(columns)

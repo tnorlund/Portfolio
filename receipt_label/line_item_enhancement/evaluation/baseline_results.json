@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-07-24 12:41:25",
+  "metrics": {
+    "total_receipts": 20,
+    "successful_evaluations": 20,
+    "total_words_processed": 3669,
+    "total_line_items_detected": 276,
+    "average_line_items_per_receipt": 13.8,
+    "average_processing_time_ms": 0.9503602981567383,
+    "average_confidence": 0.3771739130434783,
+    "horizontal_grouping_success_rate": 1.0,
+    "error_rate": 0.0
+  },
+  "errors": []
+}

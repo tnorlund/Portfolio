@@ -6,6 +6,8 @@ Tests the utility classes and functions used for spatial analysis:
 - SpatialLine: Spatial line analysis capabilities
 - RowGrouper: Groups words into rows using spatial relationships
 - ColumnDetector: Detects column structure in receipt layout
+- is_horizontally_aligned_group: Horizontal alignment detection
+- group_words_into_line_items: Line item grouping
 """
 
 import pytest
@@ -18,6 +20,8 @@ from receipt_label.spatial.geometry_utils import (
     SpatialLine,
     SpatialRow,
     SpatialWord,
+    is_horizontally_aligned_group,
+    group_words_into_line_items,
 )
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 
@@ -860,3 +864,211 @@ class TestLineItemSpatialDetector:
         # Both should detect structure
         assert len(high_structure["rows"]) >= 1
         assert len(low_structure["rows"]) >= 1
+
+
+class TestHorizontalGroupingFunctions:
+    """Test cases for horizontal grouping utility functions."""
+
+    @pytest.fixture
+    def aligned_words(self):
+        """Create words that are horizontally aligned."""
+        return [
+            create_receipt_word(
+                text="BURGER",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.15, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="DELUXE",
+                bounding_box={"x": 0.3, "y": 0.205, "width": 0.12, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="$8.99",
+                bounding_box={"x": 0.8, "y": 0.21, "width": 0.08, "height": 0.02}
+            ),
+        ]
+
+    @pytest.fixture
+    def misaligned_words(self):
+        """Create words that are NOT horizontally aligned."""
+        return [
+            create_receipt_word(
+                text="BURGER",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.15, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="SUBTOTAL",
+                bounding_box={"x": 0.1, "y": 0.4, "width": 0.15, "height": 0.02}
+            ),
+        ]
+
+    @pytest.mark.unit
+    def test_is_horizontally_aligned_group_success(self, aligned_words):
+        """Test successful horizontal alignment detection."""
+        assert is_horizontally_aligned_group(aligned_words) is True
+        
+    @pytest.mark.unit
+    def test_is_horizontally_aligned_group_failure(self, misaligned_words):
+        """Test detection of misaligned words."""
+        assert is_horizontally_aligned_group(misaligned_words) is False
+        
+    @pytest.mark.unit
+    def test_is_horizontally_aligned_group_tolerance(self):
+        """Test horizontal alignment with dynamic height-based tolerance."""
+        # Words with y-difference greater than average height
+        words_misaligned = [
+            create_receipt_word(
+                text="ITEM",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="PRICE",
+                bounding_box={"x": 0.8, "y": 0.23, "width": 0.08, "height": 0.02}
+            ),
+        ]
+        
+        # Y-difference (0.03) > average height (0.02) - should fail
+        assert is_horizontally_aligned_group(words_misaligned) is False
+        
+        # Words with y-difference less than average height
+        words_aligned = [
+            create_receipt_word(
+                text="ITEM",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="PRICE",
+                bounding_box={"x": 0.8, "y": 0.21, "width": 0.08, "height": 0.02}
+            ),
+        ]
+        
+        # Y-difference (0.01) < average height (0.02) - should pass
+        assert is_horizontally_aligned_group(words_aligned) is True
+        
+    @pytest.mark.unit
+    def test_is_horizontally_aligned_group_edge_cases(self):
+        """Test edge cases for horizontal alignment."""
+        # Empty list
+        assert is_horizontally_aligned_group([]) is False
+        
+        # Single word
+        single = [create_receipt_word(text="SINGLE")]
+        assert is_horizontally_aligned_group(single) is False
+        
+        # Words at same position share a baseline, so they're aligned
+        same_pos = [
+            create_receipt_word(
+                text="A",
+                bounding_box={"x": 0.5, "y": 0.2, "width": 0.01, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="B", 
+                bounding_box={"x": 0.5, "y": 0.2, "width": 0.01, "height": 0.02}
+            ),
+        ]
+        assert is_horizontally_aligned_group(same_pos) is True
+
+    @pytest.mark.unit
+    def test_group_words_into_line_items_basic(self):
+        """Test basic line item grouping."""
+        words = [
+            # Line 1 - words closer together to avoid gap splitting
+            create_receipt_word(
+                text="BURGER",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.15, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="DELUXE",
+                bounding_box={"x": 0.3, "y": 0.2, "width": 0.12, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="$8.99",
+                bounding_box={"x": 0.5, "y": 0.2, "width": 0.08, "height": 0.02}
+            ),
+            # Line 2
+            create_receipt_word(
+                text="FRIES",
+                bounding_box={"x": 0.1, "y": 0.25, "width": 0.12, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="LARGE",
+                bounding_box={"x": 0.3, "y": 0.25, "width": 0.10, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="$3.99",
+                bounding_box={"x": 0.5, "y": 0.25, "width": 0.08, "height": 0.02}
+            ),
+        ]
+        
+        line_items = group_words_into_line_items(words)
+        
+        assert len(line_items) == 2
+        assert len(line_items[0]) == 3  # BURGER DELUXE $8.99
+        assert len(line_items[1]) == 3  # FRIES LARGE $3.99
+        
+    @pytest.mark.unit
+    def test_group_words_into_line_items_with_gaps(self):
+        """Test line item grouping - gaps no longer affect grouping."""
+        words = [
+            # Two items on same line with large gap
+            create_receipt_word(
+                text="LEFT",
+                bounding_box={"x": 0.05, "y": 0.2, "width": 0.08, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="$1.99",
+                bounding_box={"x": 0.2, "y": 0.2, "width": 0.08, "height": 0.02}
+            ),
+            # Large gap before next item
+            create_receipt_word(
+                text="RIGHT",
+                bounding_box={"x": 0.7, "y": 0.2, "width": 0.08, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="$2.99",
+                bounding_box={"x": 0.85, "y": 0.2, "width": 0.08, "height": 0.02}
+            ),
+        ]
+        
+        # Geometric approach groups all words on same baseline regardless of gaps
+        line_items = group_words_into_line_items(words)
+        assert len(line_items) == 1  # All share same baseline
+        
+        # All words on same baseline are grouped together
+        assert len(line_items) == 1
+        
+    @pytest.mark.unit
+    def test_group_words_into_line_items_with_patterns(self):
+        """Test line item grouping with pattern matches."""
+        words = [
+            create_receipt_word(text="BURGER", bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}),
+            create_receipt_word(text="2", bounding_box={"x": 0.4, "y": 0.2, "width": 0.03, "height": 0.02}),
+            create_receipt_word(text="@", bounding_box={"x": 0.45, "y": 0.2, "width": 0.02, "height": 0.02}),
+            create_receipt_word(text="$4.99", bounding_box={"x": 0.5, "y": 0.2, "width": 0.08, "height": 0.02}),
+        ]
+        
+        # Test without patterns - simplified for now
+        line_items = group_words_into_line_items(words)  
+        
+        # Should keep all words together as single line item
+        assert len(line_items) == 1
+        assert len(line_items[0]) == 4
+        
+    @pytest.mark.unit
+    def test_detect_spatial_structure_with_line_items(self):
+        """Test that spatial structure detection includes line items."""
+        # Create simple test words
+        words = [
+            create_receipt_word(text="ITEM", bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}),
+            create_receipt_word(text="$5.99", bounding_box={"x": 0.8, "y": 0.2, "width": 0.08, "height": 0.02}),
+        ]
+        
+        detector = LineItemSpatialDetector(y_tolerance=0.03)
+        structure = detector.detect_spatial_structure(words)
+        
+        # Should now include line_items in the structure
+        assert "line_items" in structure
+        assert isinstance(structure["line_items"], list)
+        
+        # Metadata should include line item count
+        assert "line_item_count" in structure["metadata"]
+        assert structure["metadata"]["line_item_count"] >= 0
