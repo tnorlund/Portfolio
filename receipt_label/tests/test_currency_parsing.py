@@ -77,7 +77,7 @@ def load_receipt_data(file_path):
     words = convert_to_receipt_words(words_data)
     
     # Extract pattern matches
-    pattern_matches = extract_pattern_matches(receipt_data)
+    pattern_matches = extract_pattern_matches(receipt_data, words)
     
     # Debug output
     print(f"DEBUG: Found {len(words)} words, {len(pattern_matches)} patterns")
