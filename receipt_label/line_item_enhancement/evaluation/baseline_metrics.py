@@ -132,9 +132,25 @@ def convert_to_receipt_words(words_data: List[Dict]) -> List[ReceiptWord]:
     return receipt_words
 
 
-def extract_pattern_matches(receipt_data: Dict) -> List[PatternMatch]:
-    """Extract pattern matches from receipt data if available."""
+def extract_pattern_matches(receipt_data: Dict, receipt_words: List[ReceiptWord]) -> List[PatternMatch]:
+    """Extract pattern matches from receipt data and associate with ReceiptWord objects.
+    
+    Args:
+        receipt_data: Receipt data containing labels
+        receipt_words: List of ReceiptWord objects to match against
+        
+    Returns:
+        List of PatternMatch objects with proper word associations
+    """
     pattern_matches = []
+    
+    # Create a mapping of text to ReceiptWord for quick lookup
+    text_to_word = {}
+    for word in receipt_words:
+        # Store by text for exact matches
+        text_to_word[word.text] = word
+        # Also store lowercase version for case-insensitive matching
+        text_to_word[word.text.lower()] = word
     
     # Look for labels or patterns in the data
     if 'labels' in receipt_data:
@@ -150,18 +166,23 @@ def extract_pattern_matches(receipt_data: Dict) -> List[PatternMatch]:
                 elif 'date' in label.get('type', '').lower():
                     pattern_type = PatternType.DATE
                 
-                # Create a simple PatternMatch
-                # Note: This is simplified - in practice would need proper word references
-                # PatternMatch expects (word, pattern_type, confidence, matched_text, extracted_value, metadata)
-                match = PatternMatch(
-                    word=None,  # Will be set properly in real implementation
-                    pattern_type=pattern_type,
-                    confidence=label.get('confidence', 0.8),
-                    matched_text=label.get('text', ''),
-                    extracted_value=label.get('value', ''),
-                    metadata={}
-                )
-                pattern_matches.append(match)
+                # Find the corresponding ReceiptWord
+                label_text = label.get('text', '')
+                matched_word = text_to_word.get(label_text) or text_to_word.get(label_text.lower())
+                
+                if matched_word:
+                    # Create PatternMatch with proper word reference
+                    match = PatternMatch(
+                        word=matched_word,
+                        pattern_type=pattern_type,
+                        confidence=label.get('confidence', 0.8),
+                        matched_text=label_text,
+                        extracted_value=label.get('value', ''),
+                        metadata={'label_type': label.get('type', '')}
+                    )
+                    pattern_matches.append(match)
+                else:
+                    logger.debug(f"Could not find ReceiptWord for label text: {label_text}")
                 
             except Exception as e:
                 logger.warning(f"Error converting label to pattern: {e}")
@@ -205,7 +226,7 @@ async def evaluate_single_receipt(receipt_data: Dict, receipt_id: str) -> Receip
             )
         
         # Extract pattern matches if available
-        pattern_matches = extract_pattern_matches(receipt_data)
+        pattern_matches = extract_pattern_matches(receipt_data, receipt_words)
         
         # Test horizontal grouping functionality
         horizontal_groups = group_words_into_line_items(receipt_words)
