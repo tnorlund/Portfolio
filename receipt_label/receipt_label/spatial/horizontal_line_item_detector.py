@@ -257,18 +257,23 @@ class HorizontalLineItemDetector:
         if not quantity_words:
             return None
             
-        # Use the first quantity found
-        _, word, pattern = quantity_words[0]
-        
-        # Extract numeric value from pattern
         try:
-            # This is simplified - would need proper quantity parsing
+            # Use the first quantity found
+            _, word, pattern = quantity_words[0]
+            
+            # Validate word has text attribute
+            if not hasattr(word, 'text') or word.text is None:
+                logger.debug("Word missing text attribute or text is None")
+                return None
+            
+            # Extract numeric value from pattern
             import re
             numbers = re.findall(r'\d+(?:\.\d+)?', word.text)
             if numbers:
                 return float(numbers[0])
-        except:
-            pass
+                
+        except (ValueError, AttributeError, TypeError, IndexError) as e:
+            logger.debug(f"Failed to extract quantity: {e}")
             
         return None
         
@@ -310,8 +315,8 @@ class HorizontalLineItemDetector:
             number_match = re.search(r'[\d,]+\.?\d*', text)
             if number_match:
                 return float(number_match.group().replace(',', ''))
-        except:
-            pass
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.debug(f"Failed to parse currency value from '{text}': {e}")
         return None
         
     def _calculate_confidence(
