@@ -102,8 +102,8 @@ class TestHorizontalAlignment:
         
     @pytest.mark.unit
     def test_is_horizontally_aligned_group_tolerance(self, sample_receipt_words):
-        """Test horizontal alignment with tolerance."""
-        # Create words with slight Y variation
+        """Test horizontal alignment with centroid-based detection."""
+        # Create words with overlapping vertical bands
         word1 = create_receipt_word(
             text="TEST1",
             bounding_box={"x": 0.1, "y": 0.200, "width": 0.1, "height": 0.02},
@@ -111,23 +111,20 @@ class TestHorizontalAlignment:
         )
         word2 = create_receipt_word(
             text="TEST2",
-            bounding_box={"x": 0.3, "y": 0.215, "width": 0.1, "height": 0.02},
+            bounding_box={"x": 0.3, "y": 0.205, "width": 0.1, "height": 0.02},
             word_id=2
         )
         
-        # Within default tolerance (0.02)
+        # Words with overlapping vertical bands should align
         assert is_horizontally_aligned_group([word1, word2]) is True
         
-        # Outside tolerance
+        # Words with non-overlapping vertical bands
         word3 = create_receipt_word(
             text="TEST3",
-            bounding_box={"x": 0.5, "y": 0.225, "width": 0.1, "height": 0.02},
+            bounding_box={"x": 0.5, "y": 0.250, "width": 0.1, "height": 0.02},
             word_id=3
         )
         assert is_horizontally_aligned_group([word1, word3]) is False
-        
-        # With larger tolerance
-        assert is_horizontally_aligned_group([word1, word3], tolerance=0.03) is True
         
     @pytest.mark.unit
     def test_is_horizontally_aligned_group_min_words(self):
@@ -148,17 +145,17 @@ class TestHorizontalAlignment:
         """Test words stacked vertically (same X, different Y)."""
         words = [
             create_receipt_word(
-            text="STACK1",
-            bounding_box={"x": 0.5, "y": 0.2, "width": 0.1, "height": 0.02},
-            word_id=1
-        ),
+                text="STACK1",
+                bounding_box={"x": 0.5, "y": 0.2, "width": 0.1, "height": 0.02},
+                word_id=1
+            ),
             create_receipt_word(
-            text="STACK2",
-            bounding_box={"x": 0.5, "y": 0.2, "width": 0.1, "height": 0.02},
-            word_id=2
-        )
+                text="STACK2",
+                bounding_box={"x": 0.5, "y": 0.3, "width": 0.1, "height": 0.02},  # Different Y
+                word_id=2
+            )
         ]
-        # Same X position - not a horizontal group
+        # Different Y positions - not horizontally aligned
         assert is_horizontally_aligned_group(words) is False
 
 
@@ -191,10 +188,7 @@ class TestLineItemGrouping:
         self, sample_receipt_words, sample_pattern_matches
     ):
         """Test line item grouping with pattern matches."""
-        line_items = group_words_into_line_items(
-            sample_receipt_words, 
-            sample_pattern_matches
-        )
+        line_items = group_words_into_line_items(sample_receipt_words)
         
         # Pattern matches should help keep related words together
         assert len(line_items) == 3
@@ -207,39 +201,35 @@ class TestLineItemGrouping:
         
     @pytest.mark.unit
     def test_group_words_into_line_items_gap_detection(self):
-        """Test line item separation based on horizontal gaps."""
+        """Test line item grouping - gaps no longer cause separation."""
         words = [
             # First group
             create_receipt_word(
-            text="ITEM1",
-            bounding_box={"x": 0.05, "y": 0.2, "width": 0.1, "height": 0.02},
-            word_id=1
-        ),
+                text="ITEM1",
+                bounding_box={"x": 0.05, "y": 0.2, "width": 0.1, "height": 0.02},
+                word_id=1
+            ),
             create_receipt_word(
-            text="$1.99",
-            bounding_box={"x": 0.25, "y": 0.2, "width": 0.08, "height": 0.02},
-            word_id=2
-        ),
-            # Large gap (>0.8 threshold) to second group  
+                text="$1.99",
+                bounding_box={"x": 0.25, "y": 0.2, "width": 0.08, "height": 0.02},
+                word_id=2
+            ),
+            # Large gap to second group - still same baseline
             create_receipt_word(
-            text="ITEM2", 
-            bounding_box={"x": 1.2, "y": 0.2, "width": 0.1, "height": 0.02},
-            word_id=3
-        ),
+                text="ITEM2", 
+                bounding_box={"x": 1.2, "y": 0.2, "width": 0.1, "height": 0.02},
+                word_id=3
+            ),
             create_receipt_word(
-            text="$2.99",
-            bounding_box={"x": 1.35, "y": 0.2, "width": 0.08, "height": 0.02},
-            word_id=4
-        ),
+                text="$2.99",
+                bounding_box={"x": 1.35, "y": 0.2, "width": 0.08, "height": 0.02},
+                word_id=4
+            ),
         ]
         
-        # With default gap threshold (0.8), should split into 2 groups 
+        # Geometric approach groups all words on same baseline
         line_items = group_words_into_line_items(words)
-        assert len(line_items) == 2  # Two separate groups
-        
-        # With larger gap threshold, should group as one
-        line_items = group_words_into_line_items(words, x_gap_threshold=1.0)
-        assert len(line_items) == 1
+        assert len(line_items) == 1  # One group - all share baseline
 
 
 class TestHorizontalLineItemDetector:
@@ -249,13 +239,15 @@ class TestHorizontalLineItemDetector:
     def test_detector_initialization(self):
         """Test detector initialization with custom config."""
         config = HorizontalGroupingConfig(
-            y_tolerance=0.03,
-            min_confidence=0.7
+            min_confidence=0.7,
+            gap_multiplier=4.0,
+            alignment_threshold=0.8
         )
         detector = HorizontalLineItemDetector(config)
         
-        assert detector.config.y_tolerance == 0.03
         assert detector.config.min_confidence == 0.7
+        assert detector.config.gap_multiplier == 4.0
+        assert detector.config.alignment_threshold == 0.8
         
     @pytest.mark.unit
     def test_detect_line_items_basic(

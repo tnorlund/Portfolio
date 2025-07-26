@@ -913,8 +913,9 @@ class TestHorizontalGroupingFunctions:
         
     @pytest.mark.unit
     def test_is_horizontally_aligned_group_tolerance(self):
-        """Test horizontal alignment with custom tolerance."""
-        words = [
+        """Test horizontal alignment with dynamic height-based tolerance."""
+        # Words with y-difference greater than average height
+        words_misaligned = [
             create_receipt_word(
                 text="ITEM",
                 bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}
@@ -925,11 +926,23 @@ class TestHorizontalGroupingFunctions:
             ),
         ]
         
-        # Default tolerance (0.02) - should fail
-        assert is_horizontally_aligned_group(words) is False
+        # Y-difference (0.03) > average height (0.02) - should fail
+        assert is_horizontally_aligned_group(words_misaligned) is False
         
-        # Larger tolerance - should pass
-        assert is_horizontally_aligned_group(words, tolerance=0.05) is True
+        # Words with y-difference less than average height
+        words_aligned = [
+            create_receipt_word(
+                text="ITEM",
+                bounding_box={"x": 0.1, "y": 0.2, "width": 0.1, "height": 0.02}
+            ),
+            create_receipt_word(
+                text="PRICE",
+                bounding_box={"x": 0.8, "y": 0.21, "width": 0.08, "height": 0.02}
+            ),
+        ]
+        
+        # Y-difference (0.01) < average height (0.02) - should pass
+        assert is_horizontally_aligned_group(words_aligned) is True
         
     @pytest.mark.unit
     def test_is_horizontally_aligned_group_edge_cases(self):
@@ -941,7 +954,7 @@ class TestHorizontalGroupingFunctions:
         single = [create_receipt_word(text="SINGLE")]
         assert is_horizontally_aligned_group(single) is False
         
-        # Words at same position (no horizontal span)
+        # Words at same position share a baseline, so they're aligned
         same_pos = [
             create_receipt_word(
                 text="A",
@@ -952,20 +965,24 @@ class TestHorizontalGroupingFunctions:
                 bounding_box={"x": 0.5, "y": 0.2, "width": 0.01, "height": 0.02}
             ),
         ]
-        assert is_horizontally_aligned_group(same_pos) is False
+        assert is_horizontally_aligned_group(same_pos) is True
 
     @pytest.mark.unit
     def test_group_words_into_line_items_basic(self):
         """Test basic line item grouping."""
         words = [
-            # Line 1
+            # Line 1 - words closer together to avoid gap splitting
             create_receipt_word(
                 text="BURGER",
                 bounding_box={"x": 0.1, "y": 0.2, "width": 0.15, "height": 0.02}
             ),
             create_receipt_word(
+                text="DELUXE",
+                bounding_box={"x": 0.3, "y": 0.2, "width": 0.12, "height": 0.02}
+            ),
+            create_receipt_word(
                 text="$8.99",
-                bounding_box={"x": 0.8, "y": 0.2, "width": 0.08, "height": 0.02}
+                bounding_box={"x": 0.5, "y": 0.2, "width": 0.08, "height": 0.02}
             ),
             # Line 2
             create_receipt_word(
@@ -973,20 +990,24 @@ class TestHorizontalGroupingFunctions:
                 bounding_box={"x": 0.1, "y": 0.25, "width": 0.12, "height": 0.02}
             ),
             create_receipt_word(
+                text="LARGE",
+                bounding_box={"x": 0.3, "y": 0.25, "width": 0.10, "height": 0.02}
+            ),
+            create_receipt_word(
                 text="$3.99",
-                bounding_box={"x": 0.8, "y": 0.25, "width": 0.08, "height": 0.02}
+                bounding_box={"x": 0.5, "y": 0.25, "width": 0.08, "height": 0.02}
             ),
         ]
         
         line_items = group_words_into_line_items(words)
         
         assert len(line_items) == 2
-        assert len(line_items[0]) == 2
-        assert len(line_items[1]) == 2
+        assert len(line_items[0]) == 3  # BURGER DELUXE $8.99
+        assert len(line_items[1]) == 3  # FRIES LARGE $3.99
         
     @pytest.mark.unit
     def test_group_words_into_line_items_with_gaps(self):
-        """Test line item grouping with horizontal gaps."""
+        """Test line item grouping - gaps no longer affect grouping."""
         words = [
             # Two items on same line with large gap
             create_receipt_word(
@@ -1008,13 +1029,12 @@ class TestHorizontalGroupingFunctions:
             ),
         ]
         
-        # Default gap threshold (0.8) should keep them as one group
+        # Geometric approach groups all words on same baseline regardless of gaps
         line_items = group_words_into_line_items(words)
-        assert len(line_items) == 1  # All on same line with default threshold
+        assert len(line_items) == 1  # All share same baseline
         
-        # Smaller gap threshold should split them
-        line_items = group_words_into_line_items(words, x_gap_threshold=0.3)
-        assert len(line_items) == 2
+        # All words on same baseline are grouped together
+        assert len(line_items) == 1
         
     @pytest.mark.unit
     def test_group_words_into_line_items_with_patterns(self):
@@ -1027,7 +1047,7 @@ class TestHorizontalGroupingFunctions:
         ]
         
         # Test without patterns - simplified for now
-        line_items = group_words_into_line_items(words, None)  
+        line_items = group_words_into_line_items(words)  
         
         # Should keep all words together as single line item
         assert len(line_items) == 1

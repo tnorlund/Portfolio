@@ -208,10 +208,7 @@ async def evaluate_single_receipt(receipt_data: Dict, receipt_id: str) -> Receip
         pattern_matches = extract_pattern_matches(receipt_data)
         
         # Test horizontal grouping functionality
-        horizontal_groups = group_words_into_line_items(
-            receipt_words, 
-            pattern_matches
-        )
+        horizontal_groups = group_words_into_line_items(receipt_words)
         
         # Use HorizontalLineItemDetector for full analysis
         detector = HorizontalLineItemDetector(

@@ -118,9 +118,9 @@ async def evaluate_receipt(receipt_file: Path) -> Dict:
         # Test detector
         detector = HorizontalLineItemDetector(
             config=HorizontalGroupingConfig(
-                y_tolerance=0.02,
                 min_confidence=0.3,
-                x_gap_threshold=0.8
+                gap_multiplier=3.0,
+                alignment_threshold=0.7
             )
         )
         

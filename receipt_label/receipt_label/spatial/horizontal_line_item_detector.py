@@ -38,20 +38,17 @@ class LineItem:
 class HorizontalGroupingConfig:
     """Configuration for horizontal grouping detection."""
     
-    # Y-coordinate tolerance for same line detection
-    y_tolerance: float = 0.02
-    
-    # X-coordinate gap threshold for line item separation
-    x_gap_threshold: float = 0.8
-    
     # Minimum confidence to accept a line item
     min_confidence: float = 0.3
     
     # Minimum words required for a valid line item
     min_words_per_item: int = 2
     
-    # Maximum horizontal distance between related words
-    max_word_distance: float = 0.15
+    # Gap multiplier for dynamic threshold (gap = multiplier * avg_word_width)
+    gap_multiplier: float = 3.0
+    
+    # Minimum percentage of words that must align horizontally
+    alignment_threshold: float = 0.7
     
 
 class HorizontalLineItemDetector:
@@ -94,12 +91,7 @@ class HorizontalLineItemDetector:
         logger.info(f"Detecting line items from {len(words)} words")
         
         # Step 1: Group words into potential line items
-        word_groups = group_words_into_line_items(
-            words, 
-            pattern_matches,
-            self.config.y_tolerance,
-            self.config.x_gap_threshold
-        )
+        word_groups = group_words_into_line_items(words)
         
         # Step 2: Analyze each group to extract line item information
         line_items = []
@@ -125,8 +117,8 @@ class HorizontalLineItemDetector:
         if pattern_matches:
             for i, match in enumerate(pattern_matches):
                 # Map by word ID if available, otherwise use negative index to avoid collision
-                if hasattr(match.word, 'id'):
-                    pattern_map[match.word.id] = match
+                if match.word and hasattr(match.word, 'word_id'):
+                    pattern_map[match.word.word_id] = match
                 else:
                     # Use negative index to avoid collision with word IDs
                     pattern_map[-i-1] = match
@@ -188,9 +180,9 @@ class HorizontalLineItemDetector:
         pattern_map: Dict[int, PatternMatch]
     ) -> Optional[int]:
         """Find the index of a word in the pattern map."""
-        # Check if word has an ID and if it's in the pattern map
-        if hasattr(word, 'id') and word.id in pattern_map:
-            return word.id
+        # Check if word has a word_id and if it's in the pattern map
+        if hasattr(word, 'word_id') and word.word_id in pattern_map:
+            return word.word_id
         
         # Otherwise check if word matches any pattern's word
         for idx, pattern in pattern_map.items():

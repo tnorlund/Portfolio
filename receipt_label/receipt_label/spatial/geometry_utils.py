@@ -465,152 +465,125 @@ class ColumnDetector:
         return 0.5
 
 
-def is_horizontally_aligned_group(
-    words: List[ReceiptWord], 
-    tolerance: float = 0.02,
-    min_words: int = 2
-) -> bool:
+def is_horizontally_aligned_group(words: List[ReceiptWord]) -> bool:
     """
-    Check if a group of words forms a horizontally aligned line item.
+    Check if words form a horizontally aligned group using baseline geometry.
     
-    This function implements the horizontal grouping logic to detect when words
-    belong to the same line item based on their Y-coordinate alignment.
+    Uses geometric line analysis to detect when words belong to the same 
+    horizontal line by checking if their baselines align.
     
     Args:
         words: List of words to check for horizontal alignment
-        tolerance: Y-coordinate tolerance for considering words on same line (default 0.02)
-        min_words: Minimum number of words required for a valid group (default 2)
         
     Returns:
-        bool: True if words form a horizontally aligned group
+        bool: True if words form a horizontally aligned group (min 2 words)
     """
-    if len(words) < min_words:
+    if len(words) < 2:
         return False
+    
+    # Sort words by x position to process left to right
+    sorted_words = sorted(words, key=lambda w: w.bounding_box['x'])
+    
+    # For each pair of words, check if they share a baseline
+    for i in range(len(sorted_words) - 1):
+        word1 = sorted_words[i]
+        word2 = sorted_words[i + 1]
         
-    # Convert to SpatialWords for easier processing
-    spatial_words = [SpatialWord(w) for w in words]
-    
-    # Get Y-coordinates
-    y_coords = [sw.y for sw in spatial_words]
-    
-    # Check if all words are within tolerance of the median Y
-    median_y = sorted(y_coords)[len(y_coords) // 2]
-    
-    for y in y_coords:
-        if abs(y - median_y) > tolerance:
+        if not _words_share_baseline(word1, word2):
             return False
-            
-    # Additional check: words should span some horizontal distance
-    x_coords = [sw.x for sw in spatial_words]
-    x_span = max(x_coords) - min(x_coords)
     
-    # If all words are at the same X position, they're not a horizontal group
-    if x_span < 0.01:  # Very small threshold
-        return False
-        
     return True
 
 
-def group_words_into_line_items(
-    words: List[ReceiptWord],
-    pattern_matches: Optional[List[PatternMatch]] = None,
-    y_tolerance: float = 0.02,
-    x_gap_threshold: float = 0.8
-) -> List[List[ReceiptWord]]:
+def _words_share_baseline(word1: ReceiptWord, word2: ReceiptWord) -> bool:
     """
-    Group words into potential line items based on horizontal alignment and proximity.
+    Check if two words share a common baseline using geometric line intersection.
     
-    This function implements enhanced horizontal grouping logic that:
-    1. Groups words on the same Y-coordinate (within tolerance)
-    2. Splits groups if there's a large horizontal gap
-    3. Considers pattern matches to keep related words together
+    Creates a line from word1's baseline (BL to BR) and checks if it passes
+    through word2's vertical band (between TL/BL or TR/BR).
+    
+    Args:
+        word1: First word
+        word2: Second word to check alignment with
+        
+    Returns:
+        bool: True if words share a baseline
+    """
+    # Get word1's baseline points
+    bl1 = word1.bottom_left
+    br1 = word1.bottom_right
+    
+    # Calculate line equation from word1's baseline: y = mx + b
+    # Handle vertical lines (shouldn't happen for baselines, but be safe)
+    if br1['x'] == bl1['x']:
+        return False
+    
+    m = (br1['y'] - bl1['y']) / (br1['x'] - bl1['x'])
+    b = bl1['y'] - m * bl1['x']
+    
+    # Check if this line passes through word2's vertical bands
+    # For left side: check at word2's left x position
+    x_left = word2.bottom_left['x']
+    y_at_left = m * x_left + b
+    
+    # For right side: check at word2's right x position  
+    x_right = word2.bottom_right['x']
+    y_at_right = m * x_right + b
+    
+    # Check if the baseline intersects word2's vertical band on either side
+    # Left side: between TL and BL
+    left_intersects = (word2.top_left['y'] <= y_at_left <= word2.bottom_left['y'] or
+                      word2.bottom_left['y'] <= y_at_left <= word2.top_left['y'])
+    
+    # Right side: between TR and BR
+    right_intersects = (word2.top_right['y'] <= y_at_right <= word2.bottom_right['y'] or
+                       word2.bottom_right['y'] <= y_at_right <= word2.top_right['y'])
+    
+    return left_intersects or right_intersects
+
+
+def group_words_into_line_items(words: List[ReceiptWord]) -> List[List[ReceiptWord]]:
+    """
+    Group words into line items based on shared baselines.
+    
+    Uses geometric baseline analysis to group words that share the same 
+    baseline into line items.
     
     Args:
         words: List of all words on the receipt
-        pattern_matches: Optional pattern matches to consider
-        y_tolerance: Y-coordinate tolerance for same line
-        x_gap_threshold: X-coordinate gap threshold for splitting groups
         
     Returns:
         List of word groups, each representing a potential line item
     """
-    if not words:
+    if not words or len(words) < 2:
         return []
-        
-    # Create spatial words with pattern matches
-    pattern_map = {}
-    if pattern_matches:
-        for i, match in enumerate(pattern_matches):
-            # Map by word ID if available, otherwise use negative index to avoid collision
-            if hasattr(match.word, 'id'):
-                pattern_map[match.word.id] = match
-            else:
-                # Use negative index to avoid collision with word IDs
-                pattern_map[-i-1] = match
-                
-    spatial_words = []
-    for i, word in enumerate(words):
-        # Try to find pattern by word ID first, then by word object
-        pattern = None
-        if hasattr(word, 'id'):
-            pattern = pattern_map.get(word.id)
-        if not pattern:
-            # Check if this word matches any pattern's word
-            for match in (pattern_matches or []):
-                if match.word == word:
-                    pattern = match
-                    break
-        spatial_words.append(SpatialWord(word, pattern))
-        
-    # Sort by Y coordinate, then X coordinate
-    spatial_words.sort(key=lambda sw: (sw.y, sw.x))
     
-    line_items = []
-    current_line = []
-    current_y = None
+    # Group words by horizontal alignment
+    line_groups = []
+    remaining_words = words.copy()
     
-    for sw in spatial_words:
-        if current_y is None:
-            current_line = [sw]
-            current_y = sw.y
-        elif abs(sw.y - current_y) <= y_tolerance:
-            # Same line - check for large horizontal gap
-            if current_line:
-                last_x = current_line[-1].x
-                x_gap = sw.x - last_x
-                
-                # Large gap might indicate separate line items
-                if x_gap > x_gap_threshold:
-                    # Check if they're related by pattern
-                    last_pattern = current_line[-1].pattern_match
-                    current_pattern = sw.pattern_match
-                    
-                    # Keep together if they're part of the same pattern match
-                    if (last_pattern and current_pattern and 
-                        last_pattern.pattern_type == current_pattern.pattern_type and
-                        last_pattern.confidence > 0.8):
-                        current_line.append(sw)
-                    else:
-                        # Start new line item
-                        if len(current_line) >= 2:  # Minimum words for line item
-                            line_items.append([w.word for w in current_line])
-                        current_line = [sw]
-                else:
-                    current_line.append(sw)
-            else:
-                current_line.append(sw)
-        else:
-            # New line
-            if len(current_line) >= 2:  # Minimum words for line item
-                line_items.append([w.word for w in current_line])
-            current_line = [sw]
-            current_y = sw.y
-            
-    # Don't forget the last line
-    if len(current_line) >= 2:
-        line_items.append([w.word for w in current_line])
+    while remaining_words:
+        # Start a new line with the first remaining word
+        current_word = remaining_words.pop(0)
+        current_line = [current_word]
         
-    return line_items
+        # Find all other words that share a baseline with this word
+        words_to_check = remaining_words[:]
+        for word in words_to_check:
+            # Check if this word aligns with the current line
+            test_group = current_line + [word]
+            if is_horizontally_aligned_group(test_group):
+                current_line.append(word)
+                remaining_words.remove(word)
+        
+        # Sort by X position
+        current_line.sort(key=lambda w: w.bounding_box['x'])
+        
+        # Only keep groups with at least 2 words
+        if len(current_line) >= 2:
+            line_groups.append(current_line)
+    
+    return line_groups
 
 
 class LineItemSpatialDetector:
@@ -650,7 +623,7 @@ class LineItemSpatialDetector:
         enhanced_rows = self._apply_spatial_heuristics(rows, columns)
         
         # Step 4: Use horizontal grouping to detect line items
-        line_items = group_words_into_line_items(words, pattern_matches, self.y_tolerance)
+        line_items = group_words_into_line_items(words)
         logger.info(f"Detected {len(line_items)} potential line items using horizontal grouping")
 
         return {
