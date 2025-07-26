@@ -5,7 +5,7 @@ This module provides the core base class that all DynamoDB data access
 classes should inherit from, providing common functionality and error handling.
 """
 
-from typing import Any, Dict, List, Optional, NoReturn, Type
+from typing import Any, Dict, List, Optional, NoReturn, Type, Union
 
 from botocore.exceptions import ClientError
 
@@ -27,13 +27,13 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _ensure_initialized(self) -> None:
         """Lazily initialize error handling components."""
         if not hasattr(self, '_error_config') or self._error_config is None:
-            self._error_config = ErrorMessageConfig()
+            self._error_config: ErrorMessageConfig = ErrorMessageConfig()
             
         if not hasattr(self, '_error_handler') or self._error_handler is None:
-            self._error_handler = ErrorHandler(self._error_config)
+            self._error_handler: ErrorHandler = ErrorHandler(self._error_config)
             
         if not hasattr(self, '_validator') or self._validator is None:
-            self._validator = EntityValidator(self._error_config)
+            self._validator: EntityValidator = EntityValidator(self._error_config)
 
     def _handle_client_error(
         self,
@@ -142,6 +142,30 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         }
         
         self._client.put_item(**put_params)
+
+    def _delete_entity(
+        self,
+        entity: Any,
+        condition_expression: str = "attribute_exists(PK)",
+        **kwargs: Any
+    ) -> None:
+        """
+        Delete a single entity from DynamoDB (backward compatibility method).
+
+        Args:
+            entity: The entity to delete
+            condition_expression: Condition to ensure entity exists
+            **kwargs: Additional arguments for delete_item
+        """
+        # Build delete_item parameters
+        delete_params = {
+            "TableName": self.table_name,
+            "Key": entity.key,
+            "ConditionExpression": condition_expression,
+            **kwargs
+        }
+        
+        self._client.delete_item(**delete_params)
 
     def _batch_write_with_retry(
         self,

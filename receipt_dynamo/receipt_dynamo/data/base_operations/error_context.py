@@ -62,6 +62,10 @@ class ErrorContextExtractor:
             "places_cache", "receipt", "queue", "image", "job", "word", "letter", "instance"
         ]
         
+        # Special case handling for specific operations
+        if "job_from_queue" in operation or "job_to_queue" in operation:
+            return "queue_job"
+            
         for pattern in entity_patterns:
             if pattern in operation:
                 # Special handling for ChatGPT

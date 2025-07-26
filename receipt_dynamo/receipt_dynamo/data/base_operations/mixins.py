@@ -6,7 +6,7 @@ data access classes with common CRUD functionality.
 """
 
 import time
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from .error_config import ErrorMessageConfig
 from .error_handlers import handle_dynamodb_errors
@@ -19,8 +19,8 @@ class SingleEntityCRUDMixin:
     def _ensure_validator_initialized(self) -> None:
         """Ensure validator is initialized."""
         if not hasattr(self, '_validator') or self._validator is None:
-            config = getattr(self, '_error_config', ErrorMessageConfig())
-            self._validator = EntityValidator(config)
+            config: ErrorMessageConfig = getattr(self, '_error_config', ErrorMessageConfig())
+            self._validator: EntityValidator = EntityValidator(config)
     
     @handle_dynamodb_errors("add_entity")
     def _add_entity(
@@ -129,8 +129,8 @@ class BatchOperationsMixin:
     def _ensure_validator_initialized(self) -> None:
         """Ensure validator is initialized."""
         if not hasattr(self, '_validator') or self._validator is None:
-            config = getattr(self, '_error_config', ErrorMessageConfig())
-            self._validator = EntityValidator(config)
+            config: ErrorMessageConfig = getattr(self, '_error_config', ErrorMessageConfig())
+            self._validator: EntityValidator = EntityValidator(config)
 
     @handle_dynamodb_errors("batch_write")
     def _batch_write_with_retry(
@@ -288,3 +288,26 @@ class TransactionalOperationsMixin:
                 "ConditionExpression": condition_expression
             }
         }
+
+    @handle_dynamodb_errors("transactional_write_chunked")
+    def _transact_write_with_chunking(self, transact_items: List[Dict[str, Any]]) -> None:
+        """
+        Perform transactional write with automatic chunking for large batches.
+
+        Since DynamoDB's transact_write_items supports a maximum of 25
+        operations per call, this method splits large lists into chunks
+        and processes each chunk in a separate transaction.
+
+        Args:
+            transact_items: List of transactional write items
+
+        Raises:
+            ValueError: When given invalid parameters
+            Exception: For underlying DynamoDB errors
+        """
+        # DynamoDB transact_write_items has a limit of 25 items per transaction
+        chunk_size = 25
+        
+        for i in range(0, len(transact_items), chunk_size):
+            chunk = transact_items[i:i + chunk_size]
+            self._transact_write_items(chunk)

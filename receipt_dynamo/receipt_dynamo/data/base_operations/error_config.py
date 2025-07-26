@@ -5,7 +5,7 @@ This module centralizes all error message templates and patterns,
 making it easy to maintain consistency across all operations.
 """
 
-from typing import Dict
+from typing import Dict, Any
 
 
 class ErrorMessageConfig:
@@ -58,7 +58,7 @@ class ErrorMessageConfig:
     REQUIRED_PARAM_MESSAGES: Dict[str, str] = {
         "job_checkpoint": "JobCheckpoint parameter is required and cannot be None.",
         "receipt_label_analysis": "ReceiptLabelAnalysis parameter is required and cannot be None.",
-        "receipt_field": "ReceiptField parameter is required and cannot be None.",
+        "receipt_field": "receipt_field cannot be None",
         "receipt_word_label": "ReceiptWordLabel parameter is required and cannot be None.",
         "analysis": "analysis cannot be None",
         "analyses": "analyses cannot be None",
@@ -109,14 +109,38 @@ class ErrorMessageConfig:
         "words": "words cannot be None",
     }
 
+    # List required special messages (when parameter is not a list)
+    LIST_REQUIRED_MESSAGES: Dict[str, str] = {
+        "images": "images must be a list",
+        "jobs": "jobs must be a list", 
+        "receipts": "receipts must be a list",
+        "fields": "fields must be a list",
+        "labels": "labels must be a list",
+        "checkpoints": "checkpoints must be a list",
+        "analyses": "analyses must be a list",
+        "instances": "instances must be a list",
+        "items": "items must be a list",
+        "letters": "letters must be a list",
+        "lines": "lines must be a list",
+        "logs": "logs must be a list",
+        "metrics": "metrics must be a list",
+        "queues": "queues must be a list",
+        "resources": "resources must be a list",
+        "results": "results must be a list",
+        "validations": "validations must be a list",
+        "words": "words must be a list",
+        "categories": "categories must be a list",
+        "dependencies": "dependencies must be a list",
+    }
+
     # Type mismatch special messages for backward compatibility
     TYPE_MISMATCH_MESSAGES: Dict[str, str] = {
         "job_checkpoint": "job_checkpoint must be an instance of the JobCheckpoint class.",
         "receipt_label_analysis": "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
-        "receipt_field": "receipt_field must be an instance of the ReceiptField class.",
+        "receipt_field": "receiptField must be an instance of the ReceiptField class.",
         "receipt_word_label": "receipt_word_label must be an instance of the ReceiptWordLabel class.",
         "ReceiptLabelAnalysis": "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
-        "ReceiptField": "ReceiptField must be an instance of the ReceiptField class.",
+        "ReceiptField": "receiptField must be an instance of the ReceiptField class.",
         "ReceiptWordLabel": "ReceiptWordLabel must be an instance of the ReceiptWordLabel class.",
         "jobstatus": "job_status must be an instance of the JobStatus class.",
         "job_resource": "job_resource must be an instance of the JobResource class.",
@@ -125,7 +149,7 @@ class ErrorMessageConfig:
         "checkpoints": "checkpoints must be a list of JobCheckpoint instances.",
         "dependencies": "dependencies must be a list of JobDependency instances.",
         "fields": "fields must be a list of ReceiptField instances.",
-        "images": "images must be a list of Image instances.",
+        "images": "All images must be instances of the Image class.",
         "instances": "instances must be a list",
         "items": "items must be a list of PlacesCache instances.",
         "jobs": "jobs must be a list of Job instances.",
@@ -149,14 +173,17 @@ class ErrorMessageConfig:
         "default": "Entity does not exist: {entity_type}",
         "job": "Job with job id {job_id} does not exist",
         "instance": "Instance with instance id {instance_id} does not exist",
-        "queue": "Queue {queue_name} does not exist",
+        "queue": "Queue {queue_name} not found",
         "receipt": "Receipt with receipt_id {receipt_id} does not exist",
         "image": "Image with image_id {image_id} does not exist",
+        "receipt_field": "does not exist",
+        "receipt_word_label": "Entity does not exist: ReceiptWordLabel",
+        "queue_job": "Entity does not exist: QueueJob",
     }
 
     # Entity already exists message patterns
     ENTITY_EXISTS_PATTERNS: Dict[str, str] = {
-        "default": "Entity already exists: {entity_type}",
+        "default": "already exists",
         "job": "Entity already exists: Job",
         "instance": "Entity already exists: Instance", 
         "queue": "Queue {queue_name} already exists",
@@ -165,6 +192,8 @@ class ErrorMessageConfig:
         "ocr_job": "Entity already exists: OCRJob",
         "job_checkpoint": "Entity already exists: JobCheckpoint with job_id={job_id}",
         "receipt_chatgpt_validation": "Entity already exists: ReceiptChatGPTValidation with receipt_id={receipt_id}",
+        "receipt_field": "already exists",
+        "receipt_word_label": "already exists",
     }
 
     # Batch operation error messages
