@@ -158,7 +158,7 @@ def test_addReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt to DynamoDB",
+            "Could not add receipt validation category to DynamoDB",
         ),
         (
             "ValidationException",
@@ -454,7 +454,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add receipt to DynamoDB",
+            "Could not add receipt validation category to DynamoDB",
         ),
     ],
 )
@@ -626,7 +626,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt in DynamoDB",
+            "Could not update receipt validation category in DynamoDB",
         ),
     ],
 )
@@ -920,7 +920,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt in DynamoDB",
+            "Could not update receipt validation category in DynamoDB",
             None,
             DynamoDBError,
         ),
@@ -1083,7 +1083,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt from DynamoDB",
+            "Could not delete receipt validation category from DynamoDB",
         ),
     ],
 )

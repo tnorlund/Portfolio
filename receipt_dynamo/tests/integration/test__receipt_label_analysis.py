@@ -84,11 +84,11 @@ def test_addReceiptLabelAnalysis_duplicate_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis cannot be None",
+            "receipt_label_analysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
+            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -300,7 +300,7 @@ def test_addReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add receipt to DynamoDB",
+            "Could not add receipt label analyses to DynamoDB",
         ),
     ],
 )
@@ -457,11 +457,11 @@ def test_updateReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis cannot be None",
+            "receipt_label_analysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
+            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -739,7 +739,7 @@ def test_updateReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not update receipt in DynamoDB",
+            "Could not update receipt label analyses in DynamoDB",
             DynamoDBError,
         ),
     ],
@@ -875,11 +875,11 @@ def test_deleteReceiptLabelAnalysis_nonexistent_raises(
     [
         (
             None,
-            "ReceiptLabelAnalysis cannot be None",
+            "receipt_label_analysis cannot be None",
         ),
         (
             "not-a-receipt-label-analysis",
-            "ReceiptLabelAnalysis must be an instance of the ReceiptLabelAnalysis class.",
+            "receipt_label_analysis must be an instance of the ReceiptLabelAnalysis class.",
         ),
     ],
 )
@@ -1108,7 +1108,7 @@ def test_deleteReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not delete receipt from DynamoDB",
+            "Could not delete receipt label analyses from DynamoDB",
         ),
     ],
 )
@@ -1534,7 +1534,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Error listing receipt",
+            "Could not list receipt label analyses from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1555,7 +1555,7 @@ def test_listReceiptLabelAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not list receipt from DynamoDB",
+            "Could not list receipt label analyses from DynamoDB",
         ),
     ],
 )

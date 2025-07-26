@@ -151,7 +151,7 @@ class _Instance(
 
             # Check if the instance exists
             if "Item" not in response:
-                raise ValueError(f"Instance {instance_id} does not exist")
+                raise ValueError(f"Instance with instance id {instance_id} does not exist")
 
             # Convert the DynamoDB item to an Instance object
             return item_to_instance(response["Item"])

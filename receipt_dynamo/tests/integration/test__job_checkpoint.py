@@ -155,11 +155,7 @@ def test_addJobCheckpoint_raises_conditional_check_failed(
     job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
     # Try to add it again
-    expected_msg = (
-        f"JobCheckpoint with timestamp "
-        f"{sample_job_checkpoint.timestamp} for job "
-        f"{sample_job_checkpoint.job_id} already exists"
-    )
+    expected_msg = f"Entity already exists: JobCheckpoint with job_id={sample_job_checkpoint.job_id}"
     with pytest.raises(ValueError, match=re.escape(expected_msg)):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 

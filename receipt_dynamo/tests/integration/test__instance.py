@@ -90,7 +90,7 @@ def test_addInstance_raises_conditional_check_failed(
     # Try to add it again, should fail
     with pytest.raises(
         EntityAlreadyExistsError,
-        match="Entity already exists",
+        match="Entity already exists: Instance",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -306,7 +306,7 @@ def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
     """
     Test that getInstance raises ValueError when the instance doesn't exist.
     """
-    with pytest.raises(ValueError, match="Instance .* does not exist"):
+    with pytest.raises(ValueError, match="Instance with instance id .* does not exist"):
         instance_dynamo.get_instance(str(uuid.uuid4()))
 
 
@@ -362,7 +362,7 @@ def test_updateInstance_raises_conditional_check_failed(
     # Try to update without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match="Entity does not exist",
+        match="Entity does not exist: Instance",
     ):
         instance_dynamo.update_instance(sample_instance)
 
@@ -379,7 +379,7 @@ def test_deleteInstance_success(instance_dynamo, sample_instance):
     # Verify it was deleted
     with pytest.raises(
         ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",
+        match=f"Instance with instance id {sample_instance.instance_id} does not exist",
     ):
         instance_dynamo.get_instance(sample_instance.instance_id)
 
@@ -415,7 +415,7 @@ def test_deleteInstance_raises_conditional_check_failed(
     # Try to delete without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match="Entity does not exist",
+        match="Entity does not exist: Instance",
     ):
         instance_dynamo.delete_instance(sample_instance)
 

@@ -385,7 +385,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptLineItemAnalyses to the database",
+            "Could not add receipt line item analyses to DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -410,7 +410,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not add ReceiptLineItemAnalyses to the database",
+            "Could not add receipt line item analyses to DynamoDB",
         ),
     ],
 )
@@ -523,7 +523,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptLineItemAnalysis for receipt ID",
+            "Entity does not exist: ReceiptLineItemAnalysis",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -538,7 +538,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptLineItemAnalysis in the database",
+            "Could not update receipt line item analysis in DynamoDB",
         ),
         (
             "ValidationException",
@@ -553,7 +553,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update ReceiptLineItemAnalysis in the database",
+            "Could not update receipt line item analysis in DynamoDB",
         ),
     ],
 )
@@ -732,11 +732,11 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "All analyses must be instances of the ReceiptLineItemAnalysis class",
+            "All analyses must be instances of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -767,14 +767,14 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptLineItemAnalyses in the database",
+            "Could not update receipt line item analyses in DynamoDB",
             DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more ReceiptLineItemAnalyses do not exist",
+            "One or more receipt line item analyses do not exist",
             ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
@@ -795,7 +795,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
             None,
         ),
@@ -809,7 +809,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update ReceiptLineItemAnalyses in the database",
+            "Could not update receipt line item analyses in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -956,12 +956,12 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptLineItemAnalysis from the database",
+            "Could not delete receipt line item analysis from DynamoDB",
         ),
         (
             "ConditionalCheckFailedException",
             "The conditional request failed",
-            "ReceiptLineItemAnalysis for receipt ID",
+            "Entity does not exist: ReceiptLineItemAnalysis",
         ),
         (
             "InternalServerError",
@@ -982,7 +982,7 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not delete ReceiptLineItemAnalysis from the database",
+            "Could not delete receipt line item analysis from DynamoDB",
         ),
     ],
 )
@@ -1220,7 +1220,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptLineItemAnalyses from the database",
+            "Could not delete receipt line item analyses from DynamoDB",
         ),
         (
             "InternalServerError",
@@ -1241,7 +1241,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not delete ReceiptLineItemAnalyses from the database",
+            "Could not delete receipt line item analyses from DynamoDB",
         ),
     ],
 )
@@ -1847,7 +1847,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt line item analyses",
+            "Could not list receipt line item analyses from DynamoDB",
         ),
     ],
 )
@@ -1986,7 +1986,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list ReceiptLineItemAnalyses from the database",
+            "Could not list receipt line item analyses from DynamoDB",
         ),
         (
             "InternalServerError",
@@ -2011,7 +2011,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list ReceiptLineItemAnalyses from the database",
+            "Could not list receipt line item analyses from DynamoDB",
         ),
     ],
 )

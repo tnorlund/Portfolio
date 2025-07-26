@@ -104,9 +104,10 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
     client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Act & Assert
+    from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
     with pytest.raises(
-        ValueError,
-        match=f"ReceiptChatGPTValidation for receipt {sample_receipt_chatgpt_validation.receipt_id} and timestamp {sample_receipt_chatgpt_validation.timestamp} already exists",
+        EntityAlreadyExistsError,
+        match=f"Entity already exists: ReceiptChatGPTValidation with receipt_id={sample_receipt_chatgpt_validation.receipt_id}",
     ):
         # Try to add the same validation again
         client.add_receipt_chat_gpt_validation(
@@ -427,7 +428,7 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptChatGPTValidations to the database",
+            "Could not add receipt ChatGPT validations to DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -452,7 +453,7 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add ReceiptChatGPTValidations to the database",
+            "Could not add receipt ChatGPT validations to DynamoDB",
         ),
     ],
 )
@@ -614,7 +615,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptChatGPTValidation in the database",
+            "Could not update receipt ChatGPT validation in DynamoDB",
         ),
         (
             "ValidationException",
@@ -629,7 +630,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptChatGPTValidation in the database",
+            "Could not update receipt ChatGPT validation in DynamoDB",
         ),
     ],
 )
@@ -871,7 +872,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptChatGPTValidations in the database",
+            "Could not update receipt ChatGPT validations in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -913,7 +914,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptChatGPTValidations in the database",
+            "Could not update receipt ChatGPT validations in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -1060,7 +1061,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptChatGPTValidation from the database",
+            "Could not delete receipt ChatGPT validation from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1081,7 +1082,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptChatGPTValidation from the database",
+            "Could not delete receipt ChatGPT validation from DynamoDB",
         ),
     ],
 )
@@ -1243,7 +1244,7 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptChatGPTValidations from the database",
+            "Could not delete receipt ChatGPT validations from DynamoDB",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1268,7 +1269,7 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptChatGPTValidations from the database",
+            "Could not delete receipt ChatGPT validations from DynamoDB",
         ),
     ],
 )
@@ -2131,7 +2132,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
 @pytest.mark.parametrize(
     "status,expected_error",
     [
-        (None, "status parameter is required"),
+        (None, "status cannot be None"),
         ("", "status must not be empty"),
     ],
 )

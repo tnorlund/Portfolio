@@ -488,7 +488,7 @@ def test_getJob_raises_value_error_job_not_found(job_dynamo):
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
     with pytest.raises(
-        EntityNotFoundError, match="Job with ID .* does not exist"
+        EntityNotFoundError, match="Job with job id .* does not exist"
     ):
         job_dynamo.get_job(str(uuid.uuid4()))
 
@@ -541,7 +541,7 @@ def test_updateJob_raises_conditional_check_failed(job_dynamo, sample_job):
     # Try to update without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match=f"Job with ID {sample_job.job_id} does not exist",
+        match="Entity does not exist: Job",
     ):
         job_dynamo.update_job(sample_job)
 
@@ -560,7 +560,7 @@ def test_deleteJob_success(job_dynamo, sample_job):
 
     with pytest.raises(
         EntityNotFoundError,
-        match=f"Job with ID {sample_job.job_id} does not exist",
+        match=f"Job with job id {sample_job.job_id} does not exist",
     ):
         job_dynamo.get_job(sample_job.job_id)
 
@@ -590,7 +590,7 @@ def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that deleteJob raises ValueError when the job does not exist"""
     # Try to delete without adding first
     with pytest.raises(
-        EntityNotFoundError, match=f"Job with ID {sample_job.job_id} does not exist"
+        EntityNotFoundError, match="Entity does not exist: Job"
     ):
         job_dynamo.delete_job(sample_job)
 
@@ -822,7 +822,7 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list jobs from the database"
+        Exception, match="Table not found"
     ):
         job_dynamo.list_jobs()
 
@@ -913,7 +913,7 @@ def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list jobs by status from the database"
+        Exception, match="Something unexpected"
     ):
         job_dynamo.list_jobs_by_status("pending")
 
@@ -936,7 +936,7 @@ def test_listJobsByUser_raises_client_error_unknown(job_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list jobs by user from the database"
+        Exception, match="Something unexpected"
     ):
         job_dynamo.list_jobs_by_user("test_user")
 
@@ -960,7 +960,7 @@ def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
     )
 
     # Call the method and verify it raises the expected exception
-    with pytest.raises(Exception, match="Error getting job"):
+    with pytest.raises(Exception, match="Table not found for operation get_job"):
         job_dynamo.get_job(str(uuid.uuid4()))
 
 
