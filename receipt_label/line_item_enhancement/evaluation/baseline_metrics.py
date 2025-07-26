@@ -144,13 +144,15 @@ def extract_pattern_matches(receipt_data: Dict, receipt_words: List[ReceiptWord]
     """
     pattern_matches = []
     
-    # Create a mapping of text to ReceiptWord for quick lookup
-    text_to_word = {}
+    # Create a mapping of text to list of ReceiptWords to handle duplicates
+    from collections import defaultdict
+    text_to_words = defaultdict(list)
     for word in receipt_words:
         # Store by text for exact matches
-        text_to_word[word.text] = word
+        text_to_words[word.text].append(word)
         # Also store lowercase version for case-insensitive matching
-        text_to_word[word.text.lower()] = word
+        if word.text.lower() != word.text:
+            text_to_words[word.text.lower()].append(word)
     
     # Look for labels or patterns in the data
     if 'labels' in receipt_data:
@@ -168,9 +170,45 @@ def extract_pattern_matches(receipt_data: Dict, receipt_words: List[ReceiptWord]
                 
                 # Find the corresponding ReceiptWord
                 label_text = label.get('text', '')
-                matched_word = text_to_word.get(label_text) or text_to_word.get(label_text.lower())
+                candidate_words = text_to_words.get(label_text, []) or text_to_words.get(label_text.lower(), [])
                 
-                if matched_word:
+                if candidate_words:
+                    # If multiple words have the same text, try to match by position if available
+                    matched_word = None
+                    
+                    # Check if label has position information to help match
+                    if len(candidate_words) == 1:
+                        matched_word = candidate_words[0]
+                    else:
+                        # Try to match by word_id if available in label
+                        if 'word_id' in label:
+                            for word in candidate_words:
+                                if word.word_id == label['word_id']:
+                                    matched_word = word
+                                    break
+                        
+                        # Try to match by position if available
+                        if not matched_word and 'bounding_box' in label:
+                            label_bbox = label['bounding_box']
+                            # Find word with closest position
+                            min_distance = float('inf')
+                            for word in candidate_words:
+                                # Calculate distance between centers
+                                word_x = word.bounding_box['x'] + word.bounding_box['width'] / 2
+                                word_y = word.bounding_box['y'] + word.bounding_box['height'] / 2
+                                label_x = label_bbox.get('x', 0) + label_bbox.get('width', 0) / 2
+                                label_y = label_bbox.get('y', 0) + label_bbox.get('height', 0) / 2
+                                
+                                distance = ((word_x - label_x) ** 2 + (word_y - label_y) ** 2) ** 0.5
+                                if distance < min_distance:
+                                    min_distance = distance
+                                    matched_word = word
+                        
+                        # If still no match, use the first occurrence
+                        if not matched_word:
+                            matched_word = candidate_words[0]
+                            logger.debug(f"Multiple words with text '{label_text}', using first occurrence")
+                    
                     # Create PatternMatch with proper word reference
                     match = PatternMatch(
                         word=matched_word,
