@@ -1,28 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import botocore
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     BatchOperationsMixin,
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
 )
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.shared_exceptions import (
@@ -42,7 +27,11 @@ from receipt_dynamo.entities.instance_job import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 class _Instance(
