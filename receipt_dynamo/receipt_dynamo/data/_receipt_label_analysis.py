@@ -127,7 +127,7 @@ class _ReceiptLabelAnalysis(
         self._validate_entity(
             receipt_label_analysis,
             ReceiptLabelAnalysis,
-            "ReceiptLabelAnalysis",
+            "receipt_label_analysis",
         )
         self._update_entity(receipt_label_analysis)
 
@@ -183,7 +183,7 @@ class _ReceiptLabelAnalysis(
         self._validate_entity(
             receipt_label_analysis,
             ReceiptLabelAnalysis,
-            "ReceiptLabelAnalysis",
+            "receipt_label_analysis",
         )
         self._delete_entity(receipt_label_analysis)
 
@@ -241,9 +241,9 @@ class _ReceiptLabelAnalysis(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
 
         # Then check types
         if not isinstance(image_id, str):

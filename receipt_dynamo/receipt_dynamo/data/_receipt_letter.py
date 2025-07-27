@@ -254,30 +254,30 @@ class _ReceiptLetter(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if line_id is None:
             raise ValueError(
-                "line_id parameter is required and cannot be None."
+                "line_id cannot be None"
             )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
             raise ValueError(
-                "word_id parameter is required and cannot be None."
+                "word_id cannot be None"
             )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
         if letter_id is None:
             raise ValueError(
-                "letter_id parameter is required and cannot be None."
+                "letter_id cannot be None"
             )
         if not isinstance(letter_id, int):
             raise ValueError("letter_id must be an integer.")
@@ -439,24 +439,24 @@ class _ReceiptLetter(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if line_id is None:
             raise ValueError(
-                "line_id parameter is required and cannot be None."
+                "line_id cannot be None"
             )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
             raise ValueError(
-                "word_id parameter is required and cannot be None."
+                "word_id cannot be None"
             )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")

@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -31,8 +31,19 @@ from receipt_dynamo.entities.batch_summary import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
+# Runtime imports needed by the class methods
+from receipt_dynamo.data._base import (
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    DeleteTypeDef,
+)
+
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -48,8 +59,14 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _BatchSummary(DynamoClientProtocol):
+class _BatchSummary(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
 
+    @handle_dynamodb_errors("add_batch_summary")
     def add_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Adds a single BatchSummary record to DynamoDB.
@@ -61,33 +78,13 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summary is None, not a BatchSummary,
             or if DynamoDB conditions fail.
         """
-        if batch_summary is None:
-            raise ValueError("batch_summary cannot be None")
-        if not isinstance(batch_summary, BatchSummary):
-            raise ValueError("batch_summary must be a BatchSummary")
+        self._validate_entity(batch_summary, BatchSummary, "batch_summary")
+        self._add_entity(
+            batch_summary,
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=batch_summary.to_item(),
-                ConditionExpression=(
-                    "attribute_not_exists(PK) and " "attribute_not_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary already exists") from e
-            if error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid") from e
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            raise ValueError(f"Error adding batch summary: {e}") from e
-
+    @handle_dynamodb_errors("add_batch_summaries")
     def add_batch_summaries(
         self,
         batch_summaries: List[BatchSummary],
@@ -103,45 +100,10 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
-        if not isinstance(batch_summaries, list):
-            raise ValueError("batch_summaries must be a list")
-        if not all(isinstance(item, BatchSummary) for item in batch_summaries):
-            raise ValueError("batch_summaries must be a list of BatchSummary")
+        # Use the mixin's batch operation method directly
+        self._add_entities_batch(batch_summaries, BatchSummary, "batch_summaries")
 
-        try:
-            for i in range(0, len(batch_summaries), 25):
-                chunk = batch_summaries[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item.to_item())
-                    )
-                    for item in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary already exists") from e
-            if error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid") from e
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            raise ValueError(f"Error adding batch summaries: {e}") from e
-
+    @handle_dynamodb_errors("update_batch_summary")
     def update_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Updates an existing BatchSummary record in DynamoDB.
@@ -153,33 +115,13 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summary is None, not a BatchSummary,
             or if the record does not exist.
         """
-        if batch_summary is None:
-            raise ValueError("batch_summary cannot be None")
-        if not isinstance(batch_summary, BatchSummary):
-            raise ValueError("batch_summary must be a BatchSummary")
+        self._validate_entity(batch_summary, BatchSummary, "batch_summary")
+        self._update_entity(
+            batch_summary,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )
 
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=batch_summary.to_item(),
-                ConditionExpression=(
-                    "attribute_exists(PK) and " "attribute_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary does not exist") from e
-            if error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid") from e
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            raise ValueError(f"Error updating batch summary: {e}") from e
-
+    @handle_dynamodb_errors("update_batch_summaries")
     def update_batch_summaries(
         self, batch_summaries: List[BatchSummary]
     ) -> None:
@@ -194,65 +136,21 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
-        if not isinstance(batch_summaries, list):
-            raise ValueError("batch_summaries must be a list")
-        if not all(isinstance(item, BatchSummary) for item in batch_summaries):
-            raise ValueError("batch_summaries must be a list of BatchSummary")
-
-        for i in range(0, len(batch_summaries), 25):
-            chunk = batch_summaries[i : i + 25]
-            transact_items = []
-            for item in chunk:
-                transact_items.append(
-                    TransactWriteItemTypeDef(
-                        Put=PutTypeDef(
-                            TableName=self.table_name,
-                            Item=item.to_item(),
-                            ConditionExpression=(
-                                "attribute_exists(PK) and "
-                                "attribute_exists(SK)"
-                            ),
-                        )
-                    )
+        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        # Create transactional update items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=item.to_item(),
+                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)"
                 )
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more batch summaries do not exist"
-                    ) from e
-                if error_code == "TransactionCanceledException":
-                    if "ConditionalCheckFailed" in str(e):
-                        raise ValueError(
-                            "One or more batch summaries do not exist"
-                        ) from e
-                    raise DynamoDBError(
-                        f"Transaction canceled: {e}"
-                    ) from e
-                if error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
-                if error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
-                if error_code == "ValidationException":
-                    raise DynamoDBValidationError(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                if error_code == "AccessDeniedException":
-                    raise DynamoDBAccessError(f"Access denied: {e}") from e
-                if error_code == "ResourceNotFoundException":
-                    raise DynamoDBError(f"Resource not found: {e}") from e
-                raise DynamoDBError(
-                    f"Error updating batch summaries: {e}"
-                ) from e
+            )
+            for item in batch_summaries
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("delete_batch_summary")
     def delete_batch_summary(self, batch_summary: BatchSummary) -> None:
         """
         Deletes a single BatchSummary record from DynamoDB.
@@ -264,33 +162,13 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summary is None, not a BatchSummary,
             or if the record does not exist.
         """
-        if batch_summary is None:
-            raise ValueError("batch_summary cannot be None")
-        if not isinstance(batch_summary, BatchSummary):
-            raise ValueError("batch_summary must be a BatchSummary")
+        self._validate_entity(batch_summary, BatchSummary, "batch_summary")
+        self._delete_entity(
+            batch_summary,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=batch_summary.key,
-                ConditionExpression=(
-                    "attribute_exists(PK) and " "attribute_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError("batch_summary does not exist") from e
-            if error_code == "ValidationException":
-                raise ValueError("batch_summary is invalid") from e
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            raise ValueError(f"Error deleting batch summary: {e}") from e
-
+    @handle_dynamodb_errors("delete_batch_summaries")
     def delete_batch_summaries(
         self, batch_summaries: List[BatchSummary]
     ) -> None:
@@ -305,65 +183,21 @@ class _BatchSummary(DynamoClientProtocol):
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        if batch_summaries is None:
-            raise ValueError("batch_summaries cannot be None")
-        if not isinstance(batch_summaries, list):
-            raise ValueError("batch_summaries must be a list")
-        if not all(isinstance(item, BatchSummary) for item in batch_summaries):
-            raise ValueError("batch_summaries must be a list of BatchSummary")
-
-        for i in range(0, len(batch_summaries), 25):
-            chunk = batch_summaries[i : i + 25]
-            transact_items = []
-            for item in chunk:
-                transact_items.append(
-                    TransactWriteItemTypeDef(
-                        Delete=DeleteTypeDef(
-                            TableName=self.table_name,
-                            Key=item.key,
-                            ConditionExpression=(
-                                "attribute_exists(PK) and "
-                                "attribute_exists(SK)"
-                            ),
-                        )
-                    )
+        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        # Create transactional delete items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Delete=DeleteTypeDef(
+                    TableName=self.table_name,
+                    Key=item.key,
+                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)"
                 )
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
-                        "One or more batch summaries do not exist"
-                    ) from e
-                if error_code == "TransactionCanceledException":
-                    if "ConditionalCheckFailed" in str(e):
-                        raise ValueError(
-                            "One or more batch summaries do not exist"
-                        ) from e
-                    raise DynamoDBError(
-                        f"Transaction canceled: {e}"
-                    ) from e
-                if error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
-                if error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
-                if error_code == "ValidationException":
-                    raise DynamoDBValidationError(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                if error_code == "AccessDeniedException":
-                    raise DynamoDBAccessError(f"Access denied: {e}") from e
-                if error_code == "ResourceNotFoundException":
-                    raise DynamoDBError(f"Resource not found: {e}") from e
-                raise DynamoDBError(
-                    f"Error deleting batch summaries: {e}"
-                ) from e
+            )
+            for item in batch_summaries
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("get_batch_summary")
     def get_batch_summary(self, batch_id: str) -> BatchSummary:
         """
         Retrieves a BatchSummary record from DynamoDB by batch_id.
@@ -382,27 +216,19 @@ class _BatchSummary(DynamoClientProtocol):
             raise ValueError("batch_id must be a string")
         assert_valid_uuid(batch_id)
 
-        # The BatchSummary is templated with dummy values
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"BATCH#{batch_id}"},
-                    "SK": {"S": "STATUS"},
-                },
-            )
-            if "Item" in response:
-                return item_to_batch_summary(response["Item"])
-            else:
-                raise ValueError("batch_summary does not exist")
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            if error_code == "ValidationException":
-                raise ValueError("one or more parameters given were invalid")
-            raise ValueError(f"Error getting batch summary: {e}") from e
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"BATCH#{batch_id}"},
+                "SK": {"S": "STATUS"},
+            },
+        )
+        if "Item" in response:
+            return item_to_batch_summary(response["Item"])
+        else:
+            raise ValueError("batch_summary does not exist")
 
+    @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(
         self,
         limit: Optional[int] = None,
@@ -437,56 +263,45 @@ class _BatchSummary(DynamoClientProtocol):
             validate_last_evaluated_key(last_evaluated_key)
 
         summaries: List[BatchSummary] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "BATCH_SUMMARY"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSITYPE",
+            "KeyConditionExpression": "#t = :val",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {":val": {"S": "BATCH_SUMMARY"}},
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                if limit is not None:
-                    remaining = limit - len(summaries)
-                    query_params["Limit"] = remaining
+        while True:
+            if limit is not None:
+                remaining = limit - len(summaries)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [item_to_batch_summary(item) for item in response["Items"]]
+            response = self._client.query(**query_params)
+            summaries.extend(
+                [item_to_batch_summary(item) for item in response["Items"]]
+            )
+
+            if limit is not None and len(summaries) >= limit:
+                summaries = summaries[:limit]
+                last_evaluated_key = response.get(
+                    "LastEvaluatedKey",
+                    None,
                 )
+                break
 
-                if limit is not None and len(summaries) >= limit:
-                    summaries = summaries[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+            else:
+                last_evaluated_key = None
+                break
 
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
+        return summaries, last_evaluated_key
 
-            return summaries, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            if error_code == "ValidationException":
-                raise ValueError("one or more parameters given were invalid")
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            raise ValueError(f"Error listing batch summaries: {e}") from e
-
+    @handle_dynamodb_errors("get_batch_summaries_by_status")
     def get_batch_summaries_by_status(
         self,
         status: str | BatchStatus,
@@ -558,63 +373,49 @@ class _BatchSummary(DynamoClientProtocol):
             validate_last_evaluated_key(last_evaluated_key)
 
         summaries: List[BatchSummary] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": (
-                    "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
-                ),
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"STATUS#{status_str}"},
-                    ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "IndexName": "GSI1",
+            "KeyConditionExpression": (
+                "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
+            ),
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"STATUS#{status_str}"},
+                ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
+            },
+        }
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                if limit is not None:
-                    remaining = limit - len(summaries)
-                    query_params["Limit"] = remaining
+        while True:
+            if limit is not None:
+                remaining = limit - len(summaries)
+                query_params["Limit"] = remaining
 
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [item_to_batch_summary(item) for item in response["Items"]]
-                )
-
-                if limit is not None and len(summaries) >= limit:
-                    summaries = summaries[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            summaries = [
-                summary
-                for summary in summaries
-                if summary.batch_type == batch_type
-            ]
-            return summaries, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            if error_code == "ValidationException":
-                raise ValueError("one or more parameters given were invalid")
-            if error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            raise ValueError(
-                f"Error retrieving batch summaries by status: {e}"
+            response = self._client.query(**query_params)
+            summaries.extend(
+                [item_to_batch_summary(item) for item in response["Items"]]
             )
+
+            if limit is not None and len(summaries) >= limit:
+                summaries = summaries[:limit]
+                last_evaluated_key = response.get(
+                    "LastEvaluatedKey",
+                    None,
+                )
+                break
+
+            if "LastEvaluatedKey" in response:
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
+            else:
+                last_evaluated_key = None
+                break
+
+        summaries = [
+            summary
+            for summary in summaries
+            if summary.batch_type == batch_type
+        ]
+        return summaries, last_evaluated_key

@@ -226,7 +226,7 @@ class _Job(
             Exception: For underlying DynamoDB errors.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
@@ -241,7 +241,7 @@ class _Job(
         if "Item" in response:
             return item_to_job(response["Item"])
         else:
-            raise EntityNotFoundError(f"Job with ID {job_id} does not exist.")
+            raise EntityNotFoundError(f"Job with job id {job_id} does not exist")
 
     @handle_dynamodb_errors("get_job_with_status")
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
@@ -255,7 +255,7 @@ class _Job(
                 of its status updates
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)

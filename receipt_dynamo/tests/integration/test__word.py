@@ -10,6 +10,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
+    EntityAlreadyExistsError,
 )
 
 correct_word_params: Dict[str, Any] = {
@@ -59,7 +61,7 @@ def test_word_add_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_word(word)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityAlreadyExistsError):
         client.add_word(word)
 
 
@@ -124,6 +126,7 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
     word1 = Word(**correct_word_params)
     word2_params = correct_word_params.copy()
     word2_params["word_id"] = 4
+    word2_params["line_id"] = 1  # Set line_id to 1 so we can delete from line 1
     word2 = Word(**word2_params)
     client.add_word(word1)
     client.add_word(word2)
@@ -133,9 +136,9 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
 
     # Assert
     with pytest.raises(ValueError):
-        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
+        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 3)
     with pytest.raises(ValueError):
-        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 2)
+        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 4)
 
 
 @pytest.mark.integration
@@ -287,7 +290,7 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="Words parameter is required and cannot be None."
+        ValueError, match="words cannot be None"
     ):
         client.update_words(None)  # type: ignore
 
@@ -299,7 +302,7 @@ def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
     list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="Words must be provided as a list."):
+    with pytest.raises(ValueError, match="words must be a list"):
         client.update_words("not-a-list")  # type: ignore
 
 
@@ -315,7 +318,7 @@ def test_updateWords_raises_value_error_words_not_list_of_words(
     word = Word(**correct_word_params)
     with pytest.raises(
         ValueError,
-        match="All words must be instances of the Word class.",
+        match="words must be a list of ReceiptWord instances.",
     ):
         client.update_words([word, "not-a-word"])  # type: ignore
 
@@ -343,7 +346,7 @@ def test_updateWords_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="Entity does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist"):
         client.update_words([word])
     mock_transact.assert_called_once()
 
@@ -431,7 +434,7 @@ def test_updateWords_raises_clienterror_validation_exception(
     )
     with pytest.raises(
         DynamoDBValidationError,
-        match="One or more parameters given were invalid",
+        match=r"One or more parameters.*invalid",
     ):
         client.update_words([word])
     mock_transact.assert_called_once()
@@ -485,6 +488,6 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
     )
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Table not found"):
+    with pytest.raises(DynamoDBError, match="Table not found for operation update_words"):
         client.update_words([word])
     mock_transact.assert_called_once()

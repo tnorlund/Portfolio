@@ -56,7 +56,7 @@ class _JobResource(
         """
         if job_resource is None:
             raise ValueError(
-                "JobResource parameter is required and cannot be None."
+                "job_resource cannot be None"
             )
         if not isinstance(job_resource, JobResource):
             raise ValueError(
@@ -110,7 +110,7 @@ class _JobResource(
             ValueError: If the job resource does not exist
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise ValueError(
@@ -171,7 +171,7 @@ class _JobResource(
                 invalid
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise ValueError(
@@ -267,7 +267,7 @@ class _JobResource(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):

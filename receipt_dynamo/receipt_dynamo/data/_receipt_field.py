@@ -24,6 +24,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
     OperationError,
 )
 from receipt_dynamo.entities.receipt_field import (
@@ -113,7 +114,7 @@ class _ReceiptField(
         ValueError
             When a receipt field with the same ID already exists.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._add_entity(receipt_field)
 
     @handle_dynamodb_errors("add_receipt_fields")
@@ -133,7 +134,7 @@ class _ReceiptField(
             write.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         request_items = [
@@ -159,7 +160,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._update_entity(receipt_field)
 
     @handle_dynamodb_errors("update_receipt_fields")
@@ -180,7 +181,7 @@ class _ReceiptField(
             When given a bad parameter or if a field doesn't exist.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         transact_items = [
@@ -210,7 +211,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._delete_entity(receipt_field)
 
     @handle_dynamodb_errors("delete_receipt_fields")
@@ -231,7 +232,7 @@ class _ReceiptField(
             When a receipt field does not exist or if another error occurs.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         transact_items = [
@@ -272,11 +273,11 @@ class _ReceiptField(
             If input parameters are invalid or if the field does not exist.
         """
         if field_type is None:
-            raise ValueError("Field type is required and cannot be None.")
+            raise ValueError("field_type cannot be None")
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
 
         # Validate image_id as a UUID and receipt_id as a positive integer
         assert_valid_uuid(image_id)
@@ -295,7 +296,7 @@ class _ReceiptField(
             )
             if "Item" in response:
                 return item_to_receipt_field(response["Item"])
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Receipt field for Field Type '{field_type}', "
                 f"Image ID '{image_id}', and Receipt ID {receipt_id} "
                 f"does not exist."

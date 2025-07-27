@@ -109,12 +109,12 @@ def test_addReceiptStructureAnalysis_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_structure_analysis",
+            "Table not found",
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_structure_analysis",
+            "Could not add receipt structure analysis to DynamoDB",
         ),
     ],
 )
@@ -202,7 +202,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_structure_analyses",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -223,7 +223,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_structure_analyses",
+            "Could not add receipt structure analyses to DynamoDB",
         ),
     ],
 )
@@ -376,7 +376,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_structure_analyses",
+            "Table not found",
             None,
         ),
         (
@@ -412,7 +412,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_structure_analyses",
+            "Could not update receipt structure analyses in DynamoDB",
             None,
         ),
     ],

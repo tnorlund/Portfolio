@@ -16,6 +16,7 @@ from receipt_dynamo.data._base import (
 )
 from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -137,6 +138,9 @@ class _Line(
             image_id (str): The UUID of the image the line belongs to
             line_id (int): The ID of the line to delete
         """
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        
         self._client.delete_item(
             TableName=self.table_name,
             Key={

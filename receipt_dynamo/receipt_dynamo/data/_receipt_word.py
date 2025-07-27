@@ -207,7 +207,7 @@ class _ReceiptWord(
         """Retrieves multiple ReceiptWords by their indices."""
         if indices is None:
             raise ValueError(
-                "indices parameter is required and cannot be None."
+                "indices cannot be None"
             )
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
@@ -451,11 +451,11 @@ class _ReceiptWord(
         """
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string.")

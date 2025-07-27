@@ -72,7 +72,7 @@ class _ReceiptWordLabel(
         """
         if receipt_word_label is None:
             raise ValueError(
-                "ReceiptWordLabel parameter is required and cannot be None."
+                "receipt_word_label cannot be None"
             )
         if not isinstance(receipt_word_label, ReceiptWordLabel):
             raise ValueError(
@@ -94,9 +94,11 @@ class _ReceiptWordLabel(
     ):
         """Handle errors specific to add_receipt_word_label"""
         from receipt_dynamo.data.shared_exceptions import (
+            DynamoDBAccessError,
             DynamoDBError,
             DynamoDBServerError,
             DynamoDBThroughputError,
+            DynamoDBValidationError,
         )
 
         error_code = error.response.get("Error", {}).get("Code", "")
@@ -117,6 +119,12 @@ class _ReceiptWordLabel(
             raise DynamoDBServerError(
                 f"Internal server error: {error}"
             ) from error
+        elif error_code == "ValidationException":
+            raise DynamoDBValidationError(
+                "One or more parameters given were invalid"
+            ) from error
+        elif error_code == "AccessDeniedException":
+            raise DynamoDBAccessError("Access denied") from error
         else:
             raise DynamoDBError(
                 f"Could not add receipt word label to DynamoDB: {error}"
@@ -137,7 +145,7 @@ class _ReceiptWordLabel(
         """
         if receipt_word_labels is None:
             raise ValueError(
-                "ReceiptWordLabels parameter is required and cannot be None."
+                "receipt_word_labels cannot be None"
             )
         if not isinstance(receipt_word_labels, list):
             raise ValueError(
@@ -310,15 +318,15 @@ class _ReceiptWordLabel(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
         if line_id is None:
-            raise ValueError("Line ID is required and cannot be None.")
+            raise ValueError("line_id cannot be None")
         if word_id is None:
-            raise ValueError("Word ID is required and cannot be None.")
+            raise ValueError("word_id cannot be None")
         if label is None:
-            raise ValueError("Label is required and cannot be None.")
+            raise ValueError("label cannot be None")
 
         # Then check types
         if not isinstance(receipt_id, int):

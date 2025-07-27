@@ -252,19 +252,19 @@ class _ReceiptValidationResult(
         # Custom parameter validation for backward compatibility
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if field_name is None:
             raise ValueError(
-                "field_name parameter is required and cannot be None."
+                "field_name cannot be None"
             )
         if result_index is None:
             raise ValueError(
-                "result_index parameter is required and cannot be None."
+                "result_index cannot be None"
             )
 
         if not isinstance(receipt_id, int):
@@ -424,7 +424,7 @@ class _ReceiptValidationResult(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError(
@@ -433,7 +433,7 @@ class _ReceiptValidationResult(
             )
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -441,7 +441,7 @@ class _ReceiptValidationResult(
             )
         if field_name is None:
             raise ValueError(
-                "field_name parameter is required and cannot be None."
+                "field_name cannot be None"
             )
         if not isinstance(field_name, str):
             raise ValueError(

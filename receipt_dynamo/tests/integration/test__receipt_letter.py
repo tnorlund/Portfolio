@@ -10,6 +10,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 # -------------------------------------------------------------------
@@ -74,7 +76,7 @@ def test_addReceiptLetter_duplicate_raises(
     client.add_receipt_letter(sample_receipt_letter)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_letter(sample_receipt_letter)
 
 
@@ -82,7 +84,7 @@ def test_addReceiptLetter_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None."),
+        (None, "letter cannot be None"),
         (
             "not-a-receipt-letter",
             "letter must be an instance of the ReceiptLetter class.",
@@ -118,7 +120,7 @@ def test_addReceiptLetter_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_letter",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -133,12 +135,12 @@ def test_addReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_letter",
+            "Could not add receipt letter to DynamoDB",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -294,11 +296,11 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None."),
-        ("not-a-list", "Letters must be provided as a list."),
+        (None, "letters cannot be None"),
+        ("not-a-list", "letters must be a list"),
         (
             ["not-a-receipt-letter"],
-            "All items in the letters list must be instances of the ReceiptLetter class.",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -326,12 +328,12 @@ def test_addReceiptLetters_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_letters",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -341,17 +343,17 @@ def test_addReceiptLetters_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_letters",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for add_receipt_letters",
+            "Access denied",
         ),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_letters",
+            "Could not add receipt letter to DynamoDB",
         ),
     ],
 )
@@ -417,7 +419,7 @@ def test_updateReceiptLetter_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None."),
+        (None, "letter cannot be None"),
         (
             "not a ReceiptLetter",
             "letter must be an instance of the ReceiptLetter class.",
@@ -445,7 +447,7 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist",
+            "Entity does not exist: Receipt_Letter",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -460,12 +462,12 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_letter",
+            "Table not found",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in update_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -475,7 +477,7 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_letter",
+            "Could not update receipt letter in DynamoDB",
         ),
     ],
 )
@@ -507,7 +509,7 @@ def test_updateReceiptLetter_client_errors(
         (
             Exception
             if error_code != "ConditionalCheckFailedException"
-            else ValueError
+            else EntityNotFoundError
         ),
         match=expected_error,
     ):
@@ -621,11 +623,11 @@ def test_updateReceiptLetters_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None"),
-        ("not-a-list", "Letters must be provided as a list"),
+        (None, "letters cannot be None"),
+        ("not-a-list", "letters must be a list"),
         (
             [123, "not-a-receipt-letter"],
-            "All items in the letters list must be instances of the ReceiptLetter class",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -664,7 +666,7 @@ def test_updateReceiptLetters_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_letters",
+            "Table not found",
             DynamoDBError,
             None,
         ),
@@ -692,21 +694,21 @@ def test_updateReceiptLetters_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in update_receipt_letters",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for update_receipt_letters",
+            "Access denied",
             DynamoDBAccessError,
             None,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_letters",
+            "Unknown error",
             DynamoDBError,
             None,
         ),
@@ -801,7 +803,7 @@ def test_deleteReceiptLetter_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letter parameter is required and cannot be None"),
+        (None, "letter cannot be None"),
         (
             "not-a-receipt-letter",
             "letter must be an instance of the ReceiptLetter class",
@@ -843,12 +845,12 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist",
+            "Entity does not exist: Receipt_Letter",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_letter",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -863,7 +865,7 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in delete_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -873,7 +875,7 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_letter",
+            "Could not delete receipt letter from DynamoDB",
         ),
     ],
 )
@@ -1048,11 +1050,11 @@ def test_deleteReceiptLetters_with_unprocessed_items(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Letters parameter is required and cannot be None."),
-        ("not a list", "Letters must be provided as a list."),
+        (None, "letters cannot be None"),
+        ("not a list", "letters must be a list"),
         (
             [1, 2, 3],
-            "All items in the letters list must be instances of the ReceiptLetter class.",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -1092,7 +1094,7 @@ def test_deleteReceiptLetters_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_letters",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1107,17 +1109,17 @@ def test_deleteReceiptLetters_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in delete_receipt_letters",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for delete_receipt_letters",
+            "Access denied",
         ),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_letters",
+            "Could not delete receipt letter from DynamoDB",
         ),
     ],
 )
@@ -1219,31 +1221,31 @@ def test_getReceiptLetter_not_found(
         (
             "receipt_id",
             None,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
             {},
         ),
         (
             "image_id",
             None,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
             {},
         ),
         (
             "line_id",
             None,
-            "line_id parameter is required and cannot be None.",
+            "line_id cannot be None",
             {},
         ),
         (
             "word_id",
             None,
-            "word_id parameter is required and cannot be None.",
+            "word_id cannot be None",
             {},
         ),
         (
             "letter_id",
             None,
-            "letter_id parameter is required and cannot be None.",
+            "letter_id cannot be None",
             {},
         ),
         # Invalid type tests
@@ -1925,22 +1927,22 @@ def test_listReceiptLettersFromWord_success(
         (
             "receipt_id",
             None,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "image_id",
             None,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             "line_id",
             None,
-            "line_id parameter is required and cannot be None.",
+            "line_id cannot be None",
         ),
         (
             "word_id",
             None,
-            "word_id parameter is required and cannot be None.",
+            "word_id cannot be None",
         ),
         # Invalid type tests
         (

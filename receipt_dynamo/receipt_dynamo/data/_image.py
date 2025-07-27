@@ -114,7 +114,7 @@ class _Image(
     def get_image(self, image_id: str) -> Image:
         """Retrieves a single Image item by its ID from the database."""
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         response = self._client.get_item(
@@ -245,7 +245,7 @@ class _Image(
         """Retrieves comprehensive details for an Image, including lines and
         receipts."""
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         response = self._client.query(

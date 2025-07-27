@@ -5,6 +5,11 @@ import botocore
 import pytest
 
 from receipt_dynamo import DynamoClient, Instance, InstanceJob
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 
 @pytest.fixture
@@ -58,7 +63,7 @@ def test_addInstance_success(instance_dynamo, sample_instance):
 
 @pytest.mark.integration
 def test_addInstance_raises_value_error(instance_dynamo):
-    """Test that addInstance raises ValueError when instance is None."""
+    """Test that addInstance raises EntityValidationError when instance is None."""
     with pytest.raises(ValueError, match="instance cannot be None"):
         instance_dynamo.add_instance(None)
 
@@ -66,10 +71,10 @@ def test_addInstance_raises_value_error(instance_dynamo):
 @pytest.mark.integration
 def test_addInstance_raises_value_error_instance_not_instance(instance_dynamo):
     """
-    Test that addInstance raises ValueError when instance is not an Instance.
+    Test that addInstance raises EntityValidationError when instance is not an Instance.
     """
     with pytest.raises(
-        ValueError, match="instance must be an instance of Instance"
+        ValueError, match="instance must be an instance of the Instance class"
     ):
         instance_dynamo.add_instance("not an instance")
 
@@ -84,8 +89,8 @@ def test_addInstance_raises_conditional_check_failed(
 
     # Try to add it again, should fail
     with pytest.raises(
-        ValueError,
-        match=f"Instance {sample_instance.instance_id} already exists",
+        EntityAlreadyExistsError,
+        match=r"(Entity already exists: Instance|already exists)",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -113,7 +118,7 @@ def test_addInstance_raises_resource_not_found(
     # Verify the correct exception is raised
     with pytest.raises(
         Exception,
-        match="Could not add instance to DynamoDB",
+        match="Table not found",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -142,7 +147,7 @@ def test_addInstance_raises_provisioned_throughput_exceeded(
     # Verify the correct exception is raised
     with pytest.raises(
         Exception,
-        match="Provisioned throughput exceeded",
+        match="Throughput exceeded",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -232,7 +237,7 @@ def test_addInstances_success(instance_dynamo, sample_instance):
 
 @pytest.mark.integration
 def test_addInstances_raises_value_error_instances_none(instance_dynamo):
-    """Test that addInstances raises ValueError when instances is None."""
+    """Test that addInstances raises EntityValidationError when instances is None."""
     with pytest.raises(ValueError, match="instances cannot be None"):
         instance_dynamo.add_instances(None)
 
@@ -240,7 +245,7 @@ def test_addInstances_raises_value_error_instances_none(instance_dynamo):
 @pytest.mark.integration
 def test_addInstances_raises_value_error_instances_not_list(instance_dynamo):
     """
-    Test that addInstances raises ValueError when instances is not a list.
+    Test that addInstances raises EntityValidationError when instances is not a list.
     """
     with pytest.raises(ValueError, match="instances must be a list"):
         instance_dynamo.add_instances("not a list")
@@ -256,7 +261,7 @@ def test_addInstances_raises_value_error_instances_not_list_of_instances(
     """
     with pytest.raises(
         ValueError,
-        match="All elements in instances must be instances of Instance",
+        match="instances must be a list of Instance instances.",
     ):
         instance_dynamo.add_instances([sample_instance, "not an instance"])
 
@@ -301,7 +306,7 @@ def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
     """
     Test that getInstance raises ValueError when the instance doesn't exist.
     """
-    with pytest.raises(ValueError, match="Instance .* does not exist"):
+    with pytest.raises(ValueError, match="Instance with instance id .* does not exist"):
         instance_dynamo.get_instance(str(uuid.uuid4()))
 
 
@@ -328,7 +333,7 @@ def test_updateInstance_success(instance_dynamo, sample_instance):
 
 @pytest.mark.integration
 def test_updateInstance_raises_value_error_instance_none(instance_dynamo):
-    """Test that updateInstance raises ValueError when instance is None."""
+    """Test that updateInstance raises EntityValidationError when instance is None."""
     with pytest.raises(ValueError, match="instance cannot be None"):
         instance_dynamo.update_instance(None)
 
@@ -342,7 +347,7 @@ def test_updateInstance_raises_value_error_instance_not_instance(
     Instance.
     """
     with pytest.raises(
-        ValueError, match="instance must be an instance of Instance"
+        ValueError, match="instance must be an instance of the Instance class"
     ):
         instance_dynamo.update_instance("not an instance")
 
@@ -356,8 +361,8 @@ def test_updateInstance_raises_conditional_check_failed(
     """
     # Try to update without adding first
     with pytest.raises(
-        ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",
+        EntityNotFoundError,
+        match="does not exist",
     ):
         instance_dynamo.update_instance(sample_instance)
 
@@ -374,14 +379,14 @@ def test_deleteInstance_success(instance_dynamo, sample_instance):
     # Verify it was deleted
     with pytest.raises(
         ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",
+        match=f"Instance with instance id {sample_instance.instance_id} does not exist",
     ):
         instance_dynamo.get_instance(sample_instance.instance_id)
 
 
 @pytest.mark.integration
 def test_deleteInstance_raises_value_error_instance_none(instance_dynamo):
-    """Test that deleteInstance raises ValueError when instance is None."""
+    """Test that deleteInstance raises EntityValidationError when instance is None."""
     with pytest.raises(ValueError, match="instance cannot be None"):
         instance_dynamo.delete_instance(None)
 
@@ -395,7 +400,7 @@ def test_deleteInstance_raises_value_error_instance_not_instance(
     Instance.
     """
     with pytest.raises(
-        ValueError, match="instance must be an instance of Instance"
+        ValueError, match="instance must be an instance of the Instance class"
     ):
         instance_dynamo.delete_instance("not an instance")
 
@@ -409,8 +414,8 @@ def test_deleteInstance_raises_conditional_check_failed(
     """
     # Try to delete without adding first
     with pytest.raises(
-        ValueError,
-        match=f"Instance {sample_instance.instance_id} does not exist",
+        EntityNotFoundError,
+        match="does not exist",
     ):
         instance_dynamo.delete_instance(sample_instance)
 
@@ -439,7 +444,7 @@ def test_addInstanceJob_success(
 
 @pytest.mark.integration
 def test_addInstanceJob_raises_value_error_instance_job_none(instance_dynamo):
-    """Test that addInstanceJob raises ValueError when instance_job is None."""
+    """Test that addInstanceJob raises EntityValidationError when instance_job is None."""
     with pytest.raises(ValueError, match="instance_job cannot be None"):
         instance_dynamo.add_instance_job(None)
 
@@ -453,7 +458,7 @@ def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(
     InstanceJob.
     """
     with pytest.raises(
-        ValueError, match="instance_job must be an instance of InstanceJob"
+        ValueError, match="instance_job must be an instance of the InstanceJob class"
     ):
         instance_dynamo.add_instance_job("not an instance job")
 

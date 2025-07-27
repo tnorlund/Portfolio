@@ -4,6 +4,7 @@ import boto3
 import pytest
 
 from receipt_dynamo import DynamoClient, Line
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 
 correct_line_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -51,7 +52,7 @@ def test_line_add_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_line(line)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityAlreadyExistsError):
         client.add_line(line)
 
 

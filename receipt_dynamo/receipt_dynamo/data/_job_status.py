@@ -51,9 +51,7 @@ class _JobStatus(
                 exists
         """
         if job_status is None:
-            raise ValueError(
-                "JobStatus parameter is required and cannot be None."
-            )
+            raise ValueError("jobstatus cannot be None")
         if not isinstance(job_status, JobStatus):
             raise ValueError(
                 "job_status must be an instance of the JobStatus class."
@@ -102,7 +100,7 @@ class _JobStatus(
             ValueError: If the job does not exist or has no status updates
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         try:
@@ -169,7 +167,7 @@ class _JobStatus(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):

@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
@@ -160,7 +161,7 @@ class _JobLog(
 
         item = response.get("Item")
         if not item:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Job log with job_id {job_id} and timestamp {timestamp} "
                 f"not found"
             )
@@ -242,24 +243,7 @@ class _JobLog(
                 f"job_log must be a JobLog instance, got {type(job_log)}"
             )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_log.job_id}"},
-                    "SK": {"S": f"LOG#{job_log.timestamp}"},
-                },
-                ConditionExpression=(
-                    "attribute_exists(PK) AND attribute_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp "
-                    f"{job_log.timestamp} not found"
-                )
-            raise
+        self._delete_entity(
+            job_log,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )

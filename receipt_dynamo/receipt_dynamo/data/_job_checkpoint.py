@@ -110,7 +110,7 @@ class _JobCheckpoint(
             Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise ValueError(
@@ -150,7 +150,7 @@ class _JobCheckpoint(
             Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise ValueError(
@@ -223,7 +223,7 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
@@ -320,7 +320,7 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         try:
@@ -379,7 +379,7 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise ValueError(

@@ -13,6 +13,7 @@ from receipt_dynamo.data._base import (
 )
 from receipt_dynamo.entities import item_to_letter
 from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -112,6 +113,9 @@ class _Letter(
             word_id (int): The ID of the word the letter belongs to
             letter_id (int): The ID of the letter to delete
         """
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        
         self._client.delete_item(
             TableName=self.table_name,
             Key={

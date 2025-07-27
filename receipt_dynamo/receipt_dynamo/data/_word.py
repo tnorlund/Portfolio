@@ -14,6 +14,7 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.word import Word
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -151,6 +152,9 @@ class _Word(
             line_id (int): The ID of the line the word belongs to
             word_id (int): The ID of the word to delete
         """
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        
         self._client.delete_item(
             TableName=self.table_name,
             Key={
