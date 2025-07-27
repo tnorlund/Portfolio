@@ -151,7 +151,7 @@ class _Instance(
 
             # Convert the DynamoDB item to an Instance object
             return item_to_instance(response["Item"])
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -285,7 +285,7 @@ class _Instance(
 
             # Convert the DynamoDB item to an InstanceJob object
             return item_to_instance_job(response["Item"])
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -350,7 +350,7 @@ class _Instance(
                 item_to_instance(item) for item in response.get("Items", [])
             ]
             return instances, response.get("LastEvaluatedKey")
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -422,7 +422,7 @@ class _Instance(
                 item_to_instance(item) for item in response.get("Items", [])
             ]
             return instances, response.get("LastEvaluatedKey")
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -495,7 +495,7 @@ class _Instance(
                 for item in response.get("Items", [])
             ]
             return instance_jobs, response.get("LastEvaluatedKey")
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
@@ -569,7 +569,7 @@ class _Instance(
                 for item in response.get("Items", [])
             ]
             return instance_jobs, response.get("LastEvaluatedKey")
-        except botocore.exceptions.ClientError as e:
+        except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
