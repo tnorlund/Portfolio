@@ -200,7 +200,7 @@ class _ReceiptSection(
                     f"ReceiptSection with receipt_id {receipt_id}, "
                     f"image_id {image_id}, and section_type {section_type} "
                     "not found"
-                )
+                ) from e
             else:
                 raise
 
@@ -423,16 +423,16 @@ class _ReceiptSection(
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not list receipt sections from DynamoDB: {e}"
-                )
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error listing receipt sections: {e}")
+                raise OperationError(f"Error listing receipt sections: {e}") from e

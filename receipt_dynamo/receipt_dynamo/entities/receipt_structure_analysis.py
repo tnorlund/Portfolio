@@ -413,8 +413,8 @@ class ReceiptSection:
             else:
                 try:
                     line_ids.append(int(line_id))
-                except (ValueError, TypeError):
-                    raise TypeError(format_type_error("line_id", line_id, int))
+                except (ValueError, TypeError) as e:
+                    raise TypeError(format_type_error("line_id", line_id, int)) from e
 
         # Handle start_line and end_line
         start_line = data.get("start_line")
@@ -517,10 +517,10 @@ class ReceiptStructureAnalysis:
             )
         try:
             receipt_id = int(receipt_id)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             raise ValueError(
                 f"receipt_id must be convertible to int, got {receipt_id}"
-            )
+            ) from e
 
         assert_type("image_id", image_id, str)
         assert_type("sections", sections, list)

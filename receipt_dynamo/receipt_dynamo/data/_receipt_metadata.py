@@ -5,33 +5,22 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-)
-from receipt_dynamo.entities import item_to_receipt_metadata, ReceiptMetadata
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
+    DynamoDBBaseOperations,
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
+from receipt_dynamo.entities import item_to_receipt_metadata, ReceiptMetadata
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    pass
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25

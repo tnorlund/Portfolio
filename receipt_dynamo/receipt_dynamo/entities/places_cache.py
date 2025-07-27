@@ -90,10 +90,10 @@ class PlacesCache:
         # Validate last_updated
         try:
             datetime.fromisoformat(last_updated)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             raise ValueError(
                 "last_updated must be a valid ISO format timestamp"
-            )
+            ) from e
         self.last_updated = last_updated
 
         # Validate query_count
@@ -381,4 +381,4 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
             time_to_live=time_to_live,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(f"Error converting item to PlacesCache: {str(e)}")
+        raise ValueError(f"Error converting item to PlacesCache: {str(e)}") from e

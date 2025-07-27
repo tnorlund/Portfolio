@@ -5,36 +5,28 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-)
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
+    DynamoDBBaseOperations,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
     OperationError,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.base_operations import (
+        QueryInputTypeDef,
+    )
 from receipt_dynamo.entities.receipt import item_to_receipt, Receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (

@@ -3,6 +3,9 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    PutRequestTypeDef,
+    QueryInputTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
     SingleEntityCRUDMixin,
 )
@@ -10,21 +13,10 @@ from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.entities.receipt_validation_summary import (
     ReceiptValidationSummary,
 )
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data.base_operations import (
-    PutRequestTypeDef,
-    QueryInputTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.entities.util import assert_valid_uuid
+    pass
 
 
 class _ReceiptValidationSummary(
