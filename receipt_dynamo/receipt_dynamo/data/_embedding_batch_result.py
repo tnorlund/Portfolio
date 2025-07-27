@@ -4,33 +4,12 @@ from uuid import uuid4
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     BatchOperationsMixin,
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
@@ -50,7 +29,14 @@ from receipt_dynamo.entities.embedding_batch_result import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        DeleteTypeDef,
+        PutRequestTypeDef,
+        PutTypeDef,
+        QueryInputTypeDef,
+        TransactWriteItemTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

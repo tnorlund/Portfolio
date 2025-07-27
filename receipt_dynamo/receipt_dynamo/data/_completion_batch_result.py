@@ -11,16 +11,6 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
     DynamoDBAccessError,
@@ -38,7 +28,11 @@ from receipt_dynamo.entities.completion_batch_result import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data._base import (
+        PutRequestTypeDef,
+        QueryInputTypeDef,
+        WriteRequestTypeDef,
+    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

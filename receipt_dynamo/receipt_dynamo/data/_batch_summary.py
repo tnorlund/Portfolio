@@ -7,6 +7,8 @@ and GSI lookups by status.
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
@@ -15,6 +17,13 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
 )
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
@@ -31,19 +40,6 @@ if TYPE_CHECKING:
         TransactWriteItemTypeDef,
         WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
