@@ -373,7 +373,6 @@ class TransactionalOperationsMixin:
         entities: List[Any],
         entity_type: Type[Any],
         entity_name: str,
-        operation_name: str = None,
     ) -> None:
         """
         Update multiple entities in the database using transactions.
@@ -386,7 +385,6 @@ class TransactionalOperationsMixin:
             entities: List of entities to update
             entity_type: The type of entity for validation
             entity_name: Name of the entity for error messages
-            operation_name: Name of the operation for error messages (e.g., "update_words")
 
         Example:
             # In a data access class

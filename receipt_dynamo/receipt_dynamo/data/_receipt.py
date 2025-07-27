@@ -151,7 +151,7 @@ class _Receipt(
                 - AccessDeniedException (permission issues)
                 - or any other unexpected errors.
         """
-        self._update_entities(receipts, Receipt, "receipts", "update_receipts")
+        self._update_entities(receipts, Receipt, "receipts")
 
     @handle_dynamodb_errors("delete_receipt")
     def delete_receipt(self, receipt: Receipt):

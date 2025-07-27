@@ -105,7 +105,7 @@ class _ReceiptLine(
     @handle_dynamodb_errors("update_receipt_lines")
     def update_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Updates multiple existing ReceiptLines in DynamoDB."""
-        self._update_entities(lines, ReceiptLine, "lines", "update_receipt_lines")
+        self._update_entities(lines, ReceiptLine, "lines")
 
     @handle_dynamodb_errors("delete_receipt_line")
     def delete_receipt_line(

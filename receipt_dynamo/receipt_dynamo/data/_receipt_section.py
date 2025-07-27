@@ -162,7 +162,7 @@ class _ReceiptSection(
         ValueError
             If sections is invalid or if any section does not exist.
         """
-        self._update_entities(sections, ReceiptSection, "sections", "update_receipt_sections")
+        self._update_entities(sections, ReceiptSection, "sections")
 
     def delete_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str

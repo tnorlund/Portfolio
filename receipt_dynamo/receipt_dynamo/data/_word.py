@@ -128,7 +128,7 @@ class _Word(
         ValueError: When given a bad parameter or words don't exist.
         Exception: For underlying DynamoDB errors.
         """
-        self._update_entities(words, Word, "words", "update_words")
+        self._update_entities(words, Word, "words")
 
     @handle_dynamodb_errors("delete_word")
     def delete_word(self, image_id: str, line_id: int, word_id: int):

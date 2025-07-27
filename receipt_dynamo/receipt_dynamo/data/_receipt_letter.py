@@ -163,7 +163,7 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid or do not exist.
         """
-        self._update_entities(letters, ReceiptLetter, "letters", "update_receipt_letters")
+        self._update_entities(letters, ReceiptLetter, "letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(self, letter: ReceiptLetter) -> None:

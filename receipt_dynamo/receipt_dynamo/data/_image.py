@@ -114,7 +114,7 @@ class _Image(
     @handle_dynamodb_errors("update_images")
     def update_images(self, images: List[Image]) -> None:
         """Updates multiple Image items in the database."""
-        self._update_entities(images, Image, "images", "update_images")
+        self._update_entities(images, Image, "images")
 
     @handle_dynamodb_errors("get_image_details")
     def get_image_details(self, image_id: str) -> ImageDetails:

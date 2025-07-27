@@ -5,6 +5,7 @@ This module provides the core base class that all DynamoDB data access
 classes should inherit from, providing common functionality and error handling.
 """
 
+import time
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,7 +14,6 @@ from typing import (
     NoReturn,
     Optional,
     Type,
-    Union,
 )
 
 from botocore.exceptions import ClientError
@@ -46,6 +46,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         table_name: str
         _client: "DynamoDBClient"
 
+    def __init__(self) -> None:
+        """Initialize the base operations with lazy-loaded components."""
+        self._error_config: Optional[ErrorMessageConfig] = None
+        self._error_handler: Optional[ErrorHandler] = None
+        self._validator: Optional[EntityValidator] = None
+
     def _ensure_initialized(self) -> None:
         """Lazily initialize error handling components."""
         if not hasattr(self, "_error_config") or self._error_config is None:
@@ -68,7 +74,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         context: Optional[Dict[str, Any]] = None,
     ) -> NoReturn:
         """
-        Handle DynamoDB ClientError with appropriate exception types and messages.
+        Handle DynamoDB ClientError with appropriate exception types and
+        messages.
 
         This method delegates to the centralized error handler for consistent
         error handling across all operations.
@@ -199,7 +206,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         self._client.delete_item(**delete_params)
 
-
     def _delete_entities(
         self,
         entities: List[Any],
@@ -229,7 +235,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             if transact_items:
                 self._client.transact_write_items(TransactItems=transact_items)
 
-
     def _batch_write_with_retry(
         self,
         request_items: List[Any],
@@ -244,8 +249,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             max_retries: Maximum number of retries for unprocessed items
             initial_backoff: Initial backoff time in seconds
         """
-        import time
-
         # Format request items for DynamoDB
         formatted_items = {self.table_name: request_items}
         backoff = initial_backoff

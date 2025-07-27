@@ -17,7 +17,7 @@ class ValidationMessageGenerator:
         self.config: ErrorMessageConfig = config
         # Pre-build lookup dictionary for efficient message generation
         self._message_generators: Dict[str, Callable[[str, str], str]] = {
-            "required": lambda p, c: self._generate_required_message(p, c),
+            "required": self._generate_required_message,
             "type_mismatch": self._generate_type_mismatch_message,
             "list_required": self._generate_list_required_message,
             "list_type_mismatch": self._generate_list_type_mismatch_message,
@@ -74,7 +74,7 @@ class ValidationMessageGenerator:
         )
 
     def _generate_required_message(
-        self, param_name: str, class_name: Optional[str] = None
+        self, param_name: str, _class_name: Optional[str] = None
     ) -> str:
         """Internal method for generating required parameter messages."""
         # Check for special cases first
@@ -222,7 +222,7 @@ class EntityValidator:
             raise ValueError(f"Unknown validation type: {validation_type}")
 
         rules = self._validation_rules[validation_type]
-        for rule_name, validator_func in rules:
+        for _, validator_func in rules:
             try:
                 validator_func(context)
             except ValueError as e:
@@ -313,7 +313,7 @@ class EntityValidator:
 
         # Apply transformations based on operation patterns
         transformed_message = message
-        for rule_name, rule_config in transformation_rules.items():
+        for _, rule_config in transformation_rules.items():
             pattern_match = rule_config["pattern_match"]
             transformations = rule_config["transformations"]
 

@@ -34,13 +34,13 @@ class ErrorContextExtractor:
         # Extract specific identifiers for better error messages
         if hasattr(entity, "job_id"):
             return f"{class_name} with job_id={entity.job_id}"
-        elif hasattr(entity, "receipt_id"):
+        if hasattr(entity, "receipt_id"):
             return f"{class_name} with receipt_id={entity.receipt_id}"
-        elif hasattr(entity, "image_id"):
+        if hasattr(entity, "image_id"):
             return f"{class_name} with image_id={entity.image_id}"
-        elif hasattr(entity, "queue_name"):
+        if hasattr(entity, "queue_name"):
             return f"{class_name} with queue_name={entity.queue_name}"
-        elif hasattr(entity, "instance_id"):
+        if hasattr(entity, "instance_id"):
             return f"{class_name} with instance_id={entity.instance_id}"
 
         return str(class_name)

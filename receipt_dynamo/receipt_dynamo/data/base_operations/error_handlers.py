@@ -28,7 +28,7 @@ from receipt_dynamo.data.shared_exceptions import (
 
 from .error_config import ErrorMessageConfig
 from .error_context import ErrorContextExtractor
-from .validators import ValidationMessageGenerator
+from .validators import EntityValidator, ValidationMessageGenerator
 
 
 def handle_dynamodb_errors(operation_name: str) -> Callable[..., Any]:
@@ -45,6 +45,7 @@ def handle_dynamodb_errors(operation_name: str) -> Callable[..., Any]:
             try:
                 return func(self, *args, **kwargs)
             except ClientError as e:
+                # pylint: disable=protected-access
                 self._handle_client_error(
                     e,
                     operation_name,
@@ -144,9 +145,8 @@ class ErrorHandler:
                 raise EntityNotFoundError(
                     "Entity does not exist: list"
                 ) from error
-            else:
-                # For other batch operations, preserve the original message format
-                raise ValueError(original_message) from error
+            # For other batch operations, preserve the original message format
+            raise ValueError(original_message) from error
 
         # Determine if this is an "already exists" or "does not exist" case
         if "add" in operation.lower():
@@ -158,7 +158,7 @@ class ErrorHandler:
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]],
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle resource not found errors - usually table doesn't exist."""
         original_message = error.response.get("Error", {}).get(
@@ -185,8 +185,8 @@ class ErrorHandler:
     def _handle_throughput_exceeded(
         self,
         error: ClientError,
-        operation: str,
-        context: Optional[Dict[str, Any]],
+        _operation: str,
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle throughput exceeded errors."""
         message = error.response.get("Error", {}).get(
@@ -198,13 +198,9 @@ class ErrorHandler:
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]],
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle validation exceptions."""
-        original_message = error.response.get("Error", {}).get(
-            "Message", "Validation error"
-        )
-
         # For backward compatibility, most tests expect specific validation messages
         if "receipt_field" in operation:
             message = "One or more parameters given were invalid"
@@ -214,8 +210,6 @@ class ErrorHandler:
             message = "One or more parameters given were invalid"
 
         # Apply transformations for backward compatibility
-        from .validators import EntityValidator
-
         validator = EntityValidator(self.config)
         message = validator.transform_validation_message(message, operation)
 
@@ -225,13 +219,9 @@ class ErrorHandler:
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]],
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle access denied errors."""
-        original_message = error.response.get("Error", {}).get(
-            "Message", "Access denied"
-        )
-
         # For backward compatibility, check if tests expect specific formats
         if any(op in operation for op in ["receipt_field", "receipt_letter"]):
             message = f"Access denied for {operation}"
@@ -243,8 +233,8 @@ class ErrorHandler:
     def _handle_internal_server_error(
         self,
         error: ClientError,
-        operation: str,
-        context: Optional[Dict[str, Any]],
+        _operation: str,
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle internal server errors."""
         message = error.response.get("Error", {}).get(
@@ -256,7 +246,7 @@ class ErrorHandler:
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]],
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle transaction cancellation errors."""
         if "ConditionalCheckFailed" in str(error):
@@ -266,16 +256,15 @@ class ErrorHandler:
                 "One or more entities do not exist or conditions failed",
             )
             raise ValueError(message) from error
-        else:
-            raise DynamoDBError(
-                f"Transaction canceled for {operation}: {error}"
-            ) from error
+        raise DynamoDBError(
+            f"Transaction canceled for {operation}: {error}"
+        ) from error
 
     def _handle_unknown_error(
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]],
+        _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle any other unknown errors."""
         # Check original error message from the ClientError
