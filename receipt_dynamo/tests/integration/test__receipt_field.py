@@ -137,7 +137,7 @@ def test_addReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in add_receipt_field",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -294,7 +294,7 @@ def test_addReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in add_receipt_fields",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -485,7 +485,7 @@ def test_updateReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in update_receipt_field",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -661,8 +661,8 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "Entity does not exist: list",
-            EntityNotFoundError,
+            "One or more items do not exist",
+            ValueError,
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -679,19 +679,19 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in update_receipt_fields",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for update_receipt_fields",
+            "Access denied",
             DynamoDBAccessError,
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not update receipt field in DynamoDB",
+            "Unknown error in transactional_write",
             DynamoDBError,
         ),
     ],
@@ -869,7 +869,7 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in delete_receipt_field",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -1022,7 +1022,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "Entity does not exist: list",
+            "One or more items do not exist",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1037,17 +1037,17 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error in delete_receipt_fields",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for delete_receipt_fields",
+            "Access denied",
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Could not delete receipt field from DynamoDB",
+            "Unknown error in transactional_write",
         ),
     ],
 )
