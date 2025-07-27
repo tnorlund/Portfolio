@@ -120,7 +120,7 @@ def test_addReceiptLetter_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_letter",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -140,7 +140,7 @@ def test_addReceiptLetter_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -297,10 +297,10 @@ def test_addReceiptLetters_with_unprocessed_items_retries(
     "invalid_input,expected_error",
     [
         (None, "letters cannot be None"),
-        ("not-a-list", "letters must be a list."),
+        ("not-a-list", "letters must be a list"),
         (
             ["not-a-receipt-letter"],
-            "All letters must be instances of the ReceiptLetter class.",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -328,12 +328,12 @@ def test_addReceiptLetters_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_letters",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -343,12 +343,12 @@ def test_addReceiptLetters_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in add_receipt_letters",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for add_receipt_letters",
+            "Access denied",
         ),
         (
             "UnknownError",
@@ -447,7 +447,7 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist",
+            "Entity does not exist: Receipt_Letter",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -462,12 +462,12 @@ def test_updateReceiptLetter_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_letter",
+            "Table not found",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in update_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -624,10 +624,10 @@ def test_updateReceiptLetters_with_large_batch(
     "invalid_input,expected_error",
     [
         (None, "letters cannot be None"),
-        ("not-a-list", "letters must be a list of ReceiptLetter instances."),
+        ("not-a-list", "letters must be a list"),
         (
             [123, "not-a-receipt-letter"],
-            "All letters must be instances of the ReceiptLetter class.",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -666,7 +666,7 @@ def test_updateReceiptLetters_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_letters",
+            "Table not found",
             DynamoDBError,
             None,
         ),
@@ -694,21 +694,21 @@ def test_updateReceiptLetters_invalid_inputs(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in update_receipt_letters",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
             None,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for update_receipt_letters",
+            "Access denied",
             DynamoDBAccessError,
             None,
         ),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt letter in DynamoDB",
+            "Unknown error",
             DynamoDBError,
             None,
         ),
@@ -845,12 +845,12 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist",
+            "Entity does not exist: Receipt_Letter",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_letter",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -865,7 +865,7 @@ def test_deleteReceiptLetter_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in delete_receipt_letter",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -1051,10 +1051,10 @@ def test_deleteReceiptLetters_with_unprocessed_items(
     "invalid_input,expected_error",
     [
         (None, "letters cannot be None"),
-        ("not a list", "letters must be a list."),
+        ("not a list", "letters must be a list"),
         (
             [1, 2, 3],
-            "All letters must be instances of the ReceiptLetter class.",
+            "letters must be a list of ReceiptLetter instances.",
         ),
     ],
 )
@@ -1094,7 +1094,7 @@ def test_deleteReceiptLetters_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_letters",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1109,12 +1109,12 @@ def test_deleteReceiptLetters_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "Validation error in delete_receipt_letters",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for delete_receipt_letters",
+            "Access denied",
         ),
         (
             "UnknownError",
