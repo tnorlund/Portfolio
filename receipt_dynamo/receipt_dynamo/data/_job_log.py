@@ -245,5 +245,5 @@ class _JobLog(
 
         self._delete_entity(
             job_log,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )

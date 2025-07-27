@@ -1,5 +1,6 @@
 """Resilient DynamoDB client with circuit breaker, retry, and batching."""
 
+import random
 import threading
 import time
 from typing import List, Optional
@@ -103,8 +104,6 @@ class ResilientDynamoClient(DynamoClient):
 
     def _exponential_backoff(self, attempt: int) -> float:
         """Calculate exponential backoff delay."""
-        import random
-
         delay = min(self.retry_base_delay * (2**attempt), 60.0)
         # Add jitter
         return float(delay * (1 + random.random() * 0.25))
@@ -139,20 +138,20 @@ class ResilientDynamoClient(DynamoClient):
 
         for attempt in range(self.max_retry_attempts):
             if not self._check_circuit_breaker():
-                raise Exception("Circuit breaker is OPEN")
+                raise RuntimeError("Circuit breaker is OPEN")
 
             try:
                 super().put_ai_usage_metric(metric)
                 self._record_success()
                 return
-            except Exception as e:
+            except (RuntimeError, ValueError, KeyError) as e:
                 self._record_failure()
                 last_exception = e
 
                 if attempt < self.max_retry_attempts - 1:
                     time.sleep(self._exponential_backoff(attempt))
 
-        raise last_exception or Exception("Failed to store metric")
+        raise last_exception or RuntimeError("Failed to store metric")
 
     def _auto_flush_worker(self) -> None:
         """Background worker for auto-flushing metrics."""
@@ -192,7 +191,6 @@ class ResilientDynamoClient(DynamoClient):
     ) -> None:
         """Batch write metrics with retry logic."""
         remaining_metrics = metrics.copy()
-        last_exception = None
 
         for attempt in range(self.max_retry_attempts):
             if not self._check_circuit_breaker():
@@ -215,13 +213,12 @@ class ResilientDynamoClient(DynamoClient):
 
                 # Update remaining metrics for retry
                 remaining_metrics = failed_metrics
-                raise Exception(
+                raise RuntimeError(
                     f"{len(failed_metrics)} metrics failed to write"
                 )
 
-            except Exception as e:
+            except (RuntimeError, ValueError, KeyError):
                 self._record_failure()
-                last_exception = e
 
                 if attempt < self.max_retry_attempts - 1:
                     time.sleep(self._exponential_backoff(attempt))

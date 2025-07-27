@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -10,12 +10,6 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
@@ -56,7 +50,7 @@ class _LabelCountCache(
                 ) from e
             raise DynamoDBError(
                 f"Could not add label count cache to DynamoDB: {e}"
-            )
+            ) from e
 
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
@@ -96,7 +90,7 @@ class _LabelCountCache(
                 ) from e
             raise DynamoDBError(
                 f"Could not add label count caches to DynamoDB: {e}"
-            )
+            ) from e
 
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
@@ -119,8 +113,8 @@ class _LabelCountCache(
                     f"LabelCountCache for label {item.label} does not exist"
                 ) from e
             raise DynamoDBError(
-                f"Could not update label count cache in DynamoDB: {e}f"
-            )
+                f"Could not update label count cache in DynamoDB: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
@@ -183,5 +177,5 @@ class _LabelCountCache(
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
-                raise ValueError("LabelCountCache table does not exist")
-            raise OperationError(f"Error listing LabelCountCaches: {e}")
+                raise ValueError("LabelCountCache table does not exist") from e
+            raise OperationError(f"Error listing LabelCountCaches: {e}") from e

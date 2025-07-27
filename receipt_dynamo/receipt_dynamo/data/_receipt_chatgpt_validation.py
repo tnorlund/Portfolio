@@ -115,10 +115,11 @@ class _ReceiptChatGPTValidation(
             EntityAlreadyExistsError: If the validation already exists.
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._validate_entity(
+            validation, ReceiptChatGPTValidation, "validation"
+        )
         self._add_entity(
-            validation,
-            condition_expression="attribute_not_exists(PK)"
+            validation, condition_expression="attribute_not_exists(PK)"
         )
 
     @handle_dynamodb_errors("add_receipt_chatgpt_validations")
@@ -134,7 +135,9 @@ class _ReceiptChatGPTValidation(
         Raises:
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        self._validate_entity_list(
+            validations, ReceiptChatGPTValidation, "validations"
+        )
         # Create write request items for batch operation
         request_items = [
             WriteRequestTypeDef(
@@ -158,10 +161,11 @@ class _ReceiptChatGPTValidation(
             EntityNotFoundError: If the validation does not exist.
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._validate_entity(
+            validation, ReceiptChatGPTValidation, "validation"
+        )
         self._update_entity(
-            validation,
-            condition_expression="attribute_exists(PK)"
+            validation, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("update_receipt_chatgpt_validations")
@@ -178,14 +182,16 @@ class _ReceiptChatGPTValidation(
             EntityNotFoundError: If one or more validations do not exist.
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        self._validate_entity_list(
+            validations, ReceiptChatGPTValidation, "validations"
+        )
         # Create transactional update items
         transact_items = [
             TransactWriteItemTypeDef(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=validation.to_item(),
-                    ConditionExpression="attribute_exists(PK)"
+                    ConditionExpression="attribute_exists(PK)",
                 )
             )
             for validation in validations
@@ -207,10 +213,11 @@ class _ReceiptChatGPTValidation(
             EntityNotFoundError: If the validation does not exist.
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._validate_entity(
+            validation, ReceiptChatGPTValidation, "validation"
+        )
         self._delete_entity(
-            validation,
-            condition_expression="attribute_exists(PK)"
+            validation, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_receipt_chat_gpt_validations")
@@ -226,7 +233,9 @@ class _ReceiptChatGPTValidation(
         Raises:
             EntityValidationError: If validation parameters are invalid.
         """
-        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        self._validate_entity_list(
+            validations, ReceiptChatGPTValidation, "validations"
+        )
         # Create delete request items for batch operation
         request_items = [
             WriteRequestTypeDef(
@@ -259,20 +268,14 @@ class _ReceiptChatGPTValidation(
             ReceiptChatGPTValidation: The retrieved receipt ChatGPT validation.
         """
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id cannot be None"
-            )
+            raise ValueError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError(
-                "image_id cannot be None"
-            )
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
         if timestamp is None:
-            raise ValueError(
-                "timestamp cannot be None"
-            )
+            raise ValueError("timestamp cannot be None")
         if not isinstance(timestamp, str):
             raise ValueError("timestamp must be a string.")
 
@@ -443,15 +446,11 @@ class _ReceiptChatGPTValidation(
                 A list of ChatGPT validations for the specified receipt.
         """
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id cannot be None"
-            )
+            raise ValueError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError(
-                "image_id cannot be None"
-            )
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         validations = []
@@ -553,9 +552,7 @@ class _ReceiptChatGPTValidation(
                 evaluated key (or None if no more results).
         """
         if status is None:
-            raise ValueError(
-                "status cannot be None"
-            )
+            raise ValueError("status cannot be None")
         if not isinstance(status, str):
             raise ValueError("status must be a string.")
         if not status:

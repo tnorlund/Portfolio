@@ -313,9 +313,7 @@ class _ReceiptField(
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            raise OperationError(
-                f"Error getting receipt field: {e}"
-            ) from e
+            raise OperationError(f"Error getting receipt field: {e}") from e
 
     def list_receipt_fields(
         self,

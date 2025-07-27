@@ -173,9 +173,7 @@ class _ReceiptLine(
     ) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their indices."""
         if indices is None:
-            raise ValueError(
-                "indices cannot be None"
-            )
+            raise ValueError("indices cannot be None")
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):

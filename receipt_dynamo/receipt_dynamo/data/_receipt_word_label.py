@@ -71,9 +71,7 @@ class _ReceiptWordLabel(
                 already exists
         """
         if receipt_word_label is None:
-            raise ValueError(
-                "receipt_word_label cannot be None"
-            )
+            raise ValueError("receipt_word_label cannot be None")
         if not isinstance(receipt_word_label, ReceiptWordLabel):
             raise ValueError(
                 "receipt_word_label must be an instance of the "
@@ -144,9 +142,7 @@ class _ReceiptWordLabel(
                 already exists
         """
         if receipt_word_labels is None:
-            raise ValueError(
-                "receipt_word_labels cannot be None"
-            )
+            raise ValueError("receipt_word_labels cannot be None")
         if not isinstance(receipt_word_labels, list):
             raise ValueError(
                 "receipt_word_labels must be a list of ReceiptWordLabel "

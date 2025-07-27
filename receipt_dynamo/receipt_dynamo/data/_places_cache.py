@@ -87,10 +87,7 @@ class _PlacesCache(
             EntityValidationError: If item parameters are invalid
         """
         self._validate_entity(item, PlacesCache, "item")
-        self._add_entity(
-            item,
-            condition_expression="attribute_not_exists(PK)"
-        )
+        self._add_entity(item, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("update_places_cache")
     def update_places_cache(self, item: PlacesCache):
@@ -105,10 +102,7 @@ class _PlacesCache(
             EntityValidationError: If item parameters are invalid
         """
         self._validate_entity(item, PlacesCache, "item")
-        self._update_entity(
-            item,
-            condition_expression="attribute_exists(PK)"
-        )
+        self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("increment_query_count")
     def increment_query_count(self, item: PlacesCache) -> PlacesCache:
@@ -171,10 +165,7 @@ class _PlacesCache(
             EntityValidationError: If item parameters are invalid
         """
         self._validate_entity(item, PlacesCache, "item")
-        self._delete_entity(
-            item,
-            condition_expression="attribute_exists(PK)"
-        )
+        self._delete_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_places_caches")
     def delete_places_caches(self, places_cache_items: List[PlacesCache]):
@@ -182,9 +173,7 @@ class _PlacesCache(
         Deletes a list of PlacesCache items from the database.
         """
         if places_cache_items is None:
-            raise ValueError(
-                "places_cache_items cannot be None"
-            )
+            raise ValueError("places_cache_items cannot be None")
         if not isinstance(places_cache_items, list):
             raise ValueError("places_cache_items must be a list.")
         if not all(

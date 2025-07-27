@@ -62,7 +62,7 @@ class _OCRJob(
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._add_entity(
             ocr_job,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("add_ocr_jobs")
@@ -89,7 +89,7 @@ class _OCRJob(
     @handle_dynamodb_errors("update_ocr_job")
     def update_ocr_job(self, ocr_job: OCRJob):
         """Updates an OCR job in the database
-        
+
         Raises:
             EntityNotFoundError: If the OCR job does not exist
             EntityValidationError: If ocr_job parameters are invalid
@@ -97,7 +97,7 @@ class _OCRJob(
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._update_entity(
             ocr_job,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )
 
     @handle_dynamodb_errors("get_ocr_job")
@@ -154,15 +154,14 @@ class _OCRJob(
 
         Args:
             ocr_job (OCRJob): The OCR job to delete
-            
+
         Raises:
             EntityNotFoundError: If the OCR job does not exist
             EntityValidationError: If ocr_job parameters are invalid
         """
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._delete_entity(
-            ocr_job,
-            condition_expression="attribute_exists(PK)"
+            ocr_job, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_ocr_jobs")
@@ -171,7 +170,7 @@ class _OCRJob(
 
         Args:
             ocr_jobs (list[OCRJob]): The list of OCR jobs to delete
-            
+
         Raises:
             EntityValidationError: If ocr_jobs parameters are invalid
         """
@@ -182,7 +181,7 @@ class _OCRJob(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=job.key,
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)"
+                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
                 )
             )
             for job in ocr_jobs

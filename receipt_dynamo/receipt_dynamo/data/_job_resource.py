@@ -55,9 +55,7 @@ class _JobResource(
                 already exists
         """
         if job_resource is None:
-            raise ValueError(
-                "job_resource cannot be None"
-            )
+            raise ValueError("job_resource cannot be None")
         if not isinstance(job_resource, JobResource):
             raise ValueError(
                 "job_resource must be an instance of the JobResource class."

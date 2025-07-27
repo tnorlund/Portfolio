@@ -115,7 +115,7 @@ class _Letter(
         """
         # Validate UUID
         assert_valid_uuid(image_id)
-        
+
         self._client.delete_item(
             TableName=self.table_name,
             Key={

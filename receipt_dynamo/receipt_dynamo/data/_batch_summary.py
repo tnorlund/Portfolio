@@ -81,7 +81,7 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._add_entity(
             batch_summary,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
         )
 
     @handle_dynamodb_errors("add_batch_summaries")
@@ -101,7 +101,9 @@ class _BatchSummary(
             contains invalid BatchSummary objects.
         """
         # Use the mixin's batch operation method directly
-        self._add_entities_batch(batch_summaries, BatchSummary, "batch_summaries")
+        self._add_entities_batch(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
 
     @handle_dynamodb_errors("update_batch_summary")
     def update_batch_summary(self, batch_summary: BatchSummary) -> None:
@@ -118,7 +120,7 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._update_entity(
             batch_summary,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )
 
     @handle_dynamodb_errors("update_batch_summaries")
@@ -136,14 +138,16 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        self._validate_entity_list(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
         # Create transactional update items
         transact_items = [
             TransactWriteItemTypeDef(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=item.to_item(),
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)"
+                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
                 )
             )
             for item in batch_summaries
@@ -165,7 +169,7 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._delete_entity(
             batch_summary,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
         )
 
     @handle_dynamodb_errors("delete_batch_summaries")
@@ -183,14 +187,16 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        self._validate_entity_list(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
         # Create transactional delete items
         transact_items = [
             TransactWriteItemTypeDef(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=item.key,
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)"
+                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
                 )
             )
             for item in batch_summaries

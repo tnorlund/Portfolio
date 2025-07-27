@@ -251,21 +251,13 @@ class _ReceiptValidationResult(
         """
         # Custom parameter validation for backward compatibility
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id cannot be None"
-            )
+            raise ValueError("receipt_id cannot be None")
         if image_id is None:
-            raise ValueError(
-                "image_id cannot be None"
-            )
+            raise ValueError("image_id cannot be None")
         if field_name is None:
-            raise ValueError(
-                "field_name cannot be None"
-            )
+            raise ValueError("field_name cannot be None")
         if result_index is None:
-            raise ValueError(
-                "result_index cannot be None"
-            )
+            raise ValueError("result_index cannot be None")
 
         if not isinstance(receipt_id, int):
             raise ValueError(
@@ -423,26 +415,20 @@ class _ReceiptValidationResult(
                 from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id cannot be None"
-            )
+            raise ValueError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise ValueError(
                 f"receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if image_id is None:
-            raise ValueError(
-                "image_id cannot be None"
-            )
+            raise ValueError("image_id cannot be None")
         if not isinstance(image_id, str):
             raise ValueError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if field_name is None:
-            raise ValueError(
-                "field_name cannot be None"
-            )
+            raise ValueError("field_name cannot be None")
         if not isinstance(field_name, str):
             raise ValueError(
                 f"field_name must be a string, got {type(field_name).__name__}"

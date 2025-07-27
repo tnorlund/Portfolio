@@ -20,15 +20,15 @@ if TYPE_CHECKING:
 class SingleEntityCRUDMixin:
     """
     Mixin providing single entity CRUD operations.
-    
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
-    
+
     This mixin adds add, update, and delete functionality for single entities
     with consistent validation and error handling.
     """
-    
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str
@@ -146,15 +146,15 @@ class SingleEntityCRUDMixin:
 class BatchOperationsMixin:
     """
     Mixin providing batch operation functionality.
-    
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
-    
+
     This mixin adds batch write operations with automatic retry logic
     and chunking for large datasets.
     """
-    
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str
@@ -273,15 +273,15 @@ class BatchOperationsMixin:
 class TransactionalOperationsMixin:
     """
     Mixin providing transactional operation functionality.
-    
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
-    
+
     This mixin adds transactional write operations with automatic chunking
     for operations that exceed DynamoDB's 25-item transaction limit.
     """
-    
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str

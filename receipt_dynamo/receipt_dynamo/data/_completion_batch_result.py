@@ -77,8 +77,7 @@ class _CompletionBatchResult(
         """
         self._validate_entity(result, CompletionBatchResult, "result")
         self._add_entity(
-            result,
-            condition_expression="attribute_not_exists(PK)"
+            result, condition_expression="attribute_not_exists(PK)"
         )
 
     @handle_dynamodb_errors("add_completion_batch_results")

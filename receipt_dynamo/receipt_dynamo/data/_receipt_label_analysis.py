@@ -286,36 +286,35 @@ class _ReceiptLabelAnalysis(
                     f"image {image_id}, and version {version}"
                 )
             return item_to_receipt_label_analysis(item)
-        else:
-            # Query for any version and return first
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": (
-                    "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-                ),
-                "ExpressionAttributeNames": {
-                    "#pk": "PK",
-                    "#sk": "SK",
+        # Query for any version and return first
+        query_params: QueryInputTypeDef = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
+            "ExpressionAttributeNames": {
+                "#pk": "PK",
+                "#sk": "SK",
+            },
+            "ExpressionAttributeValues": {
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
                 },
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
-                    },
-                },
-                "Limit": 1,
-            }
+            },
+            "Limit": 1,
+        }
 
-            response = self._client.query(**query_params)
-            items = response.get("Items", [])
+        response = self._client.query(**query_params)
+        items = response.get("Items", [])
 
-            if not items:
-                raise ValueError(
-                    f"Receipt Label Analysis for Image ID {image_id} and "
-                    f"Receipt ID {receipt_id} does not exist"
-                )
+        if not items:
+            raise ValueError(
+                f"Receipt Label Analysis for Image ID {image_id} and "
+                f"Receipt ID {receipt_id} does not exist"
+            )
 
-            return item_to_receipt_label_analysis(items[0])
+        return item_to_receipt_label_analysis(items[0])
 
     @handle_dynamodb_errors("list_receipt_label_analyses")
     def list_receipt_label_analyses(

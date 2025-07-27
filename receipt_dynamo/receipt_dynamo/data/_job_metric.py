@@ -44,7 +44,9 @@ class _JobMetric(
         self._validate_entity(job_metric, JobMetric, "job_metric")
         self._add_entity(
             job_metric,
-            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            condition_expression=(
+                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_job_metric")

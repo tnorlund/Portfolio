@@ -206,9 +206,7 @@ class _ReceiptWord(
     ) -> list[ReceiptWord]:
         """Retrieves multiple ReceiptWords by their indices."""
         if indices is None:
-            raise ValueError(
-                "indices cannot be None"
-            )
+            raise ValueError("indices cannot be None")
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):
@@ -450,13 +448,9 @@ class _ReceiptWord(
                 querying DynamoDB
         """
         if image_id is None:
-            raise ValueError(
-                "image_id cannot be None"
-            )
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id cannot be None"
-            )
+            raise ValueError("receipt_id cannot be None")
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string.")
         if not isinstance(receipt_id, int):

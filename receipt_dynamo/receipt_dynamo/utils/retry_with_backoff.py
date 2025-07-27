@@ -77,7 +77,9 @@ def retry_with_backoff(
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except exceptions as e:
+                except (
+                    exceptions
+                ) as e:  # pylint: disable=broad-exception-caught
                     last_exception = e
 
                     # Don't sleep after the last attempt

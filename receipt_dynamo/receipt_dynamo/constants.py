@@ -2,6 +2,7 @@
 This module defines standardized status enums for DynamoDB entities related to
 receipt parsing, labeling, embedding, and batch processing.
 """
+
 from enum import Enum
 
 

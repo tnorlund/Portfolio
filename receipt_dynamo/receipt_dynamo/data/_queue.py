@@ -68,7 +68,9 @@ class _Queue(
             ValueError: If the queue is invalid or already exists.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._add_entity(queue, condition_expression="attribute_not_exists(PK)")
+        self._add_entity(
+            queue, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_queues")
     def add_queues(self, queues: list[Queue]) -> None:
@@ -100,7 +102,10 @@ class _Queue(
             ValueError: If the queue is invalid or doesn't exist.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._update_entity(queue, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
+        self._update_entity(
+            queue,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+        )
 
     @handle_dynamodb_errors("delete_queue")
     def delete_queue(self, queue: Queue) -> None:
@@ -113,7 +118,10 @@ class _Queue(
             ValueError: If the queue is invalid or doesn't exist.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._delete_entity(queue, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
+        self._delete_entity(
+            queue,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+        )
 
     @handle_dynamodb_errors("get_queue")
     def get_queue(self, queue_name: str) -> Queue:
@@ -191,9 +199,7 @@ class _Queue(
         response = self._client.query(**query_params)
 
         # Convert the DynamoDB items to Queue objects
-        queues = [
-            item_to_queue(item) for item in response.get("Items", [])
-        ]
+        queues = [item_to_queue(item) for item in response.get("Items", [])]
 
         # Return the queues and the LastEvaluatedKey for pagination
         return queues, response.get("LastEvaluatedKey")
@@ -214,7 +220,7 @@ class _Queue(
         # ensure it doesn't already exist
         self._add_entity(
             queue_job,
-            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
         )
 
         # Update the job count for the queue
@@ -236,7 +242,10 @@ class _Queue(
 
         # Delete the item from the DynamoDB table with a condition
         # expression to ensure it exists
-        self._delete_entity(queue_job, condition_expression="attribute_exists(PK) AND attribute_exists(SK)")
+        self._delete_entity(
+            queue_job,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+        )
 
         # Update the job count for the queue
         queue = self.get_queue(queue_job.queue_name)

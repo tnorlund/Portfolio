@@ -71,26 +71,6 @@ class _Image(
     ~68% of the original code through the use of mixins and decorators.
     """
 
-    def getMaxImageId(self) -> int:
-        """Retrieves the maximum image ID found in the database."""
-        raise NotImplementedError(
-            "This method should be implemented by subclasses"
-        )
-
-    def listImageDetails(
-        self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[
-        Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
-        Optional[Dict],
-    ]:
-        """Lists images (via GSI) with optional pagination and returns their
-        basic details."""
-        raise NotImplementedError(
-            "This method should be implemented by subclasses"
-        )
-
     @handle_dynamodb_errors("add_image")
     def add_image(self, image: Image) -> None:
         """Adds an Image item to the database."""

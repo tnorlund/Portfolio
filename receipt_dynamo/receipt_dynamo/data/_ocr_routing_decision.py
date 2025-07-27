@@ -2,31 +2,18 @@ from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data._base import (
+    DeleteTypeDef,
+    PutRequestTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     BatchOperationsMixin,
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
-    DeleteTypeDef,
-    PutRequestTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -189,11 +176,10 @@ class _OCRRoutingDecision(
             )
             if "Item" in response:
                 return item_to_ocr_routing_decision(response["Item"])
-            else:
-                raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' "
-                    f"and Job ID '{job_id}' not found"
-                )
+            raise ValueError(
+                f"OCR routing decision for Image ID '{image_id}' "
+                f"and Job ID '{job_id}' not found"
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":

@@ -72,11 +72,13 @@ class _EmbeddingBatchResult(
             EntityValidationError: If embedding_batch_result parameters are invalid
         """
         self._validate_entity(
-            embedding_batch_result, EmbeddingBatchResult, "embedding_batch_result"
+            embedding_batch_result,
+            EmbeddingBatchResult,
+            "embedding_batch_result",
         )
         self._add_entity(
             embedding_batch_result,
-            condition_expression="attribute_not_exists(PK)"
+            condition_expression="attribute_not_exists(PK)",
         )
 
     @handle_dynamodb_errors("add_embedding_batch_results")
@@ -85,12 +87,14 @@ class _EmbeddingBatchResult(
     ):
         """
         Batch add EmbeddingBatchResults to DynamoDB.
-        
+
         Raises:
             EntityValidationError: If embedding_batch_results parameters are invalid
         """
         self._validate_entity_list(
-            embedding_batch_results, EmbeddingBatchResult, "embedding_batch_results"
+            embedding_batch_results,
+            EmbeddingBatchResult,
+            "embedding_batch_results",
         )
         # Create write request items for batch operation
         request_items = [
@@ -107,17 +111,18 @@ class _EmbeddingBatchResult(
     ):
         """
         Updates an EmbeddingBatchResult in DynamoDB.
-        
+
         Raises:
             EntityNotFoundError: If the embedding batch result does not exist
             EntityValidationError: If embedding_batch_result parameters are invalid
         """
         self._validate_entity(
-            embedding_batch_result, EmbeddingBatchResult, "embedding_batch_result"
+            embedding_batch_result,
+            EmbeddingBatchResult,
+            "embedding_batch_result",
         )
         self._update_entity(
-            embedding_batch_result,
-            condition_expression="attribute_exists(PK)"
+            embedding_batch_result, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("update_embedding_batch_results")
@@ -173,17 +178,18 @@ class _EmbeddingBatchResult(
     ):
         """
         Deletes an EmbeddingBatchResult from DynamoDB.
-        
+
         Raises:
             EntityNotFoundError: If the embedding batch result does not exist
             EntityValidationError: If embedding_batch_result parameters are invalid
         """
         self._validate_entity(
-            embedding_batch_result, EmbeddingBatchResult, "embedding_batch_result"
+            embedding_batch_result,
+            EmbeddingBatchResult,
+            "embedding_batch_result",
         )
         self._delete_entity(
-            embedding_batch_result,
-            condition_expression="attribute_exists(PK)"
+            embedding_batch_result, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_embedding_batch_results")
@@ -192,12 +198,14 @@ class _EmbeddingBatchResult(
     ):
         """
         Batch delete EmbeddingBatchResults from DynamoDB.
-        
+
         Raises:
             EntityValidationError: If embedding_batch_results parameters are invalid
         """
         self._validate_entity_list(
-            embedding_batch_results, EmbeddingBatchResult, "embedding_batch_results"
+            embedding_batch_results,
+            EmbeddingBatchResult,
+            "embedding_batch_results",
         )
         # Create transactional delete items
         transact_items = [
@@ -205,7 +213,7 @@ class _EmbeddingBatchResult(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=result.key,
-                    ConditionExpression="attribute_exists(PK)"
+                    ConditionExpression="attribute_exists(PK)",
                 )
             )
             for result in embedding_batch_results

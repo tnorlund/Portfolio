@@ -91,8 +91,7 @@ class _Receipt(
         """
         self._validate_entity(receipt, Receipt, "receipt")
         self._add_entity(
-            receipt,
-            condition_expression="attribute_not_exists(PK)"
+            receipt, condition_expression="attribute_not_exists(PK)"
         )
 
     @handle_dynamodb_errors("add_receipts")
@@ -127,8 +126,7 @@ class _Receipt(
         """
         self._validate_entity(receipt, Receipt, "receipt")
         self._update_entity(
-            receipt,
-            condition_expression="attribute_exists(PK)"
+            receipt, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("update_receipts")
@@ -160,7 +158,7 @@ class _Receipt(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=receipt.to_item(),
-                    ConditionExpression="attribute_exists(PK)"
+                    ConditionExpression="attribute_exists(PK)",
                 )
             )
             for receipt in receipts
@@ -179,8 +177,7 @@ class _Receipt(
         """
         self._validate_entity(receipt, Receipt, "receipt")
         self._delete_entity(
-            receipt,
-            condition_expression="attribute_exists(PK)"
+            receipt, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_receipts")
@@ -207,7 +204,7 @@ class _Receipt(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=receipt.key,
-                    ConditionExpression="attribute_exists(PK)"
+                    ConditionExpression="attribute_exists(PK)",
                 )
             )
             for receipt in receipts

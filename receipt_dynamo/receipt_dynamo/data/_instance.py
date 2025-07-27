@@ -11,13 +11,8 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
     DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
-    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.instance import Instance, item_to_instance
@@ -59,8 +54,7 @@ class _Instance(
         """
         self._validate_entity(instance, Instance, "instance")
         self._add_entity(
-            instance,
-            condition_expression="attribute_not_exists(PK)"
+            instance, condition_expression="attribute_not_exists(PK)"
         )
 
     @handle_dynamodb_errors("add_instances")
@@ -96,8 +90,7 @@ class _Instance(
         """
         self._validate_entity(instance, Instance, "instance")
         self._update_entity(
-            instance,
-            condition_expression="attribute_exists(PK)"
+            instance, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_instance")
@@ -113,8 +106,7 @@ class _Instance(
         """
         self._validate_entity(instance, Instance, "instance")
         self._delete_entity(
-            instance,
-            condition_expression="attribute_exists(PK)"
+            instance, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("get_instance")
@@ -147,7 +139,9 @@ class _Instance(
 
             # Check if the instance exists
             if "Item" not in response:
-                raise ValueError(f"Instance with instance id {instance_id} does not exist")
+                raise ValueError(
+                    f"Instance with instance id {instance_id} does not exist"
+                )
 
             # Convert the DynamoDB item to an Instance object
             return item_to_instance(response["Item"])
@@ -206,7 +200,9 @@ class _Instance(
         self._validate_entity(instance_job, InstanceJob, "instance_job")
         self._add_entity(
             instance_job,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_instance_job")
@@ -223,7 +219,9 @@ class _Instance(
         self._validate_entity(instance_job, InstanceJob, "instance_job")
         self._update_entity(
             instance_job,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("delete_instance_job")
@@ -240,7 +238,9 @@ class _Instance(
         self._validate_entity(instance_job, InstanceJob, "instance_job")
         self._delete_entity(
             instance_job,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_instance_job")
@@ -295,13 +295,12 @@ class _Instance(
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to get instance-job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to get instance-job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     @handle_dynamodb_errors("list_instances")
     def list_instances(
@@ -360,13 +359,12 @@ class _Instance(
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     @handle_dynamodb_errors("list_instances_by_status")
     def list_instances_by_status(
@@ -432,13 +430,12 @@ class _Instance(
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances by status: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances by status: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     @handle_dynamodb_errors("list_instance_jobs")
     def list_instance_jobs(
@@ -505,13 +502,12 @@ class _Instance(
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instance jobs: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instance jobs: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e
 
     @handle_dynamodb_errors("list_instances_for_job")
     def list_instances_for_job(
@@ -579,10 +575,9 @@ class _Instance(
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    (
-                        "Failed to list instances for job: "
-                        f"{e.response['Error']['Message']}"
-                    )
-                ) from e
+            raise OperationError(
+                (
+                    "Failed to list instances for job: "
+                    f"{e.response['Error']['Message']}"
+                )
+            ) from e

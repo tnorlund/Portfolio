@@ -5,7 +5,16 @@ This module provides the core base class that all DynamoDB data access
 classes should inherit from, providing common functionality and error handling.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, NoReturn, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NoReturn,
+    Optional,
+    Type,
+    Union,
+)
 
 from botocore.exceptions import ClientError
 
@@ -26,12 +35,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
     This class provides centralized error handling, validation, and common
     operation patterns that are shared across all entity data access classes.
-    
+
     Attributes that must be provided by concrete implementations:
     - table_name: str - The DynamoDB table name
     - _client: DynamoDBClient - The boto3 DynamoDB client instance
     """
-    
+
     # Declare protocol-required attributes for type checker
     if TYPE_CHECKING:
         table_name: str
