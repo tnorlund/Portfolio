@@ -138,7 +138,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     ) -> None:
         """
         Execute a put_item operation with the given entity.
-        
+
         Args:
             entity: The entity to put
             condition_expression: Condition expression for the operation
@@ -164,7 +164,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     ) -> None:
         """
         Execute a delete_item operation with the given entity.
-        
+
         Args:
             entity: The entity to delete
             condition_expression: Condition expression for the operation

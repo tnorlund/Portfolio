@@ -33,9 +33,11 @@ class ValidationMessageGenerator:
         Generate validation error message using dictionary-based lookup.
 
         Args:
-            message_type: Type of validation error (required, type_mismatch, etc.)
+            message_type: Type of validation error (required,
+                type_mismatch, etc.)
             param_name: Parameter name for the error
-            class_name: Expected class name (optional, for type mismatch errors)
+            class_name: Expected class name (optional, for type mismatch
+                errors)
 
         Returns:
             Formatted error message
@@ -213,7 +215,8 @@ class EntityValidator:
 
         Args:
             validation_type: Type of validation chain to run
-            context: Validation context containing entity, class, and param info
+            context: Validation context containing entity, class, and
+                param info
 
         Raises:
             ValueError: If any validation in the chain fails
@@ -281,8 +284,10 @@ class EntityValidator:
     def transform_validation_message(
         self, message: str, operation: str
     ) -> str:
-        """Transform validation messages for backward compatibility using dictionary-based patterns."""
-        # Define transformation rules using dictionary lookup for better maintainability
+        """Transform validation messages for backward compatibility using
+        dictionary-based patterns."""
+        # Define transformation rules using dictionary lookup for better
+        # maintainability
         transformation_rules: Dict[
             str, Dict[str, Union[List[str], Dict[str, str]]]
         ] = {
@@ -290,7 +295,9 @@ class EntityValidator:
             "remove_given": {
                 "pattern_match": [],
                 "transformations": {
-                    "One or more parameters given were invalid": "One or more parameters were invalid"
+                    "One or more parameters given were invalid": (
+                        "One or more parameters were invalid"
+                    )
                 },
             },
             # Operations that expect "given were" (add "given")
@@ -306,7 +313,9 @@ class EntityValidator:
                     "receipt_chat_gpt_validation",
                 ],
                 "transformations": {
-                    "One or more parameters were invalid": "One or more parameters given were invalid"
+                    "One or more parameters were invalid": (
+                        "One or more parameters given were invalid"
+                    )
                 },
             },
         }

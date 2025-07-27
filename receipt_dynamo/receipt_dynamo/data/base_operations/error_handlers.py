@@ -52,8 +52,10 @@ def handle_dynamodb_errors(operation_name: str) -> Callable[..., Any]:
                     operation_name,
                     context={"args": args, "kwargs": kwargs},
                 )
-                # Safety net: if _handle_client_error doesn't raise, re-raise original
-                raise  # This line should never be reached if handlers work correctly
+                # Safety net: if _handle_client_error doesn't raise,
+                # re-raise original
+                raise  # This line should never be reached if handlers work
+                # correctly
 
         return wrapper
 
@@ -77,7 +79,8 @@ class ErrorHandler:
         context: Optional[Dict[str, Any]] = None,
     ) -> NoReturn:
         """
-        Handle DynamoDB ClientError with appropriate exception types and messages.
+        Handle DynamoDB ClientError with appropriate exception types and
+        messages.
 
         Args:
             error: The original ClientError from boto3
@@ -94,9 +97,13 @@ class ErrorHandler:
             str,
             Callable[[ClientError, str, Optional[Dict[str, Any]]], NoReturn],
         ] = {
-            "ConditionalCheckFailedException": self._handle_conditional_check_failed,
+            "ConditionalCheckFailedException": (
+                self._handle_conditional_check_failed
+            ),
             "ResourceNotFoundException": self._handle_resource_not_found,
-            "ProvisionedThroughputExceededException": self._handle_throughput_exceeded,
+            "ProvisionedThroughputExceededException": (
+                self._handle_throughput_exceeded
+            ),
             "ValidationException": self._handle_validation_exception,
             "AccessDeniedException": self._handle_access_denied,
             "InternalServerError": self._handle_internal_server_error,
@@ -112,11 +119,13 @@ class ErrorHandler:
         operation: str,
         context: Optional[Dict[str, Any]],
     ) -> NoReturn:
-        """Handle conditional check failures - usually entity already exists or doesn't exist."""
+        """Handle conditional check failures - usually entity already exists
+        or doesn't exist."""
         # Check if this is a batch/transactional operation
         original_message = error.response.get("Error", {}).get("Message", "")
 
-        # For batch/transactional operations with receipt fields, use batch error messages
+        # For batch/transactional operations with receipt fields, use batch
+        # error messages
         if (
             "transact" in operation
             or "batch" in operation
@@ -133,7 +142,8 @@ class ErrorHandler:
             )
         ):
 
-            # Check if we have a specific batch error message for this operation
+            # Check if we have a specific batch error message for this
+            # operation
             if operation in self.config.BATCH_ERROR_MESSAGES:
                 message = self.config.BATCH_ERROR_MESSAGES[operation]
                 raise EntityNotFoundError(message) from error
@@ -166,8 +176,9 @@ class ErrorHandler:
             "Message", "Table not found"
         )
 
-        # For the receipt tests, they expect "Table not found for operation X" format
-        # Check if this is a receipt-related operation or other operations that need the specific format
+        # For the receipt tests, they expect "Table not found for operation
+        # X" format. Check if this is a receipt-related operation or other
+        # operations that need the specific format
         if any(
             op in operation for op in ["receipt", "queue", "receipt_field"]
         ):
@@ -178,7 +189,8 @@ class ErrorHandler:
         ):
             message = "Table not found"
         else:
-            # Default to the "Table not found for operation X" format for most operations
+            # Default to the "Table not found for operation X" format for
+            # most operations
             message = f"Table not found for operation {operation}"
 
         raise DynamoDBError(message) from error
@@ -202,7 +214,8 @@ class ErrorHandler:
         _context: Optional[Dict[str, Any]],
     ) -> NoReturn:
         """Handle validation exceptions."""
-        # For backward compatibility, most tests expect specific validation messages
+        # For backward compatibility, most tests expect specific validation
+        # messages
         if "receipt_field" in operation:
             message = "One or more parameters given were invalid"
         elif any(op in operation for op in ["receipt_label_analysis"]):
@@ -271,7 +284,8 @@ class ErrorHandler:
         # Check original error message from the ClientError
         original_message = error.response.get("Error", {}).get("Message", "")
 
-        # For backward compatibility, preserve "Something unexpected" for specific operations
+        # For backward compatibility, preserve "Something unexpected" for
+        # specific operations
         if (
             "job" in operation.lower()
             and "receipt" not in operation.lower()
@@ -284,7 +298,8 @@ class ErrorHandler:
             message = "Something unexpected"
         elif original_message == "Something unexpected":
             message = "Something unexpected"
-        # Handle specific receipt operations that expect "Unknown error" patterns
+        # Handle specific receipt operations that expect "Unknown error"
+        # patterns
         elif "update_receipt_letters" in operation and "UnknownError" in str(
             error
         ):
@@ -296,7 +311,8 @@ class ErrorHandler:
             and ("receipt_validation_categor" in operation)
             and "UnknownError" in str(error)
         ):
-            # For receipt validation category transactional operations, return the full error detail
+            # For receipt validation category transactional operations,
+            # return the full error detail
             message = f"Unknown error in transactional_write: {str(error)}"
         else:
             # Generate contextual message for other cases
@@ -368,9 +384,7 @@ class ErrorHandler:
             message = self.config.ENTITY_NOT_FOUND_PATTERNS[entity_type]
             # Try to format parameterized messages
             if "{" in message:
-                message = self._format_parameterized_message(
-                    message, context
-                )
+                message = self._format_parameterized_message(message, context)
         else:
             # Use default pattern
             entity_display = self.context_extractor.normalize_entity_name(
@@ -407,12 +421,15 @@ class ErrorHandler:
     ) -> Dict[str, Any]:
         """Extract parameters needed for formatting the message."""
         params = {}
-        
         # Map of parameter names to extraction logic
         param_extractors = {
             "job_id": lambda: self._extract_id_param(args, "job_id", 1),
-            "instance_id": lambda: self._extract_id_param(args, "instance_id", 1),
-            "receipt_id": lambda: self._extract_id_param(args, "receipt_id", 1),
+            "instance_id": lambda: self._extract_id_param(
+                args, "instance_id", 1
+            ),
+            "receipt_id": lambda: self._extract_id_param(
+                args, "receipt_id", 1
+            ),
             "image_id": lambda: self._extract_id_param(args, "image_id", 1),
             "queue_name": lambda: self._extract_queue_name(args),
         }

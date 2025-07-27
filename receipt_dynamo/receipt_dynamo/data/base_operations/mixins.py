@@ -291,7 +291,9 @@ class TransactionalOperationsMixin:
                 "TableName": self.table_name,
                 "Key": entity.key,
                 "UpdateExpression": entity.update_expression,
-                "ExpressionAttributeValues": entity.expression_attribute_values,
+                "ExpressionAttributeValues": (
+                    entity.expression_attribute_values
+                ),
                 "ConditionExpression": condition_expression,
             }
         }
@@ -352,8 +354,9 @@ class TransactionalOperationsMixin:
         """
         Update multiple entities in the database using transactions.
 
-        This is a generic method that handles the common pattern of updating
-        a list of entities with transactional writes. Each update is conditional
+        This is a generic method that handles the common pattern of
+        updating a list of entities with transactional writes. Each update
+        is conditional
         upon the entity already existing (attribute_exists(PK)).
 
         Args:
@@ -371,7 +374,9 @@ class TransactionalOperationsMixin:
                 self._error_config = ErrorMessageConfig()
             self._validator = EntityValidator(self._error_config)
 
-        self._validator.validate_entity_list(entities, entity_type, entity_name)
+        self._validator.validate_entity_list(
+            entities, entity_type, entity_name
+        )
 
         # Build transactional items
         transact_items = []

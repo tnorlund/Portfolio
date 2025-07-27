@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional
 
 
 class ErrorContextExtractor:
-    """Extracts context information from operation arguments for error messages."""
+    """Extracts context information from operation arguments for error
+    messages."""
 
     @staticmethod
     def extract_entity_context(context: Optional[Dict[str, Any]]) -> str:
@@ -49,7 +50,8 @@ class ErrorContextExtractor:
     def extract_entity_type(operation: str) -> str:
         """Extract entity type from operation name."""
         # Common entity patterns in operation names
-        # IMPORTANT: Order matters - longer patterns must come before shorter ones
+        # IMPORTANT: Order matters - longer patterns must come before
+        # shorter ones
         entity_patterns = [
             "receipt_chatgpt_validation",
             "receipt_chat_gpt_validation",  # Both variants
@@ -96,10 +98,12 @@ class ErrorContextExtractor:
                     return "receipt ChatGPT validation"
                 # Handle plural forms like "categories" -> "category"
                 if pattern.endswith("ies"):
-                    # Convert "categories" to "category" for the error message
+                    # Convert "categories" to "category" for the error
+                    # message
                     singular = pattern[:-3] + "y"
                     return singular.replace("_", " ")
-                # Check for plural forms (e.g., "analyses" instead of "analysis")
+                # Check for plural forms (e.g., "analyses" instead of
+                # "analysis")
                 if (
                     pattern.endswith("analysis")
                     and pattern[:-8] + "analyses" in operation
@@ -114,7 +118,8 @@ class ErrorContextExtractor:
         """
         Normalize entity name for consistent display in error messages.
 
-        Converts CamelCase to lowercase with spaces for human-friendly messages.
+        Converts CamelCase to lowercase with spaces for human-friendly
+        messages.
         Examples:
             ReceiptLineItemAnalysis -> receipt line item analysis
             JobCheckpoint -> job checkpoint
@@ -137,7 +142,8 @@ class ErrorContextExtractor:
 
     @staticmethod
     def extract_operation_type(operation: str) -> str:
-        """Extract the operation type (add, get, update, delete, list) from operation name."""
+        """Extract the operation type (add, get, update, delete, list) from
+        operation name."""
         operation_lower = operation.lower()
 
         # Check common operation prefixes
