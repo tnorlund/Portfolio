@@ -1,17 +1,11 @@
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 import boto3
 
-if TYPE_CHECKING:
-    from mypy_boto3_dynamodb import DynamoDBClient
-
 from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
 from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
-
-# Import all the modules needed for multiple inheritance
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
@@ -56,6 +50,9 @@ from receipt_dynamo.data._receipt_validation_summary import (
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._word import _Word
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
 
 
 class DynamoClient(
@@ -103,7 +100,8 @@ class DynamoClient(
 
         Args:
             table_name (str): The name of the DynamoDB table.
-            region (str, optional): The AWS region where the DynamoDB table is located. Defaults to "us-east-1".
+            region (str, optional): The AWS region where the DynamoDB table is
+                located. Defaults to "us-east-1".
 
         Attributes:
             _client (DynamoDBClient): The Boto3 DynamoDB client.
@@ -119,5 +117,6 @@ class DynamoClient(
             self._client.describe_table(TableName=self.table_name)
         except self._client.exceptions.ResourceNotFoundException:
             raise ValueError(
-                f"The table '{self.table_name}' does not exist in region '{region}'."
+                f"The table '{self.table_name}' does not exist in region "
+                f"'{region}'."
             )

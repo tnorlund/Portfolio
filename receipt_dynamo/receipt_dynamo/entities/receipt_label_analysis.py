@@ -6,9 +6,10 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 class ReceiptLabelAnalysis:
     """Represents a Receipt Label Analysis item in DynamoDB.
 
-    This class handles storage and retrieval of receipt label analysis data, which contains
-    information about labeled words in a receipt, including what type of field each word represents
-    (e.g., business_name, address, total, etc.).
+    This class handles storage and retrieval of receipt label analysis data.
+    It contains information about labeled words in a receipt, including what
+    type of field each word represents (e.g., business_name, address, total,
+    etc.).
 
     Instead of using confidence scores, this class relies on detailed textual
     reasoning to explain labeling decisions.
@@ -16,11 +17,14 @@ class ReceiptLabelAnalysis:
     Attributes:
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
-        labels (List[Dict]): List of label dictionaries containing label information.
+        labels (List[Dict]): List of label dictionaries containing label
+            information.
         timestamp_added (datetime): When this analysis was created.
-        version (str): Version of the analysis (for tracking changes over time).
+        version (str): Version of the analysis (for tracking changes over
+            time).
         overall_reasoning (str): Explanation of the overall labeling decisions.
-        metadata (Dict): Additional metadata including processing metrics and history.
+        metadata (Dict): Additional metadata including processing metrics and
+            history.
     """
 
     def __init__(
@@ -38,17 +42,20 @@ class ReceiptLabelAnalysis:
         Args:
             image_id (str): UUID identifying the associated image.
             receipt_id (int): Number identifying the receipt.
-            labels (List[Dict]): List of label dictionaries containing label information.
-                Each dict should have: label_type, line_id, word_id, text, reasoning, and
-                optionally a bounding_box.
+            labels (List[Dict]): List of label dictionaries containing label
+                information. Each dict should have: label_type, line_id,
+                word_id, text, reasoning, and optionally a bounding_box.
             timestamp_added (datetime): When this analysis was created.
-            version (str, optional): Version of the analysis. Defaults to "1.0".
-            overall_reasoning (str, optional): Explanation of the overall labeling decisions.
-            metadata (Dict, optional): Additional metadata. If not provided, a default
-                metadata structure will be created.
+            version (str, optional): Version of the analysis. Defaults to
+                "1.0".
+            overall_reasoning (str, optional): Explanation of the overall
+                labeling decisions.
+            metadata (Dict, optional): Additional metadata. If not provided,
+                a default metadata structure will be created.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string")
@@ -144,7 +151,8 @@ class ReceiptLabelAnalysis:
         """Converts the ReceiptLabelAnalysis object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptLabelAnalysis object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptLabelAnalysis object as
+                a DynamoDB item.
         """
         return {
             **self.key,
@@ -182,7 +190,8 @@ class ReceiptLabelAnalysis:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
-            bounding_box (Dict): Dictionary containing top_left, top_right, bottom_left, bottom_right points.
+            bounding_box (Dict): Dictionary containing top_left,
+                top_right, bottom_left and bottom_right points.
 
         Returns:
             Dict: DynamoDB formatted bounding box.
@@ -220,10 +229,11 @@ class ReceiptLabelAnalysis:
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the ReceiptLabelAnalysis object's attributes.
+        """Return an iterator over the object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing an attribute name and its value.
+            Tuple[str, Any]: A tuple containing an attribute name and its
+                value.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id

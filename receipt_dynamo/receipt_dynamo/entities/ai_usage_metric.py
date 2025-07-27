@@ -15,7 +15,8 @@ from .util import _repr_str, assert_type
 @dataclass(eq=True, unsafe_hash=False)
 class AIUsageMetric(DynamoDBEntity):
     """
-    Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google Places).
+    Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google
+    Places).
 
     Uses:
     - PK: "AI_USAGE#{service}#{model}"
@@ -134,7 +135,10 @@ class AIUsageMetric(DynamoDBEntity):
             if self.cost_usd is not None
             else "unknown cost"
         )
-        return f"<AIUsageMetric {self.service}/{self.model} {self.operation} {tokens_str} {cost_str}>"
+        return (
+            f"<AIUsageMetric {self.service}/{self.model} {self.operation} "
+            f"{tokens_str} {cost_str}>"
+        )
 
     def to_dynamodb_item(self) -> Dict:
         """Convert to DynamoDB item format."""

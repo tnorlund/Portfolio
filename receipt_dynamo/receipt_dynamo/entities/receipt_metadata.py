@@ -23,33 +23,40 @@ MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptMetadata:
     """
-    Represents validated metadata for a receipt, specifically merchant-related information
-    derived from Google Places API and optionally validated by GPT.
+    Represents validated metadata for a receipt, specifically merchant-related
+    information derived from Google Places API and optionally validated by GPT.
 
     This entity is used to:
     - Anchor a receipt to a verified merchant (name, address, phone)
     - Support merchant-specific labeling strategies
     - Enable clustering and quality control across receipts
 
-    Each ReceiptMetadata record is stored in DynamoDB using the image_id and receipt_id,
-    and indexed by merchant name via GSIs.
+    Each ReceiptMetadata record is stored in DynamoDB using the image_id and
+    receipt_id, and indexed by merchant name via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
         receipt_id (int): Identifier of the receipt within the image.
         place_id (str): Google Places API ID of the matched business.
-        merchant_name (str): Canonical name of the business (e.g., "Starbucks").
-        merchant_category (str): Optional business type/category (e.g., "Coffee Shop").
+        merchant_name (str): Canonical name of the business
+            (e.g., "Starbucks").
+        merchant_category (str): Optional business type/category
+            (e.g., "Coffee Shop").
         address (str): Normalized address returned from Google.
         phone_number (str): Formatted phone number.
-        matched_fields (list[str]): List of fields that matched (e.g., ["name", "phone"]).
+        matched_fields (list[str]): List of fields that matched
+            (e.g., ["name", "phone"]).
         validated_by (str): Source of validation (e.g., "GPT+GooglePlaces").
         timestamp (datetime): ISO timestamp when this record was created.
         reasoning (str): GPT or system-generated justification for the match.
-        canonical_place_id (str): Canonical place ID from the most representative business in the cluster.
-        canonical_merchant_name (str): Canonical merchant name from the most representative business in the cluster.
-        canonical_address (str): Normalized canonical address from the most representative business in the cluster.
-        canonical_phone_number (str): Canonical phone number from the most representative business in the cluster.
+        canonical_place_id (str): Canonical place ID from the most
+            representative business in the cluster.
+        canonical_merchant_name (str): Canonical merchant name from the most
+            representative business in the cluster.
+        canonical_address (str): Normalized canonical address from the most
+            representative business in the cluster.
+        canonical_phone_number (str): Canonical phone number from the most
+            representative business in the cluster.
     """
 
     image_id: str
@@ -140,9 +147,11 @@ class ReceiptMetadata:
 
     def _get_high_quality_matched_fields(self) -> List[str]:
         """
-        Validates the quality of matched fields and returns only high-quality matches.
+        Validates the quality of matched fields and returns only
+        high-quality matches.
 
-        This method filters out potentially false positive field matches by checking:
+        This method filters out potentially false positive field matches by
+        checking:
         - Name fields are not empty and have meaningful content
         - Phone fields have sufficient digits
         - Address fields have sufficient components
@@ -154,14 +163,16 @@ class ReceiptMetadata:
 
         for field in self.matched_fields:
             if field == "name":
-                # Name must be non-empty and more than just whitespace/punctuation
+                # Name must be non-empty and more than just
+                # whitespace/punctuation
                 if (
                     self.merchant_name
                     and len(self.merchant_name.strip()) > MIN_NAME_LENGTH
                 ):
                     high_quality_fields.append(field)
             elif field == "phone":
-                # Phone must have at least 7 digits (tolerate missing area code)
+                # Phone must have at least 7 digits (tolerate missing area
+                # code)
                 phone_digits = "".join(
                     c for c in self.phone_number if c.isdigit()
                 )
@@ -190,7 +201,8 @@ class ReceiptMetadata:
                         and token_clean.isalpha()
                     ):
                         meaningful_tokens += 1
-                    # 4. It's a short token (likely abbreviation) but not the only token
+                    # 4. It's a short token (likely abbreviation) but not the
+                    #    only token
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
 
@@ -223,15 +235,18 @@ class ReceiptMetadata:
 
     def gsi1_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI1: used to index all receipts associated with a given merchant.
+        Returns the key for GSI1: used to index all receipts associated with a
+        given merchant.
 
-        Uses canonical_merchant_name if available (preferred), otherwise falls back to merchant_name.
-        The merchant name is normalized by uppercasing and replacing spaces with underscores.
+        Uses ``canonical_merchant_name`` if available (preferred), otherwise
+        falls back to ``merchant_name``. The merchant name is normalized by
+        uppercasing and replacing spaces with underscores.
 
-        This enables efficient querying of all receipts for a canonical merchant, regardless of
-        the original merchant name variations.
+        This enables efficient querying of all receipts for a canonical
+        merchant, regardless of the original merchant name variations.
         """
-        # Prioritize canonical_merchant_name if it exists, otherwise use merchant_name
+        # Prioritize canonical_merchant_name if it exists, otherwise use
+        # merchant_name
         merchant_name_to_use = (
             self.canonical_merchant_name
             if self.canonical_merchant_name
@@ -244,17 +259,21 @@ class ReceiptMetadata:
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
+                )
             },
         }
 
     def gsi2_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI2: used to query records by place_id.
-        This index supports the incremental consolidation process by enabling efficient
-        lookup of records with the same place_id.
+        Returns the key for GSI2: used to query records by ``place_id``. This
+        index supports the incremental consolidation process by enabling
+        efficient lookup of records with the same ``place_id``.
 
-        Only includes non-empty place_ids to avoid cluttering the index.
+        Only includes non-empty ``place_id`` values to avoid cluttering the
+        index.
         """
         if not self.place_id:
             return {}
@@ -262,14 +281,18 @@ class ReceiptMetadata:
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
+                )
             },
         }
 
     def gsi3_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI3: used to sort ReceiptMetadata entries by validation status.
-        Supports filtering low/high-confidence merchant matches across receipts.
+        Returns the key for GSI3: used to sort ``ReceiptMetadata`` entries by
+        validation status. Supports filtering low/high-confidence merchant
+        matches across receipts.
         """
         return {
             "GSI3PK": {"S": f"MERCHANT_VALIDATION"},
@@ -278,8 +301,9 @@ class ReceiptMetadata:
 
     def to_item(self) -> Dict[str, Any]:
         """
-        Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
-        Includes primary key and GSI keys, as well as all merchant-related metadata.
+        Serializes the ``ReceiptMetadata`` object into a DynamoDB-compatible
+        item. Includes primary key and GSI keys, as well as all
+        merchant-related metadata.
         """
         item = {
             **self.key,
@@ -345,9 +369,11 @@ class ReceiptMetadata:
             f"reasoning={_repr_str(self.reasoning)}, "
             f"validation_status={_repr_str(self.validation_status)}, "
             f"canonical_place_id={_repr_str(self.canonical_place_id)}, "
-            f"canonical_merchant_name={_repr_str(self.canonical_merchant_name)}, "
+            f"canonical_merchant_name="
+            f"{_repr_str(self.canonical_merchant_name)}, "
             f"canonical_address={_repr_str(self.canonical_address)}, "
-            f"canonical_phone_number={_repr_str(self.canonical_phone_number)}"
+            f"canonical_phone_number="
+            f"{_repr_str(self.canonical_phone_number)}"
             f")"
         )
 
@@ -356,7 +382,8 @@ class ReceiptMetadata:
         Returns an iterator over the ReceiptMetadata object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]:
+                A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -418,7 +445,8 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            "Invalid item format\nmissing keys: "
+            f"{missing_keys}\nadditional keys: {additional_keys}"
         )
     try:
         # Parse primary key components

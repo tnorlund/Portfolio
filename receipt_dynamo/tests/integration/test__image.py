@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from receipt_dynamo.entities import (
     OCRJob,
     OCRRoutingDecision,
@@ -42,7 +43,7 @@ def test_addImage_raises_value_error_for_none_image(dynamodb_table):
     """
     # Use the real table name from the fixture
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="image parameter is required"):
+    with pytest.raises(ValueError, match="image cannot be None"):
         client.add_image(None)
 
 
@@ -52,7 +53,7 @@ def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
     Checks addImage with an invalid type for 'image'.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="image must be an instance"):
+    with pytest.raises(ValueError, match="image must be an instance of the Image class"):
         client.add_image("not-an-image")
 
 
@@ -81,7 +82,7 @@ def test_addImage_raises_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_image(example_image)
 
     mock_put.assert_called_once()
@@ -608,7 +609,7 @@ def test_image_delete(dynamodb_table, example_image):
 @pytest.mark.integration
 def test_image_delete_error(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.delete_image(example_image.image_id)
 
 
@@ -673,7 +674,7 @@ def test_updateImages_raises_value_error_images_none(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="images parameter is required and cannot be None."
+        ValueError, match="images cannot be None"
     ):
         client.update_images(None)  # type: ignore
 
@@ -688,7 +689,7 @@ def test_updateImages_raises_value_error_images_not_list(
     """
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
-        ValueError, match="images must be a list of Image instances."
+        ValueError, match="images must be a list"
     ):
         client.update_images("not-a-list")  # type: ignore
 
@@ -704,7 +705,7 @@ def test_updateImages_raises_value_error_images_not_list_of_images(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         ValueError,
-        match="All images must be instances of the Image class.",
+        match="images must be a list of Image instances.",
     ):
         client.update_images([example_image, "not-an-image"])  # type: ignore
 
@@ -731,7 +732,7 @@ def test_updateImages_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(ValueError, match="One or more images do not exist"):
+    with pytest.raises(EntityNotFoundError, match="Image with image_id .* does not exist"):
         client.update_images([example_image])
     mock_transact.assert_called_once()
 
@@ -813,7 +814,7 @@ def test_updateImages_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.update_images([example_image])
     mock_transact.assert_called_once()
@@ -872,7 +873,7 @@ def test_updateImages_raises_client_error(
 
     with pytest.raises(
         DynamoDBError,
-        match="Could not update ReceiptValidationResult in the database",
+        match="Table not found",
     ):
         client.update_images([example_image])
 

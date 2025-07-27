@@ -2,9 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptLine, item_to_receipt_line
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -18,6 +16,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_line
+from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -52,7 +52,8 @@ class _ReceiptLine(
     TransactionalOperationsMixin,
 ):
     """
-    A class used to represent a ReceiptLine in the database (similar to _line.py).
+    A class used to represent a ReceiptLine in the database
+    (similar to _line.py).
 
     Methods
     -------
@@ -66,11 +67,13 @@ class _ReceiptLine(
         Deletes a specific receipt-line by IDs.
     delete_receipt_lines(lines: list[ReceiptLine])
         Deletes multiple receipt-lines in batch.
-    get_receipt_line(receipt_id: int, image_id: str, line_id: int) -> ReceiptLine
+    get_receipt_line(receipt_id: int, image_id: str, line_id: int)
+        -> ReceiptLine
         Retrieves a single receipt-line by IDs.
     list_receipt_lines() -> list[ReceiptLine]
         Returns all ReceiptLines from the table.
-    list_receipt_lines_from_receipt(receipt_id: int, image_id: str) -> list[ReceiptLine]
+    list_receipt_lines_from_receipt(receipt_id: int, image_id: str)
+        -> list[ReceiptLine]
         Returns all lines under a specific receipt/image.
     """
 
@@ -121,7 +124,8 @@ class _ReceiptLine(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> None:
         """Deletes a single ReceiptLine by IDs."""
-        # Direct key-based deletion is more efficient than creating dummy objects
+        # Direct key-based deletion is more efficient than creating
+        # dummy objects
         key = {
             "PK": {"S": f"IMAGE#{image_id}"},
             "SK": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"},
@@ -160,7 +164,8 @@ class _ReceiptLine(
             return item_to_receipt_line(response["Item"])
         except KeyError as e:
             raise ValueError(
-                f"ReceiptLine with image_id={image_id}, receipt_id={receipt_id}, line_id={line_id} not found"
+                f"ReceiptLine with image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id} not found"
             )
 
     def get_receipt_lines_by_indices(
@@ -169,7 +174,7 @@ class _ReceiptLine(
         """Retrieves multiple ReceiptLines by their indices."""
         if indices is None:
             raise ValueError(
-                "indices parameter is required and cannot be None."
+                "indices cannot be None"
             )
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
@@ -205,7 +210,7 @@ class _ReceiptLine(
     def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their keys."""
         if keys is None:
-            raise ValueError("keys parameter is required and cannot be None.")
+            raise ValueError("keys cannot be None")
         if not isinstance(keys, list):
             raise ValueError("keys must be a list of dictionaries.")
         for key in keys:
@@ -239,7 +244,9 @@ class _ReceiptLine(
                 results.extend(batch_items)
 
                 unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(self.table_name, {}).get("Keys"):  # type: ignore[call-overload]
+                while unprocessed.get(  # type: ignore[call-overload]
+                    self.table_name, {}
+                ).get("Keys"):
                     response = self._client.batch_get_item(
                         RequestItems=unprocessed
                     )
@@ -329,7 +336,8 @@ class _ReceiptLine(
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptLine]:
-        """Returns all ReceiptLines from the table with a given embedding status."""
+        """Returns all ReceiptLines from the table with a given embedding
+        status."""
         receipt_lines: list[ReceiptLine] = []
 
         if isinstance(embedding_status, EmbeddingStatus):
@@ -338,7 +346,8 @@ class _ReceiptLine(
             status_str = embedding_status
         else:
             raise ValueError(
-                "embedding_status must be an instance of EmbeddingStatus or a string"
+                "embedding_status must be an instance of EmbeddingStatus "
+                "or a string"
             )
 
         if status_str not in [status.value for status in EmbeddingStatus]:

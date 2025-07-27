@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
@@ -16,28 +16,39 @@ class Receipt(DynamoDBEntity):
     """
     Represents a receipt associated with an image in a DynamoDB table.
 
-    This class encapsulates receipt data and related metadata, including dimensions,
-    timestamps, and S3 storage details. It provides methods for generating primary and
-    secondary (GSI) keys for DynamoDB operations, converting the receipt to a DynamoDB item,
-    and iterating over its attributes.
+    This class encapsulates receipt data and related metadata, including
+    dimensions, timestamps, and S3 storage details. It provides methods for
+    generating primary and secondary (GSI) keys for DynamoDB operations,
+    converting the receipt to a DynamoDB item, and iterating over its
+    attributes.
 
     Attributes:
         image_id (str): UUID identifying the associated image.
         id (int): Unique number identifying the receipt.
         width (int): Width of the receipt in pixels.
         height (int): Height of the receipt in pixels.
-        timestamp_added (str): ISO formatted timestamp when the receipt was added.
+        timestamp_added (str): ISO formatted timestamp when the receipt
+            was added.
         raw_s3_bucket (str): S3 bucket name where the raw receipt is stored.
         raw_s3_key (str): S3 key corresponding to the raw receipt in S3.
-        top_left (dict): Coordinates of the top-left corner of the receipt's bounding box.
-        top_right (dict): Coordinates of the top-right corner of the receipt's bounding box.
-        bottom_left (dict): Coordinates of the bottom-left corner of the receipt's bounding box.
-        bottom_right (dict): Coordinates of the bottom-right corner of the receipt's bounding box.
-        sha256 (str, optional): SHA256 hash of the receipt image, if available.
-        cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted receipt image, if available.
-        cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt image, if available.
-        cdn_webp_s3_key (str, optional): S3 key for the WebP version of the CDN-hosted receipt image.
-        cdn_avif_s3_key (str, optional): S3 key for the AVIF version of the CDN-hosted receipt image.
+        top_left (dict): Coordinates of the top-left corner of the
+            receipt's bounding box.
+        top_right (dict): Coordinates of the top-right corner of the
+            receipt's bounding box.
+        bottom_left (dict): Coordinates of the bottom-left corner of the
+            receipt's bounding box.
+        bottom_right (dict): Coordinates of the bottom-right corner of the
+            receipt's bounding box.
+        sha256 (str, optional): SHA256 hash of the receipt image,
+            if available.
+        cdn_s3_bucket (str, optional): S3 bucket name for the CDN-hosted
+            receipt image, if available.
+        cdn_s3_key (str, optional): S3 key for the CDN-hosted receipt
+            image, if available.
+        cdn_webp_s3_key (str, optional): S3 key for the WebP version of the
+            CDN-hosted receipt image.
+        cdn_avif_s3_key (str, optional): S3 key for the AVIF version of the
+            CDN-hosted receipt image.
     """
 
     image_id: str
@@ -216,7 +227,7 @@ class Receipt(DynamoDBEntity):
         """Converts the Receipt object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Receipt object as a DynamoDB item.
+            dict: Dictionary representing the receipt as a DynamoDB item.
         """
         return {
             **self.key,
@@ -347,13 +358,16 @@ class Receipt(DynamoDBEntity):
             f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
             f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
             f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
-            f"cdn_thumbnail_webp_s3_key={_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
-            f"cdn_thumbnail_avif_s3_key={_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
+            f"cdn_thumbnail_webp_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
+            f"cdn_thumbnail_avif_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
             f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
             f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
             f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
             f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
-            f"cdn_medium_webp_s3_key={_repr_str(self.cdn_medium_webp_s3_key)}, "
+            f"cdn_medium_webp_s3_key="
+            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
             f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}"
             ")"
         )
@@ -423,7 +437,9 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            "Invalid item format\n"
+            f"missing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         return Receipt(
@@ -467,12 +483,18 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             ),
             cdn_webp_s3_key=(
                 item["cdn_webp_s3_key"]["S"]
-                if "cdn_webp_s3_key" in item and "S" in item["cdn_webp_s3_key"]
+                if (
+                    "cdn_webp_s3_key" in item
+                    and "S" in item["cdn_webp_s3_key"]
+                )
                 else None
             ),
             cdn_avif_s3_key=(
                 item["cdn_avif_s3_key"]["S"]
-                if "cdn_avif_s3_key" in item and "S" in item["cdn_avif_s3_key"]
+                if (
+                    "cdn_avif_s3_key" in item
+                    and "S" in item["cdn_avif_s3_key"]
+                )
                 else None
             ),
             # Thumbnail versions

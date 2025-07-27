@@ -7,6 +7,11 @@ from botocore.exceptions import ClientError, ParamValidationError
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 
 @pytest.fixture
@@ -56,7 +61,7 @@ def test_addOCRJob_duplicate_raises(
     client.add_ocr_job(sample_ocr_job)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match=r"(Entity already exists: OCRJob|already exists)"):
         client.add_ocr_job(sample_ocr_job)
 
 
@@ -64,7 +69,7 @@ def test_addOCRJob_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ocr_job parameter is required and cannot be None."),
+        (None, "ocr_job cannot be None"),
         (
             "not-a-ocr-job",
             "ocr_job must be an instance of the OCRJob class.",
@@ -96,7 +101,7 @@ def test_addOCRJob_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add OCR job to DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -111,12 +116,12 @@ def test_addOCRJob_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Could not add OCR job to DynamoDB",
+            "Could not add ocr job to DynamoDB",
         ),
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],

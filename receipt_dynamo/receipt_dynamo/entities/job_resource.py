@@ -6,10 +6,12 @@ from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 class JobResource:
     """
-    Represents resources allocated to a training job stored in a DynamoDB table.
+    Represents resources allocated to a training job stored in a DynamoDB
+    table.
 
-    This class tracks computing resources (CPU, memory, GPU, etc.) allocated to a specific job,
-    the instance providing those resources, and the allocation lifecycle.
+    This class tracks computing resources (CPU, memory, GPU, etc.) allocated
+    to a specific job, the instance providing those resources, and the
+    allocation lifecycle.
 
     Attributes:
         job_id (str): UUID identifying the job.
@@ -17,11 +19,15 @@ class JobResource:
         instance_id (str): ID of the EC2 instance providing the resources.
         instance_type (str): The type of EC2 instance (e.g., p3.2xlarge).
         gpu_count (int): Number of GPUs allocated to the job.
-        allocated_at (datetime): The timestamp when the resources were allocated.
-        released_at (Optional[datetime]): The timestamp when the resources were released, if applicable.
-        status (str): The current status of the resource allocation (allocated, released, failed).
+        allocated_at (datetime): The timestamp when the resources were
+            allocated.
+        released_at (Optional[datetime]): The timestamp when the resources were
+            released, if applicable.
+        status (str): The current status of the resource allocation
+            (allocated, released, failed).
         resource_type (str): The type of resource (cpu, gpu, memory, etc.).
-        resource_config (Dict): Additional configuration details for the resource allocation.
+        resource_config (Dict): Additional configuration details for the
+            resource allocation.
     """
 
     def __init__(
@@ -45,14 +51,18 @@ class JobResource:
             instance_id (str): ID of the EC2 instance providing the resources.
             instance_type (str): The type of EC2 instance (e.g., p3.2xlarge).
             resource_type (str): The type of resource allocation.
-            allocated_at (datetime): The timestamp when the resources were allocated.
+            allocated_at (datetime): The timestamp when the resources were
+                allocated.
             status (str): The current status of the resource allocation.
             gpu_count (Optional[int]): Number of GPUs allocated to the job.
-            released_at (Optional[datetime]): The timestamp when resources were released.
-            resource_config (Optional[Dict]): Additional configuration details for the resource.
+            released_at (Optional[datetime]): The timestamp when resources
+                were released.
+            resource_config (Optional[Dict]): Additional configuration details
+                for the resource.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         assert_valid_uuid(job_id)
         self.job_id = job_id
@@ -151,7 +161,8 @@ class JobResource:
         """Converts the JobResource object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobResource object as a DynamoDB item.
+            dict: A dictionary representing the JobResource object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -257,7 +268,8 @@ class JobResource:
         """Returns an iterator over the JobResource object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobResource object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobResource object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "resource_id", self.resource_id
@@ -343,7 +355,8 @@ def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

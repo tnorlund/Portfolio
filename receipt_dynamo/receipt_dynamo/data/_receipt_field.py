@@ -1,9 +1,8 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -11,16 +10,6 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.entities.receipt_field import (
-    ReceiptField,
-    item_to_receipt_field,
-)
-from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteTypeDef,
     PutRequestTypeDef,
@@ -35,8 +24,17 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityNotFoundError,
     OperationError,
 )
+from receipt_dynamo.entities.receipt_field import (
+    ReceiptField,
+    item_to_receipt_field,
+)
+from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    pass
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -62,7 +60,8 @@ class _ReceiptField(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptField" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptField" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt field records.
 
@@ -78,7 +77,8 @@ class _ReceiptField(
     add_receipt_field(receipt_field: ReceiptField):
         Adds a single ReceiptField item to the database, ensuring unique ID.
     add_receipt_fields(receipt_fields: List[ReceiptField]):
-        Adds multiple ReceiptField items to the database in chunks of up to 25 items.
+        Adds multiple ReceiptField items to the database in chunks of up to
+        25 items.
     update_receipt_field(receipt_field: ReceiptField):
         Updates an existing ReceiptField item in the database.
     update_receipt_fields(receipt_fields: List[ReceiptField]):
@@ -87,13 +87,15 @@ class _ReceiptField(
         Deletes a single ReceiptField item from the database.
     delete_receipt_fields(receipt_fields: List[ReceiptField]):
         Deletes multiple ReceiptField items using transactions.
-    get_receipt_field(field_type: str, image_id: str, receipt_id: int) -> ReceiptField:
+    get_receipt_field(field_type: str, image_id: str, receipt_id: int) ->
+        ReceiptField:
         Retrieves a single ReceiptField item by its composite key.
     list_receipt_fields(...) -> Tuple[List[ReceiptField], dict | None]:
         Lists ReceiptField records with optional pagination.
     get_receipt_fields_by_image(...) -> Tuple[List[ReceiptField], dict | None]:
         Retrieves ReceiptField records by image ID.
-    get_receipt_fields_by_receipt(...) -> Tuple[List[ReceiptField], dict | None]:
+    get_receipt_fields_by_receipt(...) ->
+        Tuple[List[ReceiptField], dict | None]:
         Retrieves ReceiptField records by receipt ID.
     """
 
@@ -112,7 +114,7 @@ class _ReceiptField(
         ValueError
             When a receipt field with the same ID already exists.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._add_entity(receipt_field)
 
     @handle_dynamodb_errors("add_receipt_fields")
@@ -128,10 +130,11 @@ class _ReceiptField(
         Raises
         ------
         ValueError
-            If receipt_fields is invalid or if an error occurs during batch write.
+            If receipt_fields is invalid or if an error occurs during batch
+            write.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         request_items = [
@@ -157,7 +160,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._update_entity(receipt_field)
 
     @handle_dynamodb_errors("update_receipt_fields")
@@ -178,7 +181,7 @@ class _ReceiptField(
             When given a bad parameter or if a field doesn't exist.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         transact_items = [
@@ -208,7 +211,7 @@ class _ReceiptField(
         ValueError
             When the receipt field does not exist.
         """
-        self._validate_entity(receipt_field, ReceiptField, "receiptField")
+        self._validate_entity(receipt_field, ReceiptField, "receipt_field")
         self._delete_entity(receipt_field)
 
     @handle_dynamodb_errors("delete_receipt_fields")
@@ -229,7 +232,7 @@ class _ReceiptField(
             When a receipt field does not exist or if another error occurs.
         """
         self._validate_entity_list(
-            receipt_fields, ReceiptField, "receiptFields"
+            receipt_fields, ReceiptField, "receipt_fields"
         )
 
         transact_items = [
@@ -270,11 +273,11 @@ class _ReceiptField(
             If input parameters are invalid or if the field does not exist.
         """
         if field_type is None:
-            raise ValueError("Field type is required and cannot be None.")
+            raise ValueError("field_type cannot be None")
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+            raise ValueError("receipt_id cannot be None")
 
         # Validate image_id as a UUID and receipt_id as a positive integer
         assert_valid_uuid(image_id)
@@ -293,26 +296,26 @@ class _ReceiptField(
             )
             if "Item" in response:
                 return item_to_receipt_field(response["Item"])
-            else:
-                raise ValueError(
-                    f"Receipt field for Field Type '{field_type}', Image ID '{image_id}', and Receipt ID {receipt_id} does not exist."
-                )
+            raise EntityNotFoundError(
+                f"Receipt field for Field Type '{field_type}', "
+                f"Image ID '{image_id}', and Receipt ID {receipt_id} "
+                f"does not exist."
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting receipt field: {e}"
-                ) from e
+            raise OperationError(
+                f"Error getting receipt field: {e}"
+            ) from e
 
     def list_receipt_fields(
         self,
@@ -320,7 +323,8 @@ class _ReceiptField(
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
-        Retrieve receipt field records from the database with support for precise pagination.
+        Retrieve receipt field records from the database with support for
+        precise pagination.
 
         Parameters
         ----------
@@ -333,7 +337,8 @@ class _ReceiptField(
         -------
         tuple
             - A list of ReceiptField objects.
-            - A dict representing the LastEvaluatedKey from the final query page, or None if there are no further pages.
+            - A dict representing the LastEvaluatedKey from the final query
+              page, or None if there are no further pages.
 
         Raises
         ------
@@ -391,20 +396,19 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields from the database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields from the database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields from the database: {e}"
+            ) from e
 
     def get_receipt_fields_by_image(
         self,
@@ -491,22 +495,21 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields by image ID: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields by image ID: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields by image ID: {e}"
+            ) from e
 
     def get_receipt_fields_by_receipt(
         self,
@@ -539,7 +542,8 @@ class _ReceiptField(
         Raises
         ------
         ValueError
-            If the image_id or receipt_id is invalid or if pagination parameters are invalid.
+            If the image_id or receipt_id is invalid or if pagination
+            parameters are invalid.
         """
         if not isinstance(image_id, str):
             raise ValueError("Image ID must be a string")
@@ -560,7 +564,9 @@ class _ReceiptField(
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)",
+                "KeyConditionExpression": (
+                    "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)"
+                ),
                 "ExpressionAttributeValues": {
                     ":pk": {"S": f"IMAGE#{image_id}"},
                     ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
@@ -599,19 +605,18 @@ class _ReceiptField(
                 raise DynamoDBError(
                     f"Could not list receipt fields by receipt ID: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipt fields by receipt ID: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list receipt fields by receipt ID: {e}"
+            ) from e

@@ -16,6 +16,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 
@@ -106,7 +108,7 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
     client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
 
     # Act & Assert
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityAlreadyExistsError) as excinfo:
         client.add_receipt_line_item_analysis(
             sample_receipt_line_item_analysis
         )
@@ -117,10 +119,10 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analysis parameter is required and cannot be None."),
+        (None, "analysis cannot be None"),
         (
             "not-a-receipt-line-item-analysis",
-            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -156,7 +158,7 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt line item analysis to DynamoDB",
+            "Table not found for operation add_receipt_line_item_analysis",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -175,7 +177,7 @@ def test_addReceiptLineItemAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -200,7 +202,7 @@ def test_addReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(EntityAlreadyExistsError) as excinfo:
             client.add_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
@@ -345,14 +347,14 @@ def test_addReceiptLineItemAnalyses_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None."),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "All analyses must be instances of the ReceiptLineItemAnalysis class.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
     ],
 )
@@ -383,12 +385,12 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptLineItemAnalyses to the database",
+            "Table not found for operation add_receipt_line_item_analyses",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -397,7 +399,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -408,7 +410,7 @@ def test_addReceiptLineItemAnalyses_invalid_parameters(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not add ReceiptLineItemAnalyses to the database",
+            "Could not add receipt line item analyses to DynamoDB",
         ),
     ],
 )
@@ -487,10 +489,10 @@ def test_updateReceiptLineItemAnalysis_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analysis parameter is required and cannot be None."),
+        (None, "analysis cannot be None"),
         (
             "not a ReceiptLineItemAnalysis",
-            "Analysis must be an instance of the ReceiptLineItemAnalysis class.",
+            "analysis must be an instance of the ReceiptLineItemAnalysis class.",
         ),
     ],
 )
@@ -521,7 +523,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptLineItemAnalysis for receipt ID",
+            "Entity does not exist: Receipt_Line_Item_Analysis",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -536,11 +538,11 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptLineItemAnalysis in the database",
+            "Table not found for operation update_receipt_line_item_analysis",
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -551,7 +553,7 @@ def test_updateReceiptLineItemAnalysis_invalid_parameters(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update ReceiptLineItemAnalysis in the database",
+            "Could not update receipt line item analysis in DynamoDB",
         ),
     ],
 )
@@ -574,7 +576,7 @@ def test_updateReceiptLineItemAnalysis_client_errors(
 
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(EntityNotFoundError) as excinfo:
             client.update_receipt_line_item_analysis(
                 sample_receipt_line_item_analysis
             )
@@ -727,14 +729,14 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None"),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-a-receipt-line-item-analysis"],
-            "All analyses must be instances of the ReceiptLineItemAnalysis class",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
     ],
 )
@@ -765,14 +767,14 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptLineItemAnalyses in the database",
+            "Table not found for operation update_receipt_line_item_analyses",
             DynamoDBError,
             None,
         ),
         (
             "TransactionCanceledException",
             "Transaction canceled due to ConditionalCheckFailed",
-            "One or more ReceiptLineItemAnalyses do not exist",
+            "One or more receipt line item analyses do not exist",
             ValueError,
             [{"Code": "ConditionalCheckFailed"}],
         ),
@@ -792,7 +794,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
             None,
@@ -807,7 +809,7 @@ def test_updateReceiptLineItemAnalyses_invalid_inputs(
         (
             "Exception",
             "Unknown error occurred",
-            "Could not update ReceiptLineItemAnalyses in the database",
+            "Could not update receipt line item analyses in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -954,12 +956,12 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptLineItemAnalysis from the database",
+            "Table not found for operation delete_receipt_line_item_analysis",
         ),
         (
             "ConditionalCheckFailedException",
             "The conditional request failed",
-            "ReceiptLineItemAnalysis does not exist",
+            "Entity does not exist: Receipt_Line_Item_Analysis",
         ),
         (
             "InternalServerError",
@@ -973,14 +975,14 @@ def test_deleteReceiptLineItemAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "Exception",
             "Unknown error occurred",
-            "Could not delete ReceiptLineItemAnalysis from the database",
+            "Could not delete receipt line item analysis from DynamoDB",
         ),
     ],
 )
@@ -1003,11 +1005,18 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     )
 
     # Act & Assert
-    with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analysis(
-            sample_receipt_line_item_analysis
-        )
-    assert expected_error in str(excinfo.value)
+    if error_code == "ConditionalCheckFailedException":
+        with pytest.raises(EntityNotFoundError) as excinfo:
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
+        assert expected_error in str(excinfo.value)
+    else:
+        with pytest.raises(Exception) as excinfo:
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
+        assert expected_error in str(excinfo.value)
 
 
 @pytest.mark.integration
@@ -1174,14 +1183,14 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Analyses parameter is required and cannot be None."),
+        (None, "analyses cannot be None"),
         (
             "not-a-list",
-            "Analyses must be a list of ReceiptLineItemAnalysis instances.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
         (
             [123, "not-an-analysis"],
-            "All analyses must be instances of the ReceiptLineItemAnalysis class.",
+            "analyses must be a list of ReceiptLineItemAnalysis instances.",
         ),
     ],
 )
@@ -1211,7 +1220,7 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptLineItemAnalyses from the database",
+            "Table not found for operation delete_receipt_line_item_analyses",
         ),
         (
             "InternalServerError",
@@ -1225,14 +1234,14 @@ def test_deleteReceiptLineItemAnalyses_invalid_inputs(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "Exception",
             "Unknown error occurred",
-            "Could not delete ReceiptLineItemAnalyses from the database",
+            "Could not delete receipt line item analyses from DynamoDB",
         ),
     ],
 )
@@ -1425,7 +1434,7 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Error getting receipt line item analysis",
+            "Table not found for operation get_receipt_line_item_analysis",
         ),
         (
             "InternalServerError",
@@ -1439,14 +1448,14 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "Exception",
             "Unknown error occurred",
-            "Error getting receipt line item analysis",
+            "Could not get receipt line item analysis",
         ),
     ],
 )
@@ -1817,7 +1826,7 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt line item analyses from DynamoDB",
+            "Table not found for operation list_receipt_line_item_analyses",
         ),
         (
             "InternalServerError",
@@ -1831,14 +1840,14 @@ def test_listReceiptLineItemAnalyses_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt line item analyses",
+            "Could not list receipt line item analyses from DynamoDB",
         ),
     ],
 )
@@ -1977,7 +1986,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list ReceiptLineItemAnalyses from the database",
+            "Table not found for operation list_receipt_line_item_analyses",
         ),
         (
             "InternalServerError",
@@ -1991,8 +2000,8 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -2002,7 +2011,7 @@ def test_listReceiptLineItemAnalysesForImage_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list ReceiptLineItemAnalyses from the database",
+            "Could not list receipt line item analyses from DynamoDB",
         ),
     ],
 )

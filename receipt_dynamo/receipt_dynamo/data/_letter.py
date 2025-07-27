@@ -1,22 +1,22 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Letter, item_to_letter
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
     WriteRequestTypeDef,
 )
+from receipt_dynamo.entities import item_to_letter
+from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -43,11 +43,14 @@ class _Letter(
         Deletes a letter from the database.
     delete_letters(letters: list[Letter])
         Deletes multiple letters from the database.
-    get_letter(image_id: str, line_id: int, word_id: int, letter_id: int) -> Letter
+    get_letter(image_id: str, line_id: int, word_id: int, letter_id: int)
+        -> Letter
         Gets a letter from the database.
-    list_letters(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
+    list_letters(limit: Optional[int] = None, last_evaluated_key:
+        Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
         Lists all letters from the database.
-    list_letters_from_word(image_id: str, line_id: int, word_id: int) -> list[Letter]
+    list_letters_from_word(image_id: str, line_id: int, word_id: int)
+        -> list[Letter]
         Lists all letters from a specific word.
     """
 
@@ -110,12 +113,18 @@ class _Letter(
             word_id (int): The ID of the word the letter belongs to
             letter_id (int): The ID of the letter to delete
         """
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        
         self._client.delete_item(
             TableName=self.table_name,
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                    "S": (
+                        f"LINE#{line_id:05d}#WORD#{word_id:05d}#"
+                        f"LETTER#{letter_id:05d}"
+                    )
                 },
             },
             ConditionExpression="attribute_exists(PK)",
@@ -177,7 +186,10 @@ class _Letter(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                    "S": (
+                        f"LINE#{line_id:05d}#WORD#{word_id:05d}#"
+                        f"LETTER#{letter_id:05d}"
+                    )
                 },
             },
         )
@@ -252,7 +264,9 @@ class _Letter(
         letters = []
         response = self._client.query(
             TableName=self.table_name,
-            KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            KeyConditionExpression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             ExpressionAttributeValues={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},
                 ":skPrefix": {
@@ -265,7 +279,9 @@ class _Letter(
         while "LastEvaluatedKey" in response:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {

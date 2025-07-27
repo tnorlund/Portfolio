@@ -5,6 +5,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from receipt_dynamo.entities.places_cache import PlacesCache
 
 
@@ -56,7 +57,7 @@ def test_addPlacesCache_duplicate_raises(
     dynamo.add_places_cache(sample_places_cache)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         dynamo.add_places_cache(sample_places_cache)
 
 
@@ -64,7 +65,7 @@ def test_addPlacesCache_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "item parameter is required and cannot be None."),
+        (None, "item cannot be None"),
         (
             "not-a-places-cache-item",
             "item must be an instance of the PlacesCache class.",
@@ -92,12 +93,12 @@ def test_addPlacesCache_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add places cache item to DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "ValidationException",
@@ -112,7 +113,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add places cache item to DynamoDB",
+            "Could not add places cache to DynamoDB",
         ),
     ],
 )
@@ -180,7 +181,7 @@ def test_updatePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         dynamo.update_places_cache(sample_places_cache)
 
 
@@ -214,7 +215,7 @@ def test_deletePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         dynamo.delete_places_cache(sample_places_cache)
 
 

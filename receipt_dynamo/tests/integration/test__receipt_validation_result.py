@@ -16,6 +16,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
 )
 
 
@@ -87,8 +88,8 @@ def test_addReceiptValidationResult_duplicate_raises(
 
     # Act & Assert
     with pytest.raises(
-        ValueError,
-        match=f"ReceiptValidationResult with field {sample_receipt_validation_result.field_name} and index {sample_receipt_validation_result.result_index} already exists",
+        EntityAlreadyExistsError,
+        match="already exists",
     ):
         # Try to add the same result again
         client.add_receipt_validation_result(sample_receipt_validation_result)
@@ -98,7 +99,7 @@ def test_addReceiptValidationResult_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None."),
+        (None, "result cannot be None"),
         (
             "not-a-validation-result",
             "result must be an instance of the ReceiptValidationResult class.",
@@ -131,12 +132,12 @@ def test_addReceiptValidationResult_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptValidationResult with field .* and index .* already exists",
+            "already exists",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt validation result to DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -326,14 +327,14 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None."),
+        (None, "results cannot be None"),
         (
             "not-a-list",
-            "results must be a list of ReceiptValidationResult instances.",
+            "results must be a list",
         ),
         (
             ["not-a-validation-result"],
-            "All results must be instances of the ReceiptValidationResult class.",
+            "results must be a list of ReceiptValidationResult instances.",
         ),
     ],
 )
@@ -363,12 +364,12 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_validation_results",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -388,7 +389,7 @@ def test_addReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_validation_results",
+            "Could not add receipt validation result to DynamoDB",
         ),
     ],
 )
@@ -476,7 +477,7 @@ def test_updateReceiptValidationResult_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None."),
+        (None, "result cannot be None"),
         (
             "not a ReceiptValidationResult",
             "result must be an instance of the ReceiptValidationResult class.",
@@ -509,7 +510,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationResult with field",
+            "does not exist",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -524,7 +525,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptValidationResult in the database",
+            "Table not found",
         ),
         (
             "ValidationException",
@@ -539,7 +540,7 @@ def test_updateReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptValidationResult in the database",
+            "Could not update receipt validation result in DynamoDB",
         ),
     ],
 )
@@ -681,14 +682,14 @@ def test_updateReceiptValidationResults_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None"),
+        (None, "results cannot be None"),
         (
             "not-a-list",
-            "results must be a list of ReceiptValidationResult instances",
+            "results must be a list",
         ),
         (
             [123, "not-a-validation-result"],
-            "All results must be instances of the ReceiptValidationResult class",
+            "results must be a list of ReceiptValidationResult instances",
         ),
     ],
 )
@@ -718,7 +719,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_validation_results",
+            "Table not found",
             None,
             DynamoDBError,
         ),
@@ -760,7 +761,7 @@ def test_updateReceiptValidationResults_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_validation_results",
+            "Could not update receipt validation result in DynamoDB",
             None,
             DynamoDBError,
         ),
@@ -857,7 +858,7 @@ def test_deleteReceiptValidationResult_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "result parameter is required and cannot be None"),
+        (None, "result cannot be None"),
         (
             "not-a-validation-result",
             "result must be an instance of the ReceiptValidationResult class",
@@ -890,12 +891,12 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptValidationResult with field",
+            "does not exist",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete receipt validation result from the database",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -916,7 +917,7 @@ def test_deleteReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation result from the database",
+            "Could not delete receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -1015,14 +1016,14 @@ def test_deleteReceiptValidationResults_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "results parameter is required and cannot be None"),
+        (None, "results cannot be None"),
         (
             "not-a-list",
-            "results must be a list of ReceiptValidationResult instances",
+            "results must be a list",
         ),
         (
             [123, "not-a-validation-result"],
-            "All results must be instances of the ReceiptValidationResult class",
+            "results must be a list of ReceiptValidationResult instances",
         ),
     ],
 )
@@ -1052,12 +1053,12 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_validation_results",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1077,7 +1078,7 @@ def test_deleteReceiptValidationResults_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_validation_results",
+            "Could not delete receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -1286,28 +1287,28 @@ def test_getReceiptValidationResult_not_found(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field",
             0,
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             1,
             None,
             "field",
             0,
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
             0,
-            "field_name parameter is required and cannot be None.",
+            "field_name cannot be None",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field",
             None,
-            "result_index parameter is required and cannot be None.",
+            "result_index cannot be None",
         ),
         (1, "", "field", 0, "uuid must be a valid UUIDv4"),
         (
@@ -1355,12 +1356,12 @@ def test_getReceiptValidationResult_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Error getting receipt validation result",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1370,7 +1371,7 @@ def test_getReceiptValidationResult_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters given were invalid",
-            "Validation error",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -1380,7 +1381,7 @@ def test_getReceiptValidationResult_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error getting receipt validation result",
+            "Could not get receipt validation result",
         ),
     ],
 )
@@ -1632,12 +1633,12 @@ def test_listReceiptValidationResults_with_negative_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt validation results from DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1657,7 +1658,7 @@ def test_listReceiptValidationResults_with_negative_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt validation results",
+            "Could not list receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -1997,12 +1998,12 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list receipt validation results from DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -2022,7 +2023,7 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Error listing receipt validation results",
+            "Could not list receipt validation result from DynamoDB",
         ),
     ],
 )
@@ -2327,7 +2328,7 @@ def test_listReceiptValidationResultsForField_empty_results(
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field_name",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "not_an_int",
@@ -2339,14 +2340,14 @@ def test_listReceiptValidationResultsForField_empty_results(
             1,
             None,
             "field_name",
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (1, "invalid-uuid", "field_name", "uuid must be a valid UUIDv4"),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "field_name parameter is required and cannot be None.",
+            "field_name cannot be None",
         ),
         (
             1,
@@ -2391,12 +2392,12 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not list ReceiptValidationResults from the database",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -2416,7 +2417,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list ReceiptValidationResults from the database",
+            "Could not list receipt validation result from DynamoDB",
         ),
     ],
 )

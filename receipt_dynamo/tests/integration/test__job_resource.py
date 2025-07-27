@@ -108,7 +108,7 @@ def test_addJobResource_raises_value_error(job_resource_dynamo):
     """Test that addJobResource raises ValueError when job_resource is None"""
     with pytest.raises(
         ValueError,
-        match="JobResource parameter is required and cannot be None.",
+        match="job_resource cannot be None",
     ):
         job_resource_dynamo.add_job_resource(None)
 
@@ -211,7 +211,7 @@ def test_getJobResource_success(
 def test_getJobResource_raises_value_error_job_id_none(job_resource_dynamo):
     """Test that getJobResource raises ValueError when job_id is None"""
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_resource_dynamo.get_job_resource(None, "resource-123")
 
@@ -287,7 +287,7 @@ def test_updateJobResourceStatus_raises_value_error_job_id_none(
     Test that updateJobResourceStatus raises ValueError when job_id is None
     """
     with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
+        ValueError, match="job_id cannot be None"
     ):
         job_resource_dynamo.update_job_resource_status(
             None, "resource-123", "released"

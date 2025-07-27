@@ -8,7 +8,8 @@ class QueueJob:
     """
     Represents an association between a queue and a job in DynamoDB.
 
-    This class encapsulates the relationship between a queue and a job, including
+    This class encapsulates the relationship between a queue and a job,
+    including
     attributes such as enqueued timestamp, priority, and position in the queue.
     It is designed to support operations such as generating DynamoDB keys and
     converting queue-job associations to DynamoDB-compatible items.
@@ -17,8 +18,10 @@ class QueueJob:
         queue_name (str): The name of the queue.
         job_id (str): UUID identifying the job.
         enqueued_at (str): The timestamp when the job was added to the queue.
-        priority (str): The priority level of the job in this queue (low, medium, high, critical).
-        position (int): The position of the job in the queue (lower numbers are processed first).
+        priority (str): The priority level of the job in this queue (low,
+            medium, high, critical).
+        position (int): The position of the job in the queue (lower numbers
+            are processed first).
     """
 
     def __init__(
@@ -34,12 +37,15 @@ class QueueJob:
         Args:
             queue_name (str): The name of the queue.
             job_id (str): UUID identifying the job.
-            enqueued_at (datetime or str): The timestamp when the job was added to the queue.
-            priority (str, optional): The priority level of the job. Defaults to "medium".
+            enqueued_at (datetime or str): The timestamp when the job was
+                added to the queue.
+            priority (str, optional): The priority level of the job.
+                Defaults to "medium".
             position (int, optional): The position in the queue. Defaults to 0.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(queue_name, str) or not queue_name:
             raise ValueError("queue_name must be a non-empty string")
@@ -97,7 +103,8 @@ class QueueJob:
         """Converts the QueueJob object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the QueueJob object as a DynamoDB item.
+            dict: A dictionary representing the QueueJob object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -129,7 +136,8 @@ class QueueJob:
         """Returns an iterator over the QueueJob object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over
+                attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
         yield "job_id", self.job_id
@@ -190,7 +198,8 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

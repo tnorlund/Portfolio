@@ -10,6 +10,10 @@ from receipt_dynamo import DynamoClient, ReceiptValidationSummary
 from receipt_dynamo.data._receipt_validation_summary import (
     _ReceiptValidationSummary,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 
 
 @pytest.fixture
@@ -118,24 +122,23 @@ def test_addReceiptValidationSummary_duplicate_raises(
     client.add_receipt_validation_summary(sample_receipt_validation_summary)
 
     # Attempt to add the same validation summary again, which should raise an error
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityAlreadyExistsError) as excinfo:
         client.add_receipt_validation_summary(
             sample_receipt_validation_summary
         )
 
     # Check that the error message contains useful information
-    assert "Entity already exists" in str(excinfo.value)
-    assert "ReceiptValidationSummary" in str(excinfo.value)
+    assert "already exists" in str(excinfo.value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Summary parameter is required and cannot be None."),
+        (None, "summary cannot be None"),
         (
             "not-a-validation-summary",
-            "Summary must be an instance of the ReceiptValidationSummary class.",
+            "summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -171,12 +174,12 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "Entity already exists: ReceiptValidationSummary",
+            "already exists",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_validation_summary",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -191,11 +194,11 @@ def test_addReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_validation_summary",
+            "Could not add receipt validation summary to DynamoDB",
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -230,7 +233,7 @@ def test_addReceiptValidationSummary_client_errors(
 
     # Attempt to add the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_exception):
+        with pytest.raises(EntityAlreadyExistsError, match=expected_exception):
             client.add_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
@@ -344,25 +347,23 @@ def test_updateReceiptValidationSummary_not_exists_raises(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Attempt to update a validation summary that wasn't previously added
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(EntityNotFoundError) as excinfo:
         client.update_receipt_validation_summary(
             sample_receipt_validation_summary
         )
 
     # Check that the error message contains useful information
-    assert "Entity does not exist: ReceiptValidationSummary" in str(
-        excinfo.value
-    )
+    assert "does not exist" in str(excinfo.value)
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Summary parameter is required and cannot be None."),
+        (None, "summary cannot be None"),
         (
             "not a ReceiptValidationSummary",
-            "Summary must be an instance of the ReceiptValidationSummary class.",
+            "summary must be an instance of the ReceiptValidationSummary class.",
         ),
     ],
 )
@@ -398,7 +399,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist: ReceiptValidationSummary",
+            "does not exist",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -413,11 +414,11 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_validation_summary",
+            "Table not found",
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -428,7 +429,7 @@ def test_updateReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_validation_summary",
+            "Could not update receipt validation summary in DynamoDB",
         ),
     ],
 )
@@ -461,7 +462,7 @@ def test_updateReceiptValidationSummary_client_errors(
 
     # Attempt to update the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(EntityNotFoundError, match=expected_error):
             client.update_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
@@ -594,12 +595,12 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "Entity does not exist: ReceiptValidationSummary",
+            "does not exist",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation delete_receipt_validation_summary",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -613,7 +614,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -624,7 +625,7 @@ def test_deleteReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in delete_receipt_validation_summary",
+            "Could not delete receipt validation summary from DynamoDB",
         ),
     ],
 )
@@ -657,7 +658,7 @@ def test_deleteReceiptValidationSummary_client_errors(
 
     # Attempt to delete the validation summary, which should now raise an exception
     if error_code == "ConditionalCheckFailedException":
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(EntityNotFoundError, match=expected_error):
             client.delete_receipt_validation_summary(
                 sample_receipt_validation_summary
             )
@@ -789,7 +790,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation get_receipt_validation_summary",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -803,8 +804,8 @@ def test_getReceiptValidationSummary_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -814,7 +815,7 @@ def test_getReceiptValidationSummary_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in get_receipt_validation_summary",
+            "Could not get receipt validation summary",
         ),
     ],
 )

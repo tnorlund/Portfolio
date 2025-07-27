@@ -5,7 +5,7 @@ Retry mechanism with exponential backoff for handling transient failures.
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
 T = TypeVar("T")
 

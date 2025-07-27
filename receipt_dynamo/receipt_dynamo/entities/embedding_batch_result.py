@@ -19,7 +19,8 @@ def validate_pinecone_id_format(
     IMAGE#<uuid>#RECEIPT#<receipt_id:05d>#LINE#<line_id:05d>#WORD#<word_id:05d>
     """
     parts = pinecone_id.split("#")
-    # Expect exactly 8 segments: IMAGE, uuid, RECEIPT, padded receipt_id, LINE, padded line_id, WORD, padded word_id
+    # Expect exactly 8 segments: IMAGE, uuid, RECEIPT, padded receipt_id,
+    # LINE, padded line_id, WORD, padded word_id
     if len(parts) != 8:
         return False
     if (
@@ -91,7 +92,8 @@ class EmbeddingBatchResult:
         ):
             raise ValueError(
                 "pinecone_id must be in the format "
-                "IMAGE#<uuid>#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id> "
+                "IMAGE#<uuid>#RECEIPT#<receipt_id>#LINE#<line_id>#"
+                "WORD#<word_id> "
                 f"\nGot: {pinecone_id}"
             )
         self.pinecone_id = pinecone_id
@@ -219,7 +221,8 @@ def item_to_embedding_batch_result(
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         # Extract batch_id from PK
@@ -230,7 +233,8 @@ def item_to_embedding_batch_result(
 
         # Helper to find the value after a given key in SK
         def sk_value(key: str) -> str:
-            # Find all positions of the key and use the last one to avoid prefix collisions
+            # Find all positions of the key and use the last one to avoid
+            # prefix collisions
             idxs = [i for i, part in enumerate(sk_parts) if part == key]
             if idxs:
                 idx = idxs[-1]

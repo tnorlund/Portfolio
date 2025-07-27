@@ -47,12 +47,11 @@ class _JobStatus(
             job_status (JobStatus): The job status to add to the database
 
         Raises:
-            ValueError: When a job status with the same timestamp already exists
+            ValueError: When a job status with the same timestamp already
+                exists
         """
         if job_status is None:
-            raise ValueError(
-                "JobStatus parameter is required and cannot be None."
-            )
+            raise ValueError("jobstatus cannot be None")
         if not isinstance(job_status, JobStatus):
             raise ValueError(
                 "job_status must be an instance of the JobStatus class."
@@ -61,13 +60,16 @@ class _JobStatus(
             self._client.put_item(
                 TableName=self.table_name,
                 Item=job_status.to_item(),
-                ConditionExpression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+                ConditionExpression=(
+                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                ),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"JobStatus with timestamp {job_status.updated_at} for job {job_status.job_id} already exists"
+                    f"JobStatus with timestamp {job_status.updated_at} for "
+                    f"job {job_status.job_id} already exists"
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
@@ -98,7 +100,7 @@ class _JobStatus(
             ValueError: If the job does not exist or has no status updates
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         try:
@@ -149,20 +151,23 @@ class _JobStatus(
 
         Parameters:
             job_id (str): The ID of the job to get status updates for.
-            limit (int, optional): The maximum number of status updates to return.
-            last_evaluated_key (dict, optional): A key that marks the starting point for the query.
+            limit (int, optional): The maximum number of status updates to
+                return.
+            last_evaluated_key (dict, optional): A key that marks the
+                starting point for the query.
 
         Returns:
             tuple:
                 - A list of JobStatus objects for the specified job.
-                - A dict representing the LastEvaluatedKey from the final query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey from the final
+                  query page, or None if no further pages.
 
         Raises:
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("Job ID is required and cannot be None.")
+            raise ValueError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
@@ -242,8 +247,10 @@ class _JobStatus(
             job_id (str): The ID of the job to get
 
         Returns:
-            Tuple[Optional[Any], List[JobStatus]]: A tuple containing the job and a list of its status updates.
-            The job will be None if no job was found, and the job will need to be converted to the proper type
+            Tuple[Optional[Any], List[JobStatus]]: A tuple containing the job
+                and a list of its status updates.
+            The job will be None if no job was found, and the job will need
+            to be converted to the proper type
             by the calling class.
         """
         try:
@@ -260,7 +267,8 @@ class _JobStatus(
 
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "JOB":
-                    job = item  # Return the raw item to be converted by the caller
+                    # Return the raw item to be converted by the caller
+                    job = item
                 elif item["TYPE"]["S"] == "JOB_STATUS":
                     statuses.append(item_to_job_status(item))
 
@@ -277,7 +285,8 @@ class _JobStatus(
 
                 for item in response["Items"]:
                     if item["TYPE"]["S"] == "JOB":
-                        job = item  # Return the raw item to be converted by the caller
+                        # Return the raw item to be converted by the caller
+                        job = item
                     elif item["TYPE"]["S"] == "JOB_STATUS":
                         statuses.append(item_to_job_status(item))
 

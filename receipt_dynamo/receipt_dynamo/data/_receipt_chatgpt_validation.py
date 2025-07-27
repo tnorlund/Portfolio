@@ -2,11 +2,20 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import (
-    ReceiptChatGPTValidation,
+from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
+from receipt_dynamo.entities import (
     item_to_receipt_chat_gpt_validation,
 )
-from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import QueryInputTypeDef
@@ -30,7 +39,12 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _ReceiptChatGPTValidation(DynamoClientProtocol):
+class _ReceiptChatGPTValidation(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
     """
     A class used to access receipt ChatGPT validations in DynamoDB.
 
@@ -38,271 +52,137 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
     -------
     add_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Adds a ReceiptChatGPTValidation to DynamoDB.
-    add_receipt_chat_gpt_validations(validations:
-            list[ReceiptChatGPTValidation])
+    add_receipt_chat_gpt_validations(
+        validations: list[ReceiptChatGPTValidation],
+    )
         Adds multiple ReceiptChatGPTValidations to DynamoDB in batches.
     update_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Updates an existing ReceiptChatGPTValidation in the database.
-    update_receipt_chat_gpt_validations(validations:
-            list[ReceiptChatGPTValidation])
+    update_receipt_chat_gpt_validations(
+        validations: list[ReceiptChatGPTValidation],
+    )
         Updates multiple ReceiptChatGPTValidations in the database.
     delete_receipt_chat_gpt_validation(validation: ReceiptChatGPTValidation)
         Deletes a single ReceiptChatGPTValidation.
-    delete_receipt_chat_gpt_validations(validations:
-            list[ReceiptChatGPTValidation])
+    delete_receipt_chat_gpt_validations(
+        validations: list[ReceiptChatGPTValidation],
+    )
         Deletes multiple ReceiptChatGPTValidations in batch.
-    get_receipt_chat_gpt_validation(receipt_id: int, image_id: str,
-            timestamp: str) -> ReceiptChatGPTValidation
+    get_receipt_chat_gpt_validation(
+        receipt_id: int,
+        image_id: str,
+        timestamp: str,
+    ) -> ReceiptChatGPTValidation
         Retrieves a single ReceiptChatGPTValidation by IDs.
-    list_receipt_chat_gpt_validations(limit: Optional[int] = None,
-            last_evaluated_key: dict | None = None)
-            -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations(
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns all ReceiptChatGPTValidations and the last evaluated key.
-    list_receipt_chat_gpt_validations_for_receipt(receipt_id: int,
-            image_id: str) -> list[ReceiptChatGPTValidation]
+    list_receipt_chat_gpt_validations_for_receipt(
+        receipt_id: int,
+        image_id: str,
+    ) -> list[ReceiptChatGPTValidation]
         Returns all ReceiptChatGPTValidations for a given receipt.
-    list_receipt_chat_gpt_validations_by_status(status: str,
-            limit: Optional[int] = None,
-            last_evaluated_key: dict | None = None)
-            -> tuple[list[ReceiptChatGPTValidation], dict | None]
+    list_receipt_chat_gpt_validations_by_status(
+        status: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns ReceiptChatGPTValidations with a specific status."""
 
+    @handle_dynamodb_errors("add_receipt_chat_gpt_validation")
     def add_receipt_chat_gpt_validation(
         self, validation: ReceiptChatGPTValidation
     ):
         """Adds a ReceiptChatGPTValidation to DynamoDB.
 
         Args:
-            validation (ReceiptChatGPTValidation): The ReceiptChatGPTValidation to add.
+            validation (ReceiptChatGPTValidation):
+                The ReceiptChatGPTValidation to add.
 
         Raises:
-            ValueError: If the validation is None or not an instance of ReceiptChatGPTValidation.
-            Exception: If the validation cannot be added to DynamoDB.
+            EntityAlreadyExistsError: If the validation already exists.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validation is None:
-            raise ValueError(
-                "validation parameter is required and cannot be None."
-            )
-        if not isinstance(validation, ReceiptChatGPTValidation):
-            raise ValueError(
-                "validation must be an instance of the ReceiptChatGPTValidation class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=validation.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} already exists"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add receipt ChatGPT validation to DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add receipt ChatGPT validation to DynamoDB: {e}"
-                ) from e
+        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._add_entity(
+            validation,
+            condition_expression="attribute_not_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("add_receipt_chatgpt_validations")
     def add_receipt_chatgpt_validations(
         self, validations: list[ReceiptChatGPTValidation]
     ):
         """Adds multiple ReceiptChatGPTValidations to DynamoDB in batches.
 
         Args:
-            validations (list[ReceiptChatGPTValidation]): The ReceiptChatGPTValidations to add.
+            validations (list[ReceiptChatGPTValidation]):
+                The ReceiptChatGPTValidations to add.
 
         Raises:
-            ValueError: If the validations are None or not a list.
-            Exception: If the validations cannot be added to DynamoDB.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validations is None:
-            raise ValueError(
-                "validations parameter is required and cannot be None."
+        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        # Create write request items for batch operation
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=validation.to_item())
             )
-        if not isinstance(validations, list):
-            raise ValueError(
-                "validations must be a list of ReceiptChatGPTValidation instances."
-            )
-        if not all(
-            isinstance(val, ReceiptChatGPTValidation) for val in validations
-        ):
-            raise ValueError(
-                "All validations must be instances of the ReceiptChatGPTValidation class."
-            )
-        try:
-            for i in range(0, len(validations), 25):
-                chunk = validations[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=val.to_item())
-                    )
-                    for val in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add ReceiptChatGPTValidations to the database: {e}"
-                ) from e
+            for validation in validations
+        ]
+        self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("update_receipt_chatgpt_validation")
     def update_receipt_chatgpt_validation(
         self, validation: ReceiptChatGPTValidation
     ):
         """Updates an existing ReceiptChatGPTValidation in the database.
 
         Args:
-            validation (ReceiptChatGPTValidation): The ReceiptChatGPTValidation to update.
+            validation (ReceiptChatGPTValidation):
+                The ReceiptChatGPTValidation to update.
 
         Raises:
-            ValueError: If the validation is None or not an instance of ReceiptChatGPTValidation.
-            Exception: If the validation cannot be updated in DynamoDB.
+            EntityNotFoundError: If the validation does not exist.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validation is None:
-            raise ValueError(
-                "validation parameter is required and cannot be None."
-            )
-        if not isinstance(validation, ReceiptChatGPTValidation):
-            raise ValueError(
-                "validation must be an instance of the ReceiptChatGPTValidation class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=validation.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not update ReceiptChatGPTValidation in the database: {e}"
-                ) from e
+        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._update_entity(
+            validation,
+            condition_expression="attribute_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("update_receipt_chatgpt_validations")
     def update_receipt_chatgpt_validations(
         self, validations: list[ReceiptChatGPTValidation]
     ):
         """Updates multiple ReceiptChatGPTValidations in the database.
 
         Args:
-            validations (list[ReceiptChatGPTValidation]): The ReceiptChatGPTValidations to update.
+            validations (list[ReceiptChatGPTValidation]):
+                The ReceiptChatGPTValidations to update.
 
         Raises:
-            ValueError: If the validations are None or not a list.
-            Exception: If the validations cannot be updated in DynamoDB.
+            EntityNotFoundError: If one or more validations do not exist.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validations is None:
-            raise ValueError(
-                "validations parameter is required and cannot be None."
-            )
-        if not isinstance(validations, list):
-            raise ValueError(
-                "validations must be a list of ReceiptChatGPTValidation instances."
-            )
-        if not all(
-            isinstance(val, ReceiptChatGPTValidation) for val in validations
-        ):
-            raise ValueError(
-                "All validations must be instances of the ReceiptChatGPTValidation class."
-            )
-        for i in range(0, len(validations), 25):
-            chunk = validations[i : i + 25]
-            transact_items = [
-                TransactWriteItemTypeDef(
-                    Put=PutTypeDef(
-                        TableName=self.table_name,
-                        Item=val.to_item(),
-                        ConditionExpression="attribute_exists(PK)",
-                    )
+        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        # Create transactional update items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Put=PutTypeDef(
+                    TableName=self.table_name,
+                    Item=validation.to_item(),
+                    ConditionExpression="attribute_exists(PK)"
                 )
-                for val in chunk
-            ]
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "TransactionCanceledException":
-                    # Check if cancellation was due to conditional check failure
-                    if "ConditionalCheckFailed" in str(e):
-                        raise ValueError(
-                            "One or more ReceiptChatGPTValidations do not exist"
-                        ) from e
-                    else:
-                        raise DynamoDBError(
-                            f"Transaction canceled: {e}"
-                        ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise DynamoDBThroughputError(
-                        f"Provisioned throughput exceeded: {e}"
-                    ) from e
-                elif error_code == "InternalServerError":
-                    raise DynamoDBServerError(
-                        f"Internal server error: {e}"
-                    ) from e
-                elif error_code == "ValidationException":
-                    raise DynamoDBValidationError(
-                        f"One or more parameters given were invalid: {e}"
-                    ) from e
-                elif error_code == "AccessDeniedException":
-                    raise DynamoDBAccessError(f"Access denied: {e}") from e
-                else:
-                    raise DynamoDBError(
-                        f"Could not update ReceiptChatGPTValidations in the database: {e}"
-                    ) from e
+            )
+            for validation in validations
+        ]
+        self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("delete_receipt_chat_gpt_validation")
     def delete_receipt_chat_gpt_validation(
         self,
         validation: ReceiptChatGPTValidation,
@@ -310,112 +190,43 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         """Deletes a single ReceiptChatGPTValidation.
 
         Args:
-            validation (ReceiptChatGPTValidation): The ReceiptChatGPTValidation to delete.
+            validation (ReceiptChatGPTValidation):
+                The ReceiptChatGPTValidation to delete.
 
         Raises:
-            ValueError: If the validation is None or not an instance of ReceiptChatGPTValidation.
-            Exception: If the validation cannot be deleted from DynamoDB.
+            EntityNotFoundError: If the validation does not exist.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validation is None:
-            raise ValueError(
-                "validation parameter is required and cannot be None."
-            )
-        if not isinstance(validation, ReceiptChatGPTValidation):
-            raise ValueError(
-                "validation must be an instance of the ReceiptChatGPTValidation class."
-            )
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=validation.key,
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
-                    f"ReceiptChatGPTValidation for receipt {validation.receipt_id} and timestamp {validation.timestamp} does not exist"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    "Could not delete ReceiptChatGPTValidation from the database"
-                ) from e
+        self._validate_entity(validation, ReceiptChatGPTValidation, "validation")
+        self._delete_entity(
+            validation,
+            condition_expression="attribute_exists(PK)"
+        )
 
+    @handle_dynamodb_errors("delete_receipt_chat_gpt_validations")
     def delete_receipt_chat_gpt_validations(
         self, validations: list[ReceiptChatGPTValidation]
     ):
         """Deletes multiple ReceiptChatGPTValidations in batch.
 
         Args:
-            validations (list[ReceiptChatGPTValidation]): The ReceiptChatGPTValidations to delete.
+            validations (list[ReceiptChatGPTValidation]):
+                The ReceiptChatGPTValidations to delete.
 
         Raises:
-            ValueError: If the validations are None or not a list.
-            Exception: If the validations cannot be deleted from DynamoDB.
+            EntityValidationError: If validation parameters are invalid.
         """
-        if validations is None:
-            raise ValueError(
-                "validations parameter is required and cannot be None."
+        self._validate_entity_list(validations, ReceiptChatGPTValidation, "validations")
+        # Create delete request items for batch operation
+        request_items = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=validation.key)
             )
-        if not isinstance(validations, list):
-            raise ValueError(
-                "validations must be a list of ReceiptChatGPTValidation instances."
-            )
-        if not all(
-            isinstance(val, ReceiptChatGPTValidation) for val in validations
-        ):
-            raise ValueError(
-                "All validations must be instances of the ReceiptChatGPTValidation class."
-            )
-        try:
-            for i in range(0, len(validations), 25):
-                chunk = validations[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=val.key)
-                    )
-                    for val in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-                    unprocessed = response.get("UnprocessedItems", {})
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not delete ReceiptChatGPTValidations from the database: {e}"
-                ) from e
+            for validation in validations
+        ]
+        self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("get_receipt_chat_gpt_validation")
     def get_receipt_chat_gpt_validation(
         self,
         receipt_id: int,
@@ -431,25 +242,26 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt ChatGPT validation cannot be retrieved from DynamoDB.
+            Exception: If the receipt ChatGPT validation cannot be
+                retrieved from DynamoDB.
 
         Returns:
             ReceiptChatGPTValidation: The retrieved receipt ChatGPT validation.
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if timestamp is None:
             raise ValueError(
-                "timestamp parameter is required and cannot be None."
+                "timestamp cannot be None"
             )
         if not isinstance(timestamp, str):
             raise ValueError("timestamp must be a string.")
@@ -460,7 +272,11 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
+                            f"VALIDATION#CHATGPT#"
+                            f"{timestamp}"
+                        )
                     },
                 },
             )
@@ -468,7 +284,11 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                 return item_to_receipt_chat_gpt_validation(response["Item"])
             else:
                 raise ValueError(
-                    f"ReceiptChatGPTValidation with receipt ID {receipt_id}, image ID {image_id}, and timestamp {timestamp} not found"
+                    (
+                        "ReceiptChatGPTValidation with receipt ID "
+                        f"{receipt_id}, image ID {image_id}, and "
+                        f"timestamp {timestamp} not found"
+                    )
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -487,6 +307,7 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                     f"Error getting receipt ChatGPT validation: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("list_receipt_chat_gpt_validations")
     def list_receipt_chat_gpt_validations(
         self,
         limit: Optional[int] = None,
@@ -495,16 +316,21 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         """Returns all ReceiptChatGPTValidations from the table.
 
         Args:
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            last_evaluated_key (dict, optional): The last evaluated key from a previous request. Defaults to None.
+            limit (int, optional):
+                The maximum number of results to return. Defaults to None.
+            last_evaluated_key (dict, optional):
+                The last evaluated key from a previous request.
+                Defaults to None.
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
+            Exception: If the receipt ChatGPT validations cannot be
+                retrieved from DynamoDB.
 
         Returns:
-            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptChatGPTValidation], dict | None]:
+                A tuple containing a list of validations and the last
+                evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("limit must be an integer or None.")
@@ -521,7 +347,9 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
                 "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
+                "KeyConditionExpression": (
+                    "#pk = :pk_val AND begins_with(#sk, :sk_prefix)"
+                ),
                 "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": "ANALYSIS_TYPE"},
@@ -564,7 +392,11 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not list receipt ChatGPT validations from DynamoDB: {e}"
+                    (
+                        "Could not list receipt ChatGPT validations from "
+                        "DynamoDB: "
+                        f"{e}"
+                    )
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
@@ -581,6 +413,7 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                     f"Error listing receipt ChatGPT validations: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("list_receipt_chat_gpt_validations_for_receipt")
     def list_receipt_chat_gpt_validations_for_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptChatGPTValidation]:
@@ -592,20 +425,22 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
+            Exception: If the receipt ChatGPT validations cannot be
+                retrieved from DynamoDB.
 
         Returns:
-            list[ReceiptChatGPTValidation]: A list of ChatGPT validations for the specified receipt.
+            list[ReceiptChatGPTValidation]:
+                A list of ChatGPT validations for the specified receipt.
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
 
@@ -613,11 +448,16 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
+                            f"VALIDATION#CHATGPT#"
+                        )
                     },
                 },
             )
@@ -631,11 +471,16 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {
-                            "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#"
+                            "S": (
+                                f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
+                                f"VALIDATION#CHATGPT#"
+                            )
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
@@ -664,9 +509,13 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
                 raise DynamoDBError(
-                    f"Could not list ReceiptChatGPTValidations from the database: {e}"
+                    (
+                        "Could not list ReceiptChatGPTValidations from the "
+                        f"database: {e}"
+                    )
                 ) from e
 
+    @handle_dynamodb_errors("list_receipt_chat_gpt_validations_by_status")
     def list_receipt_chat_gpt_validations_by_status(
         self,
         status: str,
@@ -677,20 +526,25 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
 
         Args:
             status (str): The status to filter by ("VALID", "INVALID", etc.).
-            limit (int, optional): The maximum number of results to return. Defaults to None.
-            last_evaluated_key (dict, optional): The last evaluated key from a previous request. Defaults to None.
+            limit (int, optional):
+                The maximum number of results to return. Defaults to None.
+            last_evaluated_key (dict, optional):
+                The last evaluated key from a previous request.
+                Defaults to None.
 
         Raises:
             ValueError: If any parameters are invalid.
-            Exception: If the receipt ChatGPT validations cannot be retrieved from DynamoDB.
+            Exception: If the receipt ChatGPT validations cannot be
+                retrieved from DynamoDB.
 
         Returns:
-            tuple[list[ReceiptChatGPTValidation], dict | None]: A tuple containing a list of validations and
-                                                               the last evaluated key (or None if no more results).
+            tuple[list[ReceiptChatGPTValidation], dict | None]:
+                A tuple containing a list of validations and the last
+                evaluated key (or None if no more results).
         """
         if status is None:
             raise ValueError(
-                "status parameter is required and cannot be None."
+                "status cannot be None"
             )
         if not isinstance(status, str):
             raise ValueError("status must be a string.")
@@ -753,7 +607,11 @@ class _ReceiptChatGPTValidation(DynamoClientProtocol):
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
-                    f"Could not list receipt ChatGPT validations from DynamoDB: {e}"
+                    (
+                        "Could not list receipt ChatGPT validations from "
+                        "DynamoDB: "
+                        f"{e}"
+                    )
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(

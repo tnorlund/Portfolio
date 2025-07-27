@@ -10,7 +10,10 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
+    DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 # -------------------------------------------------------------------
@@ -77,7 +80,7 @@ def test_addReceiptWordLabel_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "receipt_word_label cannot be None"),
         (
             "not-a-receipt-word-label",
             "receipt_word_label must be an instance of the ReceiptWordLabel class.",
@@ -113,7 +116,7 @@ def test_addReceiptWordLabel_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt word label to DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -132,8 +135,8 @@ def test_addReceiptWordLabel_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
     ],
@@ -171,7 +174,20 @@ def test_addReceiptWordLabel_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": ValueError,
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_word_label(sample_receipt_word_label)
     mock_put.assert_called_once()
 
@@ -232,7 +248,7 @@ def test_addReceiptWordLabels_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
@@ -277,7 +293,7 @@ def test_addReceiptWordLabels_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
@@ -320,7 +336,18 @@ def test_addReceiptWordLabels_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_word_labels(labels)
     mock_batch_write.assert_called_once()
 
@@ -412,7 +439,7 @@ def test_updateReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.update_receipt_word_label(sample_receipt_word_label)
 
 
@@ -420,10 +447,10 @@ def test_updateReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "ReceiptWordLabel cannot be None"),
         (
             "not-a-receipt-word-label",
-            "receipt_word_label must be an instance of the ReceiptWordLabel class.",
+            "ReceiptWordLabel must be an instance of the ReceiptWordLabel class.",
         ),
     ],
 )
@@ -465,14 +492,14 @@ def test_updateReceiptWordLabel_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt word label",
+            "Could not update receipt word label in DynamoDB",
         ),
     ],
 )
@@ -508,7 +535,19 @@ def test_updateReceiptWordLabel_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityNotFoundError,  # For update operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.update_receipt_word_label(sample_receipt_word_label)
     mock_put.assert_called_once()
 
@@ -604,14 +643,14 @@ def test_updateReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
         ),
         (
             [1, 2, 3],
-            "All receipt word labels must be instances of the ReceiptWordLabel class.",
+            "receipt_word_labels must be a list of ReceiptWordLabel instances.",
         ),
     ],
 )
@@ -640,8 +679,8 @@ def test_updateReceiptWordLabels_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt word labels do not exist",
-            ValueError,
+            "Entity does not exist: ReceiptWordLabel",
+            EntityNotFoundError,
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -657,7 +696,7 @@ def test_updateReceiptWordLabels_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
@@ -670,7 +709,7 @@ def test_updateReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Error updating receipt word labels",
+            "Could not update receipt word label in DynamoDB",
             DynamoDBError,
         ),
     ],
@@ -773,7 +812,7 @@ def test_deleteReceiptWordLabel_success(
     client.delete_receipt_word_label(sample_receipt_word_label)
 
     # Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(ValueError, match="Receipt Word Label.*does not exist"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -792,7 +831,7 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="Entity does not exist: ReceiptWordLabel"):
         client.delete_receipt_word_label(sample_receipt_word_label)
 
 
@@ -800,10 +839,10 @@ def test_deleteReceiptWordLabel_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabel parameter is required and cannot be None."),
+        (None, "ReceiptWordLabel cannot be None"),
         (
             "not-a-receipt-word-label",
-            "receipt_word_label must be an instance of the ReceiptWordLabel class.",
+            "ReceiptWordLabel must be an instance of the ReceiptWordLabel class.",
         ),
     ],
 )
@@ -845,14 +884,14 @@ def test_deleteReceiptWordLabel_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt word label",
+            "Could not delete receipt word label from DynamoDB",
         ),
     ],
 )
@@ -888,7 +927,19 @@ def test_deleteReceiptWordLabel_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityNotFoundError,  # For delete operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_word_label(sample_receipt_word_label)
     mock_delete.assert_called_once()
 
@@ -927,7 +978,7 @@ def test_deleteReceiptWordLabels_success(
 
     # Assert
     for label in labels:
-        with pytest.raises(ValueError, match="does not exist"):
+        with pytest.raises(ValueError, match="Receipt Word Label.*does not exist"):
             client.get_receipt_word_label(
                 label.image_id,
                 label.receipt_id,
@@ -957,14 +1008,14 @@ def test_deleteReceiptWordLabels_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptWordLabels parameter is required and cannot be None."),
+        (None, "receipt_word_labels cannot be None"),
         (
             "not-a-list",
             "receipt_word_labels must be a list of ReceiptWordLabel instances.",
         ),
         (
             [1, 2, 3],
-            "All receipt word labels must be instances of the ReceiptWordLabel class.",
+            "receipt_word_labels must be a list of ReceiptWordLabel instances.",
         ),
     ],
 )
@@ -993,7 +1044,7 @@ def test_deleteReceiptWordLabels_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "One or more receipt word labels do not exist",
+            "Entity does not exist: ReceiptWordLabel",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1007,14 +1058,14 @@ def test_deleteReceiptWordLabels_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         ("AccessDeniedException", "Access denied", "Access denied"),
         (
             "UnknownError",
             "Unknown error",
-            "Error deleting receipt word labels",
+            "Could not delete receipt word label from DynamoDB",
         ),
     ],
 )
@@ -1051,7 +1102,19 @@ def test_deleteReceiptWordLabels_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ConditionalCheckFailedException": EntityNotFoundError,  # For batch operations
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "InternalServerError": DynamoDBServerError,
+        "ValidationException": DynamoDBValidationError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_word_labels(labels)
     mock_transact_write.assert_called_once()
 
@@ -1133,7 +1196,7 @@ def test_getReceiptWordLabel_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(ValueError, match="Receipt Word Label.*does not exist"):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -1149,23 +1212,23 @@ def test_getReceiptWordLabel_nonexistent_raises(
     [
         (
             (None, 1, 10, 5, "ITEM"),
-            "Image ID is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", None, 10, 5, "ITEM"),
-            "Receipt ID is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, None, 5, "ITEM"),
-            "Line ID is required and cannot be None.",
+            "line_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 10, None, "ITEM"),
-            "Word ID is required and cannot be None.",
+            "word_id cannot be None",
         ),
         (
             ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 10, 5, None),
-            "Label is required and cannot be None.",
+            "label cannot be None",
         ),
         (
             ("invalid-uuid", 1, 10, 5, "ITEM"),
@@ -1219,8 +1282,8 @@ def test_getReceiptWordLabel_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1231,7 +1294,7 @@ def test_getReceiptWordLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in get_receipt_word_label",
+            "Could not get receipt word label",
         ),
     ],
 )
@@ -1266,7 +1329,18 @@ def test_getReceiptWordLabel_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.get_receipt_word_label(
             sample_receipt_word_label.image_id,
             sample_receipt_word_label.receipt_id,
@@ -1436,7 +1510,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation list_receipt_word_labels",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1445,8 +1519,8 @@ def test_listReceiptWordLabels_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1457,7 +1531,7 @@ def test_listReceiptWordLabels_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in list_receipt_word_labels",
+            "Could not list receipt word label from DynamoDB",
         ),
     ],
 )
@@ -1493,7 +1567,19 @@ def test_listReceiptWordLabels_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.list_receipt_word_labels()
     mock_query.assert_called_once()
 
@@ -1528,7 +1614,7 @@ def test_listReceiptWordLabels_pagination_errors(
 
     with pytest.raises(
         Exception,
-        match="Table not found for operation list_receipt_word_labels",
+        match="Table not found",
     ):
         client.list_receipt_word_labels()
     mock_query.assert_called_once()
@@ -1552,7 +1638,7 @@ def test_listReceiptWordLabels_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Unknown error in list_receipt_word_labels"
+        Exception, match="Could not list receipt word label from DynamoDB"
     ):
         client.list_receipt_word_labels()
     assert mock_query.call_count == 2
@@ -1738,7 +1824,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation get_receipt_word_labels_by_label",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1747,8 +1833,8 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "InternalServerError",
@@ -1759,7 +1845,7 @@ def test_getReceiptWordLabelsByLabel_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in get_receipt_word_labels_by_label",
+            "Could not get receipt word label",
         ),
     ],
 )
@@ -1795,7 +1881,19 @@ def test_getReceiptWordLabelsByLabel_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+        "UnknownError": DynamoDBError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
 
@@ -1830,7 +1928,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
 
     with pytest.raises(
         Exception,
-        match="Table not found for operation get_receipt_word_labels_by_label",
+        match="Table not found",
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     mock_query.assert_called_once()
@@ -1854,7 +1952,7 @@ def test_getReceiptWordLabelsByLabel_pagination_errors(
     ]
 
     with pytest.raises(
-        Exception, match="Unknown error in get_receipt_word_labels_by_label"
+        Exception, match="Could not get receipt word label"
     ):
         client.get_receipt_word_labels_by_label("ITEM")
     assert mock_query.call_count == 2
@@ -1963,7 +2061,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation get_receipt_word_labels_by_validation_status",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1978,7 +2076,7 @@ def test_getReceiptWordLabelsByValidationStatus_invalid_parameters(
         (
             "InternalServerError",
             "An error occurred on the server",
-            "Internal server error",
+            "An error occurred on the server",
         ),
     ],
 )
@@ -2000,7 +2098,18 @@ def test_getReceiptWordLabelsByValidationStatus_client_errors(
         ),
     )
 
-    with pytest.raises(Exception, match=expected_exception):
+    # Map error codes to expected exception types
+    exception_mapping = {
+        "ResourceNotFoundException": DynamoDBError,
+        "ProvisionedThroughputExceededException": DynamoDBThroughputError,
+        "ValidationException": DynamoDBValidationError,
+        "InternalServerError": DynamoDBServerError,
+        "AccessDeniedException": DynamoDBAccessError,
+    }
+    
+    exception_type = exception_mapping.get(error_code, DynamoDBError)
+    
+    with pytest.raises(exception_type, match=expected_exception):
         client.get_receipt_word_labels_by_validation_status("VALID")
     mock_query.assert_called_once()
 
@@ -2032,7 +2141,7 @@ def test_getReceiptWordLabelsByValidationStatus_pagination_midway_failure(
 
     with pytest.raises(
         Exception,
-        match="Unknown error in get_receipt_word_labels_by_validation_status",
+        match="Could not get receipt word label",
     ):
         client.get_receipt_word_labels_by_validation_status("VALID")
     assert mock_query.call_count == 2

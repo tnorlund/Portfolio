@@ -3,6 +3,7 @@ from typing import Literal
 import pytest
 
 from receipt_dynamo import DynamoClient, ReceiptLine
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def test_add_receipt_line_duplicate_raises(
     client.add_receipt_line(sample_receipt_line)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_line(sample_receipt_line)
 
 

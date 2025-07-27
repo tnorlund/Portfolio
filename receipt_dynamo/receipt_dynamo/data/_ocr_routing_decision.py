@@ -4,6 +4,13 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
+from receipt_dynamo.data.base_operations import (
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+    handle_dynamodb_errors,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -34,7 +41,13 @@ from receipt_dynamo.entities.ocr_routing_decision import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class _OCRRoutingDecision(DynamoClientProtocol):
+class _OCRRoutingDecision(
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    TransactionalOperationsMixin,
+):
+    @handle_dynamodb_errors("add_ocr_routing_decision")
     def add_ocr_routing_decision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):
@@ -70,6 +83,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"Error adding OCR routing decision: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("add_ocr_routing_decisions")
     def add_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
     ):
@@ -117,6 +131,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                             f"Provisioned throughput exceeded: {e}"
                         ) from e
 
+    @handle_dynamodb_errors("update_ocr_routing_decision")
     def update_ocr_routing_decision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):
@@ -143,6 +158,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"Error updating OCR routing decision: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("get_ocr_routing_decision")
     def get_ocr_routing_decision(
         self, image_id: str, job_id: str
     ) -> OCRRoutingDecision:
@@ -187,6 +203,7 @@ class _OCRRoutingDecision(DynamoClientProtocol):
                     f"Error getting OCR routing decision: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("delete_ocr_routing_decision")
     def delete_ocr_routing_decision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):

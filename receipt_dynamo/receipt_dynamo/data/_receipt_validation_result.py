@@ -1,9 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptValidationResult,
-    item_to_receipt_validation_result,
-)
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -11,22 +9,9 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    QueryInputTypeDef,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -36,7 +21,14 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
 )
+from receipt_dynamo.entities import item_to_receipt_validation_result
+from receipt_dynamo.entities.receipt_validation_result import (
+    ReceiptValidationResult,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 class _ReceiptValidationResult(
@@ -95,7 +87,8 @@ class _ReceiptValidationResult(
         """Adds a ReceiptValidationResult to DynamoDB.
 
         Args:
-            result (ReceiptValidationResult): The ReceiptValidationResult to add.
+            result (ReceiptValidationResult): The ReceiptValidationResult to
+                add.
 
         Raises:
             ValueError: If the result is None or not an instance of
@@ -179,7 +172,9 @@ class _ReceiptValidationResult(
                 "Put": {
                     "TableName": self.table_name,
                     "Item": result.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for result in results
@@ -257,24 +252,25 @@ class _ReceiptValidationResult(
         # Custom parameter validation for backward compatibility
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if field_name is None:
             raise ValueError(
-                "field_name parameter is required and cannot be None."
+                "field_name cannot be None"
             )
         if result_index is None:
             raise ValueError(
-                "result_index parameter is required and cannot be None."
+                "result_index cannot be None"
             )
 
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -289,7 +285,8 @@ class _ReceiptValidationResult(
 
         if not isinstance(result_index, int):
             raise ValueError(
-                f"result_index must be an integer, got {type(result_index).__name__}"
+                f"result_index must be an integer, got "
+                f"{type(result_index).__name__}"
             )
         if result_index < 0:
             raise ValueError("result_index must be non-negative.")
@@ -304,7 +301,10 @@ class _ReceiptValidationResult(
             Key={
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#{result_index}"
+                    )
                 },
             },
         )
@@ -312,7 +312,8 @@ class _ReceiptValidationResult(
         item = response.get("Item")
         if not item:
             raise ValueError(
-                f"ReceiptValidationResult with field {field_name} and index {result_index} not found"
+                f"ReceiptValidationResult with field {field_name} and "
+                f"index {result_index} not found"
             )
 
         return item_to_receipt_validation_result(item)
@@ -423,15 +424,16 @@ class _ReceiptValidationResult(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if not isinstance(image_id, str):
             raise ValueError(
@@ -439,7 +441,7 @@ class _ReceiptValidationResult(
             )
         if field_name is None:
             raise ValueError(
-                "field_name parameter is required and cannot be None."
+                "field_name cannot be None"
             )
         if not isinstance(field_name, str):
             raise ValueError(
@@ -462,7 +464,9 @@ class _ReceiptValidationResult(
 
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -470,7 +474,10 @@ class _ReceiptValidationResult(
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        f"CATEGORY#{field_name}#RESULT#"
+                    )
                 },
             },
         }
@@ -540,7 +547,8 @@ class _ReceiptValidationResult(
 
         if not isinstance(result_type, str):
             raise ValueError(
-                f"result_type must be a string, got {type(result_type).__name__}"
+                f"result_type must be a string, got "
+                f"{type(result_type).__name__}"
             )
         if not result_type:
             raise ValueError("result_type must not be empty")

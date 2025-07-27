@@ -260,7 +260,8 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
         except ValueError as exc:
             options = ", ".join(e.value for e in enum_cls)
             raise ValueError(
-                f"{enum_cls.__name__} must be one of: {options}\nGot: {candidate}"
+                f"{enum_cls.__name__} must be one of: {options}\n"
+                f"Got: {candidate}"
             ) from exc
     raise ValueError(
         f"{enum_cls.__name__} must be a str or {enum_cls.__name__} instance"

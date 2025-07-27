@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptLetter, item_to_receipt_letter
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -20,6 +19,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_letter
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -52,7 +53,8 @@ class _ReceiptLetter(
     TransactionalOperationsMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptLetter" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptLetter" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt letter records.
 
@@ -252,30 +254,30 @@ class _ReceiptLetter(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if line_id is None:
             raise ValueError(
-                "line_id parameter is required and cannot be None."
+                "line_id cannot be None"
             )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
             raise ValueError(
-                "word_id parameter is required and cannot be None."
+                "word_id cannot be None"
             )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
         if letter_id is None:
             raise ValueError(
-                "letter_id parameter is required and cannot be None."
+                "letter_id cannot be None"
             )
         if not isinstance(letter_id, int):
             raise ValueError("letter_id must be an integer.")
@@ -286,7 +288,10 @@ class _ReceiptLetter(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                            f"WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                        )
                     },
                 },
             )
@@ -434,24 +439,24 @@ class _ReceiptLetter(
         """
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(receipt_id, int):
             raise ValueError("receipt_id must be an integer.")
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         assert_valid_uuid(image_id)
         if line_id is None:
             raise ValueError(
-                "line_id parameter is required and cannot be None."
+                "line_id cannot be None"
             )
         if not isinstance(line_id, int):
             raise ValueError("line_id must be an integer.")
         if word_id is None:
             raise ValueError(
-                "word_id parameter is required and cannot be None."
+                "word_id cannot be None"
             )
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
@@ -460,7 +465,9 @@ class _ReceiptLetter(
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                KeyConditionExpression=(
+                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                ),
                 ExpressionAttributeValues={
                     ":pkVal": {"S": f"IMAGE#{image_id}"},
                     ":skPrefix": {
@@ -480,7 +487,9 @@ class _ReceiptLetter(
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+                    KeyConditionExpression=(
+                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+                    ),
                     ExpressionAttributeValues={
                         ":pkVal": {"S": f"IMAGE#{image_id}"},
                         ":skPrefix": {

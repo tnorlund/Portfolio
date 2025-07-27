@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -64,7 +65,7 @@ def test_add_receipt_word_duplicate_raises(
     client.add_receipt_word(sample_receipt_word)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_word(sample_receipt_word)
 
 
@@ -72,10 +73,10 @@ def test_add_receipt_word_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Word parameter is required and cannot be None."),
+        (None, "word cannot be None"),
         (
             "not-a-receipt-word",
-            "Word must be an instance of the ReceiptWord class.",
+            "word must be an instance of the ReceiptWord class.",
         ),
     ],
 )
@@ -107,7 +108,7 @@ def test_addReceiptWord_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_word",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -122,7 +123,7 @@ def test_addReceiptWord_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -132,7 +133,7 @@ def test_addReceiptWord_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_word",
+            "Could not add receipt word to DynamoDB",
         ),
     ],
 )
@@ -275,14 +276,14 @@ def test_addReceiptWords_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "Words parameter is required and cannot be None."),
+        (None, "words cannot be None"),
         (
             "not-a-receipt-word",
-            "Words must be provided as a list.",
+            "words must be a list of ReceiptWord instances.",
         ),
         (
             ["not-a-receipt-word"],
-            "All words must be instances of the ReceiptWord class.",
+            "words must be a list of ReceiptWord instances.",
         ),
     ],
 )
@@ -315,7 +316,7 @@ def test_addReceiptWords_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_words",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -330,7 +331,7 @@ def test_addReceiptWords_invalid_parameters(
         (
             "ValidationException",
             "One or more parameters were invalid",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -340,7 +341,7 @@ def test_addReceiptWords_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_words",
+            "Could not add receipt word to DynamoDB",
         ),
     ],
 )

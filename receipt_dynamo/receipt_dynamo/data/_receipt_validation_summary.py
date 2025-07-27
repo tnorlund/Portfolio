@@ -1,14 +1,14 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptValidationSummary,
-    item_to_receipt_validation_summary,
-)
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.entities import item_to_receipt_validation_summary
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
 )
 
 if TYPE_CHECKING:
@@ -160,7 +160,9 @@ class _ReceiptValidationSummary(
             Key={
                 "PK": {"S": f"IMAGE#{summary.image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
+                    "S": (
+                        f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
+                    )
                 },
             },
         )
@@ -185,7 +187,8 @@ class _ReceiptValidationSummary(
         """
         if not isinstance(receipt_id, int):
             raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise ValueError(

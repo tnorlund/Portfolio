@@ -6,23 +6,26 @@ from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 class Instance:
     """
-    Represents an EC2 instance and its associated metadata stored in a DynamoDB table.
+    Represents an EC2 instance and its associated metadata stored in a
+    DynamoDB table.
 
-    This class encapsulates instance-related information such as its unique identifier,
-    instance type, GPU count, status, and other attributes. It is designed to support
-    operations such as generating DynamoDB keys and converting instance metadata to a
-    DynamoDB-compatible item.
+    This class encapsulates instance-related information such as its unique
+    identifier, instance type, GPU count, status, and other attributes. It is
+    designed to support operations such as generating DynamoDB keys and
+    converting instance metadata to a DynamoDB-compatible item.
 
     Attributes:
         instance_id (str): UUID identifying the instance.
         instance_type (str): The EC2 instance type (e.g., p3.2xlarge).
         gpu_count (int): Number of GPUs on the instance.
-        status (str): The current status of the instance (pending, running, stopped, terminated).
+        status (str): The current status of the instance (pending, running,
+            stopped, terminated).
         launched_at (datetime): The timestamp when the instance was launched.
         ip_address (str): The IP address of the instance.
         availability_zone (str): The AWS availability zone of the instance.
         is_spot (bool): Whether the instance is a spot instance.
-        health_status (str): The health status of the instance (healthy, unhealthy).
+        health_status (str): The health status of the instance (healthy,
+            unhealthy).
     """
 
     def __init__(
@@ -44,14 +47,16 @@ class Instance:
             instance_type (str): The EC2 instance type.
             gpu_count (int): Number of GPUs on the instance.
             status (str): The current status of the instance.
-            launched_at (datetime): The timestamp when the instance was launched.
+            launched_at (datetime): The timestamp when the instance was
+                launched.
             ip_address (str): The IP address of the instance.
             availability_zone (str): The AWS availability zone of the instance.
             is_spot (bool): Whether the instance is a spot instance.
             health_status (str): The health status of the instance.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
         if not isinstance(instance_id, str) or not instance_id:
             raise ValueError("instance_id must be a non-empty string")
@@ -129,7 +134,8 @@ class Instance:
         """Converts the Instance object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the Instance object as a DynamoDB item.
+            dict: A dictionary representing the Instance object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -170,7 +176,8 @@ class Instance:
         """Returns an iterator over the Instance object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the Instance object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                Instance object's attribute name/value pairs.
         """
         yield "instance_id", self.instance_id
         yield "instance_type", self.instance_type
@@ -258,7 +265,8 @@ def item_to_instance(item: Dict[str, Any]) -> Instance:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:

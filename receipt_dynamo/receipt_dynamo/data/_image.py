@@ -1,32 +1,15 @@
 # receipt_dynamo/receipt_dynamo/data/_image_refactored.py
 """
-Refactored Image data access class using base operations to eliminate code duplication.
+Refactored Image data access class using base operations to eliminate code
+duplication.
 
-This refactored version reduces code from ~792 lines to ~250 lines (68% reduction)
+This refactored version reduces code from ~792 lines to ~250 lines
+(68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
-from receipt_dynamo import (
-    Image,
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-    item_to_image,
-    item_to_letter,
-    item_to_line,
-    item_to_receipt,
-    item_to_receipt_letter,
-    item_to_receipt_line,
-    item_to_receipt_word,
-    item_to_word,
-)
 from receipt_dynamo.constants import ImageType
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -34,19 +17,30 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    OperationError,
-    ReceiptDynamoError,
-)
 from receipt_dynamo.entities import (
     ImageDetails,
-    ReceiptMetadata,
     assert_valid_uuid,
+    item_to_image,
+    item_to_letter,
+    item_to_line,
     item_to_ocr_job,
     item_to_ocr_routing_decision,
+    item_to_receipt,
+    item_to_receipt_letter,
+    item_to_receipt_line,
     item_to_receipt_metadata,
+    item_to_receipt_word,
     item_to_receipt_word_label,
+    item_to_word,
 )
+from receipt_dynamo.entities.image import Image
+from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
@@ -91,7 +85,8 @@ class _Image(
         Dict[int, Dict[str, Union[Image, List[Receipt], List[Line]]]],
         Optional[Dict],
     ]:
-        """Lists images (via GSI) with optional pagination and returns their basic details."""
+        """Lists images (via GSI) with optional pagination and returns their
+        basic details."""
         raise NotImplementedError(
             "This method should be implemented by subclasses"
         )
@@ -119,7 +114,7 @@ class _Image(
     def get_image(self, image_id: str) -> Image:
         """Retrieves a single Image item by its ID from the database."""
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         response = self._client.get_item(
@@ -247,9 +242,10 @@ class _Image(
     def get_image_cluster_details(
         self, image_id: str
     ) -> tuple[Image, list[Line], list[Receipt]]:
-        """Retrieves comprehensive details for an Image, including lines and receipts."""
+        """Retrieves comprehensive details for an Image, including lines and
+        receipts."""
         if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
+            raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         response = self._client.query(
@@ -343,7 +339,9 @@ class _Image(
                 raise ValueError("image_type must be a ImageType or a string")
             if image_type not in [t.value for t in ImageType]:
                 raise ValueError(
-                    f"image_type must be one of: {', '.join(t.value for t in ImageType)}\nGot: {image_type}"
+                    f"image_type must be one of: "
+                    f"{', '.join(t.value for t in ImageType)}\n"
+                    f"Got: {image_type}"
                 )
         if isinstance(image_type, ImageType):
             image_type = image_type.value

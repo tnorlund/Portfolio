@@ -111,7 +111,7 @@ class LabelHygieneResult:
             f"gpt_agreed={_repr_str(self.gpt_agreed)}, "
             f"source_batch_id={_repr_str(self.source_batch_id)}, "
             f"example_ids={_repr_str(self.example_ids)}, "
-            f"image_id={_repr_str(self.image_id)}, "  # Include image_id in repr
+            f"image_id={_repr_str(self.image_id)}, "  # Include image_id
             f"receipt_id={self.receipt_id}, "  # Include receipt_id in repr
             f"timestamp={_repr_str(self.timestamp)}"
             ")"
@@ -189,7 +189,8 @@ def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         hygiene_id = item["PK"]["S"].split("#")[1]

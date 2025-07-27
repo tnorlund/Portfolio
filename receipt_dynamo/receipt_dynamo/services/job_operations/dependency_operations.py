@@ -3,8 +3,10 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Job, JobDependency, item_to_job_dependency
 from receipt_dynamo.data._job_dependency import _JobDependency
+from receipt_dynamo.entities import item_to_job_dependency
+from receipt_dynamo.entities.job import Job
+from receipt_dynamo.entities.job_dependency import JobDependency
 
 
 class JobDependencyOperations(_JobDependency):

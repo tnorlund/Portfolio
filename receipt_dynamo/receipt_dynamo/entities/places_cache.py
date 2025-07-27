@@ -12,8 +12,9 @@ class PlacesCache:
     """
     Represents a cached Google Places API response stored in DynamoDB.
 
-    This class caches responses from the Google Places API to minimize API calls and costs.
-    The cache is keyed by the type of search (address, phone, URL) and the search value.
+    This class caches responses from the Google Places API to minimize API
+    calls and costs. The cache is keyed by the type of search (address, phone,
+    URL) and the search value.
 
     Attributes:
         search_type (str): Type of search performed (ADDRESS, PHONE, URL)
@@ -22,7 +23,8 @@ class PlacesCache:
         places_response (Dict): The response from the Google Places API
         last_updated (str): ISO format timestamp of last update
         query_count (int): Number of times this cache entry has been accessed
-        normalized_value (str): Normalized version of the search value (for addresses)
+        normalized_value (str): Normalized version of the search value (for
+            addresses)
         value_hash (str): Hash of the original search value (for addresses)
     """
 
@@ -52,10 +54,14 @@ class PlacesCache:
             place_id (str): The Google Places place_id
             places_response (Dict): The response from the Google Places API
             last_updated (str): ISO format timestamp of last update
-            query_count (int, optional): Times this cache entry was accessed. Defaults to 0.
-            normalized_value (str, optional): Normalized version of the search value. Defaults to None.
-            value_hash (str, optional): Hash of the original search value. Defaults to None.
-            time_to_live (int, optional): Time to live for the cache entry. Defaults to None.
+            query_count (int, optional): Times this cache entry was accessed.
+                Defaults to 0.
+            normalized_value (str, optional): Normalized version of the search
+                value. Defaults to None.
+            value_hash (str, optional): Hash of the original search value.
+                Defaults to None.
+            time_to_live (int, optional): Time to live for the cache entry.
+                Defaults to None.
         Raises:
             ValueError: If any of the parameters are invalid
         """
@@ -178,8 +184,10 @@ class PlacesCache:
         """
         Convert to a DynamoDB item format.
         Includes all necessary attributes for the base table and GSIs:
-        - Base table: PK (PLACES#<search_type>), SK (VALUE#<padded_search_value>)
-        - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id lookups
+        - Base table: PK (PLACES#<search_type>), SK
+            (VALUE#<padded_search_value>)
+        - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id
+            lookups
 
         Returns:
             Dict: The DynamoDB item representation with all required attributes
@@ -238,7 +246,8 @@ class PlacesCache:
         Returns an iterator over the PlacesCache object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the PlacesCache object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                PlacesCache object's attribute name/value pairs.
         """
         yield "search_type", self.search_type
         yield "search_value", self.search_value
@@ -330,7 +339,8 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
                     c for c in search_value if c.isdigit() or c in "()+-"
                 )
             elif search_type == "URL":
-                # For URLs, strip padding and keep underscores (they're part of the URL)
+                # For URLs, strip padding and keep underscores (they're part
+                # of the URL)
                 search_value = padded_value.lstrip("_")
             else:
                 raise ValueError(f"Invalid search type: {search_type}")

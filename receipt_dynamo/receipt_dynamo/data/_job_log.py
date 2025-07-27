@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
@@ -58,7 +59,9 @@ class _JobLog(
         self._validate_entity(job_log, JobLog, "job_log")
         self._add_entity(
             job_log,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_job_logs")
@@ -69,7 +72,8 @@ class _JobLog(
             job_logs (List[JobLog]): The job logs to add.
 
         Raises:
-            ValueError: If job_logs is None, not a list, or contains non-JobLog items.
+            ValueError: If job_logs is None, not a list, or contains
+                non-JobLog items.
             ClientError: If a DynamoDB error occurs.
         """
         if job_logs is None:
@@ -117,7 +121,10 @@ class _JobLog(
                     {
                         "Error": {
                             "Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",
+                            "Message": (
+                                f"Could not process all items after "
+                                f"{max_retries} retries"
+                            ),
                         }
                     },
                     "BatchWriteItem",
@@ -135,7 +142,8 @@ class _JobLog(
             JobLog: The job log from the DynamoDB table.
 
         Raises:
-            ValueError: If job_id or timestamp is None, or the job log is not found.
+            ValueError: If job_id or timestamp is None, or the job log is
+                not found.
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
@@ -153,8 +161,9 @@ class _JobLog(
 
         item = response.get("Item")
         if not item:
-            raise ValueError(
-                f"Job log with job_id {job_id} and timestamp {timestamp} not found"
+            raise EntityNotFoundError(
+                f"Job log with job_id {job_id} and timestamp {timestamp} "
+                f"not found"
             )
 
         return item_to_job_log(item)
@@ -171,10 +180,12 @@ class _JobLog(
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list of job logs and the last evaluated key.
+            Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list
+                of job logs and the last evaluated key.
 
         Raises:
             ValueError: If job_id is None.
@@ -232,21 +243,7 @@ class _JobLog(
                 f"job_log must be a JobLog instance, got {type(job_log)}"
             )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_log.job_id}"},
-                    "SK": {"S": f"LOG#{job_log.timestamp}"},
-                },
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
-                )
-            raise
+        self._delete_entity(
+            job_log,
+            condition_expression="attribute_exists(PK) AND attribute_exists(SK)"
+        )

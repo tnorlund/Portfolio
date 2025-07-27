@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, cast
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo import ReceiptWord, item_to_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
@@ -20,6 +19,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
+from receipt_dynamo.entities import item_to_receipt_word
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -65,21 +66,44 @@ class _ReceiptWord(
         Adds multiple ReceiptWords.
     update_receipt_word(word: ReceiptWord)
         Updates a ReceiptWord.
-    delete_receipt_word(receipt_id: int, image_id: str, line_id: int, word_id: int)
+    delete_receipt_word(
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+    )
         Deletes a single ReceiptWord by IDs.
     delete_receipt_words(words: list[ReceiptWord])
         Deletes multiple ReceiptWords.
-    delete_receipt_words_from_line(receipt_id: int, image_id: str, line_id: int)
+    delete_receipt_words_from_line(
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+    )
         Deletes all ReceiptWords from a given line within a receipt/image.
-    get_receipt_word(receipt_id: int, image_id: str, line_id: int, word_id: int) -> ReceiptWord
+    get_receipt_word(
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+    ) -> ReceiptWord
         Retrieves a single ReceiptWord by IDs.
     list_receipt_words() -> list[ReceiptWord]
         Returns all ReceiptWords from the table.
-    list_receipt_words_by_embedding_status(embedding_status: EmbeddingStatus) -> list[ReceiptWord]
+    list_receipt_words_by_embedding_status(
+        embedding_status: EmbeddingStatus,
+    ) -> list[ReceiptWord]
         Returns all ReceiptWords from the table with a given embedding status.
-    list_receipt_words_from_line(receipt_id: int, image_id: str, line_id: int) -> list[ReceiptWord]
+    list_receipt_words_from_line(
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+    ) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
-    list_receipt_words_from_receipt(image_id: str, receipt_id: int) -> list[ReceiptWord]
+    list_receipt_words_from_receipt(
+        image_id: str,
+        receipt_id: int,
+    ) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt.
     """
 
@@ -91,7 +115,8 @@ class _ReceiptWord(
 
     @handle_dynamodb_errors("add_receipt_words")
     def add_receipt_words(self, words: list[ReceiptWord]) -> None:
-        """Adds multiple ReceiptWords to DynamoDB in batches of CHUNK_SIZE."""
+        """Adds multiple ReceiptWords to DynamoDB in batches of
+        CHUNK_SIZE."""
         self._validate_entity_list(words, ReceiptWord, "words")
 
         request_items = [
@@ -121,7 +146,9 @@ class _ReceiptWord(
             )
             for w in words
         ]
-        self._transact_write_with_chunking(transact_items)
+        self._transact_write_with_chunking(
+            cast(list[dict[str, Any]], transact_items)
+        )
 
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, word: ReceiptWord) -> None:
@@ -141,9 +168,13 @@ class _ReceiptWord(
         self._batch_write_with_retry(request_items)
 
     def delete_receipt_words_from_line(
-        self, receipt_id: int, image_id: str, line_id: int
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
     ):
-        """Deletes all ReceiptWords from a given line within a receipt/image."""
+        """Deletes all ReceiptWords from a given line within a
+        receipt/image."""
         words = self.list_receipt_words_from_line(
             receipt_id, image_id, line_id
         )
@@ -159,7 +190,10 @@ class _ReceiptWord(
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
                     "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#"
+                            f"{line_id:05d}#WORD#{word_id:05d}"
+                        )
                     },
                 },
             )
@@ -173,7 +207,7 @@ class _ReceiptWord(
         """Retrieves multiple ReceiptWords by their indices."""
         if indices is None:
             raise ValueError(
-                "indices parameter is required and cannot be None."
+                "indices cannot be None"
             )
         if not isinstance(indices, list):
             raise ValueError("indices must be a list of tuples.")
@@ -204,7 +238,10 @@ class _ReceiptWord(
             {
                 "PK": {"S": f"IMAGE#{index[0]}"},
                 "SK": {
-                    "S": f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}#WORD#{index[3]:05d}"
+                    "S": (
+                        f"RECEIPT#{index[1]:05d}#LINE#{index[2]:05d}"
+                        f"#WORD#{index[3]:05d}"
+                    )
                 },
             }
             for index in indices
@@ -249,7 +286,9 @@ class _ReceiptWord(
 
                 # Retry unprocessed keys if any
                 unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(self.table_name, {}).get("Keys"):  # type: ignore[call-overload]
+                while unprocessed.get(self.table_name, {}).get(
+                    "Keys"
+                ):  # type: ignore[call-overload]
                     response = self._client.batch_get_item(
                         RequestItems=unprocessed
                     )
@@ -341,17 +380,23 @@ class _ReceiptWord(
     def list_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
-        """Returns all ReceiptWords that match the given receipt/image/line IDs."""
+        """Returns all ReceiptWords that match the given
+        receipt/image/line IDs."""
         receipt_words = []
         try:
             response = self._client.query(
                 TableName=self.table_name,
-                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                KeyConditionExpression=(
+                    "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+                ),
                 ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ExpressionAttributeValues={
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_val": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                            "#WORD#"
+                        )
                     },
                 },
             )
@@ -362,12 +407,17 @@ class _ReceiptWord(
             while "LastEvaluatedKey" in response:
                 response = self._client.query(
                     TableName=self.table_name,
-                    KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+                    KeyConditionExpression=(
+                        "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+                    ),
                     ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                     ExpressionAttributeValues={
                         ":pk_val": {"S": f"IMAGE#{image_id}"},
                         ":sk_val": {
-                            "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                            "S": (
+                                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                                "#WORD#"
+                            )
                         },
                     },
                     ExclusiveStartKey=response["LastEvaluatedKey"],
@@ -391,18 +441,21 @@ class _ReceiptWord(
             receipt_id (int): The ID of the receipt
 
         Returns:
-            list[ReceiptWord]: List of ReceiptWord entities for the given receipt
+            list[ReceiptWord]:
+                List of ReceiptWord entities for the given receipt
 
         Raises:
-            ValueError: If the parameters are invalid or if there's an error querying DynamoDB
+            ValueError:
+                If the parameters are invalid or if there's an error
+                querying DynamoDB
         """
         if image_id is None:
             raise ValueError(
-                "image_id parameter is required and cannot be None."
+                "image_id cannot be None"
             )
         if receipt_id is None:
             raise ValueError(
-                "receipt_id parameter is required and cannot be None."
+                "receipt_id cannot be None"
             )
         if not isinstance(image_id, str):
             raise ValueError("image_id must be a string.")
@@ -414,13 +467,18 @@ class _ReceiptWord(
             # Query parameters using BETWEEN to get only WORD items
             query_params: QueryInputTypeDef = {
                 "TableName": self.table_name,
-                "KeyConditionExpression": "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end",
+                "KeyConditionExpression": (
+                    "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end"
+                ),
                 "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
                 "ExpressionAttributeValues": {
                     ":pk_val": {"S": f"IMAGE#{image_id}"},
                     ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
                     ":sk_end": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#\uffff"
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#"
+                            "\uffff"
+                        )
                     },
                 },
             }
@@ -488,13 +546,14 @@ class _ReceiptWord(
             status_str = embedding_status
         else:
             raise ValueError(
-                "embedding_status must be a string or EmbeddingStatus enum"
+                "embedding_status must be a string or " "EmbeddingStatus enum"
             )
         # Ensure the status_str is a valid EmbeddingStatus value
         valid_values = [s.value for s in EmbeddingStatus]
         if status_str not in valid_values:
             raise ValueError(
-                "embedding_status must be one of: {', '.join(valid_values)}; Got: {status_str}"
+                f"embedding_status must be one of: {', '.join(valid_values)};"
+                f" Got: {status_str}"
             )
         try:
             # Query the GSI1 index on embedding status

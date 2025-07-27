@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from math import atan2, pi
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.geometry_base import GeometryMixin
@@ -16,28 +16,29 @@ from receipt_dynamo.entities.util import (
 
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptLine(GeometryMixin, DynamoDBEntity):
-    """
-    Represents a receipt line and its associated metadata stored in a DynamoDB table.
+    """Receipt line metadata stored in DynamoDB.
 
-    This class encapsulates receipt line-related information such as the receipt identifier,
-    image UUID, text content, geometric properties, rotation angles, and detection confidence.
-    It is designed to support operations such as generating DynamoDB keys and converting the
-    receipt line to a DynamoDB item.
+    This class encapsulates receipt line information such as the receipt
+    identifier, image UUID, text, geometric properties, and rotation angles.
+    It includes detection confidence and supports generating DynamoDB keys
+    before converting the line to a DynamoDB item.
 
     Attributes:
         receipt_id (int): Identifier for the receipt.
-        image_id (str): UUID identifying the image to which the receipt line belongs.
-        id (int): Identifier for the receipt line.
+        image_id (str): UUID identifying the image to which the receipt line
+            belongs.
+        line_id (int): Identifier for the receipt line.
         text (str): The text content of the receipt line.
-        bounding_box (dict): The bounding box of the receipt line with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
-        top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bounding_box (dict): Bounding box with keys ``x``, ``y``, ``width`` and
+            ``height``.
+        top_right (dict): The top-right corner with keys ``x`` and ``y``.
+        top_left (dict): The top-left corner with keys ``x`` and ``y``.
+        bottom_right (dict): The bottom-right corner with keys ``x`` and ``y``.
+        bottom_left (dict): The bottom-left corner with keys ``x`` and ``y``.
         angle_degrees (float): The angle of the receipt line in degrees.
         angle_radians (float): The angle of the receipt line in radians.
-        confidence (float): The confidence level of the receipt line (between 0 and 1).
-        embedding_status (EmbeddingStatus): The status of the embedding for the receipt line.
+        confidence (float): Confidence level of the line between 0 and 1.
+        embedding_status (EmbeddingStatus): Embedding status for the line.
     """
 
     receipt_id: int
@@ -95,10 +96,11 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
         if isinstance(self.embedding_status, EmbeddingStatus):
             self.embedding_status = self.embedding_status.value
         elif isinstance(self.embedding_status, str):
-            if self.embedding_status not in [s.value for s in EmbeddingStatus]:
+            allowed_statuses = [s.value for s in EmbeddingStatus]
+            if self.embedding_status not in allowed_statuses:
                 error_message = (
                     "embedding_status must be one of: "
-                    f"{', '.join(s.value for s in EmbeddingStatus)}\n"
+                    f"{', '.join(allowed_statuses)}\n"
                     f"Got: {self.embedding_status}"
                 )
                 raise ValueError(error_message)
@@ -152,42 +154,122 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
             "text": {"S": self.text},
             "bounding_box": {
                 "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bounding_box["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bounding_box["y"],
+                            20,
+                            22,
+                        )
+                    },
                     "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["width"],
+                            20,
+                            22,
+                        )
                     },
                     "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
+                        "N": _format_float(
+                            self.bounding_box["height"],
+                            20,
+                            22,
+                        )
                     },
                 }
             },
             "top_right": {
                 "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "top_left": {
                 "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.top_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.top_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_right": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_right["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_right["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
             "bottom_left": {
                 "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
+                    "x": {
+                        "N": _format_float(
+                            self.bottom_left["x"],
+                            20,
+                            22,
+                        )
+                    },
+                    "y": {
+                        "N": _format_float(
+                            self.bottom_left["y"],
+                            20,
+                            22,
+                        )
+                    },
                 }
             },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
+            "angle_degrees": {
+                "N": _format_float(
+                    self.angle_degrees,
+                    18,
+                    20,
+                )
+            },
+            "angle_radians": {
+                "N": _format_float(
+                    self.angle_radians,
+                    18,
+                    20,
+                )
+            },
             "confidence": {"N": _format_float(self.confidence, 2, 2)},
             "embedding_status": {"S": self.embedding_status},
         }
@@ -247,31 +329,29 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
         dst_height: int,
         flip_y: bool = False,
     ):
-        """
-        Receipt-specific inverse perspective transform from 'new' space back to 'old' space.
+        """Inverse perspective transform from the warped space back to
+        original.
 
-        This implementation uses the 2x2 linear system approach optimized for receipt
-        coordinate systems, independent of the GeometryMixin's vision-based implementation.
+        This uses a 2x2 linear system tailored for receipts and is
+        independent of the GeometryMixin implementation.
 
         Args:
-            a, b, c, d, e, f, g, h (float): The perspective coefficients that mapped
-                the original image -> new image.  We will invert them here
-                so we can map new coords -> old coords.
-            src_width (int): The original (old) image width in pixels.
-            src_height (int): The original (old) image height in pixels.
-            dst_width (int): The new (warped) image width in pixels.
-            dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, we treat the new coordinate system as flipped in Y
-                (e.g. some OCR engines treat top=0).  Mirrors the logic in
-                warp_affine_normalized_forward(...).
+            a, b, c, d, e, f, g, h (float): Coefficients that mapped the
+                original image to the warped image. They are inverted so we
+                can map warped coordinates back to the original space.
+            src_width (int): Original image width in pixels.
+            src_height (int): Original image height in pixels.
+            dst_width (int): Warped image width in pixels.
+            dst_height (int): Warped image height in pixels.
+            flip_y (bool): Treat the new coordinate system as flipped in Y.
+                This mirrors ``warp_affine_normalized_forward``.
         """
-        # For each corner in the new space, we want to find (x_old_px, y_old_px).
-        # The forward perspective mapping was:
+        # For each corner in the warped space we need (x_old_px, y_old_px).
+        # The forward mapping was:
         #   x_new = (a*x_old + b*y_old + c) / (1 + g*x_old + h*y_old)
         #   y_new = (d*x_old + e*y_old + f) / (1 + g*x_old + h*y_old)
-        #
-        # We invert it by treating (x_new, y_new) as known, and solving
-        # for (x_old, y_old).  The code below does that in a 2×2 linear system.
+        # We invert it by treating (x_new, y_new) as known and solving for
+        # (x_old, y_old) using a 2×2 linear system.
 
         corners = [
             self.top_left,
@@ -287,18 +367,17 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
             y_new_px = corner["y"] * dst_height
 
             if flip_y:
-                # If the new system's Y=0 was at the top, then from the perspective
-                # of a typical "bottom=0" system, we flip:
+                # The new system has Y=0 at the top. Flip to match a
+                # bottom=0 coordinate system.
                 y_new_px = dst_height - y_new_px
 
-            # 2) Solve the perspective equations for old pixel coords (X_old, Y_old).
-            # We have the system:
+            # 2) Solve for the original pixel coordinates (X_old, Y_old).
+            # System:
             #   x_new_px = (a*X_old + b*Y_old + c) / (1 + g*X_old + h*Y_old)
             #   y_new_px = (d*X_old + e*Y_old + f) / (1 + g*X_old + h*Y_old)
-            #
             # Put it in the form:
-            #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
-            #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
+            #   (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
+            #   (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
 
             a11 = g * x_new_px - a
             a12 = h * x_new_px - b
@@ -314,7 +393,8 @@ class ReceiptLine(GeometryMixin, DynamoDBEntity):
                 # Degenerate or singular.  You can raise an exception or skip.
                 # For robust code, handle it gracefully:
                 raise ValueError(
-                    "Inverse perspective transform is singular for this corner."
+                    "Inverse perspective transform is "
+                    "singular for this corner."
                 )
 
             x_old_px = (b1 * a22 - b2 * a12) / det

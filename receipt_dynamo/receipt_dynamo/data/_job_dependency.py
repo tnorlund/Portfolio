@@ -8,6 +8,7 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
     item_to_job_dependency,
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
-    PutRequestTypeDef,
     WriteRequestTypeDef,
 )
 
@@ -41,7 +41,8 @@ class _JobDependency(
     -------
     add_job_dependency(job_dependency: JobDependency)
         Adds a job dependency to the database.
-    get_job_dependency(dependent_job_id: str, dependency_job_id: str) -> JobDependency
+    get_job_dependency(dependent_job_id: str, dependency_job_id: str) ->
+        JobDependency
         Gets a job dependency from the database.
     list_job_dependencies(dependent_job_id: str) -> List[JobDependency]
         Lists all dependencies for a specific job.
@@ -59,13 +60,16 @@ class _JobDependency(
             job_dependency (JobDependency): The job dependency to add.
 
         Raises:
-            ValueError: If job_dependency is None or not a JobDependency instance.
+            ValueError: If job_dependency is None or not a JobDependency
+                instance.
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
         self._add_entity(
             job_dependency,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_job_dependency")
@@ -82,7 +86,8 @@ class _JobDependency(
             JobDependency: The job dependency from the DynamoDB table.
 
         Raises:
-            ValueError: If any parameter is None, or if the dependency is not found.
+            ValueError: If any parameter is None, or if the dependency is not
+                found.
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
@@ -100,8 +105,9 @@ class _JobDependency(
 
         item = response.get("Item")
         if not item:
-            raise ValueError(
-                f"Dependency between {dependent_job_id} and {dependency_job_id} not found"
+            raise EntityNotFoundError(
+                f"Dependency between {dependent_job_id} and "
+                f"{dependency_job_id} not found"
             )
 
         return item_to_job_dependency(item)
@@ -118,11 +124,12 @@ class _JobDependency(
         Args:
             dependent_job_id (str): The ID of the job to list dependencies for.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
-                of job dependencies and the last evaluated key.
+            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+                list of job dependencies and the last evaluated key.
 
         Raises:
             ValueError: If dependent_job_id is None.
@@ -174,11 +181,12 @@ class _JobDependency(
         Args:
             dependency_job_id (str): The ID of the job that others depend on.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
-                of job dependencies and the last evaluated key.
+            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+                list of job dependencies and the last evaluated key.
 
         Raises:
             ValueError: If dependency_job_id is None.
@@ -230,7 +238,8 @@ class _JobDependency(
             job_dependency (JobDependency): The job dependency to delete.
 
         Raises:
-            ValueError: If job_dependency is None or not a JobDependency instance.
+            ValueError: If job_dependency is None or not a JobDependency
+                instance.
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
@@ -241,7 +250,8 @@ class _JobDependency(
         """Deletes all dependencies for a specific job.
 
         Args:
-            dependent_job_id (str): The ID of the job to delete dependencies for.
+            dependent_job_id (str): The ID of the job to delete dependencies
+                for.
 
         Raises:
             ValueError: If dependent_job_id is None.
@@ -299,7 +309,10 @@ class _JobDependency(
                     {
                         "Error": {
                             "Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",
+                            "Message": (
+                                f"Could not process all items after "
+                                f"{max_retries} retries"
+                            ),
                         }
                     },
                     "BatchWriteItem",
