@@ -150,7 +150,7 @@ class ErrorMessageConfig:
         "dependencies": "dependencies must be a list of JobDependency instances.",
         "fields": "fields must be a list of ReceiptField instances.",
         "images": "All images must be instances of the Image class.",
-        "instances": "instances must be a list",
+        "instances": "All instances must be instances of the Instance class.",
         "items": "items must be a list of PlacesCache instances.",
         "jobs": "jobs must be a list of Job instances.",
         "labels": "labels must be a list of ReceiptWordLabel instances.",

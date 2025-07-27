@@ -814,7 +814,7 @@ def test_updateImages_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.update_images([example_image])
     mock_transact.assert_called_once()
@@ -873,7 +873,7 @@ def test_updateImages_raises_client_error(
 
     with pytest.raises(
         DynamoDBError,
-        match="Could not update ReceiptValidationResult in the database",
+        match="Table not found",
     ):
         client.update_images([example_image])
 

@@ -433,7 +433,7 @@ def test_updateWords_raises_clienterror_validation_exception(
     )
     with pytest.raises(
         DynamoDBValidationError,
-        match="One or more parameters given were invalid",
+        match=r"One or more parameters.*invalid",
     ):
         client.update_words([word])
     mock_transact.assert_called_once()

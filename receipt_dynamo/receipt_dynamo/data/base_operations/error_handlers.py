@@ -96,6 +96,13 @@ class ErrorHandler:
         self, error: ClientError, operation: str, context: Optional[Dict[str, Any]]
     ) -> NoReturn:
         """Handle conditional check failures - usually entity already exists or doesn't exist."""
+        # Check if this is a batch/transactional operation
+        original_message = error.response.get("Error", {}).get("Message", "")
+        
+        # For batch/transactional operations that specify multiple entities, preserve the original message
+        if ("transact" in operation or "batch" in operation) and "One or more" in original_message:
+            raise ValueError(original_message) from error
+        
         # Determine if this is an "already exists" or "does not exist" case
         if "add" in operation.lower():
             self._raise_already_exists_error(operation, context, error)

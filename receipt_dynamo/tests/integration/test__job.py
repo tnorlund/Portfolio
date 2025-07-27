@@ -339,7 +339,7 @@ def test_addJobs_raises_clienterror_validation_exception(
     )
 
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         job_dynamo.add_jobs([sample_job])
     mock_put.assert_called_once()

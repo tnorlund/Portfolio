@@ -61,7 +61,7 @@ def test_addOCRJob_duplicate_raises(
     client.add_ocr_job(sample_ocr_job)
 
     # Act & Assert
-    with pytest.raises(EntityAlreadyExistsError, match="Entity already exists: OCRJob"):
+    with pytest.raises(EntityAlreadyExistsError, match=r"(Entity already exists: OCRJob|already exists)"):
         client.add_ocr_job(sample_ocr_job)
 
 

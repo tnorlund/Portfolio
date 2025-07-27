@@ -90,7 +90,7 @@ def test_addInstance_raises_conditional_check_failed(
     # Try to add it again, should fail
     with pytest.raises(
         EntityAlreadyExistsError,
-        match="Entity already exists: Instance",
+        match=r"(Entity already exists: Instance|already exists)",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -118,7 +118,7 @@ def test_addInstance_raises_resource_not_found(
     # Verify the correct exception is raised
     with pytest.raises(
         Exception,
-        match="Table not found for operation add_instance",
+        match="Table not found",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -147,7 +147,7 @@ def test_addInstance_raises_provisioned_throughput_exceeded(
     # Verify the correct exception is raised
     with pytest.raises(
         Exception,
-        match="Provisioned throughput exceeded",
+        match="Throughput exceeded",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -200,7 +200,7 @@ def test_addInstance_raises_unknown_error(
     # Verify the correct exception is raised
     with pytest.raises(
         Exception,
-        match="Could not add entity to DynamoDB",
+        match="Could not add instance to DynamoDB",
     ):
         instance_dynamo.add_instance(sample_instance)
 

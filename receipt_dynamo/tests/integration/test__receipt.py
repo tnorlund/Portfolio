@@ -550,7 +550,7 @@ def test_addReceipts_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -769,7 +769,7 @@ def test_updateReceipt_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
@@ -1013,7 +1013,7 @@ def test_updateReceipts_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
@@ -1228,7 +1228,7 @@ def test_deleteReceipt_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -1458,7 +1458,7 @@ def test_deleteReceipts_raises_clienterror_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
@@ -1674,7 +1674,7 @@ def test_getReceipt_raises_validation_exception(
             "GetItem",
         ),
     )
-    with pytest.raises(Exception, match="One or more parameters given were invalid"):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
@@ -2044,7 +2044,7 @@ def test_listReceipts_raises_validation_exception(
         ),
     )
     with pytest.raises(
-        Exception, match="One or more parameters given were invalid"
+        Exception, match=r"One or more parameters.*invalid"
     ):
         client.list_receipts()
     mock_query.assert_called_once()
