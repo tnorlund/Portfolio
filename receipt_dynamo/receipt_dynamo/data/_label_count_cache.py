@@ -22,6 +22,9 @@ from receipt_dynamo.entities.label_count_cache import (
     item_to_label_count_cache,
 )
 
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
+
 
 class _LabelCountCache(
     DynamoDBBaseOperations,
@@ -51,10 +54,9 @@ class _LabelCountCache(
                 raise ValueError(
                     f"LabelCountCache for label {item.label} already exists"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add label count cache to DynamoDB: {e}"
-                )
+            raise DynamoDBError(
+                f"Could not add label count cache to DynamoDB: {e}"
+            )
 
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
@@ -92,10 +94,9 @@ class _LabelCountCache(
                 raise ValueError(
                     "LabelCountCache already exists for one or more labels"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add label count caches to DynamoDB: {e}"
-                )
+            raise DynamoDBError(
+                f"Could not add label count caches to DynamoDB: {e}"
+            )
 
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
@@ -117,10 +118,9 @@ class _LabelCountCache(
                 raise ValueError(
                     f"LabelCountCache for label {item.label} does not exist"
                 ) from e
-            else:
-                raise DynamoDBError(
-                    f"Could not update label count cache in DynamoDB: {e}f"
-                )
+            raise DynamoDBError(
+                f"Could not update label count cache in DynamoDB: {e}f"
+            )
 
     @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
@@ -184,5 +184,4 @@ class _LabelCountCache(
             error_code = e.response["Error"]["Code"]
             if error_code == "ResourceNotFoundException":
                 raise ValueError("LabelCountCache table does not exist")
-            else:
-                raise OperationError(f"Error listing LabelCountCaches: {e}")
+            raise OperationError(f"Error listing LabelCountCaches: {e}")

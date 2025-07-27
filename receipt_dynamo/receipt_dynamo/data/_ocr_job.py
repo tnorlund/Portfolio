@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 from receipt_dynamo.data._base import (
     DeleteTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
@@ -71,7 +70,8 @@ class _OCRJob(
         """Adds a list of OCR jobs to the database
 
         Args:
-            ocr_jobs (list[OCRJob]): The list of OCR jobs to add to the database
+            ocr_jobs (list[OCRJob]): The list of OCR jobs to add to the
+                database
 
         Raises:
             EntityValidationError: If ocr_jobs parameters are invalid
@@ -132,7 +132,8 @@ class _OCRJob(
                 return item_to_ocr_job(response["Item"])
             else:
                 raise ValueError(
-                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' does not exist."
+                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' "
+                    "does not exist."
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -197,11 +198,14 @@ class _OCRJob(
         """Lists all OCR jobs from the database
 
         Args:
-            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            limit (int, optional): The maximum number of OCR jobs to return.
+                Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key
+                from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR
+                jobs and the last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
             raise ValueError("Limit must be an integer")
@@ -271,11 +275,14 @@ class _OCRJob(
 
         Args:
             status (OCRStatus): The status of the OCR jobs to get
-            limit (int, optional): The maximum number of OCR jobs to return. Defaults to None.
-            last_evaluated_key (dict | None, optional): The last evaluated key from the previous query. Defaults to None.
+            limit (int, optional): The maximum number of OCR jobs to return.
+                Defaults to None.
+            last_evaluated_key (dict | None, optional): The last evaluated key
+                from the previous query. Defaults to None.
 
         Returns:
-            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR jobs and the last evaluated key
+            tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR
+                jobs and the last evaluated key
         """
         if status is None:
             raise ValueError("status cannot be None")

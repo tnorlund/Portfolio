@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     DeleteTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
@@ -39,6 +39,9 @@ from receipt_dynamo.entities.ocr_routing_decision import (
     item_to_ocr_routing_decision,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    pass
 
 
 class _OCRRoutingDecision(
@@ -55,7 +58,8 @@ class _OCRRoutingDecision(
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
         try:
             self._client.put_item(
@@ -66,22 +70,22 @@ class _OCRRoutingDecision(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' already exists"
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' already exists"
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add OCR routing decision to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error adding OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error adding OCR routing decision: {e}"
+            ) from e
 
     @handle_dynamodb_errors("add_ocr_routing_decisions")
     def add_ocr_routing_decisions(
@@ -96,7 +100,8 @@ class _OCRRoutingDecision(
             for decision in ocr_routing_decisions
         ):
             raise ValueError(
-                "All items in ocr_routing_decisions must be instances of OCRRoutingDecision"
+                "All items in ocr_routing_decisions must be instances of "
+                "OCRRoutingDecision"
             )
 
         for i in range(0, len(ocr_routing_decisions), 25):
@@ -139,7 +144,8 @@ class _OCRRoutingDecision(
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
 
         try:
@@ -151,12 +157,13 @@ class _OCRRoutingDecision(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' not found"
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' and Job ID "
+                    f"'{ocr_routing_decision.job_id}' not found"
                 ) from e
-            else:
-                raise OperationError(
-                    f"Error updating OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error updating OCR routing decision: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_ocr_routing_decision")
     def get_ocr_routing_decision(
@@ -184,24 +191,25 @@ class _OCRRoutingDecision(
                 return item_to_ocr_routing_decision(response["Item"])
             else:
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' and Job ID '{job_id}' not found"
+                    f"OCR routing decision for Image ID '{image_id}' "
+                    f"and Job ID '{job_id}' not found"
                 )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' and Job ID '{job_id}' not found"
+                    f"OCR routing decision for Image ID '{image_id}' "
+                    f"and Job ID '{job_id}' not found"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error getting OCR routing decision: {e}"
+            ) from e
 
     @handle_dynamodb_errors("delete_ocr_routing_decision")
     def delete_ocr_routing_decision(
@@ -211,7 +219,8 @@ class _OCRRoutingDecision(
             raise ValueError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise ValueError(
-                "ocr_routing_decision must be an instance of OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of "
+                "OCRRoutingDecision"
             )
         try:
             self._client.delete_item(
@@ -226,12 +235,13 @@ class _OCRRoutingDecision(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
                 raise ValueError(
-                    f"OCR routing decision for Image ID '{ocr_routing_decision.image_id}' and Job ID '{ocr_routing_decision.job_id}' does not exist."
+                    f"OCR routing decision for Image ID "
+                    f"'{ocr_routing_decision.image_id}' and Job ID "
+                    f"'{ocr_routing_decision.job_id}' does not exist."
                 ) from e
-            else:
-                raise OperationError(
-                    f"Error deleting OCR routing decision: {e}"
-                ) from e
+            raise OperationError(
+                f"Error deleting OCR routing decision: {e}"
+            ) from e
 
     def delete_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
@@ -245,7 +255,8 @@ class _OCRRoutingDecision(
             for decision in ocr_routing_decisions
         ):
             raise ValueError(
-                "All ocr_routing_decisions must be instances of OCRRoutingDecision"
+                "All ocr_routing_decisions must be instances of "
+                "OCRRoutingDecision"
             )
         for i in range(0, len(ocr_routing_decisions), 25):
             chunk = ocr_routing_decisions[i : i + 25]
@@ -256,7 +267,9 @@ class _OCRRoutingDecision(
                         Delete=DeleteTypeDef(
                             TableName=self.table_name,
                             Key=item.key,
-                            ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                            ConditionExpression=(
+                                "attribute_exists(PK) AND attribute_exists(SK)"
+                            ),
                         )
                     )
                 )
@@ -268,15 +281,14 @@ class _OCRRoutingDecision(
                     raise ValueError(
                         "OCR routing decision does not exist"
                     ) from e
-                elif error_code == "ProvisionedThroughputExceededException":
+                if error_code == "ProvisionedThroughputExceededException":
                     raise RuntimeError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
-                elif error_code == "InternalServerError":
+                if error_code == "InternalServerError":
                     raise RuntimeError(f"Internal server error: {e}") from e
-                elif error_code == "AccessDeniedException":
+                if error_code == "AccessDeniedException":
                     raise RuntimeError(f"Access denied: {e}") from e
-                else:
-                    raise RuntimeError(
-                        f"Error deleting OCR routing decisions: {e}"
-                    ) from e
+                raise RuntimeError(
+                    f"Error deleting OCR routing decisions: {e}"
+                ) from e

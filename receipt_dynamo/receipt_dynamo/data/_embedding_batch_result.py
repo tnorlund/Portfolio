@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 # These are used at runtime, not just for type checking
 from receipt_dynamo.data._base import (
+    DynamoClientProtocol,
     DeleteTypeDef,
     PutRequestTypeDef,
     PutTypeDef,
@@ -47,6 +48,9 @@ from receipt_dynamo.entities.embedding_batch_result import (
     item_to_embedding_batch_result,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

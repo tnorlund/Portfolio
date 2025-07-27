@@ -37,6 +37,9 @@ from receipt_dynamo.entities.completion_batch_result import (
     item_to_completion_batch_result,
 )
 
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
+
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     """Validate that a LastEvaluatedKey has the required DynamoDB format.
@@ -170,7 +173,10 @@ class _CompletionBatchResult(
                 Key={
                     "PK": {"S": f"BATCH#{batch_id}"},
                     "SK": {
-                        "S": f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}#LABEL#{label}"
+                        "S": (
+                            f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
+                            f"#WORD#{word_id}#LABEL#{label}"
+                        )
                     },
                 },
             )

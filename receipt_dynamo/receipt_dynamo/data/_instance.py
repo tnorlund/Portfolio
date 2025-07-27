@@ -41,6 +41,9 @@ from receipt_dynamo.entities.instance_job import (
     item_to_instance_job,
 )
 
+if TYPE_CHECKING:
+    from receipt_dynamo.data._base import QueryInputTypeDef
+
 
 class _Instance(
     DynamoDBBaseOperations,
@@ -161,14 +164,13 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
-            else:
-                raise OperationError(
-                    f"Failed to get instance: {e.response['Error']['Message']}"
-                ) from e
+            raise OperationError(
+                f"Failed to get instance: {e.response['Error']['Message']}"
+            ) from e
 
     @handle_dynamodb_errors("get_instance_with_jobs")
     def get_instance_with_jobs(
@@ -296,7 +298,7 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
@@ -361,7 +363,7 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
@@ -433,7 +435,7 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
@@ -506,7 +508,7 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e
@@ -580,7 +582,7 @@ class _Instance(
                 raise EntityNotFoundError(
                     f"Table {self.table_name} does not exist"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(
                     "Internal server error, retry later"
                 ) from e

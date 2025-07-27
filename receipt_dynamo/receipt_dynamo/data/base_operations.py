@@ -525,8 +525,10 @@ def handle_dynamodb_errors(operation_name: str):
                     operation_name,
                     context={"args": args, "kwargs": kwargs},
                 )
-                # Safety net: if _handle_client_error doesn't raise, re-raise original
-                raise  # This line should never be reached if handlers work correctly
+                # Safety net: if _handle_client_error doesn't raise, re-raise
+                # original
+                raise  # This line should never be reached if handlers work
+                # correctly
 
         return wrapper
 
@@ -572,7 +574,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         error_handlers = {
             "ConditionalCheckFailedException": self._entity_handler.handle_conditional_check_failed,
             "ResourceNotFoundException": self._handle_resource_not_found,
-            "ProvisionedThroughputExceededException": self._handle_throughput_exceeded,
+            "ProvisionedThroughputExceededException": (
+                self._handle_throughput_exceeded
+            ),
             "InternalServerError": self._handle_internal_server_error,
             "ValidationException": self._handle_validation_exception,
             "AccessDeniedException": self._handle_access_denied,
@@ -1099,7 +1103,8 @@ class BatchOperationsMixin:
         for i in range(0, len(request_items), 25):
             chunk = request_items[i : i + 25]
 
-            # Let ClientError exceptions bubble up to be handled by @handle_dynamodb_errors
+            # Let ClientError exceptions bubble up to be handled by
+            # @handle_dynamodb_errors
             response = self._client.batch_write_item(
                 RequestItems={self.table_name: chunk}
             )
