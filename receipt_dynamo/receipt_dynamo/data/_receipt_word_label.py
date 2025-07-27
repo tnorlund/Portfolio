@@ -224,7 +224,7 @@ class _ReceiptWordLabel(
             ValueError: When any receipt word label validation fails
         """
         self._update_entities(
-            receipt_word_labels, ReceiptWordLabel, "receipt_word_labels", "update_receipt_word_labels"
+            receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
         )
 
     @handle_dynamodb_errors("delete_receipt_word_label")

@@ -130,6 +130,56 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             entities, entity_class, param_name
         )
 
+    def _execute_put_item(
+        self,
+        entity: Any,
+        condition_expression: str,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Execute a put_item operation with the given entity.
+        
+        Args:
+            entity: The entity to put
+            condition_expression: Condition expression for the operation
+            **kwargs: Additional arguments for put_item
+        """
+        item = entity.to_item()
+
+        # Build put_item parameters
+        put_params = {
+            "TableName": self.table_name,
+            "Item": item,
+            "ConditionExpression": condition_expression,
+            **kwargs,
+        }
+
+        self._client.put_item(**put_params)
+
+    def _execute_delete_item(
+        self,
+        entity: Any,
+        condition_expression: str,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Execute a delete_item operation with the given entity.
+        
+        Args:
+            entity: The entity to delete
+            condition_expression: Condition expression for the operation
+            **kwargs: Additional arguments for delete_item
+        """
+        # Build delete_item parameters
+        delete_params = {
+            "TableName": self.table_name,
+            "Key": entity.key,
+            "ConditionExpression": condition_expression,
+            **kwargs,
+        }
+
+        self._client.delete_item(**delete_params)
+
     def _add_entity(
         self,
         entity: Any,
@@ -144,17 +194,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             condition_expression: Condition to prevent duplicates
             **kwargs: Additional arguments for put_item
         """
-        item = entity.to_item()
-
-        # Build put_item parameters
-        put_params = {
-            "TableName": self.table_name,
-            "Item": item,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.put_item(**put_params)
+        self._execute_put_item(entity, condition_expression, **kwargs)
 
     def _update_entity(
         self,
@@ -170,17 +210,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             condition_expression: Condition to ensure entity exists
             **kwargs: Additional arguments for put_item
         """
-        item = entity.to_item()
-
-        # Build put_item parameters
-        put_params = {
-            "TableName": self.table_name,
-            "Item": item,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.put_item(**put_params)
+        self._execute_put_item(entity, condition_expression, **kwargs)
 
     def _delete_entity(
         self,
@@ -196,15 +226,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             condition_expression: Condition to ensure entity exists
             **kwargs: Additional arguments for delete_item
         """
-        # Build delete_item parameters
-        delete_params = {
-            "TableName": self.table_name,
-            "Key": entity.key,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.delete_item(**delete_params)
+        self._execute_delete_item(entity, condition_expression, **kwargs)
 
     def _delete_entities(
         self,

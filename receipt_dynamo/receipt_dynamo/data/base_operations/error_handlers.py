@@ -10,6 +10,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    List,
     NoReturn,
     Optional,
 )
@@ -365,48 +366,11 @@ class ErrorHandler:
         # Try to use specific patterns first
         if entity_type in self.config.ENTITY_NOT_FOUND_PATTERNS:
             message = self.config.ENTITY_NOT_FOUND_PATTERNS[entity_type]
-
-            # Handle parameterized messages
-            if (
-                "{" in message
-                and context
-                and "args" in context
-                and context["args"]
-            ):
-                # For update/delete operations, the ID might be in different positions
-                args = context["args"]
-                try:
-                    if len(args) > 1:  # Likely has ID as second argument
-                        if "job_id" in message:
-                            message = message.format(job_id=args[1])
-                        elif "instance_id" in message:
-                            message = message.format(instance_id=args[1])
-                        elif "receipt_id" in message:
-                            message = message.format(receipt_id=args[1])
-                        elif "image_id" in message:
-                            message = message.format(image_id=args[1])
-                        elif "queue_name" in message:
-                            # For queue operations, try to get queue_name from entity
-                            if hasattr(args[0], "queue_name"):
-                                message = message.format(
-                                    queue_name=args[0].queue_name
-                                )
-                    elif hasattr(args[0], "job_id"):
-                        message = message.format(job_id=args[0].job_id)
-                    elif hasattr(args[0], "receipt_id"):
-                        message = message.format(receipt_id=args[0].receipt_id)
-                    elif hasattr(args[0], "queue_name"):
-                        message = message.format(queue_name=args[0].queue_name)
-                except (KeyError, AttributeError):
-                    # If formatting fails, fall back to default pattern
-                    entity_display = (
-                        self.context_extractor.normalize_entity_name(
-                            entity_type
-                        )
-                    )
-                    message = self.config.ENTITY_NOT_FOUND_PATTERNS[
-                        "default"
-                    ].format(entity_type=entity_display.title())
+            # Try to format parameterized messages
+            if "{" in message:
+                message = self._format_parameterized_message(
+                    message, context
+                )
         else:
             # Use default pattern
             entity_display = self.context_extractor.normalize_entity_name(
@@ -417,3 +381,69 @@ class ErrorHandler:
             )
 
         raise EntityNotFoundError(message) from error
+
+    def _format_parameterized_message(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]],
+    ) -> str:
+        """Format a parameterized error message with context values."""
+        if not context or "args" not in context or not context["args"]:
+            return message
+
+        args = context["args"]
+        try:
+            # Extract parameters based on what's in the message
+            params = self._extract_message_parameters(message, args)
+            return message.format(**params)
+        except (KeyError, AttributeError):
+            # If formatting fails, return original message
+            return message
+
+    def _extract_message_parameters(
+        self,
+        message: str,
+        args: List[Any],
+    ) -> Dict[str, Any]:
+        """Extract parameters needed for formatting the message."""
+        params = {}
+        
+        # Map of parameter names to extraction logic
+        param_extractors = {
+            "job_id": lambda: self._extract_id_param(args, "job_id", 1),
+            "instance_id": lambda: self._extract_id_param(args, "instance_id", 1),
+            "receipt_id": lambda: self._extract_id_param(args, "receipt_id", 1),
+            "image_id": lambda: self._extract_id_param(args, "image_id", 1),
+            "queue_name": lambda: self._extract_queue_name(args),
+        }
+
+        # Extract only the parameters that appear in the message
+        for param_name, extractor in param_extractors.items():
+            if param_name in message:
+                value = extractor()
+                if value is not None:
+                    params[param_name] = value
+
+        return params
+
+    def _extract_id_param(
+        self,
+        args: List[Any],
+        attr_name: str,
+        position: int,
+    ) -> Optional[str]:
+        """Extract an ID parameter from args."""
+        # Try positional argument first
+        if len(args) > position:
+            return str(args[position])
+        # Try attribute on first argument
+        if args and hasattr(args[0], attr_name):
+            return str(getattr(args[0], attr_name))
+        return None
+
+    def _extract_queue_name(self, args: List[Any]) -> Optional[str]:
+        """Extract queue_name from args."""
+        # For queue operations, try to get queue_name from entity
+        if args and hasattr(args[0], "queue_name"):
+            return args[0].queue_name
+        return None

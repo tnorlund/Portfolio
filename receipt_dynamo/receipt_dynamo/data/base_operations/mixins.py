@@ -64,17 +64,8 @@ class SingleEntityCRUDMixin:
         self._ensure_validator_initialized()
         self._validator.validate_entity(entity, entity_class, param_name)
 
-        item = entity.to_item()
-
-        # Build put_item parameters
-        put_params = {
-            "TableName": self.table_name,
-            "Item": item,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.put_item(**put_params)
+        # Use shared implementation
+        self._execute_put_item(entity, condition_expression, **kwargs)
 
     @handle_dynamodb_errors("update_entity")
     def _update_entity(
@@ -98,17 +89,8 @@ class SingleEntityCRUDMixin:
         self._ensure_validator_initialized()
         self._validator.validate_entity(entity, entity_class, param_name)
 
-        item = entity.to_item()
-
-        # Build put_item parameters
-        put_params = {
-            "TableName": self.table_name,
-            "Item": item,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.put_item(**put_params)
+        # Use shared implementation
+        self._execute_put_item(entity, condition_expression, **kwargs)
 
     @handle_dynamodb_errors("delete_entity")
     def _delete_entity(
@@ -132,15 +114,8 @@ class SingleEntityCRUDMixin:
         self._ensure_validator_initialized()
         self._validator.validate_entity(entity, entity_class, param_name)
 
-        # Build delete_item parameters
-        delete_params = {
-            "TableName": self.table_name,
-            "Key": entity.key,
-            "ConditionExpression": condition_expression,
-            **kwargs,
-        }
-
-        self._client.delete_item(**delete_params)
+        # Use shared implementation
+        self._execute_delete_item(entity, condition_expression, **kwargs)
 
 
 class BatchOperationsMixin:
