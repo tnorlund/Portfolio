@@ -156,7 +156,7 @@ class _Job(
             ValueError: When given a bad parameter.
             Exception: For underlying DynamoDB errors.
         """
-        self._update_entities(jobs, Job, "jobs")
+        self._update_entities(jobs, Job, "jobs", "update_jobs")
 
     @handle_dynamodb_errors("delete_job")
     def delete_job(self, job: Job):

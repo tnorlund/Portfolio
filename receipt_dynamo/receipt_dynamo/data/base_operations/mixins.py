@@ -368,12 +368,12 @@ class TransactionalOperationsMixin:
             chunk = transact_items[i : i + chunk_size]
             self._transact_write_items(chunk)
 
-    @handle_dynamodb_errors("update_entities")
     def _update_entities(
         self,
         entities: List[Any],
         entity_type: Type[Any],
         entity_name: str,
+        operation_name: str = None,
     ) -> None:
         """
         Update multiple entities in the database using transactions.
@@ -386,11 +386,12 @@ class TransactionalOperationsMixin:
             entities: List of entities to update
             entity_type: The type of entity for validation
             entity_name: Name of the entity for error messages
+            operation_name: Name of the operation for error messages (e.g., "update_words")
 
         Example:
             # In a data access class
             def update_images(self, images: List[Image]) -> None:
-                self._update_entities(images, Image, "images")
+                self._update_entities(images, Image, "images", "update_images")
         """
         if not hasattr(self, "_validator") or self._validator is None:
             if not hasattr(self, "_error_config"):

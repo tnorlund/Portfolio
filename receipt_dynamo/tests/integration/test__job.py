@@ -618,7 +618,7 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 def test_addJobStatus_raises_value_error_status_none(job_dynamo):
     """Test that addJobStatus raises ValueError when status is None"""
     with pytest.raises(
-        ValueError, match="jobstatus cannot be None"
+        ValueError, match="job_status cannot be None"
     ):
         job_dynamo.add_job_status(None)
 

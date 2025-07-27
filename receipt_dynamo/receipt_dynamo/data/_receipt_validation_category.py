@@ -162,7 +162,7 @@ class _ReceiptValidationCategory(
             Exception: If the categories cannot be updated in DynamoDB.
         """
         self._update_entities(
-            categories, ReceiptValidationCategory, "categories"
+            categories, ReceiptValidationCategory, "categories", "update_receipt_validation_categories"
         )
 
     @handle_dynamodb_errors("delete_receipt_validation_category")

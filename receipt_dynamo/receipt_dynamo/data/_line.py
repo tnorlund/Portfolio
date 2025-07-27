@@ -115,7 +115,7 @@ class _Line(
         Raises:
             ValueError: When validation fails or lines don't exist
         """
-        self._update_entities(lines, Line, "lines")
+        self._update_entities(lines, Line, "lines", "update_lines")
 
     @handle_dynamodb_errors("delete_line")
     def delete_line(self, image_id: str, line_id: int):

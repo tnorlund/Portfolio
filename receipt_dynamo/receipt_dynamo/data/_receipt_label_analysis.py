@@ -149,6 +149,7 @@ class _ReceiptLabelAnalysis(
             receipt_label_analyses,
             ReceiptLabelAnalysis,
             "receipt_label_analyses",
+            "update_receipt_label_analyses",
         )
 
     @handle_dynamodb_errors("delete_receipt_label_analysis")

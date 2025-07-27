@@ -165,7 +165,7 @@ class _ReceiptValidationResult(
             ValueError: If the results are None or not a list.
             Exception: If the results cannot be updated in DynamoDB.
         """
-        self._update_entities(results, ReceiptValidationResult, "results")
+        self._update_entities(results, ReceiptValidationResult, "results", "update_receipt_validation_results")
 
     @handle_dynamodb_errors("delete_receipt_validation_result")
     def delete_receipt_validation_result(

@@ -134,7 +134,7 @@ class _ReceiptWord(
     @handle_dynamodb_errors("update_receipt_words")
     def update_receipt_words(self, words: list[ReceiptWord]) -> None:
         """Updates multiple existing ReceiptWords in DynamoDB."""
-        self._update_entities(words, ReceiptWord, "words")
+        self._update_entities(words, ReceiptWord, "words", "update_receipt_words")
 
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, word: ReceiptWord) -> None:
