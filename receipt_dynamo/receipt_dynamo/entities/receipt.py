@@ -556,4 +556,4 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             ),
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to Receipt: {e}")
+        raise ValueError(f"Error converting item to Receipt: {e}") from e

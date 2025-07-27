@@ -1,33 +1,18 @@
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-from receipt_dynamo.entities import (
-    item_to_receipt_chat_gpt_validation,
-)
-from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
     DeleteRequestTypeDef,
+    DynamoDBBaseOperations,
     PutRequestTypeDef,
     PutTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -43,10 +28,16 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
 )
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+from receipt_dynamo.entities.receipt_chatgpt_validation import (
+    ReceiptChatGPTValidation,
+)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _ReceiptChatGPTValidation(

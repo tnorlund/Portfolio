@@ -1,14 +1,12 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    handle_dynamodb_errors,
-)
-from receipt_dynamo.data._base import (
     DeleteRequestTypeDef,
+    DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     PutRequestTypeDef,
+    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.entities import item_to_letter
@@ -16,7 +14,7 @@ from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25

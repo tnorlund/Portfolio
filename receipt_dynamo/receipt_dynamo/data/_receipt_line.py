@@ -1,14 +1,17 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -21,26 +24,10 @@ from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
-        DeleteRequestTypeDef,
-        GetItemInputTypeDef,
-        KeysAndAttributesTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
 
 CHUNK_SIZE = 25
 
@@ -154,7 +141,7 @@ class _ReceiptLine(
             raise ValueError(
                 f"ReceiptLine with image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id} not found"
-            )
+            ) from e
 
     def get_receipt_lines_by_indices(
         self, indices: list[tuple[str, int, int]]
@@ -305,19 +292,19 @@ class _ReceiptLine(
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not list receipt lines from DynamoDB: {e}"
-                )
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error listing receipt lines: {e}")
+                raise OperationError(f"Error listing receipt lines: {e}") from e
 
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
@@ -374,17 +361,17 @@ class _ReceiptLine(
             if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not list receipt lines from DynamoDB: {e}"
-                )
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
                 raise ValueError(
                     f"Could not list ReceiptLines from the database: {e}"

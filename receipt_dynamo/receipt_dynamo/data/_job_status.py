@@ -1,16 +1,12 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
@@ -18,8 +14,11 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     OperationError,
 )
-from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
+from receipt_dynamo.entities.job_status import item_to_job_status, JobStatus
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

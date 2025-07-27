@@ -309,7 +309,7 @@ def item_to_instance_job(item: Dict[str, Any]) -> InstanceJob:
             resource_utilization=resource_utilization,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to InstanceJob: {e}")
+        raise ValueError(f"Error converting item to InstanceJob: {e}") from e
 
 
 def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:

@@ -1,26 +1,18 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    DynamoDBBaseOperations,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.embedding_batch_result import (
     EmbeddingBatchResult,
@@ -29,7 +21,7 @@ from receipt_dynamo.entities.embedding_batch_result import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         DeleteTypeDef,
         PutRequestTypeDef,
         PutTypeDef,
@@ -68,8 +60,10 @@ class _EmbeddingBatchResult(
         Adds an EmbeddingBatchResult to the database.
 
         Raises:
-            EntityAlreadyExistsError: If the embedding batch result already exists
-            EntityValidationError: If embedding_batch_result parameters are invalid
+            EntityAlreadyExistsError: If the embedding batch result already
+                exists
+            EntityValidationError: If embedding_batch_result parameters are
+                invalid
         """
         self._validate_entity(
             embedding_batch_result,
@@ -89,7 +83,8 @@ class _EmbeddingBatchResult(
         Batch add EmbeddingBatchResults to DynamoDB.
 
         Raises:
-            EntityValidationError: If embedding_batch_results parameters are invalid
+            EntityValidationError: If embedding_batch_results parameters
+                are invalid
         """
         self._validate_entity_list(
             embedding_batch_results,
@@ -114,7 +109,8 @@ class _EmbeddingBatchResult(
 
         Raises:
             EntityNotFoundError: If the embedding batch result does not exist
-            EntityValidationError: If embedding_batch_result parameters are invalid
+            EntityValidationError: If embedding_batch_result parameters are
+                invalid
         """
         self._validate_entity(
             embedding_batch_result,
@@ -175,13 +171,14 @@ class _EmbeddingBatchResult(
     @handle_dynamodb_errors("delete_embedding_batch_result")
     def delete_embedding_batch_result(
         self, embedding_batch_result: EmbeddingBatchResult
-    ):
+    ) from e:
         """
         Deletes an EmbeddingBatchResult from DynamoDB.
 
         Raises:
             EntityNotFoundError: If the embedding batch result does not exist
-            EntityValidationError: If embedding_batch_result parameters are invalid
+            EntityValidationError: If embedding_batch_result parameters are
+                invalid
         """
         self._validate_entity(
             embedding_batch_result,
@@ -200,7 +197,8 @@ class _EmbeddingBatchResult(
         Batch delete EmbeddingBatchResults from DynamoDB.
 
         Raises:
-            EntityValidationError: If embedding_batch_results parameters are invalid
+            EntityValidationError: If embedding_batch_results parameters
+                are invalid
         """
         self._validate_entity_list(
             embedding_batch_results,

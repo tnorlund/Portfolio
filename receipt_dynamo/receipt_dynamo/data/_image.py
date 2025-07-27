@@ -7,19 +7,21 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities import (
-    ImageDetails,
     assert_valid_uuid,
+    ImageDetails,
     item_to_image,
     item_to_letter,
     item_to_line,
@@ -34,27 +36,13 @@ from receipt_dynamo.entities import (
     item_to_word,
 )
 from receipt_dynamo.entities.image import Image
-from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
 )
 
 

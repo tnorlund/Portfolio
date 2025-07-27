@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 class ReceiptLineItemAnalysis:
@@ -759,7 +759,7 @@ def item_to_receipt_line_item_analysis(
     except KeyError as e:
         raise ValueError(
             f"Error converting item to ReceiptLineItemAnalysis: {e}"
-        )
+        ) from e
 
 
 def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:

@@ -1,4 +1,3 @@
-import re
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
@@ -6,7 +5,6 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
     assert_valid_uuid,
-    format_type_error,
     normalize_enum,
 )
 
@@ -270,4 +268,4 @@ def item_to_embedding_batch_result(
             error_message=error_message,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to EmbeddingBatchResult: {e}")
+        raise ValueError(f"Error converting item to EmbeddingBatchResult: {e}") from e

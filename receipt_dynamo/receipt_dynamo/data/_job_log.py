@@ -1,25 +1,22 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
+from receipt_dynamo.entities.job_log import item_to_job_log, JobLog
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 
 
 class _JobLog(
@@ -245,5 +242,7 @@ class _JobLog(
 
         self._delete_entity(
             job_log,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )

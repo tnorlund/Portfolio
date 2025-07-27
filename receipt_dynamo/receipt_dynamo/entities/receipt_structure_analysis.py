@@ -5,10 +5,9 @@ This is used for storing and retrieving data from DynamoDB.
 """
 
 import decimal
-import hashlib
 import json
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
@@ -1100,7 +1099,7 @@ def item_to_receipt_structure_analysis(
             else:
                 # If this is a plain dictionary (legacy format)
                 sections.append(ReceiptSection.from_dict(section_dict))
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError):
             # Log the error and continue with other sections
             # TODO: Use proper logging instead of print
             continue

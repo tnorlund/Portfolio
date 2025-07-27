@@ -1,4 +1,11 @@
-from typing import TYPE_CHECKING, Protocol
+"""
+Type definitions for DynamoDB operations.
+
+This module provides type imports from boto3-stubs for type checking
+during development while maintaining runtime compatibility.
+"""
+
+from typing import Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
@@ -24,7 +31,7 @@ if TYPE_CHECKING:
         WriteRequestTypeDef,
     )
 else:
-    # Runtime fallback
+    # Runtime fallback when dev dependencies aren't installed
     DynamoDBClient = object
     QueryInputTypeDef = dict
     GetItemInputTypeDef = dict
@@ -48,7 +55,37 @@ else:
 
 
 class DynamoClientProtocol(Protocol):
-    """Protocol defining attributes shared by DynamoDB mixin classes."""
+    """Protocol defining the interface for DynamoDB client implementations."""
 
     table_name: str
     _client: DynamoDBClient
+
+
+# Re-export all types for convenience
+__all__ = [
+    # Client types
+    "DynamoDBClient",
+    "DynamoClientProtocol",
+    # Input types
+    "QueryInputTypeDef",
+    "GetItemInputTypeDef",
+    "PutItemInputTypeDef",
+    "DeleteItemInputTypeDef",
+    "BatchWriteItemInputTypeDef",
+    "TransactWriteItemsInputTypeDef",
+    "UpdateItemInputTypeDef",
+    "BatchGetItemInputTypeDef",
+    "ScanInputTypeDef",
+    # Request types
+    "WriteRequestTypeDef",
+    "PutRequestTypeDef",
+    "DeleteRequestTypeDef",
+    "TransactWriteItemTypeDef",
+    "KeysAndAttributesTypeDef",
+    "AttributeValueTypeDef",
+    # Operation types
+    "PutTypeDef",
+    "DeleteTypeDef",
+    "UpdateTypeDef",
+    "ConditionCheckTypeDef",
+]

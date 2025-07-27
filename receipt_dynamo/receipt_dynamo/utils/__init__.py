@@ -2,7 +2,7 @@
 
 from .batch_queue import BatchQueue
 from .circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
-from .retry_with_backoff import RetryManager, retry_with_backoff
+from .retry_with_backoff import retry_with_backoff, RetryManager
 
 __all__ = [
     "BatchQueue",

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import _repr_str
 
 
 class Instance:
@@ -295,4 +295,4 @@ def item_to_instance(item: Dict[str, Any]) -> Instance:
             health_status=health_status,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to Instance: {e}")
+        raise ValueError(f"Error converting item to Instance: {e}") from e

@@ -9,7 +9,6 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from .base import DynamoDBEntity
-from .util import _repr_str, assert_type
 
 
 @dataclass(eq=True, unsafe_hash=False)

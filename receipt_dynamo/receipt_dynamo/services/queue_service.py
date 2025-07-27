@@ -6,7 +6,7 @@ related to queues and provides a clean API for client applications to use.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.queue_job import QueueJob

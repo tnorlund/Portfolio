@@ -283,4 +283,4 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
             instance_id=instance_id,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobStatus: {e}")
+        raise ValueError(f"Error converting item to JobStatus: {e}") from e

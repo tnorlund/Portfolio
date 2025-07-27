@@ -1,15 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
 from receipt_dynamo.data._job import validate_last_evaluated_key
+
+# Runtime imports needed by the class methods
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
+    DynamoDBBaseOperations,
+    handle_dynamodb_errors,
+    PutRequestTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    WriteRequestTypeDef,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     EntityNotFoundError,
@@ -21,14 +25,8 @@ from receipt_dynamo.entities.instance_job import (
     item_to_instance_job,
 )
 
-# Runtime imports needed by the class methods
-from receipt_dynamo.data._base import (
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
-
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
     )
 

@@ -1,22 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
-    DynamoDBValidationError,
     OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_word
@@ -24,24 +21,18 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
         DeleteRequestTypeDef,
-        GetItemInputTypeDef,
-        KeysAndAttributesTypeDef,
         PutRequestTypeDef,
-        PutTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
         WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
+from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 
@@ -184,8 +175,8 @@ class _ReceiptWord(
                 },
             )
             return item_to_receipt_word(response["Item"])
-        except KeyError:
-            raise ValueError(f"ReceiptWord with ID {word_id} not found")
+        except KeyError as e:
+            raise ValueError(f"ReceiptWord with ID {word_id} not found") from e
 
     def get_receipt_words_by_indices(
         self, indices: list[tuple[str, int, int, int]]
@@ -413,7 +404,7 @@ class _ReceiptWord(
         except ClientError as e:
             raise ValueError(
                 f"Could not list ReceiptWords from the database: {e}"
-            )
+            ) from e
 
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int

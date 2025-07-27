@@ -5,29 +5,27 @@ This refactored version reduces code from ~969 lines to ~310 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
     item_to_receipt_word_label,
+    ReceiptWordLabel,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
-        KeysAndAttributesTypeDef,
         QueryInputTypeDef,
     )
 

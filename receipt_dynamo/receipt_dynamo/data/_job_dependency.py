@@ -1,31 +1,25 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_dependency import (
-    JobDependency,
     item_to_job_dependency,
+    JobDependency,
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    WriteRequestTypeDef,
-)
 
 
 class _JobDependency(

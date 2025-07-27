@@ -4,9 +4,7 @@ from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
     normalize_enum,
 )
@@ -84,10 +82,10 @@ class ReceiptWordLabel:
             # Validate it's a valid ISO format by trying to parse it
             try:
                 datetime.fromisoformat(self.timestamp_added)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "timestamp_added string must be in ISO format"
-                )
+                ) from e
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
@@ -399,4 +397,4 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
             label_proposed_by=label_proposed_by,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptWordLabel: {e}")
+        raise ValueError(f"Error converting item to ReceiptWordLabel: {e}") from e

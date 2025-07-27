@@ -1,13 +1,11 @@
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
     normalize_enum,
 )
@@ -466,8 +464,8 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
 
         try:
             receipt_id = int(sk_parts[1])
-        except ValueError:
-            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}")
+        except ValueError as e:
+            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}") from e
 
         # Extract required fields
         place_id = item["place_id"]["S"]
@@ -493,8 +491,8 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         timestamp_str = item["timestamp"]["S"]
         try:
             timestamp = datetime.fromisoformat(timestamp_str)
-        except ValueError:
-            raise ValueError(f"Invalid timestamp format: {timestamp_str}")
+        except ValueError as e:
+            raise ValueError(f"Invalid timestamp format: {timestamp_str}") from e
 
         return ReceiptMetadata(
             image_id=image_id,
@@ -514,11 +512,11 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
             canonical_phone_number=canonical_phone_number,
         )
     except KeyError as e:
-        raise ValueError(f"Missing required field in item: {e}")
+        raise ValueError(f"Missing required field in item: {e}") from e
     except IndexError as e:
-        raise ValueError(f"Error parsing key components: {e}")
+        raise ValueError(f"Error parsing key components: {e}") from e
     except ValueError:
         # Re-raise ValueError as is
         raise
     except Exception as e:
-        raise ValueError(f"Unexpected error parsing receipt metadata: {e}")
+        raise ValueError(f"Unexpected error parsing receipt metadata: {e}") from e

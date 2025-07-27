@@ -32,11 +32,11 @@ class BatchSummary:
         if isinstance(submitted_at, str):
             try:
                 submitted_at = datetime.fromisoformat(submitted_at)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     f"submitted_at must be a datetime object or a string in "
                     f"ISO format; got {submitted_at}"
-                )
+                ) from e
         elif not isinstance(submitted_at, datetime):
             raise ValueError(
                 format_type_error(
@@ -213,4 +213,4 @@ def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
             receipt_refs=receipt_refs,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to BatchSummary: {e}")
+        raise ValueError(f"Error converting item to BatchSummary: {e}") from e

@@ -5,31 +5,29 @@ This refactored version reduces code from ~944 lines to ~300 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities.receipt_label_analysis import (
-    ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
+    ReceiptLabelAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
         QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
         WriteRequestTypeDef,
     )

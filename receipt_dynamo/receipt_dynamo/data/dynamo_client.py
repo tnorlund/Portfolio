@@ -115,8 +115,8 @@ class DynamoClient(
         # Ensure the table already exists
         try:
             self._client.describe_table(TableName=self.table_name)
-        except self._client.exceptions.ResourceNotFoundException:
+        except self._client.exceptions.ResourceNotFoundException as e:
             raise ValueError(
                 f"The table '{self.table_name}' does not exist in region "
                 f"'{region}'."
-            )
+            ) from e

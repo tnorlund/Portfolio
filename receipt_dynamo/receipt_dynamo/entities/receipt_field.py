@@ -2,9 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
 )
 
@@ -296,4 +294,4 @@ def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
             timestamp_added=item["timestamp_added"]["S"],
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptField: {e}")
+        raise ValueError(f"Error converting item to ReceiptField: {e}") from e

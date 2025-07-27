@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -16,13 +16,13 @@ from receipt_dynamo.data.shared_exceptions import (
     ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_checkpoint import (
-    JobCheckpoint,
     item_to_job_checkpoint,
+    JobCheckpoint,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -160,12 +160,12 @@ class _JobCheckpoint(
         # First verify the checkpoint exists
         try:
             self.get_job_checkpoint(job_id, timestamp)
-        except ValueError:
+        except ValueError as e:
             raise ValueError(
                 "Cannot update best checkpoint: "
                 "No checkpoint found with job "
                 f"ID {job_id} and timestamp {timestamp}"
-            )
+            ) from e
 
         # First, set all checkpoints for this job to is_best=False
         checkpoints, _ = self.list_job_checkpoints(job_id)

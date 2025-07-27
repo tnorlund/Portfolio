@@ -1,54 +1,32 @@
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        DeleteTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DynamoClientProtocol,
     DeleteRequestTypeDef,
     DeleteTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
+    DynamoDBBaseOperations,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
-    DynamoDBValidationError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.places_cache import (
-    PlacesCache,
     item_to_places_cache,
+    PlacesCache,
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -83,7 +61,8 @@ class _PlacesCache(
             item (PlacesCache): The PlacesCache object to add.
 
         Raises:
-            EntityAlreadyExistsError: If a PlacesCache with the same PK/SK already exists
+            EntityAlreadyExistsError: If a PlacesCache with the same PK/SK
+                already exists
             EntityValidationError: If item parameters are invalid
         """
         self._validate_entity(item, PlacesCache, "item")

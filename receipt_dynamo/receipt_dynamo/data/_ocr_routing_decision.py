@@ -2,18 +2,16 @@ from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import (
+from receipt_dynamo.data.base_operations import (
+    BatchOperationsMixin,
     DeleteTypeDef,
+    DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     PutRequestTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
-)
-from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -22,8 +20,8 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.ocr_routing_decision import (
-    OCRRoutingDecision,
     item_to_ocr_routing_decision,
+    OCRRoutingDecision,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 

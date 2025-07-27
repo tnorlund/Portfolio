@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,

@@ -5,25 +5,18 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-from botocore.exceptions import ClientError
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.constants import BatchStatus, BatchType
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    DeleteTypeDef,
+    DynamoDBBaseOperations,
     handle_dynamodb_errors,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
+    PutTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    TransactWriteItemTypeDef,
 )
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
@@ -31,18 +24,9 @@ from receipt_dynamo.entities.batch_summary import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-# Runtime imports needed by the class methods
-from receipt_dynamo.data._base import (
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    DeleteTypeDef,
-)
-
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
 
 
@@ -81,7 +65,9 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._add_entity(
             batch_summary,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_batch_summaries")
@@ -120,7 +106,9 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._update_entity(
             batch_summary,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_batch_summaries")
@@ -147,7 +135,9 @@ class _BatchSummary(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=item.to_item(),
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 )
             )
             for item in batch_summaries
@@ -169,7 +159,9 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._delete_entity(
             batch_summary,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("delete_batch_summaries")
@@ -196,7 +188,9 @@ class _BatchSummary(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=item.key,
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 )
             )
             for item in batch_summaries

@@ -1,45 +1,26 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
     DeleteTypeDef,
+    DynamoDBBaseOperations,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
-from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
+from receipt_dynamo.entities.ocr_job import item_to_ocr_job, OCRJob
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    EntityValidationError,
-    OperationError,
-)
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.base_operations import (
+        QueryInputTypeDef,
+    )
 
 
 class _OCRJob(
@@ -56,13 +37,16 @@ class _OCRJob(
             ocr_job (OCRJob): The OCR job to add to the database
 
         Raises:
-            EntityAlreadyExistsError: When a OCR job with the same ID already exists
+            EntityAlreadyExistsError: When a OCR job with the same ID
+                already exists
             EntityValidationError: If ocr_job parameters are invalid
         """
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._add_entity(
             ocr_job,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_ocr_jobs")
@@ -97,7 +81,9 @@ class _OCRJob(
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._update_entity(
             ocr_job,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_ocr_job")
@@ -181,7 +167,9 @@ class _OCRJob(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=job.key,
-                    ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 )
             )
             for job in ocr_jobs

@@ -1,23 +1,20 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
-from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
+from receipt_dynamo.entities import item_to_receipt_metadata, ReceiptMetadata
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         DeleteTypeDef,
-        KeysAndAttributesTypeDef,
         PutRequestTypeDef,
         PutTypeDef,
         QueryInputTypeDef,
@@ -26,21 +23,13 @@ if TYPE_CHECKING:
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
+from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
-)
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 

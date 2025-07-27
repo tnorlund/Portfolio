@@ -1,25 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.queue_job import item_to_queue_job, QueueJob
+from receipt_dynamo.entities.rwl_queue import item_to_queue, Queue
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
-from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -104,7 +98,9 @@ class _Queue(
         self._validate_entity(queue, Queue, "queue")
         self._update_entity(
             queue,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("delete_queue")
@@ -120,7 +116,9 @@ class _Queue(
         self._validate_entity(queue, Queue, "queue")
         self._delete_entity(
             queue,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_queue")
@@ -216,11 +214,13 @@ class _Queue(
         """
         self._validate_entity(queue_job, QueueJob, "queue_job")
 
-        # Add the item to the DynamoDB table with a condition expression to
-        # ensure it doesn't already exist
+        # Add the item to the DynamoDB table with a condition expression
+        # to ensure it doesn't already exist
         self._add_entity(
             queue_job,
-            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            ),
         )
 
         # Update the job count for the queue
@@ -244,7 +244,9 @@ class _Queue(
         # expression to ensure it exists
         self._delete_entity(
             queue_job,
-            condition_expression="attribute_exists(PK) AND attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
         # Update the job count for the queue

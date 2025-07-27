@@ -7,21 +7,20 @@ classes should inherit from, providing common functionality and error handling.
 
 import time
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
     NoReturn,
     Optional,
     Type,
+    TYPE_CHECKING,
 )
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
-
 from .error_config import ErrorMessageConfig
 from .error_handlers import ErrorHandler
+from .types import DynamoClientProtocol
 from .validators import EntityValidator
 
 if TYPE_CHECKING:

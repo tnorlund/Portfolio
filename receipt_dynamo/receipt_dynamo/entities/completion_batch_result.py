@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.constants import BatchStatus, PassNumber, ValidationStatus
+from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,

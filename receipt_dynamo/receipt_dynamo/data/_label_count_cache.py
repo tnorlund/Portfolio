@@ -1,23 +1,24 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    DynamoDBBaseOperations,
     handle_dynamodb_errors,
+    PutRequestTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
+    WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
 from receipt_dynamo.entities.label_count_cache import (
-    LabelCountCache,
     item_to_label_count_cache,
+    LabelCountCache,
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _LabelCountCache(

@@ -268,4 +268,4 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
             condition=condition,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobDependency: {e}")
+        raise ValueError(f"Error converting item to JobDependency: {e}") from e

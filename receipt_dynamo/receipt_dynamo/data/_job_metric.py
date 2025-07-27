@@ -1,15 +1,15 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
-from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
+from receipt_dynamo.entities.job_metric import item_to_job_metric, JobMetric
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

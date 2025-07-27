@@ -1,23 +1,21 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
+    PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
+    WriteRequestTypeDef,
 )
 from receipt_dynamo.entities import item_to_word
-from receipt_dynamo.entities.word import Word
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
         QueryInputTypeDef,
     )

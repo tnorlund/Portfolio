@@ -245,4 +245,4 @@ def item_to_job_log(item: Dict[str, Any]) -> JobLog:
             exception=exception,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobLog: {e}")
+        raise ValueError(f"Error converting item to JobLog: {e}") from e

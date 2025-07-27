@@ -84,5 +84,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         ],
     }
 
-    with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:
+    with open(
+        os.path.join(output_dir, f"{image_id}.json"), "w", encoding="utf-8"
+    ) as f:
         json.dump(results, f, indent=4, default=datetime_handler)

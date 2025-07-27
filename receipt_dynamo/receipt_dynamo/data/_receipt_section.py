@@ -1,14 +1,14 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_section.py
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -17,27 +17,23 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.receipt_section import (
-    ReceiptSection,
     item_to_receipt_section,
+    ReceiptSection,
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         DeleteRequestTypeDef,
         PutRequestTypeDef,
-        PutTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
         WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
+from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
     QueryInputTypeDef,
-    TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 
@@ -283,12 +279,12 @@ class _ReceiptSection(
                 },
             )
             return item_to_receipt_section(response["Item"])
-        except KeyError:
+        except KeyError as e:
             raise ValueError(
                 f"ReceiptSection with receipt_id {receipt_id}, "
                 f"image_id {image_id}, and section_type {section_type} "
                 "not found"
-            )
+            ) from e
 
     def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int

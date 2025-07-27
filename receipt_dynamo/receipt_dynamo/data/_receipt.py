@@ -1,45 +1,41 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    DynamoDBBaseOperations,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         DeleteTypeDef,
         PutRequestTypeDef,
-        PutTypeDef,
         QueryInputTypeDef,
         TransactWriteItemTypeDef,
         WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
+from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     PutRequestTypeDef,
-    PutTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
     OperationError,
 )
-from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
+from receipt_dynamo.entities.receipt import item_to_receipt, Receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (
     item_to_receipt_letter,
@@ -48,12 +44,12 @@ from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
 from receipt_dynamo.entities.receipt_word import (
-    ReceiptWord,
     item_to_receipt_word,
+    ReceiptWord,
 )
 from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
     item_to_receipt_word_label,
+    ReceiptWordLabel,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -465,7 +461,7 @@ class _Receipt(
                 )
             return receipts
         except ClientError as e:
-            raise ValueError(f"Error listing receipts from image: {e}")
+            raise ValueError(f"Error listing receipts from image: {e}") from e
 
     @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
@@ -645,7 +641,7 @@ class _Receipt(
                     try:
                         word = item_to_receipt_word(item)
                         words.append(word)
-                    except ValueError as e:
+                    except ValueError:
                         # TODO: Use proper logging instead of print
                         continue
 

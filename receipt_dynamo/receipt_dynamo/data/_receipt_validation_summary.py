@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
     handle_dynamodb_errors,
+    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.entities.receipt_validation_summary import (
@@ -12,16 +12,14 @@ from receipt_dynamo.entities.receipt_validation_summary import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
         QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 
 # These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
+from receipt_dynamo.data.base_operations import (
     PutRequestTypeDef,
     QueryInputTypeDef,
     WriteRequestTypeDef,

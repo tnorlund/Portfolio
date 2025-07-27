@@ -387,7 +387,7 @@ def item_to_job(item: Dict[str, Any]) -> Job:
             tags=tags,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to Job: {e}")
+        raise ValueError(f"Error converting item to Job: {e}") from e
 
 
 def _parse_dynamodb_map(dynamodb_map: Dict) -> Dict:

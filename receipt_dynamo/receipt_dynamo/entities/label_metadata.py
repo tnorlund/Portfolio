@@ -1,12 +1,10 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
-    assert_valid_uuid,
-    format_type_error,
     normalize_enum,
 )
 
@@ -173,4 +171,4 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
             receipt_refs=receipt_refs,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to LabelMetadata: {e}")
+        raise ValueError(f"Error converting item to LabelMetadata: {e}") from e

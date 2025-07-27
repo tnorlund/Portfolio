@@ -1,15 +1,13 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    handle_dynamodb_errors,
+    PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
     WriteRequestTypeDef,
 )
 from receipt_dynamo.entities import item_to_receipt_validation_category
@@ -19,7 +17,7 @@ from receipt_dynamo.entities.receipt_validation_category import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _ReceiptValidationCategory(
