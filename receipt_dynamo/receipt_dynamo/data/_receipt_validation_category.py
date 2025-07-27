@@ -161,24 +161,9 @@ class _ReceiptValidationCategory(
             ValueError: If the categories are None or not a list.
             Exception: If the categories cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(
+        self._update_entities(
             categories, ReceiptValidationCategory, "categories"
         )
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": category.to_item(),
-                    "ConditionExpression": (
-                        "attribute_exists(PK) AND attribute_exists(SK)"
-                    ),
-                }
-            }
-            for category in categories
-        ]
-
-        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_validation_category")
     def delete_receipt_validation_category(

@@ -156,19 +156,7 @@ class _Job(
             ValueError: When given a bad parameter.
             Exception: For underlying DynamoDB errors.
         """
-        self._validate_entity_list(jobs, Job, "jobs")
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=job.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
-            for job in jobs
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(jobs, Job, "jobs")
 
     @handle_dynamodb_errors("delete_job")
     def delete_job(self, job: Job):

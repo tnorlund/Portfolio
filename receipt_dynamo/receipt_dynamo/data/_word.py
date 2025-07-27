@@ -128,20 +128,7 @@ class _Word(
         ValueError: When given a bad parameter or words don't exist.
         Exception: For underlying DynamoDB errors.
         """
-        self._validate_entity_list(words, Word, "words")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": word.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for word in words
-        ]
-
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(words, Word, "words")
 
     @handle_dynamodb_errors("delete_word")
     def delete_word(self, image_id: str, line_id: int, word_id: int):

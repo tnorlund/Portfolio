@@ -162,19 +162,7 @@ class _ReceiptSection(
         ValueError
             If sections is invalid or if any section does not exist.
         """
-        self._validate_entity_list(sections, ReceiptSection, "sections")
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=s.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
-            for s in sections
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(sections, ReceiptSection, "sections")
 
     def delete_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str

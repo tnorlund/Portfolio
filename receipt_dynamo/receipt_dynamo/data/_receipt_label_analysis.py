@@ -145,26 +145,11 @@ class _ReceiptLabelAnalysis(
             ValueError: When a receipt label analysis with the same ID does not
                 exist
         """
-        self._validate_entity_list(
+        self._update_entities(
             receipt_label_analyses,
             ReceiptLabelAnalysis,
             "receipt_label_analyses",
         )
-
-        # Use transactional writes for updates to ensure items exist
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": analysis.to_item(),
-                    "ConditionExpression": (
-                        "attribute_exists(PK) AND attribute_exists(SK)"
-                    ),
-                }
-            }
-            for analysis in receipt_label_analyses
-        ]
-        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_label_analysis")
     def delete_receipt_label_analysis(

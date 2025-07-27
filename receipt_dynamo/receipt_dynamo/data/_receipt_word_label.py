@@ -223,22 +223,9 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When any receipt word label validation fails
         """
-        self._validate_entity_list(
+        self._update_entities(
             receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
         )
-
-        # Use transactional writes for updates to ensure consistency
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": label.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for label in receipt_word_labels
-        ]
-        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_word_label")
     def delete_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):

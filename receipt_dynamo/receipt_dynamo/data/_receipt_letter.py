@@ -163,19 +163,7 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid or do not exist.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=lt.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
-            for lt in letters
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(letters, ReceiptLetter, "letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(self, letter: ReceiptLetter) -> None:

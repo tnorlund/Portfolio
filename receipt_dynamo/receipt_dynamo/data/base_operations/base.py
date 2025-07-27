@@ -199,6 +199,37 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         self._client.delete_item(**delete_params)
 
+
+    def _delete_entities(
+        self,
+        entities: List[Any],
+        condition_expression: str = "attribute_exists(PK)",
+        **kwargs: Any,
+    ) -> None:
+        """Write multiple entities to DynamoDB using transactional write."""
+        # DynamoDB transact_write_items has a limit of 25 items per transaction
+        chunk_size = 25
+
+        for i in range(0, len(entities), chunk_size):
+            chunk = entities[i : i + chunk_size]
+            transact_items = []
+            for entity in chunk:
+                item = {
+                    "Delete": {
+                        "TableName": self.table_name,
+                        "Key": entity.key,
+                        "ConditionExpression": condition_expression,
+                    }
+                }
+                # Add any extra kwargs to the transaction item
+                if kwargs:
+                    item["Delete"].update(kwargs)
+                transact_items.append(item)
+
+            if transact_items:
+                self._client.transact_write_items(TransactItems=transact_items)
+
+
     def _batch_write_with_retry(
         self,
         request_items: List[Any],

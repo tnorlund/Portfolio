@@ -151,19 +151,7 @@ class _Receipt(
                 - AccessDeniedException (permission issues)
                 - or any other unexpected errors.
         """
-        self._validate_entity_list(receipts, Receipt, "receipts")
-        # Create transactional update items
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=receipt.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
-            for receipt in receipts
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(receipts, Receipt, "receipts")
 
     @handle_dynamodb_errors("delete_receipt")
     def delete_receipt(self, receipt: Receipt):

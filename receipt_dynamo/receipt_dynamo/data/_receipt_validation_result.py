@@ -165,22 +165,7 @@ class _ReceiptValidationResult(
             ValueError: If the results are None or not a list.
             Exception: If the results cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(results, ReceiptValidationResult, "results")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": result.to_item(),
-                    "ConditionExpression": (
-                        "attribute_exists(PK) AND attribute_exists(SK)"
-                    ),
-                }
-            }
-            for result in results
-        ]
-
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(results, ReceiptValidationResult, "results")
 
     @handle_dynamodb_errors("delete_receipt_validation_result")
     def delete_receipt_validation_result(

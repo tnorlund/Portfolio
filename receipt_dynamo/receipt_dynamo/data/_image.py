@@ -114,19 +114,7 @@ class _Image(
     @handle_dynamodb_errors("update_images")
     def update_images(self, images: List[Image]) -> None:
         """Updates multiple Image items in the database."""
-        self._validate_entity_list(images, Image, "images")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": image.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for image in images
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(images, Image, "images")
 
     @handle_dynamodb_errors("get_image_details")
     def get_image_details(self, image_id: str) -> ImageDetails:
@@ -285,14 +273,7 @@ class _Image(
     def delete_images(self, images: list[Image]) -> None:
         """Deletes multiple Image items from the database in batches."""
         self._validate_entity_list(images, Image, "images")
-
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=image.key)
-            )
-            for image in images
-        ]
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(images)
 
     @handle_dynamodb_errors("list_images")
     def list_images(

@@ -134,21 +134,7 @@ class _ReceiptWord(
     @handle_dynamodb_errors("update_receipt_words")
     def update_receipt_words(self, words: list[ReceiptWord]) -> None:
         """Updates multiple existing ReceiptWords in DynamoDB."""
-        self._validate_entity_list(words, ReceiptWord, "words")
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=w.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
-                )
-            )
-            for w in words
-        ]
-        self._transact_write_with_chunking(
-            cast(list[dict[str, Any]], transact_items)
-        )
+        self._update_entities(words, ReceiptWord, "words")
 
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, word: ReceiptWord) -> None:

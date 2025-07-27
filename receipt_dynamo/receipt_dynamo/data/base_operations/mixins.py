@@ -367,3 +367,60 @@ class TransactionalOperationsMixin:
         for i in range(0, len(transact_items), chunk_size):
             chunk = transact_items[i : i + chunk_size]
             self._transact_write_items(chunk)
+
+    @handle_dynamodb_errors("update_entities")
+    def _update_entities(
+        self,
+        entities: List[Any],
+        entity_type: Type[Any],
+        entity_name: str,
+    ) -> None:
+        """
+        Update multiple entities in the database using transactions.
+
+        This is a generic method that handles the common pattern of updating
+        a list of entities with transactional writes. Each update is conditional
+        upon the entity already existing (attribute_exists(PK)).
+
+        Args:
+            entities: List of entities to update
+            entity_type: The type of entity for validation
+            entity_name: Name of the entity for error messages
+
+        Example:
+            # In a data access class
+            def update_images(self, images: List[Image]) -> None:
+                self._update_entities(images, Image, "images")
+        """
+        if not hasattr(self, "_validator") or self._validator is None:
+            if not hasattr(self, "_error_config"):
+                self._error_config = ErrorMessageConfig()
+            self._validator = EntityValidator(self._error_config)
+
+        self._validator.validate_entity_list(entities, entity_type, entity_name)
+
+        # Build transactional items
+        transact_items = []
+        for entity in entities:
+            # Support different transaction item formats
+            if hasattr(entity, "to_item"):
+                # Standard format using Put
+                transact_items.append(
+                    {
+                        "Put": {
+                            "TableName": self.table_name,
+                            "Item": entity.to_item(),
+                            "ConditionExpression": "attribute_exists(PK)",
+                        }
+                    }
+                )
+            else:
+                # For entities that use Update operations
+                transact_items.append(
+                    self._prepare_transact_update_item(
+                        entity, "attribute_exists(PK)"
+                    )
+                )
+
+        # Use existing chunking method
+        self._transact_write_with_chunking(transact_items)

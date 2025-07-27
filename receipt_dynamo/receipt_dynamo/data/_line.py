@@ -115,20 +115,7 @@ class _Line(
         Raises:
             ValueError: When validation fails or lines don't exist
         """
-        self._validate_entity_list(lines, Line, "lines")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": line.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for line in lines
-        ]
-
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(lines, Line, "lines")
 
     @handle_dynamodb_errors("delete_line")
     def delete_line(self, image_id: str, line_id: int):
