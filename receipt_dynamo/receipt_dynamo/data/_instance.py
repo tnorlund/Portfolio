@@ -26,11 +26,15 @@ from receipt_dynamo.entities.instance_job import (
     item_to_instance_job,
 )
 
+# Runtime imports needed by the class methods
+from receipt_dynamo.data._base import (
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
+)
+
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
 
 

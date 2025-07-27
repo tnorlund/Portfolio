@@ -31,13 +31,17 @@ from receipt_dynamo.entities.batch_summary import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
+# Runtime imports needed by the class methods
+from receipt_dynamo.data._base import (
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    DeleteTypeDef,
+)
+
 if TYPE_CHECKING:
     from receipt_dynamo.data._base import (
-        DeleteTypeDef,
         PutRequestTypeDef,
-        PutTypeDef,
         QueryInputTypeDef,
-        TransactWriteItemTypeDef,
         WriteRequestTypeDef,
     )
 
