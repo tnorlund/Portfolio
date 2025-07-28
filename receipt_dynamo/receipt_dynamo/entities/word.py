@@ -540,4 +540,4 @@ def item_to_word(item: Dict[str, Any]) -> Word:
             ),
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to Word: {e}")
+        raise ValueError(f"Error converting item to Word: {e}") from e

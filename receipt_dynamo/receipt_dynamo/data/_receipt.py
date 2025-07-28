@@ -22,11 +22,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     OperationError,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 from receipt_dynamo.entities.receipt import item_to_receipt, Receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (
@@ -44,6 +39,11 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.base_operations import (
+        QueryInputTypeDef,
+    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:

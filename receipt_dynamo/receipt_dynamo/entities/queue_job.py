@@ -222,4 +222,4 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
             position=position,
         )
     except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to QueueJob: {e}")
+        raise ValueError(f"Error converting item to QueueJob: {e}") from e

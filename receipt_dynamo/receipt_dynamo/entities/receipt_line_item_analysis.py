@@ -194,10 +194,10 @@ class ReceiptLineItemAnalysis:
         if isinstance(value, str):
             try:
                 return Decimal(value)
-            except:
+            except Exception as e:
                 raise ValueError(
                     f"{field_name} string must be convertible to Decimal"
-                )
+                ) from e
         raise ValueError(f"{field_name} must be a Decimal, string, or None")
 
     @property

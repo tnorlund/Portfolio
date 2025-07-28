@@ -311,7 +311,7 @@ class _ReceiptMetadata(
             if error_code == "ValidationException":
                 raise ValueError(
                     "receipt_metadata contains invalid attributes or values"
-                )
+                ) from e
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -484,7 +484,7 @@ class _ReceiptMetadata(
             if error_code == "ValidationException":
                 raise ValueError(
                     "receipt_metadata contains invalid attributes or values"
-                )
+                ) from e
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -556,7 +556,7 @@ class _ReceiptMetadata(
             if error_code == "ValidationException":
                 raise ValueError(
                     "receipt_metadata contains invalid attributes or values"
-                )
+                ) from e
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -637,7 +637,7 @@ class _ReceiptMetadata(
             if error_code == "ValidationException":
                 raise ValueError(
                     "receipt_metadata contains invalid attributes or values"
-                )
+                ) from e
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
@@ -726,7 +726,7 @@ class _ReceiptMetadata(
                         "receipt_metadata contains invalid attributes or "
                         f"values: {e}"
                     )
-                )
+                ) from e
             elif error_code == "InternalServerError":
                 raise ValueError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":

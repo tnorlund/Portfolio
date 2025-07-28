@@ -271,13 +271,13 @@ class _ReceiptLetter(
             if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise OperationError(f"Validation error: {e}") from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
                 raise OperationError(
                     f"Error getting receipt letter: {e}"
@@ -363,13 +363,13 @@ class _ReceiptLetter(
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise ValueError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
                 raise OperationError(
                     f"Error listing receipt letters: {e}"
@@ -473,15 +473,15 @@ class _ReceiptLetter(
             if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
-                )
+                ) from e
             elif error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
-                )
+                ) from e
             elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
             else:
                 raise DynamoDBError(
                     f"Could not list ReceiptLetters from the database: {e}"

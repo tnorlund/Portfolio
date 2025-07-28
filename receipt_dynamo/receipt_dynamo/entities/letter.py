@@ -344,4 +344,4 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
             confidence=float(item["confidence"]["N"]),
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to Letter: {e}")
+        raise ValueError(f"Error converting item to Letter: {e}") from e

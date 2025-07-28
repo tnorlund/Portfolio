@@ -82,12 +82,12 @@ class JobMetric:
             try:
                 # Try to convert to float if possible
                 value = float(value)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
                 # If not convertible to float and not a dict, we raise an error
                 if not isinstance(value, dict):
                     raise ValueError(
                         "value must be a number (int/float) or a dictionary"
-                    )
+                    ) from e
         self.value: Union[int, float, Dict[str, Any]] = value
 
         # Unit validation
@@ -389,7 +389,7 @@ def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
             epoch=epoch,
         )
     except (KeyError, ValueError) as e:
-        raise ValueError(f"Error parsing item: {str(e)}")
+        raise ValueError(f"Error parsing item: {str(e)}") from e
 
 
 def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:

@@ -28,12 +28,6 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
-from receipt_dynamo.entities.receipt_chatgpt_validation import (
-    ReceiptChatGPTValidation,
-)
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
