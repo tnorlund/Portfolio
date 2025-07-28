@@ -194,9 +194,7 @@ def test_addReceipt_raises_value_error(dynamodb_table, sample_receipt, mocker):
     Tests that addReceipt raises ValueError when the receipt is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipt cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipt cannot be None"):
         client.add_receipt(None)  # type: ignore
 
 
@@ -387,9 +385,7 @@ def test_addReceipts_raises_value_error_receipts_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipts cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipts cannot be None"):
         client.add_receipts(None)  # type: ignore
 
 
@@ -549,9 +545,7 @@ def test_addReceipts_raises_clienterror_validation_exception(
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.add_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
@@ -606,7 +600,9 @@ def test_addReceipts_raises_clienterror(
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(Exception, match="Table not found for operation add_receipts"):
+    with pytest.raises(
+        Exception, match="Table not found for operation add_receipts"
+    ):
         client.add_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -644,9 +640,7 @@ def test_updateReceipt_raises_value_error_receipt_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipt cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipt cannot be None"):
         client.update_receipt(None)  # type: ignore
 
 
@@ -768,9 +762,7 @@ def test_updateReceipt_raises_clienterror_validation_exception(
             "PutItem",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -825,7 +817,9 @@ def test_updateReceipt_raises_clienterror(
             "PutItem",
         ),
     )
-    with pytest.raises(Exception, match="Table not found for operation update_receipt"):
+    with pytest.raises(
+        Exception, match="Table not found for operation update_receipt"
+    ):
         client.update_receipt(sample_receipt)
 
     mock_put.assert_called_once()
@@ -870,9 +864,7 @@ def test_updateReceipts_raises_value_error_receipts_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipts cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipts cannot be None"):
         client.update_receipts(None)  # type: ignore
 
 
@@ -929,7 +921,9 @@ def test_updateReceipts_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(EntityNotFoundError, match="Entity does not exist: list"):
+    with pytest.raises(
+        EntityNotFoundError, match="Entity does not exist: list"
+    ):
         client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
@@ -1012,9 +1006,7 @@ def test_updateReceipts_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.update_receipts([sample_receipt])
     mock_batch.assert_called_once()
 
@@ -1070,7 +1062,9 @@ def test_updateReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Table not found for operation update_receipts"):
+    with pytest.raises(
+        DynamoDBError, match="Table not found for operation update_receipts"
+    ):
         client.update_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1103,9 +1097,7 @@ def test_deleteReceipt_raises_value_error_receipt_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipt cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipt cannot be None"):
         client.delete_receipt(None)  # type: ignore
 
 
@@ -1227,9 +1219,7 @@ def test_deleteReceipt_raises_clienterror_validation_exception(
             "DeleteItem",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -1283,7 +1273,9 @@ def test_deleteReceipt_raises_client_error(
             "DeleteItem",
         ),
     )
-    with pytest.raises(Exception, match="Table not found for operation delete_receipt"):
+    with pytest.raises(
+        Exception, match="Table not found for operation delete_receipt"
+    ):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -1317,9 +1309,7 @@ def test_deleteReceipts_raises_value_error_receipts_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipts cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipts cannot be None"):
         client.delete_receipts(None)  # type: ignore
 
 
@@ -1376,7 +1366,9 @@ def test_deleteReceipts_raises_clienterror_conditional_check_failed(
             "transact_write_items",
         ),
     )
-    with pytest.raises(EntityNotFoundError, match="Entity does not exist: list"):
+    with pytest.raises(
+        EntityNotFoundError, match="Entity does not exist: list"
+    ):
         client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
@@ -1457,9 +1449,7 @@ def test_deleteReceipts_raises_clienterror_validation_exception(
             "transact_write_items",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.delete_receipts([sample_receipt])
     mock_delete.assert_called_once()
 
@@ -1520,7 +1510,9 @@ def test_deleteReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Table not found for operation delete_receipts"):
+    with pytest.raises(
+        DynamoDBError, match="Table not found for operation delete_receipts"
+    ):
         client.delete_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1553,9 +1545,7 @@ def test_getReceipt_raises_value_error_image_id_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="image_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="image_id cannot be None"):
         client.get_receipt(None, sample_receipt.receipt_id)
 
 
@@ -1568,9 +1558,7 @@ def test_getReceipt_raises_value_error_receipt_id_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="receipt_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="receipt_id cannot be None"):
         client.get_receipt(sample_receipt.image_id, None)
 
 
@@ -1755,7 +1743,9 @@ def test_getReceipt_raises_client_error(
             "GetItem",
         ),
     )
-    with pytest.raises(Exception, match="Table not found for operation get_receipt"):
+    with pytest.raises(
+        Exception, match="Table not found for operation get_receipt"
+    ):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
@@ -2043,9 +2033,7 @@ def test_listReceipts_raises_validation_exception(
             "Query",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.list_receipts()
     mock_query.assert_called_once()
 

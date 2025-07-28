@@ -189,9 +189,9 @@ def test_addReceiptLabelAnalysis_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
@@ -344,9 +344,9 @@ def test_addReceiptLabelAnalyses_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.add_receipt_label_analyses(analyses)
     mock_batch_write.assert_called_once()
@@ -555,9 +555,9 @@ def test_updateReceiptLabelAnalysis_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.update_receipt_label_analysis(sample_receipt_label_analysis)
     mock_put.assert_called_once()
@@ -973,9 +973,9 @@ def test_deleteReceiptLabelAnalysis_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_label_analysis(sample_receipt_label_analysis)
     mock_delete.assert_called_once()
@@ -1148,9 +1148,9 @@ def test_deleteReceiptLabelAnalyses_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.delete_receipt_label_analyses(analyses)
     mock_transact.assert_called_once()
@@ -1357,9 +1357,9 @@ def test_getReceiptLabelAnalysis_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
@@ -1594,9 +1594,9 @@ def test_listReceiptLabelAnalyses_client_errors(
         "AccessDeniedException": DynamoDBAccessError,
         "UnknownError": DynamoDBError,
     }
-    
+
     exception_type = exception_mapping.get(error_code, DynamoDBError)
-    
+
     with pytest.raises(exception_type, match=expected_exception):
         client.list_receipt_label_analyses()
     mock_query.assert_called_once()

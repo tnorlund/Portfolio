@@ -6,7 +6,7 @@ data access classes with common CRUD functionality.
 """
 
 import time
-from typing import Any, Dict, List, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Type
 
 from .error_config import ErrorMessageConfig
 from .error_handlers import handle_dynamodb_errors

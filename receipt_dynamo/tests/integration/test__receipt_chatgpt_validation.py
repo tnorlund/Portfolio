@@ -105,6 +105,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
 
     # Act & Assert
     from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+
     with pytest.raises(
         EntityAlreadyExistsError,
         match="already exists",

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -8,10 +8,10 @@ from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
-    WriteRequestTypeDef,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -304,7 +304,9 @@ class _ReceiptLine(
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error listing receipt lines: {e}") from e
+                raise OperationError(
+                    f"Error listing receipt lines: {e}"
+                ) from e
 
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str

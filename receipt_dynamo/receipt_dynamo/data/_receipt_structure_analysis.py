@@ -5,13 +5,13 @@ reduction) while maintaining full backward compatibility and all
 functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities import item_to_receipt_structure_analysis
 from receipt_dynamo.entities.receipt_structure_analysis import (

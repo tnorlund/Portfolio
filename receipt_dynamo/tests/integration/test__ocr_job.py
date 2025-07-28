@@ -6,12 +6,12 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.entities import OCRJob
 from receipt_dynamo.data.shared_exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
 )
+from receipt_dynamo.entities import OCRJob
 
 
 @pytest.fixture
@@ -61,7 +61,10 @@ def test_addOCRJob_duplicate_raises(
     client.add_ocr_job(sample_ocr_job)
 
     # Act & Assert
-    with pytest.raises(EntityAlreadyExistsError, match=r"(Entity already exists: OCRJob|already exists)"):
+    with pytest.raises(
+        EntityAlreadyExistsError,
+        match=r"(Entity already exists: OCRJob|already exists)",
+    ):
         client.add_ocr_job(sample_ocr_job)
 
 

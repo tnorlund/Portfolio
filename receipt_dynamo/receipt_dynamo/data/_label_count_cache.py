@@ -1,20 +1,24 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import DynamoDBError, OperationError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityAlreadyExistsError,
+    OperationError,
+)
 from receipt_dynamo.entities.label_count_cache import (
-    item_to_label_count_cache,
     LabelCountCache,
+    item_to_label_count_cache,
 )
 
 if TYPE_CHECKING:
@@ -46,7 +50,7 @@ class _LabelCountCache(
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     f"LabelCountCache for label {item.label} already exists"
                 ) from e
             raise DynamoDBError(
@@ -86,7 +90,7 @@ class _LabelCountCache(
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
                 # Note: 'item' is not defined here, using generic message
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     "LabelCountCache already exists for one or more labels"
                 ) from e
             raise DynamoDBError(

@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
@@ -7,7 +7,6 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
@@ -15,6 +14,7 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -26,8 +26,8 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.receipt_field import (
-    item_to_receipt_field,
     ReceiptField,
+    item_to_receipt_field,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 

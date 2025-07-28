@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -8,15 +8,16 @@ from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
-    WriteRequestTypeDef,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityNotFoundError,
     OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_word
@@ -169,7 +170,10 @@ class _ReceiptWord(
             )
             return item_to_receipt_word(response["Item"])
         except KeyError as e:
-            raise ValueError(f"ReceiptWord with ID {word_id} not found") from e
+            raise EntityNotFoundError(
+                f"ReceiptWord with image_id={image_id}, receipt_id={receipt_id}, "
+                f"line_id={line_id}, word_id={word_id} not found"
+            ) from e
 
     def get_receipt_words_by_indices(
         self, indices: list[tuple[str, int, int, int]]

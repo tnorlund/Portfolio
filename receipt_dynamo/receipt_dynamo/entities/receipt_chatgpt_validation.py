@@ -99,23 +99,22 @@ class ReceiptChatGPTValidation:
         """Convert a Python value to a DynamoDB typed value."""
         if value is None:
             return {"NULL": True}
-        elif isinstance(
+        if isinstance(
             value, bool
         ):  # Check for bool before int since bool is a subclass of int
             return {"BOOL": value}
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return {"S": value}
-        elif isinstance(value, (int, float)):
+        if isinstance(value, (int, float)):
             return {"N": str(value)}
-        elif isinstance(value, dict):
+        if isinstance(value, dict):
             return {
                 "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
             }
-        elif isinstance(value, list):
+        if isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
-        else:
-            # Convert any other type to string
-            return {"S": str(value)}
+        # Convert any other type to string
+        return {"S": str(value)}
 
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
@@ -170,29 +169,28 @@ class ReceiptChatGPTValidation:
         """Convert a DynamoDB typed value to a Python value."""
         if "NULL" in dynamo_value:
             return None
-        elif "S" in dynamo_value:
+        if "S" in dynamo_value:
             return dynamo_value["S"]
-        elif "N" in dynamo_value:
+        if "N" in dynamo_value:
             # Try to convert to int first, then float if that fails
             try:
                 return int(dynamo_value["N"])
             except ValueError:
                 return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
+        if "BOOL" in dynamo_value:
             return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
+        if "M" in dynamo_value:
             return {
                 k: ReceiptChatGPTValidation._dynamo_to_python(v)
                 for k, v in dynamo_value["M"].items()
             }
-        elif "L" in dynamo_value:
+        if "L" in dynamo_value:
             return [
                 ReceiptChatGPTValidation._dynamo_to_python(item)
                 for item in dynamo_value["L"]
             ]
-        else:
-            # Return empty dict for unsupported types
-            return {}
+        # Return empty dict for unsupported types
+        return {}
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReceiptChatGPTValidation):

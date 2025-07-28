@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
@@ -8,13 +8,14 @@ from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
 )
-from receipt_dynamo.entities.ocr_job import item_to_ocr_job, OCRJob
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -116,23 +117,20 @@ class _OCRJob(
             )
             if "Item" in response:
                 return item_to_ocr_job(response["Item"])
-            else:
-                raise ValueError(
-                    f"OCR job for Image ID '{image_id}' and Job ID '{job_id}' "
-                    "does not exist."
-                )
+            raise EntityNotFoundError(
+                f"OCR job with image_id={image_id}, job_id={job_id} does not exist"
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
                 raise RuntimeError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise RuntimeError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise RuntimeError(f"Access denied: {e}") from e
-            else:
-                raise RuntimeError(f"Error getting OCR job: {e}") from e
+            raise RuntimeError(f"Error getting OCR job: {e}") from e
 
     @handle_dynamodb_errors("delete_ocr_job")
     def delete_ocr_job(self, ocr_job: OCRJob):
@@ -244,12 +242,11 @@ class _OCRJob(
                 raise RuntimeError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise RuntimeError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise RuntimeError(f"Access denied: {e}") from e
-            else:
-                raise RuntimeError(f"Error listing OCR jobs: {e}") from e
+            raise RuntimeError(f"Error listing OCR jobs: {e}") from e
 
     @handle_dynamodb_errors("get_ocr_jobs_by_status")
     def get_ocr_jobs_by_status(
@@ -327,11 +324,8 @@ class _OCRJob(
                 raise RuntimeError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise RuntimeError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
+            if error_code == "AccessDeniedException":
                 raise RuntimeError(f"Access denied: {e}") from e
-            else:
-                raise RuntimeError(
-                    f"Error getting OCR jobs by status: {e}"
-                ) from e
+            raise RuntimeError(f"Error getting OCR jobs by status: {e}") from e

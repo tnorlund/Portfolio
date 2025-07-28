@@ -5,19 +5,20 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
+    handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     item_to_batch_summary,
@@ -225,8 +226,9 @@ class _BatchSummary(
         )
         if "Item" in response:
             return item_to_batch_summary(response["Item"])
-        else:
-            raise ValueError("batch_summary does not exist")
+        raise EntityNotFoundError(
+            f"BatchSummary with ID {batch_id} does not exist"
+        )
 
     @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(

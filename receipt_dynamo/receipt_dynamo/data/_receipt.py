@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
@@ -8,11 +8,11 @@ from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -22,7 +22,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     OperationError,
 )
-from receipt_dynamo.entities.receipt import item_to_receipt, Receipt
+from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_letter import (
     item_to_receipt_letter,
@@ -31,12 +31,12 @@ from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
 from receipt_dynamo.entities.receipt_word import (
-    item_to_receipt_word,
     ReceiptWord,
+    item_to_receipt_word,
 )
 from receipt_dynamo.entities.receipt_word_label import (
-    item_to_receipt_word_label,
     ReceiptWordLabel,
+    item_to_receipt_word_label,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -231,13 +231,12 @@ class _Receipt(
         )
         if "Item" in response:
             return item_to_receipt(response["Item"])
-        else:
-            raise EntityNotFoundError(
-                (
-                    f"Receipt with ID {receipt_id} and Image ID "
-                    f"'{image_id}' does not exist."
-                )
+        raise EntityNotFoundError(
+            (
+                f"Receipt with ID {receipt_id} and Image ID "
+                f"'{image_id}' does not exist."
             )
+        )
 
     @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
@@ -653,7 +652,9 @@ class _Receipt(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ValueError(f"Receipt not found: {e}") from e
+                raise EntityNotFoundError(
+                    f"Receipt with custom_id={custom_id} not found"
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"

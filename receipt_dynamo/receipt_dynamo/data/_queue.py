@@ -1,14 +1,14 @@
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.queue_job import item_to_queue_job, QueueJob
-from receipt_dynamo.entities.rwl_queue import item_to_queue, Queue
+from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
+from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (

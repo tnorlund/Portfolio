@@ -196,4 +196,6 @@ def item_to_receipt_section(item: Dict[str, Any]) -> ReceiptSection:
             created_at=created_at,
         )
     except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(f"Error converting item to ReceiptSection: {e}") from e
+        raise ValueError(
+            f"Error converting item to ReceiptSection: {e}"
+        ) from e

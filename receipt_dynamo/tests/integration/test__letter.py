@@ -4,7 +4,7 @@ import boto3
 import pytest
 
 from receipt_dynamo import DynamoClient, Letter
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 
 correct_letter_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -114,7 +114,7 @@ def test_letter_delete(dynamodb_table: Literal["MyMockedTable"]):
     client.delete_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
 
@@ -147,9 +147,9 @@ def test_letter_delete_from_word(dynamodb_table: Literal["MyMockedTable"]):
     )
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 2)
 
 
@@ -177,7 +177,7 @@ def test_letter_get_error(dynamodb_table: Literal["MyMockedTable"]):
 
     # Act
     client.add_letter(letter)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_letter("1", 1, 1, 2)
 
 

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -6,12 +6,12 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
+    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.job_log import item_to_job_log, JobLog
+from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (

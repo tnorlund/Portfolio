@@ -143,16 +143,15 @@ class PlacesCache:
 
             # Return padded original value with hash
             return f"{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
-        elif self.search_type == "PHONE":
+        if self.search_type == "PHONE":
             # Keep only digits and basic formatting characters
             value = "".join(c for c in value if c.isdigit() or c in "()+-")
             return f"{value:_>{self._MAX_PHONE_LENGTH}}"
-        elif self.search_type == "URL":
+        if self.search_type == "URL":
             # Replace spaces with underscores and lowercase
             value = value.lower().replace(" ", "_")
             return f"{value:_>{self._MAX_URL_LENGTH}}"
-        else:
-            raise ValueError(f"Invalid search type: {self.search_type}")
+        raise ValueError(f"Invalid search type: {self.search_type}")
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -381,4 +380,6 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
             time_to_live=time_to_live,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(f"Error converting item to PlacesCache: {str(e)}") from e
+        raise ValueError(
+            f"Error converting item to PlacesCache: {str(e)}"
+        ) from e

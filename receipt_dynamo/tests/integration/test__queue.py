@@ -5,7 +5,10 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._queue import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities import Job, Queue, QueueJob
 
 
@@ -100,9 +103,7 @@ def test_addQueue_raises_conditional_check_failed(queue_dynamo, sample_queue):
     queue_dynamo.add_queue(sample_queue)
 
     # Try to add it again
-    with pytest.raises(
-        EntityAlreadyExistsError, match="already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         queue_dynamo.add_queue(sample_queue)
 
 
@@ -129,7 +130,9 @@ def test_addQueue_raises_resource_not_found(
     # Patch the put_item method to raise ResourceNotFoundException
     monkeypatch.setattr(queue_dynamo._client, "put_item", mock_put_item)
 
-    with pytest.raises(Exception, match="Table not found for operation add_queue"):
+    with pytest.raises(
+        Exception, match="Table not found for operation add_queue"
+    ):
         queue_dynamo.add_queue(sample_queue)
 
 
@@ -266,9 +269,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to update a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="Queue .* not found"
-    ):
+    with pytest.raises(EntityNotFoundError, match="Queue .* not found"):
         queue_dynamo.update_queue(sample_queue)
 
 
@@ -307,9 +308,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to delete a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="Queue .* not found"
-    ):
+    with pytest.raises(EntityNotFoundError, match="Queue .* not found"):
         queue_dynamo.delete_queue(sample_queue)
 
 
@@ -351,7 +350,9 @@ def test_getQueue_raises_value_error_empty(queue_dynamo):
 @pytest.mark.integration
 def test_getQueue_queue_not_found(queue_dynamo):
     """Test that trying to get a non-existent queue raises a ValueError."""
-    with pytest.raises(EntityNotFoundError, match="Queue non-existent-queue not found"):
+    with pytest.raises(
+        EntityNotFoundError, match="Queue non-existent-queue not found"
+    ):
         queue_dynamo.get_queue("non-existent-queue")
 
 
@@ -498,7 +499,8 @@ def test_addJobToQueue_queue_not_found(queue_dynamo, sample_queue_job):
     # Don't add the queue first
 
     with pytest.raises(
-        EntityNotFoundError, match=f"Queue {sample_queue_job.queue_name} not found"
+        EntityNotFoundError,
+        match=f"Queue {sample_queue_job.queue_name} not found",
     ):
         queue_dynamo.add_job_to_queue(sample_queue_job)
 
@@ -672,7 +674,9 @@ def test_listJobsInQueue_queue_not_found(queue_dynamo, monkeypatch):
     monkeypatch.setattr(queue_dynamo.__class__, "get_queue", mock_get_queue)
 
     # Now test the listJobsInQueue function
-    with pytest.raises(EntityNotFoundError, match="Queue non-existent-queue not found"):
+    with pytest.raises(
+        EntityNotFoundError, match="Queue non-existent-queue not found"
+    ):
         queue_dynamo.list_jobs_in_queue("non-existent-queue")
 
 

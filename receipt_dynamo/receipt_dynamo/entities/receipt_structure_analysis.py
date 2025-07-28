@@ -414,7 +414,9 @@ class ReceiptSection:
                 try:
                     line_ids.append(int(line_id))
                 except (ValueError, TypeError) as e:
-                    raise TypeError(format_type_error("line_id", line_id, int)) from e
+                    raise TypeError(
+                        format_type_error("line_id", line_id, int)
+                    ) from e
 
         # Handle start_line and end_line
         start_line = data.get("start_line")

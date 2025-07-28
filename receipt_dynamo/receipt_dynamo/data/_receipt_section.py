@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_section.py
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from botocore.exceptions import ClientError
 
@@ -9,10 +9,10 @@ from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     PutRequestTypeDef,
     QueryInputTypeDef,
-    WriteRequestTypeDef,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -21,8 +21,8 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.receipt_section import (
-    item_to_receipt_section,
     ReceiptSection,
+    item_to_receipt_section,
 )
 
 if TYPE_CHECKING:
@@ -426,4 +426,6 @@ class _ReceiptSection(
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise OperationError(f"Error listing receipt sections: {e}") from e
+                raise OperationError(
+                    f"Error listing receipt sections: {e}"
+                ) from e

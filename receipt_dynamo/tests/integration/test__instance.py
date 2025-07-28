@@ -306,7 +306,9 @@ def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
     """
     Test that getInstance raises ValueError when the instance doesn't exist.
     """
-    with pytest.raises(ValueError, match="Instance with instance id .* does not exist"):
+    with pytest.raises(
+        ValueError, match="Instance with instance id .* does not exist"
+    ):
         instance_dynamo.get_instance(str(uuid.uuid4()))
 
 
@@ -458,7 +460,8 @@ def test_addInstanceJob_raises_value_error_instance_job_not_instance_job(
     InstanceJob.
     """
     with pytest.raises(
-        ValueError, match="instance_job must be an instance of the InstanceJob class"
+        ValueError,
+        match="instance_job must be an instance of the InstanceJob class",
     ):
         instance_dynamo.add_instance_job("not an instance job")
 

@@ -7,21 +7,22 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
-    WriteRequestTypeDef,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import (
-    assert_valid_uuid,
     ImageDetails,
+    assert_valid_uuid,
     item_to_image,
     item_to_letter,
     item_to_line,
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
     )
-)
 
 
 class _Image(
@@ -85,13 +85,18 @@ class _Image(
             raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key="IMAGE",
+            entity_class=Image,
+            converter_func=item_to_image,
+            consistent_read=False
         )
-        if "Item" not in response or not response["Item"]:
-            raise ValueError(f"Image with ID {image_id} not found")
-        return item_to_image(response["Item"])
+        
+        if result is None:
+            raise EntityNotFoundError(f"Image with ID {image_id} not found")
+        
+        return result
 
     @handle_dynamodb_errors("update_image")
     def update_image(self, image: Image) -> None:
@@ -243,7 +248,7 @@ class _Image(
                 receipts.append(item_to_receipt(item))
 
         if image is None:
-            raise ValueError(f"Image with ID {image_id} not found in database")
+            raise EntityNotFoundError(f"Image with ID {image_id} not found in database")
 
         return image, lines, receipts
 

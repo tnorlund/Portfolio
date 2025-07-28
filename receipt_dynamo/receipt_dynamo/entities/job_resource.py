@@ -230,18 +230,17 @@ class JobResource:
         """
         if isinstance(v, dict):
             return {"M": self._dict_to_dynamodb_map(v)}
-        elif isinstance(v, list):
+        if isinstance(v, list):
             return {"L": [self._to_dynamodb_value(item) for item in v]}
-        elif isinstance(v, str):
+        if isinstance(v, str):
             return {"S": v}
-        elif isinstance(v, (int, float)):
+        if isinstance(v, (int, float)):
             return {"N": str(v)}
-        elif isinstance(v, bool):
+        if isinstance(v, bool):
             return {"BOOL": v}
-        elif v is None:
+        if v is None:
             return {"NULL": True}
-        else:
-            return {"S": str(v)}
+        return {"S": str(v)}
 
     def __repr__(self) -> str:
         """Returns a string representation of the JobResource object.
@@ -407,21 +406,20 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
     """
     if "S" in dynamodb_value:
         return dynamodb_value["S"]
-    elif "N" in dynamodb_value:
+    if "N" in dynamodb_value:
         try:
             return int(dynamodb_value["N"])
         except ValueError:
             return float(dynamodb_value["N"])
-    elif "BOOL" in dynamodb_value:
+    if "BOOL" in dynamodb_value:
         return dynamodb_value["BOOL"]
-    elif "NULL" in dynamodb_value:
+    if "NULL" in dynamodb_value:
         return None
-    elif "M" in dynamodb_value:
+    if "M" in dynamodb_value:
         return _parse_dynamodb_map(dynamodb_value["M"])
-    elif "L" in dynamodb_value:
+    if "L" in dynamodb_value:
         return [_parse_dynamodb_value(item) for item in dynamodb_value["L"]]
-    else:
-        raise ValueError(f"Unknown DynamoDB value format: {dynamodb_value}")
+    raise ValueError(f"Unknown DynamoDB value format: {dynamodb_value}")
 
 
 def _parse_dynamodb_map(dynamodb_map: Dict[str, Any]) -> Dict[str, Any]:

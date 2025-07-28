@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
-from receipt_dynamo.entities.job_metric import item_to_job_metric, JobMetric
+from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:

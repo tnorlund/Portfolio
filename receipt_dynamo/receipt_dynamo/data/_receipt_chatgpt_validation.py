@@ -1,4 +1,4 @@
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from botocore.exceptions import ClientError
 
@@ -8,11 +8,11 @@ from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     PutRequestTypeDef,
     PutTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
@@ -280,14 +280,13 @@ class _ReceiptChatGPTValidation(
             )
             if "Item" in response:
                 return item_to_receipt_chat_gpt_validation(response["Item"])
-            else:
-                raise ValueError(
-                    (
-                        "ReceiptChatGPTValidation with receipt ID "
-                        f"{receipt_id}, image ID {image_id}, and "
-                        f"timestamp {timestamp} not found"
-                    )
+            raise ValueError(
+                (
+                    "ReceiptChatGPTValidation with receipt ID "
+                    f"{receipt_id}, image ID {image_id}, and "
+                    f"timestamp {timestamp} not found"
                 )
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":

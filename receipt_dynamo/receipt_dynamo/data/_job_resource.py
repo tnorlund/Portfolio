@@ -1,23 +1,24 @@
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
     OperationError,
     ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_resource import (
-    item_to_job_resource,
     JobResource,
+    item_to_job_resource,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -70,27 +71,26 @@ class _JobResource(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     (
                         "JobResource with resource ID "
                         f"{job_resource.resource_id} for job "
                         f"{job_resource.job_id} already exists"
                     )
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add job resource to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job resource to DynamoDB: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not add job resource to DynamoDB: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_job_resource")
     def get_job_resource(self, job_id: str, resource_id: str) -> JobResource:
@@ -138,14 +138,13 @@ class _JobResource(
                 raise ReceiptDynamoError(
                     f"Could not get job resource: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(f"Error getting job resource: {e}") from e
+            raise OperationError(f"Error getting job resource: {e}") from e
 
     def update_job_resource_status(
         self,

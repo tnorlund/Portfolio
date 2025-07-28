@@ -268,4 +268,6 @@ def item_to_embedding_batch_result(
             error_message=error_message,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to EmbeddingBatchResult: {e}") from e
+        raise ValueError(
+            f"Error converting item to EmbeddingBatchResult: {e}"
+        ) from e

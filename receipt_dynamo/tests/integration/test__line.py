@@ -4,7 +4,7 @@ import boto3
 import pytest
 
 from receipt_dynamo import DynamoClient, Line
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 
 correct_line_params: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -96,7 +96,7 @@ def test_line_delete(dynamodb_table: Literal["MyMockedTable"]):
     client.delete_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
 
@@ -128,9 +128,9 @@ def test_line_delete_all(dynamodb_table: Literal["MyMockedTable"]):
     client.delete_lines([line_1, line_2])
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2)
 
 
@@ -156,7 +156,7 @@ def test_line_get_error(dynamodb_table: Literal["MyMockedTable"]):
     client.add_line(line)
 
     # Act
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_line("invalid-uuid", 2)
 
 

@@ -199,18 +199,17 @@ class JobCheckpoint:
         """
         if isinstance(v, dict):
             return {"M": self._dict_to_dynamodb_map(v)}
-        elif isinstance(v, list):
+        if isinstance(v, list):
             return {"L": [self._to_dynamodb_value(item) for item in v]}
-        elif isinstance(v, bool):
+        if isinstance(v, bool):
             return {"BOOL": v}
-        elif isinstance(v, (int, float)):
+        if isinstance(v, (int, float)):
             return {"N": str(v)}
-        elif isinstance(v, str):
+        if isinstance(v, str):
             return {"S": v}
-        elif v is None:
+        if v is None:
             return {"NULL": True}
-        else:
-            return {"S": str(v)}
+        return {"S": str(v)}
 
     def __repr__(self) -> str:
         """Returns a string representation of the JobCheckpoint object.
@@ -345,19 +344,19 @@ def _parse_dynamodb_value(v: Dict) -> Any:
     """
     if "S" in v:
         return v["S"]
-    elif "N" in v:
+    if "N" in v:
         # Try to convert to int if possible, otherwise float
         try:
             return int(v["N"])
         except ValueError:
             return float(v["N"])
-    elif "BOOL" in v:
+    if "BOOL" in v:
         return v["BOOL"]
-    elif "NULL" in v:
+    if "NULL" in v:
         return None
-    elif "M" in v:
+    if "M" in v:
         return _parse_dynamodb_map(v["M"])
-    elif "L" in v:
+    if "L" in v:
         return [_parse_dynamodb_value(item) for item in v["L"]]
     return None
 

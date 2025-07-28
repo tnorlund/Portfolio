@@ -110,21 +110,20 @@ class ReceiptValidationCategory:
         """Convert a Python value to a DynamoDB typed value."""
         if value is None:
             return {"NULL": True}
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return {"S": value}
-        elif isinstance(value, (int, float)):
+        if isinstance(value, (int, float)):
             return {"N": str(value)}
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             return {"BOOL": value}
-        elif isinstance(value, dict):
+        if isinstance(value, dict):
             return {
                 "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
             }
-        elif isinstance(value, list):
+        if isinstance(value, list):
             return {"L": [self._python_to_dynamo(item) for item in value]}
-        else:
-            # Convert any other type to string
-            return {"S": str(value)}
+        # Convert any other type to string
+        return {"S": str(value)}
 
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
@@ -186,31 +185,30 @@ class ReceiptValidationCategory:
         """Convert a DynamoDB typed value to a Python value."""
         if "NULL" in dynamo_value:
             return None
-        elif "S" in dynamo_value:
+        if "S" in dynamo_value:
             return dynamo_value["S"]
-        elif "N" in dynamo_value:
+        if "N" in dynamo_value:
             # Try to convert to int if possible, otherwise float
             try:
                 return int(dynamo_value["N"])
             except ValueError:
                 return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
+        if "BOOL" in dynamo_value:
             return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
+        if "M" in dynamo_value:
             return {
                 k: ReceiptValidationCategory._dynamo_to_python(v)
                 for k, v in dynamo_value["M"].items()
             }
-        elif "L" in dynamo_value:
+        if "L" in dynamo_value:
             return [
                 ReceiptValidationCategory._dynamo_to_python(item)
                 for item in dynamo_value["L"]
             ]
-        else:
-            # Handle any other type
-            for key, value in dynamo_value.items():
-                return value
-            return None
+        # Handle any other type
+        for key, value in dynamo_value.items():
+            return value
+        return None
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ReceiptValidationCategory):
@@ -248,23 +246,23 @@ def dynamo_to_python(dynamo_value):
 
     if "NULL" in dynamo_value:
         return None
-    elif "S" in dynamo_value:
+    if "S" in dynamo_value:
         return dynamo_value["S"]
-    elif "N" in dynamo_value:
+    if "N" in dynamo_value:
         # Try to convert to int if possible, otherwise float
         try:
             return int(dynamo_value["N"])
         except ValueError:
             return float(dynamo_value["N"])
-    elif "BOOL" in dynamo_value:
+    if "BOOL" in dynamo_value:
         return dynamo_value["BOOL"]
-    elif "M" in dynamo_value:
+    if "M" in dynamo_value:
         return {k: dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
-    elif "L" in dynamo_value:
+    if "L" in dynamo_value:
         return [dynamo_to_python(item) for item in dynamo_value["L"]]
-    elif "SS" in dynamo_value:  # String Set
+    if "SS" in dynamo_value:  # String Set
         return set(dynamo_value["SS"])
-    elif "NS" in dynamo_value:  # Number Set
+    if "NS" in dynamo_value:  # Number Set
         # Try to convert to int if possible, otherwise float
         result = set()
         for num_str in dynamo_value["NS"]:
@@ -273,13 +271,12 @@ def dynamo_to_python(dynamo_value):
             except ValueError:
                 result.add(float(num_str))
         return result
-    elif "BS" in dynamo_value:  # Binary Set
+    if "BS" in dynamo_value:  # Binary Set
         return set(dynamo_value["BS"])
-    else:
-        # Handle any other type by returning the first value
-        for key, value in dynamo_value.items():
-            return value
-        return None
+    # Handle any other type by returning the first value
+    for key, value in dynamo_value.items():
+        return value
+    return None
 
 
 def item_to_receipt_validation_category(

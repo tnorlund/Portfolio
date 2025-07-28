@@ -1,15 +1,16 @@
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -184,7 +185,9 @@ class _Line(
             },
         )
         if "Item" not in response:
-            raise ValueError(f"Line with ID {line_id} not found")
+            raise EntityNotFoundError(
+                f"Line with image_id={image_id}, line_id={line_id} not found"
+            )
         return item_to_line(response["Item"])
 
     @handle_dynamodb_errors("list_lines")

@@ -5,7 +5,7 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -417,7 +417,7 @@ def test_delete_receipt_word(
     client.delete_receipt_word(sample_receipt_word)
 
     # Assert
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(EntityNotFoundError, match="not found"):
         client.get_receipt_word(
             sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,

@@ -1,20 +1,21 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
     OperationError,
 )
-from receipt_dynamo.entities.job_status import item_to_job_status, JobStatus
+from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -66,24 +67,23 @@ class _JobStatus(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     f"JobStatus with timestamp {job_status.updated_at} for "
                     f"job {job_status.job_id} already exists"
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise DynamoDBError(
                     f"Could not add job status to DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not add job status to DynamoDB: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not add job status to DynamoDB: {e}"
+            ) from e
 
     @handle_dynamodb_errors("get_latest_job_status")
     def get_latest_job_status(self, job_id: str) -> JobStatus:
@@ -126,18 +126,17 @@ class _JobStatus(
                 raise DynamoDBError(
                     f"Could not get latest job status: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting latest job status: {e}"
-                ) from e
+            raise OperationError(
+                f"Error getting latest job status: {e}"
+            ) from e
 
     def list_job_statuses(
         self,
@@ -222,20 +221,19 @@ class _JobStatus(
                 raise DynamoDBError(
                     f"Could not list job statuses from the database: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "ValidationException":
+            if error_code == "ValidationException":
                 raise DynamoDBValidationError(
                     f"One or more parameters given were invalid: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list job statuses from the database: {e}"
-                ) from e
+            raise DynamoDBError(
+                f"Could not list job statuses from the database: {e}"
+            ) from e
 
     def _getJobWithStatus(
         self, job_id: str
@@ -268,7 +266,7 @@ class _JobStatus(
                 if item["TYPE"]["S"] == "JOB":
                     # Return the raw item to be converted by the caller
                     job = item
-                elif item["TYPE"]["S"] == "JOB_STATUS":
+                if item["TYPE"]["S"] == "JOB_STATUS":
                     statuses.append(item_to_job_status(item))
 
             # Continue pagination if needed
@@ -286,7 +284,7 @@ class _JobStatus(
                     if item["TYPE"]["S"] == "JOB":
                         # Return the raw item to be converted by the caller
                         job = item
-                    elif item["TYPE"]["S"] == "JOB_STATUS":
+                    if item["TYPE"]["S"] == "JOB_STATUS":
                         statuses.append(item_to_job_status(item))
 
             # Sort statuses by updated_at timestamp

@@ -397,4 +397,6 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
             label_proposed_by=label_proposed_by,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptWordLabel: {e}") from e
+        raise ValueError(
+            f"Error converting item to ReceiptWordLabel: {e}"
+        ) from e

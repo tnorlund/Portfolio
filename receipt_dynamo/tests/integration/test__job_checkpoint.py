@@ -157,7 +157,9 @@ def test_addJobCheckpoint_raises_conditional_check_failed(
 
     # Try to add it again
     expected_msg = f"Entity already exists: JobCheckpoint with job_id={sample_job_checkpoint.job_id}"
-    with pytest.raises(EntityAlreadyExistsError, match=re.escape(expected_msg)):
+    with pytest.raises(
+        EntityAlreadyExistsError, match=re.escape(expected_msg)
+    ):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
 
@@ -180,9 +182,7 @@ def test_addJobCheckpoint_raises_resource_not_found(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
     mock_put.assert_called_once()
 
@@ -227,9 +227,7 @@ def test_getJobCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
     """Test that getJobCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="job_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_checkpoint_dynamo.get_job_checkpoint(None, "timestamp")
 
 
@@ -304,9 +302,7 @@ def test_updateBestCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
     """Test that updateBestCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="job_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_checkpoint_dynamo.update_best_checkpoint(None, "timestamp")
 
 
@@ -513,9 +509,7 @@ def test_getBestCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
     """Test that getBestCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="job_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_checkpoint_dynamo.get_best_checkpoint(None)
 
 
@@ -554,9 +548,7 @@ def test_deleteJobCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
     """Test that deleteJobCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="job_id cannot be None"
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_checkpoint_dynamo.delete_job_checkpoint(None, "timestamp")
 
 

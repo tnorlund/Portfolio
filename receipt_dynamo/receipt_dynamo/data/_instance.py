@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -8,11 +8,11 @@ from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,

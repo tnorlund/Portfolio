@@ -7,13 +7,13 @@ classes should inherit from, providing common functionality and error handling.
 
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
     NoReturn,
     Optional,
     Type,
-    TYPE_CHECKING,
 )
 
 from botocore.exceptions import ClientError
@@ -255,6 +255,53 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
             if transact_items:
                 self._client.transact_write_items(TransactItems=transact_items)
+
+    def _get_entity(
+        self,
+        primary_key: str,
+        sort_key: str,
+        entity_class: Type[Any],
+        converter_func: Optional[Any] = None,
+        consistent_read: bool = False,
+    ) -> Optional[Any]:
+        """
+        Get a single entity from DynamoDB.
+
+        Args:
+            primary_key: The primary key value
+            sort_key: The sort key value
+            entity_class: The class to instantiate from the item
+            converter_func: Optional function to convert item to entity
+            consistent_read: Whether to use consistent read
+
+        Returns:
+            An instance of entity_class or None if not found
+
+        Raises:
+            ClientError: If the DynamoDB operation fails
+        """
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": primary_key},
+                "SK": {"S": sort_key},
+            },
+            ConsistentRead=consistent_read,
+        )
+
+        item = response.get("Item")
+        if not item:
+            return None
+
+        # Use converter function if provided
+        if converter_func:
+            return converter_func(item)
+        # Check if entity_class has a from_item method
+        elif hasattr(entity_class, "from_item"):
+            return entity_class.from_item(item)
+        else:
+            # Fallback - return raw item
+            return item
 
     def _batch_write_with_retry(
         self,

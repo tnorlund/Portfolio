@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -16,8 +16,8 @@ from receipt_dynamo.data.shared_exceptions import (
     ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_checkpoint import (
-    item_to_job_checkpoint,
     JobCheckpoint,
+    item_to_job_checkpoint,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 

@@ -1,13 +1,13 @@
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
     QueryInputTypeDef,
+    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
 )
 from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.entities.receipt_validation_summary import (

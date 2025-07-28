@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -6,12 +6,13 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
+    EntityNotFoundError,
     OperationError,
 )
 from receipt_dynamo.entities.completion_batch_result import (
@@ -113,35 +114,19 @@ class _CompletionBatchResult(
     def update_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
-        if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.")
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=result.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            raise OperationError(
-                f"Could not update completion batch result: {e}"
-            ) from e
+        self._validate_entity(result, CompletionBatchResult, "result")
+        self._update_entity(
+            result, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_completion_batch_result")
     def delete_completion_batch_result(
         self, result: CompletionBatchResult
     ) -> None:
-        if result is None or not isinstance(result, CompletionBatchResult):
-            raise ValueError("Must provide a CompletionBatchResult instance.")
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key=result.key,
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            raise OperationError(
-                f"Could not delete completion batch result: {e}"
-            ) from e
+        self._validate_entity(result, CompletionBatchResult, "result")
+        self._delete_entity(
+            result, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("get_completion_batch_result")
     def get_completion_batch_result(
@@ -152,26 +137,23 @@ class _CompletionBatchResult(
         word_id: int,
         label: str,
     ) -> CompletionBatchResult:
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"BATCH#{batch_id}"},
-                    "SK": {
-                        "S": (
-                            f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
-                            f"#WORD#{word_id}#LABEL#{label}"
-                        )
-                    },
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"BATCH#{batch_id}"},
+                "SK": {
+                    "S": (
+                        f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
+                        f"#WORD#{word_id}#LABEL#{label}"
+                    )
                 },
+            },
+        )
+        if "Item" not in response:
+            raise EntityNotFoundError(
+                f"Completion batch result with batch_id={batch_id} and custom_id={custom_id} not found"
             )
-            if "Item" not in response:
-                raise ValueError("Completion batch result not found.")
-            return item_to_completion_batch_result(response["Item"])
-        except ClientError as e:
-            raise OperationError(
-                f"Could not retrieve completion batch result: {e}"
-            ) from e
+        return item_to_completion_batch_result(response["Item"])
 
     @handle_dynamodb_errors("list_completion_batch_results")
     def list_completion_batch_results(

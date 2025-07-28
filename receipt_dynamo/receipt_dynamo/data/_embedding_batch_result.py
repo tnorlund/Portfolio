@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
@@ -7,9 +7,9 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
@@ -171,7 +171,7 @@ class _EmbeddingBatchResult(
     @handle_dynamodb_errors("delete_embedding_batch_result")
     def delete_embedding_batch_result(
         self, embedding_batch_result: EmbeddingBatchResult
-    ) from e:
+    ):
         """
         Deletes an EmbeddingBatchResult from DynamoDB.
 

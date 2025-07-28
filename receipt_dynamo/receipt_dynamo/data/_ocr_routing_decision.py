@@ -6,22 +6,23 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     OperationError,
 )
 from receipt_dynamo.entities.ocr_routing_decision import (
-    item_to_ocr_routing_decision,
     OCRRoutingDecision,
+    item_to_ocr_routing_decision,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -54,7 +55,7 @@ class _OCRRoutingDecision(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityAlreadyExistsError(
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' already exists"
                 ) from e

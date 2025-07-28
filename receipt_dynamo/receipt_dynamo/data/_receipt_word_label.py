@@ -5,7 +5,7 @@ This refactored version reduces code from ~969 lines to ~310 lines
 functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -13,13 +13,13 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities.receipt_word_label import (
-    item_to_receipt_word_label,
     ReceiptWordLabel,
+    item_to_receipt_word_label,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -95,11 +95,12 @@ class _ReceiptWordLabel(
             DynamoDBServerError,
             DynamoDBThroughputError,
             DynamoDBValidationError,
+            EntityAlreadyExistsError,
         )
 
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
-            raise ValueError(
+            raise EntityAlreadyExistsError(
                 "Receipt word label for Image ID "
                 f"'{receipt_word_label.image_id}' already exists"
             ) from error

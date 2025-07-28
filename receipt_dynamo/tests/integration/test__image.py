@@ -7,7 +7,10 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import OCRJobType, OCRStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities import (
     OCRJob,
     OCRRoutingDecision,
@@ -53,7 +56,9 @@ def test_addImage_raises_value_error_for_invalid_type(dynamodb_table):
     Checks addImage with an invalid type for 'image'.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="image must be an instance of the Image class"):
+    with pytest.raises(
+        ValueError, match="image must be an instance of the Image class"
+    ):
         client.add_image("not-an-image")
 
 
@@ -602,7 +607,7 @@ def test_image_delete(dynamodb_table, example_image):
     client = DynamoClient(dynamodb_table)
     client.add_image(example_image)
     client.delete_image(example_image.image_id)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_image(example_image.image_id)
 
 
@@ -673,9 +678,7 @@ def test_updateImages_raises_value_error_images_none(
     None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="images cannot be None"
-    ):
+    with pytest.raises(ValueError, match="images cannot be None"):
         client.update_images(None)  # type: ignore
 
 
@@ -688,9 +691,7 @@ def test_updateImages_raises_value_error_images_not_list(
     a list.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="images must be a list"
-    ):
+    with pytest.raises(ValueError, match="images must be a list"):
         client.update_images("not-a-list")  # type: ignore
 
 
@@ -732,7 +733,9 @@ def test_updateImages_raises_clienterror_conditional_check_failed(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(EntityNotFoundError, match="Image with image_id .* does not exist"):
+    with pytest.raises(
+        EntityNotFoundError, match="Image with image_id .* does not exist"
+    ):
         client.update_images([example_image])
     mock_transact.assert_called_once()
 
@@ -813,9 +816,7 @@ def test_updateImages_raises_clienterror_validation_exception(
             "TransactWriteItems",
         ),
     )
-    with pytest.raises(
-        Exception, match=r"One or more parameters.*invalid"
-    ):
+    with pytest.raises(Exception, match=r"One or more parameters.*invalid"):
         client.update_images([example_image])
     mock_transact.assert_called_once()
 

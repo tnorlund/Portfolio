@@ -5,7 +5,7 @@ This module provides type imports from boto3-stubs for type checking
 during development while maintaining runtime compatibility.
 """
 
-from typing import Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient

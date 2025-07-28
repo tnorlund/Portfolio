@@ -164,18 +164,17 @@ class InstanceJob:
         """
         if isinstance(v, dict):
             return {"M": self._dict_to_dynamodb_map(v)}
-        elif isinstance(v, list):
+        if isinstance(v, list):
             return {"L": [self._to_dynamodb_value(item) for item in v]}
-        elif isinstance(v, str):
+        if isinstance(v, str):
             return {"S": v}
-        elif isinstance(v, (int, float)):
+        if isinstance(v, (int, float)):
             return {"N": str(v)}
-        elif isinstance(v, bool):
+        if isinstance(v, bool):
             return {"BOOL": v}
-        elif v is None:
+        if v is None:
             return {"NULL": True}
-        else:
-            return {"S": str(v)}
+        return {"S": str(v)}
 
     def __repr__(self) -> str:
         """Returns a string representation of the InstanceJob object.
@@ -356,20 +355,19 @@ def _parse_dynamodb_value(dynamodb_value: Dict) -> Any:
     """
     if "M" in dynamodb_value:
         return _parse_dynamodb_map(dynamodb_value["M"])
-    elif "L" in dynamodb_value:
+    if "L" in dynamodb_value:
         return [_parse_dynamodb_value(item) for item in dynamodb_value["L"]]
-    elif "S" in dynamodb_value:
+    if "S" in dynamodb_value:
         return dynamodb_value["S"]
-    elif "N" in dynamodb_value:
+    if "N" in dynamodb_value:
         # Try to convert to int first, then float if that fails
         try:
             return int(dynamodb_value["N"])
         except ValueError:
             return float(dynamodb_value["N"])
-    elif "BOOL" in dynamodb_value:
+    if "BOOL" in dynamodb_value:
         return dynamodb_value["BOOL"]
-    elif "NULL" in dynamodb_value:
+    if "NULL" in dynamodb_value:
         return None
-    else:
-        # Default fallback
-        return str(dynamodb_value)
+    # Default fallback
+    return str(dynamodb_value)

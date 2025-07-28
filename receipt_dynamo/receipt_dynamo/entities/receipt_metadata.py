@@ -492,7 +492,9 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         try:
             timestamp = datetime.fromisoformat(timestamp_str)
         except ValueError as e:
-            raise ValueError(f"Invalid timestamp format: {timestamp_str}") from e
+            raise ValueError(
+                f"Invalid timestamp format: {timestamp_str}"
+            ) from e
 
         return ReceiptMetadata(
             image_id=image_id,
@@ -519,4 +521,6 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         # Re-raise ValueError as is
         raise
     except Exception as e:
-        raise ValueError(f"Unexpected error parsing receipt metadata: {e}") from e
+        raise ValueError(
+            f"Unexpected error parsing receipt metadata: {e}"
+        ) from e

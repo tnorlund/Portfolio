@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -10,13 +10,14 @@ from receipt_dynamo.data.base_operations import (
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
 )
-from receipt_dynamo.entities import item_to_receipt_metadata, ReceiptMetadata
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
@@ -304,7 +305,9 @@ class _ReceiptMetadata(
             )
             item = response.get("Item")
             if item is None:
-                raise ValueError("receipt_metadata does not exist")
+                raise EntityNotFoundError(
+                    f"ReceiptMetadata with image_id={image_id}, receipt_id={receipt_id} does not exist"
+                )
             return item_to_receipt_metadata(item)
         except ClientError as e:
             error_code = e.response["Error"]["Code"]

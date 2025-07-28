@@ -4,7 +4,11 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data.shared_exceptions import DynamoDBError, EntityAlreadyExistsError, EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities.job_dependency import JobDependency
 
 
@@ -85,7 +89,8 @@ def test_addJobDependency_raises_value_error_job_not_instance(
     JobDependency instance.
     """
     with pytest.raises(
-        ValueError, match="job_dependency must be an instance of the JobDependency class"
+        ValueError,
+        match="job_dependency must be an instance of the JobDependency class",
     ):
         job_dependency_dynamo.add_job_dependency("not a job dependency")
 
@@ -467,7 +472,8 @@ def test_deleteJobDependency_raises_value_error_dependency_not_instance(
     a JobDependency instance.
     """
     with pytest.raises(
-        ValueError, match="job_dependency must be an instance of the JobDependency class"
+        ValueError,
+        match="job_dependency must be an instance of the JobDependency class",
     ):
         job_dependency_dynamo.delete_job_dependency("not a job dependency")
 
@@ -481,7 +487,9 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     does not exist.
     """
     # Try to delete a job dependency that doesn't exist
-    with pytest.raises(EntityNotFoundError, match="Entity does not exist: Job_Dependency"):
+    with pytest.raises(
+        EntityNotFoundError, match="Entity does not exist: Job_Dependency"
+    ):
         job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
 

@@ -1,15 +1,16 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.word import Word
@@ -196,7 +197,9 @@ class _Word(
             },
         )
         if "Item" not in response:
-            raise ValueError(f"Word with ID {word_id} not found")
+            raise EntityNotFoundError(
+                f"Word with image_id={image_id}, line_id={line_id}, word_id={word_id} not found"
+            )
         return item_to_word(response["Item"])
 
     @handle_dynamodb_errors("get_words")

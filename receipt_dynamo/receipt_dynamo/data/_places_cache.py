@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -8,11 +8,11 @@ from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -21,8 +21,8 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities.places_cache import (
-    item_to_places_cache,
     PlacesCache,
+    item_to_places_cache,
 )
 
 if TYPE_CHECKING:

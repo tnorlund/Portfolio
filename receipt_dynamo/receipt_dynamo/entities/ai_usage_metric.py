@@ -104,11 +104,11 @@ class AIUsageMetric(DynamoDBEntity):
         # Priority: job_id > user_id > batch_id > environment
         if self.job_id:
             return f"JOB#{self.job_id}"
-        elif self.user_id:
+        if self.user_id:
             return f"USER#{self.user_id}"
-        elif self.batch_id:
+        if self.batch_id:
             return f"BATCH#{self.batch_id}"
-        elif self.environment:
+        if self.environment:
             return f"ENV#{self.environment}"
         return None
 
@@ -197,44 +197,41 @@ class AIUsageMetric(DynamoDBEntity):
         """Convert a Python value to DynamoDB format."""
         if value is None:
             return {"NULL": True}
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             return {"BOOL": value}
-        elif isinstance(value, int) or isinstance(value, float):
+        if isinstance(value, int) or isinstance(value, float):
             return {"N": str(value)}
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return {"S": value}
-        elif isinstance(value, dict):
+        if isinstance(value, dict):
             return {
                 "M": {k: self._to_dynamodb_value(v) for k, v in value.items()}
             }
-        elif isinstance(value, list):
+        if isinstance(value, list):
             return {"L": [self._to_dynamodb_value(v) for v in value]}
-        else:
-            return {"S": str(value)}
+        return {"S": str(value)}
 
     @classmethod
     def _from_dynamodb_value(cls, value):
         """Convert a DynamoDB value to Python format."""
         if "NULL" in value:
             return None
-        elif "BOOL" in value:
+        if "BOOL" in value:
             return value["BOOL"]
-        elif "N" in value:
+        if "N" in value:
             num_str = value["N"]
             if "." in num_str:
                 return float(num_str)
-            else:
-                return int(num_str)
-        elif "S" in value:
+            return int(num_str)
+        if "S" in value:
             return value["S"]
-        elif "M" in value:
+        if "M" in value:
             return {
                 k: cls._from_dynamodb_value(v) for k, v in value["M"].items()
             }
-        elif "L" in value:
+        if "L" in value:
             return [cls._from_dynamodb_value(v) for v in value["L"]]
-        else:
-            raise ValueError(f"Unknown DynamoDB value type: {value}")
+        raise ValueError(f"Unknown DynamoDB value type: {value}")
 
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":

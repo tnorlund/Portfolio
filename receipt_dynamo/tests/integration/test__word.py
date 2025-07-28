@@ -10,8 +10,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
-    EntityNotFoundError,
     EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
 
 correct_word_params: Dict[str, Any] = {
@@ -104,7 +104,7 @@ def test_word_delete(dynamodb_table: Literal["MyMockedTable"]):
     client.delete_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
 
 
@@ -126,7 +126,9 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
     word1 = Word(**correct_word_params)
     word2_params = correct_word_params.copy()
     word2_params["word_id"] = 4
-    word2_params["line_id"] = 1  # Set line_id to 1 so we can delete from line 1
+    word2_params["line_id"] = (
+        1  # Set line_id to 1 so we can delete from line 1
+    )
     word2 = Word(**word2_params)
     client.add_word(word1)
     client.add_word(word2)
@@ -135,9 +137,9 @@ def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
     client.delete_words_from_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
 
     # Assert
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 3)
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 4)
 
 
@@ -164,7 +166,7 @@ def test_word_get_error(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
 
     # Act
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityNotFoundError):
         client.get_word("invalid-uuid", 2, 3)
 
 
@@ -289,9 +291,7 @@ def test_updateWords_raises_value_error_words_none(dynamodb_table):
     Tests that updateWords raises ValueError when the words parameter is None.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(
-        ValueError, match="words cannot be None"
-    ):
+    with pytest.raises(ValueError, match="words cannot be None"):
         client.update_words(None)  # type: ignore
 
 
@@ -488,6 +488,8 @@ def test_updateWords_raises_client_error(dynamodb_table, mocker):
     )
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Table not found for operation update_words"):
+    with pytest.raises(
+        DynamoDBError, match="Table not found for operation update_words"
+    ):
         client.update_words([word])
     mock_transact.assert_called_once()

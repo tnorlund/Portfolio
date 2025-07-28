@@ -1,13 +1,13 @@
 """AI Usage Metric data access mixin for DynamoDB operations."""
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
-    handle_dynamodb_errors,
     PutRequestTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 

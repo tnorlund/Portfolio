@@ -4,7 +4,11 @@ from datetime import datetime, timedelta
 import pytest
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data.shared_exceptions import DynamoDBError, EntityAlreadyExistsError, EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities.job_log import JobLog
 
 
@@ -77,7 +81,9 @@ def test_addJobLog_raises_value_error_job_not_instance(job_log_dynamo):
     Test that addJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
-    with pytest.raises(ValueError, match="job_log must be an instance of the JobLog class."):
+    with pytest.raises(
+        ValueError, match="job_log must be an instance of the JobLog class."
+    ):
         job_log_dynamo.add_job_log("not a job log")
 
 
@@ -202,7 +208,10 @@ def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_log_not_found(job_log_dynamo):
     """Test that getJobLog raises EntityNotFoundError when the job log is not found."""
-    with pytest.raises(EntityNotFoundError, match="Job log with job_id non-existent-job and timestamp 2021-01-01T12:00:00 not found"):
+    with pytest.raises(
+        EntityNotFoundError,
+        match="Job log with job_id non-existent-job and timestamp 2021-01-01T12:00:00 not found",
+    ):
         job_log_dynamo.get_job_log(
             job_id="non-existent-job", timestamp="2021-01-01T12:00:00"
         )
@@ -313,7 +322,9 @@ def test_deleteJobLog_raises_value_error_log_not_instance(job_log_dynamo):
     Test that deleteJobLog raises ValueError when job_log is not a JobLog
     instance.
     """
-    with pytest.raises(ValueError, match="job_log must be a JobLog instance, got"):
+    with pytest.raises(
+        ValueError, match="job_log must be a JobLog instance, got"
+    ):
         job_log_dynamo.delete_job_log("not a job log")
 
 
