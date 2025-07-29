@@ -307,6 +307,8 @@ class _ReceiptValidationResult(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Invalid value for parameter Limit")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
@@ -378,6 +380,8 @@ class _ReceiptValidationResult(
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Invalid value for parameter Limit")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
@@ -448,6 +452,8 @@ class _ReceiptValidationResult(
             raise EntityValidationError("result_type must not be empty")
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Invalid value for parameter Limit")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):

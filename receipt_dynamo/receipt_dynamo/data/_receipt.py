@@ -1,7 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-from botocore.exceptions import ClientError
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -15,12 +13,8 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    EntityValidationError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
     EntityNotFoundError,
-    OperationError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
@@ -30,35 +24,17 @@ from receipt_dynamo.entities.receipt_letter import (
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
+from receipt_dynamo.entities.receipt_summary import ReceiptSummaryPage
 from receipt_dynamo.entities.receipt_word import (
     ReceiptWord,
     item_to_receipt_word,
 )
 from receipt_dynamo.entities.receipt_word_label import (
-    ReceiptWordLabel,
     item_to_receipt_word_label,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
-
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    # You might also check that each key maps to a dictionary with a DynamoDB
-    # type key (e.g., "S")
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+from ._receipt_details_processor import process_receipt_details_query
 
 
 class _Receipt(
@@ -185,7 +161,9 @@ class _Receipt(
             )
             for receipt in receipts
         ]
-        self._transact_write_with_chunking(transact_items)
+        self._transact_write_with_chunking(
+            transact_items  # type: ignore[arg-type]
+        )
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
@@ -233,11 +211,12 @@ class _Receipt(
 
         if result is None:
             raise EntityNotFoundError(
-                f"Receipt with ID {receipt_id} and Image ID "
-                f"'{image_id}' does not exist."
+                f"Receipt with receipt_id={receipt_id} and "
+                f"image_id={image_id} does not exist."
             )
 
-        return result
+        # Type assertion: we know this is a Receipt due to converter_func
+        return result  # type: ignore[no-any-return]
 
     @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
@@ -258,13 +237,13 @@ class _Receipt(
             item_type = item.get("TYPE", {}).get("S")
             if item_type == "RECEIPT":
                 return ("receipt", item_to_receipt(item))
-            elif item_type == "RECEIPT_LINE":
+            if item_type == "RECEIPT_LINE":
                 return ("line", item_to_receipt_line(item))
-            elif item_type == "RECEIPT_WORD":
+            if item_type == "RECEIPT_WORD":
                 return ("word", item_to_receipt_word(item))
-            elif item_type == "RECEIPT_LETTER":
+            if item_type == "RECEIPT_LETTER":
                 return ("letter", item_to_receipt_letter(item))
-            elif item_type == "RECEIPT_WORD_LABEL":
+            if item_type == "RECEIPT_WORD_LABEL":
                 return ("label", item_to_receipt_word_label(item))
             return None
 
@@ -361,16 +340,12 @@ class _Receipt(
                 receipts is returned (when available), even if it requires
                 multiple query operations.
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
+        # Validate parameters using base operations helper
+        self._validate_pagination_params(limit, last_evaluated_key)
+
+        # Additional validation specific to list_receipts
         if limit is not None and limit <= 0:
             raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -411,122 +386,56 @@ class _Receipt(
         self,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        Dict[
-            str,
-            Dict[
-                str, Union[Receipt, List[ReceiptWord], List[ReceiptWordLabel]]
-            ],
-        ],
-        Optional[Dict],
-    ]:
+    ) -> ReceiptSummaryPage:
         """List receipts with their words and word labels using GSI2.
 
-        This method queries the database for all receipt items using GSI2
-        (where GSI2PK = 'RECEIPT') and returns a dictionary containing the
-        receipt details, including associated words and word labels.
+        This method queries the database for receipt-related items using GSI2
+        (where GSI2PK = 'RECEIPT') and returns a page of receipt summaries.
+
+        Note: With the addition of new entities using the same GSI2PK pattern
+        (ReceiptLineItemAnalysis, ReceiptLabelAnalysis), this method now uses
+        a filter expression to only retrieve the specific types needed.
 
         Args:
-            limit (Optional[int], optional): The maximum number of receipt
-                details to return. Defaults to ``None``.
-            last_evaluated_key (Optional[dict], optional): The key to start the
-                query from for pagination. Defaults to ``None``.
+            limit: The maximum number of receipt summaries to return.
+                   Defaults to None (return all).
+            last_evaluated_key: The key to start the query from for
+                               pagination. Defaults to None.
 
         Returns:
-            Tuple[Dict[str, Dict], Optional[Dict]]: A tuple containing:
-                - Dictionary mapping
-                    "<image_id>_<receipt_id>" to a dictionary with:
-                    - "receipt": The Receipt object
-                    - "words": List of ReceiptWord objects
-                    - "word_labels": List of ReceiptWordLabel objects
-                - Last evaluated key for pagination (None if no more pages)
+            ReceiptSummaryPage: A page containing:
+                - summaries: Dict mapping composite keys to ReceiptSummary
+                            objects
+                - last_evaluated_key: Key for next page (None if no more)
 
         Raises:
-            ValueError: If there is an error querying the database
+            EntityValidationError: If input parameters are invalid
+            DynamoDBError: If the database query fails
         """
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {":pk": {"S": "RECEIPT"}},
-                "ScanIndexForward": True,
-            }
+        # Validate inputs
+        self._validate_pagination_params(limit, last_evaluated_key)
 
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        # Build query parameters
+        query_params = {
+            "TableName": self.table_name,
+            "IndexName": "GSI2",
+            "KeyConditionExpression": "GSI2PK = :pk",
+            "ExpressionAttributeNames": {"#t": "TYPE"},
+            "ExpressionAttributeValues": {
+                ":pk": {"S": "RECEIPT"},
+                ":receipt": {"S": "RECEIPT"},
+                ":word": {"S": "RECEIPT_WORD"},
+                ":label": {"S": "RECEIPT_WORD_LABEL"},
+            },
+            "FilterExpression": "#t IN (:receipt, :word, :label)",
+            "ScanIndexForward": True,
+        }
 
-            payload: Dict[str, Any] = {}
-            current_receipt = None
-            current_key = None
-            receipt_count = 0
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
 
-            while True:
-                response = self._client.query(**query_params)
-
-                for item in response["Items"]:
-                    item_type = item["TYPE"]["S"]
-
-                    if item_type == "RECEIPT":
-                        # If we've hit our limit, use this receipt's key as the
-                        # LEK and stop
-                        if limit is not None and receipt_count >= limit:
-                            last_evaluated_key = {
-                                "PK": item["PK"],
-                                "SK": item["SK"],
-                                "GSI2PK": item["GSI2PK"],
-                                "GSI2SK": item["GSI2SK"],
-                            }
-                            return payload, last_evaluated_key
-
-                        receipt = item_to_receipt(item)
-                        current_key = (
-                            f"{receipt.image_id}_{receipt.receipt_id}"
-                        )
-                        payload[current_key] = {
-                            "receipt": receipt,
-                            "words": [],
-                            "word_labels": [],
-                        }
-                        current_receipt = receipt
-                        receipt_count += 1
-
-                    elif (
-                        item_type == "RECEIPT_WORD"
-                        and current_receipt
-                        and current_key is not None
-                    ):
-                        word = item_to_receipt_word(item)
-                        if (
-                            word.image_id == current_receipt.image_id
-                            and word.receipt_id == current_receipt.receipt_id
-                        ):
-                            payload[current_key]["words"].append(word)
-
-                    elif (
-                        item_type == "RECEIPT_WORD_LABEL"
-                        and current_receipt
-                        and current_key is not None
-                    ):
-                        label = item_to_receipt_word_label(item)
-                        if (
-                            label.image_id == current_receipt.image_id
-                            and label.receipt_id == current_receipt.receipt_id
-                        ):
-                            payload[current_key]["word_labels"].append(label)
-
-                # If no more pages
-                if "LastEvaluatedKey" not in response:
-                    return payload, None
-
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-
-        except ClientError as e:
-            raise EntityValidationError(
-                "Could not list receipt details from the database"
-            ) from e
+        # Use processor function to handle the complex query logic
+        return process_receipt_details_query(self._client, query_params, limit)
 
     @handle_dynamodb_errors("list_receipt_and_words")
     def list_receipt_and_words(
@@ -549,32 +458,34 @@ class _Receipt(
             Exception: For underlying DynamoDB errors
         """
         if image_id is None:
-            raise EntityValidationError("Image ID is required")
+            raise EntityValidationError("image_id is required")
         if receipt_id is None:
-            raise EntityValidationError("Receipt ID is required")
+            raise EntityValidationError("receipt_id is required")
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("Receipt ID must be an integer")
+            raise EntityValidationError("receipt_id must be an integer")
         if receipt_id < 0:
-            raise EntityValidationError("Receipt ID must be positive")
+            raise EntityValidationError("receipt_id must be positive")
 
         # Custom converter function that handles both receipts and words
         def convert_item(item):
             item_type = item.get("TYPE", {}).get("S")
             if item_type == "RECEIPT":
                 return ("receipt", item_to_receipt(item))
-            elif item_type == "RECEIPT_WORD":
+            if item_type == "RECEIPT_WORD":
                 try:
                     return ("word", item_to_receipt_word(item))
                 except ValueError:
-                    # TODO: Use proper logging instead of print
+                    # Skip invalid receipt words
                     return None
             return None
 
         # Use GSI3 to get both receipt and words in a single query
         items, _ = self._query_entities(
             index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+            key_condition_expression=(
+                "GSI3PK = :pk AND begins_with(GSI3SK, :sk)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
@@ -600,7 +511,8 @@ class _Receipt(
 
         if not receipt:
             raise EntityNotFoundError(
-                f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
+                f"Receipt with receipt_id={receipt_id} and "
+                f"image_id={image_id} does not exist"
             )
 
         # Sort words by line_id and word_id

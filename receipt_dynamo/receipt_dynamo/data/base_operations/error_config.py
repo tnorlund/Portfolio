@@ -128,6 +128,7 @@ class ErrorMessageConfig:
         "receipts": "receipts must be a list of Receipt instances.",
         "fields": "fields must be a list of ReceiptField instances.",
         "labels": "labels must be a list of ReceiptWordLabel instances.",
+        "receipt_word_labels": "receipt_word_labels must be a list of ReceiptWordLabel instances.",
         "checkpoints": (
             "checkpoints must be a list of JobCheckpoint instances."
         ),
@@ -230,6 +231,9 @@ class ErrorMessageConfig:
         "receipt_word_labels": (
             "receipt_word_labels must be a list of ReceiptWordLabel "
             "instances."
+        ),
+        "receipt_word_labels_add": (
+            "All receipt word labels must be instances of the ReceiptWordLabel class."
         ),
     }
 

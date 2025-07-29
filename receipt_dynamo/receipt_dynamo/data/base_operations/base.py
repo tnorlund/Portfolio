@@ -19,6 +19,8 @@ from typing import (
 
 from botocore.exceptions import ClientError
 
+from ..shared_exceptions import EntityValidationError
+
 from .error_config import ErrorMessageConfig
 from .error_handlers import ErrorHandler
 from .types import DynamoClientProtocol
@@ -399,21 +401,87 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if last_evaluated_key is not None:
             query_params["ExclusiveStartKey"] = last_evaluated_key
             
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        entities.extend([converter_func(item) for item in response["Items"]])
-
+        # Handle pagination based on whether limit is provided
         if limit is None:
-            # If no limit is provided, paginate until all items are retrieved
+            # If no limit, retrieve all items
+            response = self._client.query(**query_params)
+            entities.extend([converter_func(item) for item in response["Items"]])
+            
             while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
                 query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
                 response = self._client.query(**query_params)
                 entities.extend([converter_func(item) for item in response["Items"]])
             last_evaluated_key = None
         else:
-            # If a limit is provided, capture the LastEvaluatedKey (if any)
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
+            # If limit is provided, accumulate items until we reach the limit
+            remaining = limit
+            last_evaluated_key = None
+            
+            while remaining > 0:
+                # Query for at most 'remaining' items
+                query_params["Limit"] = remaining
+                
+                response = self._client.query(**query_params)
+                items = response.get("Items", [])
+                
+                # Convert and add items
+                for item in items:
+                    entity = converter_func(item)
+                    if entity is not None:  # Skip None results from converter
+                        entities.append(entity)
+                        remaining -= 1
+                        if remaining == 0:
+                            break
+                
+                # Check if there are more pages
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key or remaining == 0:
+                    break
+                    
+                query_params["ExclusiveStartKey"] = last_evaluated_key
+            
+            # If we've collected all requested items but there's still a LEK,
+            # we need to return None to indicate no more pages for the user
+            if remaining == 0 and last_evaluated_key and len(items) > 0:
+                # We might have more items in the current page that we didn't process
+                # In this case, keep the LEK to indicate there are more items
+                pass
+            elif remaining > 0:
+                # We ran out of items before reaching the limit
+                last_evaluated_key = None
 
         return entities, last_evaluated_key
+    
+    def _validate_pagination_params(
+        self,
+        limit: Optional[int],
+        last_evaluated_key: Optional[Dict[str, Any]],
+    ) -> None:
+        """Validate pagination parameters."""
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise EntityValidationError("Limit must be an integer")
+            if limit <= 0:
+                raise EntityValidationError("Limit must be greater than 0")
+
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
+            # Validate DynamoDB LastEvaluatedKey structure
+            required_keys = {"PK", "SK"}
+            if not required_keys.issubset(last_evaluated_key.keys()):
+                raise EntityValidationError(
+                    f"LastEvaluatedKey must contain keys: {required_keys}"
+                )
+            # Validate proper DynamoDB attribute value format
+            for key in required_keys:
+                if (
+                    not isinstance(last_evaluated_key[key], dict)
+                    or "S" not in last_evaluated_key[key]
+                ):
+                    raise EntityValidationError(
+                        f"LastEvaluatedKey[{key}] must be a dict "
+                        f"containing a key 'S'"
+                    )

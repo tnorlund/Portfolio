@@ -18,6 +18,7 @@ from receipt_dynamo import (
 from receipt_dynamo.data.shared_exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
 )
 
 # -------------------------------------------------------------------
@@ -601,7 +602,7 @@ def test_addReceipts_raises_clienterror(
         ),
     )
     with pytest.raises(
-        Exception, match="Table not found for operation add_receipts"
+        Exception, match="Table not found"
     ):
         client.add_receipts([sample_receipt])
 
@@ -818,7 +819,7 @@ def test_updateReceipt_raises_clienterror(
         ),
     )
     with pytest.raises(
-        Exception, match="Table not found for operation update_receipt"
+        Exception, match="Table not found"
     ):
         client.update_receipt(sample_receipt)
 
@@ -1063,7 +1064,7 @@ def test_updateReceipts_raises_client_error(
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
     with pytest.raises(
-        DynamoDBError, match="Table not found for operation update_receipts"
+        DynamoDBError, match="Table not found"
     ):
         client.update_receipts([sample_receipt])
 
@@ -1274,7 +1275,7 @@ def test_deleteReceipt_raises_client_error(
         ),
     )
     with pytest.raises(
-        Exception, match="Table not found for operation delete_receipt"
+        Exception, match="Table not found"
     ):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -1511,7 +1512,7 @@ def test_deleteReceipts_raises_client_error(
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
     with pytest.raises(
-        DynamoDBError, match="Table not found for operation delete_receipts"
+        DynamoDBError, match="Table not found"
     ):
         client.delete_receipts([sample_receipt])
 
@@ -1571,7 +1572,7 @@ def test_getReceipt_raises_value_error_image_id_not_uuid(
     a valid UUID.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="uuid must be a valid UUIDv4"):
+    with pytest.raises(EntityValidationError, match="uuid must be a valid UUIDv4"):
         client.get_receipt("not-a-uuid", sample_receipt.receipt_id)
 
 
@@ -1744,7 +1745,7 @@ def test_getReceipt_raises_client_error(
         ),
     )
     with pytest.raises(
-        Exception, match="Table not found for operation get_receipt"
+        Exception, match="Table not found"
     ):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
@@ -1990,7 +1991,7 @@ def test_listReceipts_raises_resource_not_found(
         ),
     )
     with pytest.raises(
-        Exception, match="Could not list receipts from the database"
+        Exception, match="Table not found"
     ):
         client.list_receipts()
     mock_query.assert_called_once()
@@ -2076,7 +2077,7 @@ def test_listReceipts_raises_unknown_error(
         ),
     )
     with pytest.raises(
-        Exception, match="Could not list receipts from the database"
+        Exception, match="Could not list receipt from DynamoDB"
     ):
         client.list_receipts()
     mock_query.assert_called_once()
@@ -2101,20 +2102,22 @@ def test_listReceiptDetails_success(
     client.add_receipt_words(receipt_words)
     client.add_receipt_word_labels(word_labels)
 
-    receipt_details, last_evaluated_key = client.list_receipt_details()
+    result = client.list_receipt_details()
 
     # Verify the structure of the returned data
-    assert isinstance(receipt_details, dict)
-    print(receipt_details)
+    assert hasattr(result, 'summaries')
+    assert hasattr(result, 'last_evaluated_key')
+    
     key = f"{receipt.image_id}_{receipt.receipt_id}"
-    assert key in receipt_details
+    assert key in result
+    assert len(result) == 1
 
-    # Verify the contents of the receipt details
-    details = receipt_details[key]
-    print(details)
-    assert details["receipt"] == receipt
-    assert details["words"] == receipt_words
-    assert details["word_labels"] == word_labels
+    # Verify the contents of the receipt summary
+    summary = result[key]
+    print(f"Summary: {summary}")
+    assert summary.receipt == receipt
+    assert summary.words == receipt_words
+    assert summary.word_labels == word_labels
 
-    # Verify pagination key
-    assert last_evaluated_key is None  # Since we only have one receipt
+    # Verify pagination
+    assert not result.has_more  # Since we only have one receipt

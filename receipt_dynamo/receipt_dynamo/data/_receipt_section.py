@@ -153,6 +153,7 @@ class _ReceiptSection(
         """
         self._update_entities(sections, ReceiptSection, "sections")
 
+    @handle_dynamodb_errors("delete_receipt_section")
     def delete_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ) -> None:
@@ -197,6 +198,7 @@ class _ReceiptSection(
             else:
                 raise
 
+    @handle_dynamodb_errors("delete_receipt_sections")
     def delete_receipt_sections(self, sections: list[ReceiptSection]) -> None:
         """
         Deletes multiple ReceiptSections in batch.
@@ -278,6 +280,7 @@ class _ReceiptSection(
         
         return result
 
+    @handle_dynamodb_errors("get_receipt_sections_from_receipt")
     def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptSection]:
@@ -335,6 +338,7 @@ class _ReceiptSection(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
             ) from e
 
+    @handle_dynamodb_errors("list_receipt_sections")
     def list_receipt_sections(
         self,
         limit: Optional[int] = None,

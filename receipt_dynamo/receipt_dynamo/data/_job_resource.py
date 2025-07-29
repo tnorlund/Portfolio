@@ -191,6 +191,7 @@ class _JobResource(
                     f"Error updating job resource status: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("list_job_resources")
     def list_job_resources(
         self,
         job_id: str,
@@ -243,6 +244,7 @@ class _JobResource(
             scan_index_forward=True  # Ascending order by default
         )
 
+    @handle_dynamodb_errors("list_resources_by_type")
     def list_resources_by_type(
         self,
         resource_type: str,

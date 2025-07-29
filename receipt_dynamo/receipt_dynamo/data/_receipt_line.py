@@ -144,6 +144,7 @@ class _ReceiptLine(
         
         return result
 
+    @handle_dynamodb_errors("get_receipt_lines_by_indices")
     def get_receipt_lines_by_indices(
         self, indices: list[tuple[str, int, int]]
     ) -> list[ReceiptLine]:
@@ -181,6 +182,7 @@ class _ReceiptLine(
         # Get the receipt lines
         return self.get_receipt_lines_by_keys(keys)
 
+    @handle_dynamodb_errors("get_receipt_lines_by_keys")
     def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their keys."""
         if keys is None:
@@ -236,6 +238,7 @@ class _ReceiptLine(
 
         return [item_to_receipt_line(result) for result in results]
 
+    @handle_dynamodb_errors("list_receipt_lines")
     def list_receipt_lines(
         self,
         limit: Optional[int] = None,
@@ -260,6 +263,7 @@ class _ReceiptLine(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("list_receipt_lines_by_embedding_status")
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptLine]:
@@ -331,6 +335,7 @@ class _ReceiptLine(
                     f"Could not list ReceiptLines from the database: {e}"
             ) from e
 
+    @handle_dynamodb_errors("list_receipt_lines_from_receipt")
     def list_receipt_lines_from_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptLine]:

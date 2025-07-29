@@ -264,6 +264,7 @@ class _ReceiptMetadata(
         ]
         self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("get_receipt_metadata")
     def get_receipt_metadata(
         self, image_id: str, receipt_id: int
     ) -> ReceiptMetadata:
@@ -313,6 +314,7 @@ class _ReceiptMetadata(
         
         return result
 
+    @handle_dynamodb_errors("get_receipt_metadatas_by_indices")
     def get_receipt_metadatas_by_indices(
         self, indices: list[tuple[str, int]]
     ) -> list[ReceiptMetadata]:
@@ -359,6 +361,7 @@ class _ReceiptMetadata(
         ]
         return self.get_receipt_metadatas(keys)
 
+    @handle_dynamodb_errors("get_receipt_metadatas")
     def get_receipt_metadatas(self, keys: list[dict]) -> list[ReceiptMetadata]:
         """
         Retrieves a list of ReceiptMetadata records from DynamoDB using keys.
@@ -412,6 +415,7 @@ class _ReceiptMetadata(
                 unprocessed = response.get("UnprocessedKeys", {})
         return [item_to_receipt_metadata(result) for result in results]
 
+    @handle_dynamodb_errors("list_receipt_metadatas")
     def list_receipt_metadatas(
         self,
         limit: Optional[int] = None,
@@ -458,6 +462,7 @@ class _ReceiptMetadata(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("get_receipt_metadatas_by_merchant")
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
@@ -504,6 +509,7 @@ class _ReceiptMetadata(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("list_receipt_metadatas_with_place_id")
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
@@ -558,6 +564,7 @@ class _ReceiptMetadata(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("get_receipt_metadatas_by_confidence")
     def get_receipt_metadatas_by_confidence(
         self,
         confidence: float,

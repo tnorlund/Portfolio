@@ -245,6 +245,7 @@ class _ReceiptField(
         ]
         self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("get_receipt_field")
     def get_receipt_field(
         self, field_type: str, image_id: str, receipt_id: int
     ) -> ReceiptField:
@@ -300,6 +301,7 @@ class _ReceiptField(
         
         return result
 
+    @handle_dynamodb_errors("list_receipt_fields")
     def list_receipt_fields(
         self,
         limit: Optional[int] = None,
@@ -347,6 +349,7 @@ class _ReceiptField(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("get_receipt_fields_by_image")
     def get_receipt_fields_by_image(
         self,
         image_id: str,
@@ -401,6 +404,7 @@ class _ReceiptField(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("get_receipt_fields_by_receipt")
     def get_receipt_fields_by_receipt(
         self,
         image_id: str,

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional, Type
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from receipt_dynamo import (
     ReceiptValidationResult,
@@ -17,6 +17,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBValidationError,
     EntityAlreadyExistsError,
+    EntityValidationError,
 )
 
 
@@ -1615,13 +1616,13 @@ def test_listReceiptValidationResults_empty_results(
 def test_listReceiptValidationResults_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test listing validation results with a negative limit should raise ParamValidationError"""
+    """Test listing validation results with a negative limit should raise EntityValidationError"""
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
     with pytest.raises(
-        ParamValidationError, match="Invalid value for parameter Limit"
+        EntityValidationError, match="Invalid value for parameter Limit"
     ):
         client.list_receipt_validation_results(limit=-1)
 
@@ -1978,13 +1979,13 @@ def test_listReceiptValidationResultsByType_invalid_parameters(
 def test_listReceiptValidationResultsByType_with_negative_limit(
     dynamodb_table: Literal["MyMockedTable"],
 ):
-    """Test listing validation results by type with a negative limit should raise ParamValidationError"""
+    """Test listing validation results by type with a negative limit should raise EntityValidationError"""
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
     with pytest.raises(
-        ParamValidationError, match="Invalid value for parameter Limit"
+        EntityValidationError, match="Invalid value for parameter Limit"
     ):
         client.list_receipt_validation_results_by_type(
             result_type="error", limit=-1

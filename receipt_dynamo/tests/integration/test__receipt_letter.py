@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, ReceiptLetter
 from receipt_dynamo.data.shared_exceptions import (
@@ -10,6 +10,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
 )
@@ -1621,8 +1622,8 @@ def test_listReceiptLetters_multiple_pages(dynamodb_table, mocker):
             "last_evaluated_key must be a dictionary or None",
             ValueError,
         ),
-        ("limit", -1, "Parameter validation failed", ParamValidationError),
-        ("limit", 0, "Parameter validation failed", ParamValidationError),
+        ("limit", -1, "Parameter validation failed", EntityValidationError),
+        ("limit", 0, "Parameter validation failed", EntityValidationError),
         ("limit", 1.5, "limit must be an integer or None", ValueError),
         (
             "last_evaluated_key",

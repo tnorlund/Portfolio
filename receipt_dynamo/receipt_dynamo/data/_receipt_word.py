@@ -139,6 +139,7 @@ class _ReceiptWord(
         ]
         self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("delete_receipt_words_from_line")
     def delete_receipt_words_from_line(
         self,
         receipt_id: int,
@@ -152,6 +153,7 @@ class _ReceiptWord(
         )
         self.delete_receipt_words(words)
 
+    @handle_dynamodb_errors("get_receipt_word")
     def get_receipt_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> ReceiptWord:
@@ -171,6 +173,7 @@ class _ReceiptWord(
         
         return result
 
+    @handle_dynamodb_errors("get_receipt_words_by_indices")
     def get_receipt_words_by_indices(
         self, indices: list[tuple[str, int, int, int]]
     ) -> list[ReceiptWord]:
@@ -216,6 +219,7 @@ class _ReceiptWord(
         ]
         return self.get_receipt_words_by_keys(keys)
 
+    @handle_dynamodb_errors("get_receipt_words_by_keys")
     def get_receipt_words_by_keys(self, keys: list[dict]) -> list[ReceiptWord]:
         # Check the validity of the keys
         for key in keys:
@@ -273,6 +277,7 @@ class _ReceiptWord(
                 f"Could not get ReceiptWords from the database: {e}"
             ) from e
 
+    @handle_dynamodb_errors("list_receipt_words")
     def list_receipt_words(
         self,
         limit: Optional[int] = None,
@@ -298,6 +303,7 @@ class _ReceiptWord(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("list_receipt_words_from_line")
     def list_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
@@ -315,6 +321,7 @@ class _ReceiptWord(
         )
         return results
 
+    @handle_dynamodb_errors("list_receipt_words_from_receipt")
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptWord]:
@@ -414,6 +421,7 @@ class _ReceiptWord(
                     f"Error listing receipt words: {e}"
                 ) from e
 
+    @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(
         self, embedding_status: EmbeddingStatus
     ) -> list[ReceiptWord]:

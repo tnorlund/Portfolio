@@ -194,6 +194,7 @@ class _ReceiptLetter(
         ]
         self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("get_receipt_letter")
     def get_receipt_letter(
         self,
         receipt_id: int,
@@ -260,6 +261,7 @@ class _ReceiptLetter(
         
         return result
 
+    @handle_dynamodb_errors("list_receipt_letters")
     def list_receipt_letters(
         self,
         limit: Optional[int] = None,
@@ -287,6 +289,8 @@ class _ReceiptLetter(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None.")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Parameter validation failed")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
@@ -304,6 +308,7 @@ class _ReceiptLetter(
             last_evaluated_key=last_evaluated_key
         )
 
+    @handle_dynamodb_errors("list_receipt_letters_from_word")
     def list_receipt_letters_from_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:

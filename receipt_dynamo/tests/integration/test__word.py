@@ -12,6 +12,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
 )
 
 correct_word_params: Dict[str, Any] = {
@@ -166,7 +167,7 @@ def test_word_get_error(dynamodb_table: Literal["MyMockedTable"]):
     client = DynamoClient(dynamodb_table)
 
     # Act
-    with pytest.raises(EntityNotFoundError):
+    with pytest.raises(EntityValidationError):
         client.get_word("invalid-uuid", 2, 3)
 
 
