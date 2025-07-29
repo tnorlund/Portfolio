@@ -9,15 +9,15 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities import item_to_receipt_validation_summary
 from receipt_dynamo.entities.receipt_validation_summary import (
     ReceiptValidationSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.data.shared_exceptions import (
-    EntityNotFoundError,
-    EntityValidationError,
-)
 
 if TYPE_CHECKING:
     pass
@@ -187,15 +187,15 @@ class _ReceiptValidationSummary(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION",
             entity_class=ReceiptValidationSummary,
-            converter_func=item_to_receipt_validation_summary
+            converter_func=item_to_receipt_validation_summary,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"ReceiptValidationSummary for receipt {receipt_id} and "
                 f"image {image_id} does not exist"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_receipt_validation_summaries")
@@ -227,7 +227,9 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -238,7 +240,7 @@ class _ReceiptValidationSummary(
             },
             converter_func=item_to_receipt_validation_summary,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_validation_summaries_by_status")
@@ -276,7 +278,9 @@ class _ReceiptValidationSummary(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         return self._query_entities(
             index_name="GSI2",
@@ -287,5 +291,5 @@ class _ReceiptValidationSummary(
             },
             converter_func=item_to_receipt_validation_summary,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

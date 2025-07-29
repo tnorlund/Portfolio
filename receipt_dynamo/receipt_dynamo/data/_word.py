@@ -10,16 +10,17 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.word import Word
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
     )
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
@@ -191,19 +192,19 @@ class _Word(
             EntityNotFoundError: When the word is not found
         """
         assert_valid_uuid(image_id)
-        
+
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"LINE#{line_id:05d}#WORD#{word_id:05d}",
             entity_class=Word,
-            converter_func=item_to_word
+            converter_func=item_to_word,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Word with image_id={image_id}, line_id={line_id}, word_id={word_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_words")
@@ -273,7 +274,7 @@ class _Word(
             expression_attribute_values={":val": {"S": "WORD"}},
             converter_func=item_to_word,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_words_from_line")
@@ -297,6 +298,6 @@ class _Word(
             },
             converter_func=item_to_word,
             limit=None,
-            last_evaluated_key=None
+            last_evaluated_key=None,
         )
         return words

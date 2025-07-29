@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteTypeDef,
@@ -149,7 +147,7 @@ class _OCRRoutingDecision(
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' not found"
-            ) from e
+                ) from e
             raise OperationError(
                 f"Error updating OCR routing decision: {e}"
             ) from e
@@ -168,20 +166,20 @@ class _OCRRoutingDecision(
             raise EntityValidationError("job_id must be a string")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
-        
+
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"ROUTING#{job_id}",
             entity_class=OCRRoutingDecision,
-            converter_func=item_to_ocr_routing_decision
+            converter_func=item_to_ocr_routing_decision,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"OCR routing decision for Image ID '{image_id}' "
                 f"and Job ID '{job_id}' not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("delete_ocr_routing_decision")
@@ -211,7 +209,7 @@ class _OCRRoutingDecision(
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' does not exist."
-            ) from e
+                ) from e
             raise OperationError(
                 f"Error deleting OCR routing decision: {e}"
             ) from e
@@ -253,13 +251,15 @@ class _OCRRoutingDecision(
                 if error_code == "ConditionalCheckFailedException":
                     raise EntityNotFoundError(
                         "OCR routing decision does not exist"
-            ) from e
+                    ) from e
                 if error_code == "ProvisionedThroughputExceededException":
                     raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 if error_code == "InternalServerError":
-                    raise DynamoDBServerError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(
+                        f"Internal server error: {e}"
+                    ) from e
                 if error_code == "AccessDeniedException":
                     raise DynamoDBAccessError(f"Access denied: {e}") from e
                 raise DynamoDBError(

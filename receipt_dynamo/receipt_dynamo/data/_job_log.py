@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -10,9 +8,11 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -77,9 +77,13 @@ class _JobLog(
         if job_logs is None:
             raise EntityValidationError("job_logs cannot be None")
         if not isinstance(job_logs, list):
-            raise EntityValidationError(f"job_logs must be a list, got {type(job_logs)}")
+            raise EntityValidationError(
+                f"job_logs must be a list, got {type(job_logs)}"
+            )
         if not all(isinstance(log, JobLog) for log in job_logs):
-            raise EntityValidationError("All items in job_logs must be JobLog instances")
+            raise EntityValidationError(
+                "All items in job_logs must be JobLog instances"
+            )
 
         if not job_logs:
             return  # Nothing to do
@@ -153,15 +157,15 @@ class _JobLog(
             primary_key=f"JOB#{job_id}",
             sort_key=f"LOG#{timestamp}",
             entity_class=JobLog,
-            converter_func=item_to_job_log
+            converter_func=item_to_job_log,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Job log with job_id {job_id} and timestamp {timestamp} "
                 f"not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_job_logs")
@@ -200,7 +204,7 @@ class _JobLog(
             },
             converter_func=item_to_job_log,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("delete_job_log")

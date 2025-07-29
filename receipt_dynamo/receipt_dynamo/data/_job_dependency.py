@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteRequestTypeDef,
@@ -96,15 +94,15 @@ class _JobDependency(
             primary_key=f"JOB#{dependent_job_id}",
             sort_key=f"DEPENDS_ON#{dependency_job_id}",
             entity_class=JobDependency,
-            converter_func=item_to_job_dependency
+            converter_func=item_to_job_dependency,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Dependency between {dependent_job_id} and "
                 f"{dependency_job_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_dependencies")
@@ -143,7 +141,7 @@ class _JobDependency(
             },
             converter_func=item_to_job_dependency,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_dependents")
@@ -178,11 +176,13 @@ class _JobDependency(
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "DEPENDENCY"},
-                ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
+                ":sk_prefix": {
+                    "S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"
+                },
             },
             converter_func=item_to_job_dependency,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("delete_job_dependency")

@@ -162,15 +162,15 @@ class _ReceiptWord(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}",
             entity_class=ReceiptWord,
-            converter_func=item_to_receipt_word
+            converter_func=item_to_receipt_word,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"ReceiptWord with image_id={image_id}, receipt_id={receipt_id}, "
                 f"line_id={line_id}, word_id={word_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_receipt_words_by_indices")
@@ -188,22 +188,36 @@ class _ReceiptWord(
             if len(index) != 4:
                 raise EntityValidationError(
                     "indices must be a list of tuples with 4 elements."
-            )
+                )
             if not isinstance(index[0], str):
-                raise EntityValidationError("First element of tuple must be a string.")
+                raise EntityValidationError(
+                    "First element of tuple must be a string."
+                )
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
-                raise EntityValidationError("Second element of tuple must be an integer.")
+                raise EntityValidationError(
+                    "Second element of tuple must be an integer."
+                )
             if index[1] <= 0:
-                raise EntityValidationError("Second element of tuple must be positive.")
+                raise EntityValidationError(
+                    "Second element of tuple must be positive."
+                )
             if not isinstance(index[2], int):
-                raise EntityValidationError("Third element of tuple must be an integer.")
+                raise EntityValidationError(
+                    "Third element of tuple must be an integer."
+                )
             if index[2] <= 0:
-                raise EntityValidationError("Third element of tuple must be positive.")
+                raise EntityValidationError(
+                    "Third element of tuple must be positive."
+                )
             if not isinstance(index[3], int):
-                raise EntityValidationError("Fourth element of tuple must be an integer.")
+                raise EntityValidationError(
+                    "Fourth element of tuple must be an integer."
+                )
             if index[3] <= 0:
-                raise EntityValidationError("Fourth element of tuple must be positive.")
+                raise EntityValidationError(
+                    "Fourth element of tuple must be positive."
+                )
 
         keys = [
             {
@@ -300,7 +314,7 @@ class _ReceiptWord(
             expression_attribute_values={":val": {"S": "RECEIPT_WORD"}},
             converter_func=item_to_receipt_word,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_words_from_line")
@@ -315,9 +329,11 @@ class _ReceiptWord(
             expression_attribute_names={"#pk": "PK", "#sk": "SK"},
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
-                ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
+                ":sk_val": {
+                    "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+                },
             },
-            converter_func=item_to_receipt_word
+            converter_func=item_to_receipt_word,
         )
         return results
 
@@ -413,7 +429,7 @@ class _ReceiptWord(
             elif error_code == "ValidationException":
                 raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-            ) from e
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
@@ -442,7 +458,7 @@ class _ReceiptWord(
                 f"embedding_status must be one of: {', '.join(valid_values)};"
                 f" Got: {status_str}"
             )
-        
+
         results, _ = self._query_entities(
             index_name="GSI1",
             key_condition_expression="#gsi1pk = :status",
@@ -450,6 +466,6 @@ class _ReceiptWord(
             expression_attribute_values={
                 ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
             },
-            converter_func=item_to_receipt_word
+            converter_func=item_to_receipt_word,
         )
         return results

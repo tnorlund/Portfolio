@@ -194,7 +194,7 @@ class _ReceiptSection(
                     f"ReceiptSection with receipt_id {receipt_id}, "
                     f"image_id {image_id}, and section_type {section_type} "
                     "not found"
-            ) from e
+                ) from e
             else:
                 raise
 
@@ -268,16 +268,16 @@ class _ReceiptSection(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}",
             entity_class=ReceiptSection,
-            converter_func=item_to_receipt_section
+            converter_func=item_to_receipt_section,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"ReceiptSection with receipt_id {receipt_id}, "
                 f"image_id {image_id}, and section_type {section_type} "
                 "not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_receipt_sections_from_receipt")
@@ -328,15 +328,15 @@ class _ReceiptSection(
             if error_code == "ResourceNotFoundException":
                 raise EntityValidationError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
-            ) from e
+                ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise EntityValidationError(
                     f"Provisioned throughput exceeded: {e}"
-            ) from e
+                ) from e
             else:
                 raise EntityValidationError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
-            ) from e
+                ) from e
 
     @handle_dynamodb_errors("list_receipt_sections")
     def list_receipt_sections(
@@ -427,7 +427,7 @@ class _ReceiptSection(
             elif error_code == "ValidationException":
                 raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-            ) from e
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:

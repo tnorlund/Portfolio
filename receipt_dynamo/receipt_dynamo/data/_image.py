@@ -19,7 +19,10 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities import (
     ImageDetails,
     assert_valid_uuid,
@@ -39,7 +42,6 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -91,12 +93,12 @@ class _Image(
             sort_key="IMAGE",
             entity_class=Image,
             converter_func=item_to_image,
-            consistent_read=False
+            consistent_read=False,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(f"Image with ID {image_id} not found")
-        
+
         return result
 
     @handle_dynamodb_errors("update_image")
@@ -249,7 +251,9 @@ class _Image(
                 receipts.append(item_to_receipt(item))
 
         if image is None:
-            raise EntityNotFoundError(f"Image with ID {image_id} not found in database")
+            raise EntityNotFoundError(
+                f"Image with ID {image_id} not found in database"
+            )
 
         return image, lines, receipts
 
@@ -291,13 +295,15 @@ class _Image(
         # Validate image type
         if not isinstance(image_type, ImageType):
             if not isinstance(image_type, str):
-                raise EntityValidationError("image_type must be a ImageType or a string")
+                raise EntityValidationError(
+                    "image_type must be a ImageType or a string"
+                )
             if image_type not in [t.value for t in ImageType]:
                 raise EntityValidationError(
                     f"image_type must be one of: "
                     f"{', '.join(t.value for t in ImageType)}\n"
                     f"Got: {image_type}"
-            )
+                )
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 
@@ -355,5 +361,5 @@ class _Image(
             expression_attribute_values={":val": {"S": entity_type}},
             converter_func=converter_func,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

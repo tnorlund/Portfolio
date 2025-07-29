@@ -10,9 +10,9 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
-    EntityValidationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
 )
 
 # -------------------------------------------------------------------

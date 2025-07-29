@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -14,21 +12,19 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
-from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityNotFoundError,
     EntityValidationError,
     OperationError,
 )
+from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _OCRJob(
@@ -114,19 +110,19 @@ class _OCRJob(
             raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
-        
+
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"OCR_JOB#{job_id}",
             entity_class=OCRJob,
-            converter_func=item_to_ocr_job
+            converter_func=item_to_ocr_job,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"OCR job with image_id={image_id}, job_id={job_id} does not exist"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("delete_ocr_job")
@@ -195,7 +191,9 @@ class _OCRJob(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -204,7 +202,7 @@ class _OCRJob(
             expression_attribute_values={":val": {"S": "OCR_JOB"}},
             converter_func=item_to_ocr_job,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_ocr_jobs_by_status")
@@ -237,7 +235,9 @@ class _OCRJob(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         jobs: List[OCRJob] = []
         try:
@@ -287,4 +287,6 @@ class _OCRJob(
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             if error_code == "AccessDeniedException":
                 raise DynamoDBAccessError(f"Access denied: {e}") from e
-            raise OperationError(f"Error getting OCR jobs by status: {e}") from e
+            raise OperationError(
+                f"Error getting OCR jobs by status: {e}"
+            ) from e

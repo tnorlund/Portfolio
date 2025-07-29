@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data._job import validate_last_evaluated_key
 
 # Runtime imports needed by the class methods
@@ -27,9 +25,7 @@ from receipt_dynamo.entities.instance_job import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _Instance(
@@ -130,14 +126,14 @@ class _Instance(
             primary_key=f"INSTANCE#{instance_id}",
             sort_key="INSTANCE",
             entity_class=Instance,
-            converter_func=item_to_instance
+            converter_func=item_to_instance,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Instance with instance id {instance_id} does not exist"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_instance_with_jobs")
@@ -249,17 +245,17 @@ class _Instance(
             primary_key=f"INSTANCE#{instance_id}",
             sort_key=f"JOB#{job_id}",
             entity_class=InstanceJob,
-            converter_func=item_to_instance_job
+            converter_func=item_to_instance_job,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 (
                     "InstanceJob for instance "
                     f"{instance_id} and job {job_id} does not exist"
+                )
             )
-            )
-        
+
         return result
 
     @handle_dynamodb_errors("list_instances")
@@ -295,7 +291,7 @@ class _Instance(
             expression_attribute_values={":val": {"S": "INSTANCE"}},
             converter_func=item_to_instance,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_instances_by_status")
@@ -325,7 +321,9 @@ class _Instance(
         # Validate status
         valid_statuses = ["pending", "running", "stopped", "terminated"]
         if not status or status.lower() not in valid_statuses:
-            raise EntityValidationError(f"status must be one of {valid_statuses}")
+            raise EntityValidationError(
+                f"status must be one of {valid_statuses}"
+            )
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:

@@ -224,14 +224,14 @@ class _BatchSummary(
             primary_key=f"BATCH#{batch_id}",
             sort_key="STATUS",
             entity_class=BatchSummary,
-            converter_func=item_to_batch_summary
+            converter_func=item_to_batch_summary,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"BatchSummary with ID {batch_id} does not exist"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_batch_summaries")
@@ -265,7 +265,9 @@ class _BatchSummary(
             raise EntityValidationError("limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -275,7 +277,7 @@ class _BatchSummary(
             expression_attribute_values={":val": {"S": "BATCH_SUMMARY"}},
             converter_func=item_to_batch_summary,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_batch_summaries_by_status")
@@ -346,7 +348,9 @@ class _BatchSummary(
             raise EntityValidationError("Limit must be a positive integer")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -361,5 +365,5 @@ class _BatchSummary(
             converter_func=item_to_batch_summary,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            filter_expression="#batch_type = :batch_type_filter"
+            filter_expression="#batch_type = :batch_type_filter",
         )

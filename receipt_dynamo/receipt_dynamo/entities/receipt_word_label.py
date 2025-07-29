@@ -7,6 +7,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
     normalize_enum,
+    validate_positive_int,
 )
 
 
@@ -47,20 +48,9 @@ class ReceiptWordLabel:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
-        if not isinstance(self.line_id, int):
-            raise ValueError("line_id must be an integer")
-        if self.line_id <= 0:
-            raise ValueError("line_id must be positive")
-
-        if not isinstance(self.word_id, int):
-            raise ValueError("word_id must be an integer")
-        if self.word_id <= 0:
-            raise ValueError("word_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
+        validate_positive_int("line_id", self.line_id)
+        validate_positive_int("word_id", self.word_id)
 
         if not isinstance(self.label, str):
             raise ValueError("label must be a string")

@@ -30,7 +30,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -214,12 +214,14 @@ class _Job(
             primary_key=f"JOB#{job_id}",
             sort_key="JOB",
             entity_class=Job,
-            converter_func=item_to_job
+            converter_func=item_to_job,
         )
-        
+
         if result is None:
-            raise EntityNotFoundError(f"Job with job id {job_id} does not exist")
-        
+            raise EntityNotFoundError(
+                f"Job with job id {job_id} does not exist"
+            )
+
         return result
 
     @handle_dynamodb_errors("get_job_with_status")
@@ -292,7 +294,9 @@ class _Job(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -302,7 +306,7 @@ class _Job(
             expression_attribute_values={":val": {"S": "JOB"}},
             converter_func=item_to_job,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_jobs_by_status")
@@ -340,7 +344,9 @@ class _Job(
             "interrupted",
         ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
-            raise EntityValidationError(f"status must be one of {valid_statuses}")
+            raise EntityValidationError(
+                f"status must be one of {valid_statuses}"
+            )
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
@@ -348,7 +354,9 @@ class _Job(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
                 k in last_evaluated_key
@@ -357,7 +365,7 @@ class _Job(
                 raise EntityValidationError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK"
                     " keys"
-            )
+                )
 
         return self._query_entities(
             index_name="GSI1",
@@ -370,7 +378,7 @@ class _Job(
             converter_func=item_to_job,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            filter_expression="#type = :job_type"
+            filter_expression="#type = :job_type",
         )
 
     @handle_dynamodb_errors("list_jobs_by_user")
@@ -408,7 +416,9 @@ class _Job(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
                 k in last_evaluated_key
@@ -417,7 +427,7 @@ class _Job(
                 raise EntityValidationError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK"
                     " keys"
-            )
+                )
 
         return self._query_entities(
             index_name="GSI2",
@@ -430,5 +440,5 @@ class _Job(
             converter_func=item_to_job,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            filter_expression="#type = :job_type"
+            filter_expression="#type = :job_type",
         )

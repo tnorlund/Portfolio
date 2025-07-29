@@ -269,18 +269,18 @@ class _ReceiptChatGPTValidation(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}",
             entity_class=ReceiptChatGPTValidation,
-            converter_func=item_to_receipt_chat_gpt_validation
+            converter_func=item_to_receipt_chat_gpt_validation,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 (
                     "ReceiptChatGPTValidation with receipt ID "
                     f"{receipt_id}, image ID {image_id}, and "
                     f"timestamp {timestamp} not found"
+                )
             )
-            )
-        
+
         return result
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations")
@@ -327,7 +327,7 @@ class _ReceiptChatGPTValidation(
             },
             converter_func=item_to_receipt_chat_gpt_validation,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations_for_receipt")
@@ -370,7 +370,7 @@ class _ReceiptChatGPTValidation(
                     )
                 },
             },
-            converter_func=item_to_receipt_chat_gpt_validation
+            converter_func=item_to_receipt_chat_gpt_validation,
         )
         return results
 
@@ -425,5 +425,5 @@ class _ReceiptChatGPTValidation(
             },
             converter_func=item_to_receipt_chat_gpt_validation,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

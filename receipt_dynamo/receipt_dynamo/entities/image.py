@@ -5,7 +5,11 @@ from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    validate_positive_dimensions,
+)
 
 
 @dataclass(eq=True, unsafe_hash=True)
@@ -64,13 +68,7 @@ class Image(DynamoDBEntity):
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
-        if (
-            not isinstance(self.width, int)
-            or not isinstance(self.height, int)
-            or self.width <= 0
-            or self.height <= 0
-        ):
-            raise ValueError("width and height must be positive integers")
+        validate_positive_dimensions(self.width, self.height)
 
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()

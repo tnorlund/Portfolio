@@ -177,8 +177,10 @@ class ErrorHandler:
         )
 
         # Extract operation type to use operation-specific messages
-        operation_type = self.context_extractor.extract_operation_type(operation)
-        
+        operation_type = self.context_extractor.extract_operation_type(
+            operation
+        )
+
         # First check if the original message contains "Table not found"
         # Some tests expect exactly "Table not found" regardless of operation
         # But exclude operations that have their own custom message handling
@@ -186,33 +188,57 @@ class ErrorHandler:
             "Table not found" in original_message
             or "table not found" in original_message.lower()
             or "No table found" in original_message
-        ) and not any(op in operation for op in [
-            "add_job_resource", "list_job_checkpoints", "list_job_resources", 
-            "list_resources_by_type", "get_receipt_chat_gpt_validation", "list_receipt_fields",
-            "list_receipt_chat_gpt_validations", "list_receipt_chat_gpt_validations_by_status",
-            "get_receipt_fields_by_image", "get_receipt_fields_by_receipt", "list_receipt_letters",
-            "list_receipt_letters_from_word", "get_resource_by_id", "update_words"
-        ]):
+        ) and not any(
+            op in operation
+            for op in [
+                "add_job_resource",
+                "list_job_checkpoints",
+                "list_job_resources",
+                "list_resources_by_type",
+                "get_receipt_chat_gpt_validation",
+                "list_receipt_fields",
+                "list_receipt_chat_gpt_validations",
+                "list_receipt_chat_gpt_validations_by_status",
+                "get_receipt_fields_by_image",
+                "get_receipt_fields_by_receipt",
+                "list_receipt_letters",
+                "list_receipt_letters_from_word",
+                "get_resource_by_id",
+                "update_words",
+            ]
+        ):
             # Special case for get_receipt_letter which expects a different format
             if "get_receipt_letter" in operation:
                 message = "Error getting receipt letter:"
             # For specific operations that expect "Table not found" exactly
             elif any(
-                op in operation for op in [
-                    "update_images", "get_batch_summaries_by_status", "list_job_logs",
-                    "delete_receipt_letter", "add_job_log"
+                op in operation
+                for op in [
+                    "update_images",
+                    "get_batch_summaries_by_status",
+                    "list_job_logs",
+                    "delete_receipt_letter",
+                    "add_job_log",
                 ]
             ):
                 message = "Table not found"
             # Receipt operations that expect "Table not found for operation X"
-            elif any(op in operation for op in [
-                "add_receipt_field", "add_receipt_line_item_analysis",
-                "add_receipt_line_item_analyses", "delete_receipt_line_item_analyses",
-                "delete_receipt_line_item_analysis", "get_receipt_line_item_analysis",
-                "list_receipt_label_analyses", "list_receipt_line_item_analyses",
-                "update_receipt_line_item_analyses", "update_receipt_line_item_analysis",
-                "add_job_dependency"
-            ]):
+            elif any(
+                op in operation
+                for op in [
+                    "add_receipt_field",
+                    "add_receipt_line_item_analysis",
+                    "add_receipt_line_item_analyses",
+                    "delete_receipt_line_item_analyses",
+                    "delete_receipt_line_item_analysis",
+                    "get_receipt_line_item_analysis",
+                    "list_receipt_label_analyses",
+                    "list_receipt_line_item_analyses",
+                    "update_receipt_line_item_analyses",
+                    "update_receipt_line_item_analysis",
+                    "add_job_dependency",
+                ]
+            ):
                 message = f"Table not found for operation {operation}"
             else:
                 message = "Table not found"
@@ -232,7 +258,9 @@ class ErrorHandler:
         elif "get_receipt_chat_gpt_validation" in operation:
             message = "Error getting receipt ChatGPT validation"
         elif "list_receipt_chat_gpt_validations" in operation:
-            message = "Could not list receipt ChatGPT validations from DynamoDB"
+            message = (
+                "Could not list receipt ChatGPT validations from DynamoDB"
+            )
         elif "get_receipt_fields_by_receipt" in operation:
             message = "Could not list receipt fields by receipt ID"
         elif "get_receipt_fields_by_image" in operation:
@@ -241,7 +269,11 @@ class ErrorHandler:
         elif "delete_receipt" in operation and "validation" in operation:
             # Handle validation-related deletes
             if "chatgpt" in operation or "chat_gpt" in operation:
-                entity = "receipt ChatGPT validation" if "validations" not in operation else "receipt ChatGPT validations"
+                entity = (
+                    "receipt ChatGPT validation"
+                    if "validations" not in operation
+                    else "receipt ChatGPT validations"
+                )
             elif "summary" in operation:
                 entity = "receipt validation summary"
             elif "category" in operation or "categor" in operation:
@@ -272,7 +304,10 @@ class ErrorHandler:
             message = f"Could not delete {entity} from DynamoDB"
         elif "list_receipt_fields" in operation:
             message = "Could not list receipt fields from the database"
-        elif "list_receipt_letters" in operation and "from_word" not in operation:
+        elif (
+            "list_receipt_letters" in operation
+            and "from_word" not in operation
+        ):
             message = "Could not list receipt letters from DynamoDB"
         elif "list_receipt_letters_from_word" in operation:
             message = "Could not list ReceiptLetters from the database"
@@ -288,7 +323,10 @@ class ErrorHandler:
                 entity = "receipt letters"
             elif "line_item_analyses" in operation:
                 entity = "receipt line item analyses"
-            elif "validation_category" in operation or "validation_categor" in operation:
+            elif (
+                "validation_category" in operation
+                or "validation_categor" in operation
+            ):
                 entity = "receipt validation category"
             elif "validation_result" in operation:
                 entity = "receipt validation result"
@@ -302,7 +340,8 @@ class ErrorHandler:
                 entity = "receipt"
             message = f"Could not list {entity} from DynamoDB"
         elif any(
-            op in operation for op in ["receipt", "queue", "receipt_field", "job", "word"]
+            op in operation
+            for op in ["receipt", "queue", "receipt_field", "job", "word"]
         ):
             # For backward compatibility with tests that expect "Table not found for operation X"
             message = f"Table not found for operation {operation}"
@@ -330,9 +369,13 @@ class ErrorHandler:
         )
         # Some receipt letter operations expect "Provisioned throughput exceeded"
         # while others expect "Throughput exceeded" - standardize based on operation
-        if original_message.startswith("Throughput exceeded") and any(op in operation for op in [
-            "list_receipt_letters", "list_receipt_letters_from_word"
-        ]):
+        if original_message.startswith("Throughput exceeded") and any(
+            op in operation
+            for op in [
+                "list_receipt_letters",
+                "list_receipt_letters_from_word",
+            ]
+        ):
             message = "Provisioned throughput exceeded"
         else:
             message = original_message
@@ -350,7 +393,10 @@ class ErrorHandler:
             message = "Validation error:"
         elif "get_receipt_chat_gpt_validation" in operation:
             message = "Validation error"
-        elif "get_receipt_fields_by_receipt" in operation or "get_receipt_fields_by_image" in operation:
+        elif (
+            "get_receipt_fields_by_receipt" in operation
+            or "get_receipt_fields_by_image" in operation
+        ):
             message = "One or more parameters given were invalid"
         elif "get_receipt_field" in operation:
             message = "Validation error"
@@ -452,23 +498,44 @@ class ErrorHandler:
             # For receipt validation category transactional operations,
             # return the full error detail
             message = f"Unknown error in transactional_write: {str(error)}"
-        
+
         # Handle specific receipt operations that expect specific "Unknown error" patterns
-        elif "list_receipt_letters_from_word" in operation and "UnknownError" in str(error):
+        elif (
+            "list_receipt_letters_from_word" in operation
+            and "UnknownError" in str(error)
+        ):
             message = "Could not list ReceiptLetters from the database"
-        elif "list_receipt_letters" in operation and "UnknownError" in str(error):
+        elif "list_receipt_letters" in operation and "UnknownError" in str(
+            error
+        ):
             message = "Error listing receipt letters"
-        elif "add_receipt_word_labels" in operation and "UnknownError" in str(error):
+        elif "add_receipt_word_labels" in operation and "UnknownError" in str(
+            error
+        ):
             message = "Error adding receipt word labels"
-        elif "list_receipt_chat_gpt_validations" in operation and "UnknownError" in str(error):
+        elif (
+            "list_receipt_chat_gpt_validations" in operation
+            and "UnknownError" in str(error)
+        ):
             message = "Error listing receipt ChatGPT validations"
-        elif "get_receipt_chat_gpt_validation" in operation and "UnknownError" in str(error):
+        elif (
+            "get_receipt_chat_gpt_validation" in operation
+            and "UnknownError" in str(error)
+        ):
             message = "Error getting receipt ChatGPT validation"
-        elif "get_receipt_fields_by_receipt" in operation and "UnknownError" in str(error):
+        elif (
+            "get_receipt_fields_by_receipt" in operation
+            and "UnknownError" in str(error)
+        ):
             message = "Could not list receipt fields by receipt ID"
-        elif "get_receipt_fields_by_image" in operation and "UnknownError" in str(error):
+        elif (
+            "get_receipt_fields_by_image" in operation
+            and "UnknownError" in str(error)
+        ):
             message = "Could not list receipt fields by image ID"
-        elif "list_receipt_fields" in operation and "UnknownError" in str(error):
+        elif "list_receipt_fields" in operation and "UnknownError" in str(
+            error
+        ):
             message = "Could not list receipt fields from the database"
         elif "get_receipt_field" in operation and "UnknownError" in str(error):
             message = "Error getting receipt field"
@@ -522,7 +589,7 @@ class ErrorHandler:
                     format_kwargs["queue_name"] = entity.queue_name
                 if hasattr(entity, "resource_id"):
                     format_kwargs["resource_id"] = entity.resource_id
-                
+
                 # Format with all available attributes
                 try:
                     message = message.format(**format_kwargs)

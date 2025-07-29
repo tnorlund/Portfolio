@@ -16,13 +16,12 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
-from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
 )
+from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
@@ -304,14 +303,14 @@ class _ReceiptMetadata(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#METADATA",
             entity_class=ReceiptMetadata,
-            converter_func=item_to_receipt_metadata
+            converter_func=item_to_receipt_metadata,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"ReceiptMetadata with image_id={image_id}, receipt_id={receipt_id} does not exist"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_receipt_metadatas_by_indices")
@@ -450,7 +449,9 @@ class _ReceiptMetadata(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -459,7 +460,7 @@ class _ReceiptMetadata(
             expression_attribute_values={":val": {"S": "RECEIPT_METADATA"}},
             converter_func=item_to_receipt_metadata,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_receipt_metadatas_by_merchant")
@@ -506,7 +507,7 @@ class _ReceiptMetadata(
             expression_attribute_values={":pk": {"S": gsi1_pk}},
             converter_func=item_to_receipt_metadata,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_metadatas_with_place_id")
@@ -552,7 +553,9 @@ class _ReceiptMetadata(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_entities(
             index_name="GSI2",
@@ -561,7 +564,7 @@ class _ReceiptMetadata(
             expression_attribute_values={":pk": {"S": f"PLACE#{place_id}"}},
             converter_func=item_to_receipt_metadata,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_receipt_metadatas_by_confidence")
@@ -643,13 +646,17 @@ class _ReceiptMetadata(
                     (
                         "receipt_metadata contains invalid attributes or "
                         f"values: {e}"
-            )
+                    )
                 ) from e
             elif error_code == "InternalServerError":
                 raise EntityValidationError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise EntityValidationError("provisioned throughput exceeded") from e
+                raise EntityValidationError(
+                    "provisioned throughput exceeded"
+                ) from e
             elif error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError("table not found") from e
             else:
-                raise EntityValidationError(f"Error getting receipt metadata: {e}") from e
+                raise EntityValidationError(
+                    f"Error getting receipt metadata: {e}"
+                ) from e

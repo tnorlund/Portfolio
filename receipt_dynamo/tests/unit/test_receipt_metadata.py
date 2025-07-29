@@ -118,8 +118,8 @@ def test_to_item_and_back(example_receipt_metadata):
 @pytest.mark.parametrize(
     "field,value,error",
     [
-        ("receipt_id", "a", "receipt id must be an integer"),
-        ("receipt_id", 0, "receipt id must be positive"),
+        ("receipt_id", "a", "receipt_id must be an integer"),
+        ("receipt_id", 0, "receipt_id must be positive"),
         ("place_id", 123, "place id must be a string"),
         ("merchant_name", 456, "merchant name must be a string"),
         ("merchant_category", 789, "merchant category must be a string"),

@@ -20,7 +20,6 @@ from typing import (
 from botocore.exceptions import ClientError
 
 from ..shared_exceptions import EntityValidationError
-
 from .error_config import ErrorMessageConfig
 from .error_handlers import ErrorHandler
 from .types import DynamoClientProtocol
@@ -178,7 +177,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "Key": entity.key,
             **kwargs,
         }
-        
+
         # Only add ConditionExpression if provided
         if condition_expression is not None:
             delete_params["ConditionExpression"] = condition_expression
@@ -384,46 +383,56 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             "KeyConditionExpression": key_condition_expression,
             "ExpressionAttributeValues": expression_attribute_values,
         }
-        
+
         # Only add ScanIndexForward if it's not the default value
         if not scan_index_forward:
             query_params["ScanIndexForward"] = scan_index_forward
-        
+
         if index_name:
             query_params["IndexName"] = index_name
-        
+
         if expression_attribute_names:
-            query_params["ExpressionAttributeNames"] = expression_attribute_names
-            
+            query_params["ExpressionAttributeNames"] = (
+                expression_attribute_names
+            )
+
         if filter_expression:
             query_params["FilterExpression"] = filter_expression
-            
+
         if last_evaluated_key is not None:
             query_params["ExclusiveStartKey"] = last_evaluated_key
-            
+
         # Handle pagination based on whether limit is provided
         if limit is None:
             # If no limit, retrieve all items
             response = self._client.query(**query_params)
-            entities.extend([converter_func(item) for item in response["Items"]])
-            
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            entities.extend(
+                [converter_func(item) for item in response["Items"]]
+            )
+
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
-                entities.extend([converter_func(item) for item in response["Items"]])
+                entities.extend(
+                    [converter_func(item) for item in response["Items"]]
+                )
             last_evaluated_key = None
         else:
             # If limit is provided, accumulate items until we reach the limit
             remaining = limit
             last_evaluated_key = None
-            
+
             while remaining > 0:
                 # Query for at most 'remaining' items
                 query_params["Limit"] = remaining
-                
+
                 response = self._client.query(**query_params)
                 items = response.get("Items", [])
-                
+
                 # Convert and add items
                 for item in items:
                     entity = converter_func(item)
@@ -432,14 +441,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                         remaining -= 1
                         if remaining == 0:
                             break
-                
+
                 # Check if there are more pages
                 last_evaluated_key = response.get("LastEvaluatedKey")
                 if not last_evaluated_key or remaining == 0:
                     break
-                    
+
                 query_params["ExclusiveStartKey"] = last_evaluated_key
-            
+
             # If we've collected all requested items but there's still a LEK,
             # we need to return None to indicate no more pages for the user
             if remaining == 0 and last_evaluated_key and len(items) > 0:
@@ -451,7 +460,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 last_evaluated_key = None
 
         return entities, last_evaluated_key
-    
+
     def _validate_pagination_params(
         self,
         limit: Optional[int],

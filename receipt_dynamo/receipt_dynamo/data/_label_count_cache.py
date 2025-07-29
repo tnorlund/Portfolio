@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
@@ -24,7 +22,7 @@ from receipt_dynamo.entities.label_count_cache import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _LabelCountCache(
@@ -118,7 +116,7 @@ class _LabelCountCache(
             if error_code == "ConditionalCheckFailedException":
                 raise EntityNotFoundError(
                     f"LabelCountCache for label {item.label} does not exist"
-            ) from e
+                ) from e
             raise DynamoDBError(
                 f"Could not update label count cache in DynamoDB: {e}"
             ) from e
@@ -129,7 +127,7 @@ class _LabelCountCache(
             primary_key="LABEL_CACHE",
             sort_key=f"LABEL#{label}",
             entity_class=LabelCountCache,
-            converter_func=item_to_label_count_cache
+            converter_func=item_to_label_count_cache,
         )
 
     @handle_dynamodb_errors("list_label_count_caches")
@@ -146,5 +144,5 @@ class _LabelCountCache(
             converter_func=item_to_label_count_cache,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True
+            scan_index_forward=True,
         )

@@ -38,7 +38,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -235,11 +235,17 @@ class _EmbeddingBatchResult(
         assert_valid_uuid(batch_id)
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if not isinstance(line_id, int) or line_id < 0:
-            raise EntityValidationError("line_id must be zero or positive integer")
+            raise EntityValidationError(
+                "line_id must be zero or positive integer"
+            )
         if not isinstance(word_id, int) or word_id < 0:
-            raise EntityValidationError("word_id must be zero or positive integer")
+            raise EntityValidationError(
+                "word_id must be zero or positive integer"
+            )
 
         result = self._get_entity(
             primary_key=f"BATCH#{batch_id}",
@@ -249,9 +255,9 @@ class _EmbeddingBatchResult(
                 f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
             ),
             entity_class=EmbeddingBatchResult,
-            converter_func=item_to_embedding_batch_result
+            converter_func=item_to_embedding_batch_result,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 "Embedding batch result for Batch ID "
@@ -259,7 +265,7 @@ class _EmbeddingBatchResult(
                 f"Receipt ID {receipt_id}, Line ID {line_id}, "
                 f"Word ID {word_id} does not exist."
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_embedding_batch_results")
@@ -275,7 +281,9 @@ class _EmbeddingBatchResult(
             raise EntityValidationError("Limit must be a positive integer.")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary.")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary."
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -287,7 +295,7 @@ class _EmbeddingBatchResult(
             },
             converter_func=item_to_embedding_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_embedding_batch_results_by_status")
@@ -311,19 +319,19 @@ class _EmbeddingBatchResult(
             raise EntityValidationError("Limit must be a positive integer.")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary.")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary."
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI2",
             key_condition_expression="GSI2SK = :sk",
             expression_attribute_names=None,
-            expression_attribute_values={
-                ":sk": {"S": f"STATUS#{status}"}
-            },
+            expression_attribute_values={":sk": {"S": f"STATUS#{status}"}},
             converter_func=item_to_embedding_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_embedding_batch_results_by_receipt")
@@ -339,12 +347,16 @@ class _EmbeddingBatchResult(
         """
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer.")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer."
+            )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary.")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary."
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         template_embedding_batch_result = EmbeddingBatchResult(
@@ -359,7 +371,7 @@ class _EmbeddingBatchResult(
             error_message="dummy",
         )
         template_key = template_embedding_batch_result.gsi3_key()["GSI3PK"]
-        
+
         return self._query_entities(
             index_name="GSI3",
             key_condition_expression="GSI3PK = :pk",
@@ -367,5 +379,5 @@ class _EmbeddingBatchResult(
             expression_attribute_values={":pk": template_key},
             converter_func=item_to_embedding_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

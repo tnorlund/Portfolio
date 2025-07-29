@@ -195,22 +195,24 @@ class _PlacesCache(
                     raise EntityValidationError(
                         "places_cache_items contains invalid attributes "
                         "or values"
-            ) from e
+                    ) from e
                 elif error_code == "ValidationException":
                     raise EntityValidationError(
                         "places_cache_items contains invalid attributes "
                         "or values"
-            ) from e
+                    ) from e
                 elif error_code == "InternalServerError":
                     raise EntityValidationError("internal server error") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise EntityValidationError("provisioned throughput exceeded") from e
+                    raise EntityValidationError(
+                        "provisioned throughput exceeded"
+                    ) from e
                 elif error_code == "ResourceNotFoundException":
                     raise EntityNotFoundError("table not found") from e
                 else:
                     raise EntityValidationError(
                         f"Error deleting places caches: {e}"
-            ) from e
+                    ) from e
 
     @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
@@ -239,7 +241,7 @@ class _PlacesCache(
             primary_key=temp_cache.key["PK"]["S"],
             sort_key=temp_cache.key["SK"]["S"],
             entity_class=PlacesCache,
-            converter_func=item_to_places_cache
+            converter_func=item_to_places_cache,
         )
 
     @handle_dynamodb_errors("get_places_cache_by_place_id")
@@ -268,7 +270,7 @@ class _PlacesCache(
                 ":gsi1sk": {"S": f"PLACE_ID#{place_id}"},
             },
             converter_func=item_to_places_cache,
-            limit=1
+            limit=1,
         )
         return results[0] if results else None
 
@@ -307,7 +309,7 @@ class _PlacesCache(
             expression_attribute_values={":val": {"S": "PLACES_CACHE"}},
             converter_func=item_to_places_cache,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("invalidate_old_cache_items")

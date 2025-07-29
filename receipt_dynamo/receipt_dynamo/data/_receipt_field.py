@@ -1,15 +1,12 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
@@ -17,12 +14,12 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    EntityValidationError,
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
     EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.receipt_field import (
@@ -43,7 +40,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -281,24 +278,28 @@ class _ReceiptField(
         # Validate image_id as a UUID and receipt_id as a positive integer
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("Receipt ID must be a positive integer.")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer."
+            )
         if not isinstance(field_type, str) or not field_type:
-            raise EntityValidationError("Field type must be a non-empty string.")
+            raise EntityValidationError(
+                "Field type must be a non-empty string."
+            )
 
         result = self._get_entity(
             primary_key=f"FIELD#{field_type.upper()}",
             sort_key=f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}",
             entity_class=ReceiptField,
-            converter_func=item_to_receipt_field
+            converter_func=item_to_receipt_field,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Receipt field for Field Type '{field_type}', "
                 f"Image ID '{image_id}', and Receipt ID {receipt_id} "
                 f"does not exist."
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_receipt_fields")
@@ -336,7 +337,9 @@ class _ReceiptField(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -346,7 +349,7 @@ class _ReceiptField(
             expression_attribute_values={":val": {"S": "RECEIPT_FIELD"}},
             converter_func=item_to_receipt_field,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_receipt_fields_by_image")
@@ -389,19 +392,19 @@ class _ReceiptField(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI1",
             key_condition_expression="GSI1PK = :pk",
             expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"}
-            },
+            expression_attribute_values={":pk": {"S": f"IMAGE#{image_id}"}},
             converter_func=item_to_receipt_field,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_receipt_fields_by_receipt")
@@ -443,14 +446,18 @@ class _ReceiptField(
             raise EntityValidationError("Image ID must be a string")
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("Receipt ID must be a positive integer")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer"
+            )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -463,5 +470,5 @@ class _ReceiptField(
             },
             converter_func=item_to_receipt_field,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

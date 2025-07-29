@@ -13,21 +13,20 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities import item_to_receipt_line_item_analysis
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.data.shared_exceptions import (
-    EntityNotFoundError,
-    EntityValidationError,
-)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         DeleteRequestTypeDef,
         PutRequestTypeDef,
-        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
@@ -227,9 +226,9 @@ class _ReceiptLineItemAnalysis(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS",
             entity_class=ReceiptLineItemAnalysis,
-            converter_func=item_to_receipt_line_item_analysis
+            converter_func=item_to_receipt_line_item_analysis,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Receipt Line Item Analysis for Image ID {image_id} and "
@@ -276,7 +275,7 @@ class _ReceiptLineItemAnalysis(
             },
             converter_func=item_to_receipt_line_item_analysis,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_line_item_analyses_for_image")
@@ -311,7 +310,7 @@ class _ReceiptLineItemAnalysis(
                 ":analysis_type": {"S": "#ANALYSIS#LINE_ITEMS"},
             },
             converter_func=item_to_receipt_line_item_analysis,
-            filter_expression="contains(#sk, :analysis_type)"
+            filter_expression="contains(#sk, :analysis_type)",
         )
 
         return results

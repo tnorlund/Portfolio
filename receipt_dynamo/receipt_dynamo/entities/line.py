@@ -10,6 +10,12 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
+    deserialize_bounding_box,
+    deserialize_confidence,
+    deserialize_coordinate_point,
+    serialize_bounding_box,
+    serialize_confidence,
+    serialize_coordinate_point,
 )
 
 
@@ -129,45 +135,14 @@ class Line(GeometryMixin, DynamoDBEntity):
             **self.gsi1_key,
             "TYPE": {"S": "LINE"},
             "text": {"S": self.text},
-            "bounding_box": {
-                "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
-                }
-            },
-            "top_right": {
-                "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
-                }
-            },
-            "top_left": {
-                "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
-                }
-            },
-            "bottom_right": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
-                }
-            },
-            "bottom_left": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
-                }
-            },
+            "bounding_box": serialize_bounding_box(self.bounding_box),
+            "top_right": serialize_coordinate_point(self.top_right),
+            "top_left": serialize_coordinate_point(self.top_left),
+            "bottom_right": serialize_coordinate_point(self.bottom_right),
+            "bottom_left": serialize_coordinate_point(self.bottom_left),
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "confidence": serialize_confidence(self.confidence),
         }
 
     def calculate_diagonal_length(self) -> float:
@@ -255,29 +230,14 @@ def item_to_line(item: Dict[str, Any]) -> Line:
             image_id=item["PK"]["S"][6:],
             line_id=int(item["SK"]["S"][6:]),
             text=item["text"]["S"],
-            bounding_box={
-                key: float(value["N"])
-                for key, value in item["bounding_box"]["M"].items()
-            },
-            top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
-            },
-            top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
-            },
-            bottom_right={
-                key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()
-            },
-            bottom_left={
-                key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()
-            },
+            bounding_box=deserialize_bounding_box(item["bounding_box"]),
+            top_right=deserialize_coordinate_point(item["top_right"]),
+            top_left=deserialize_coordinate_point(item["top_left"]),
+            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
+            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),
+            confidence=deserialize_confidence(item["confidence"]),
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Line: {e}") from e

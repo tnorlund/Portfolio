@@ -178,19 +178,19 @@ class _Line(
             EntityNotFoundError: When the line is not found
         """
         assert_valid_uuid(image_id)
-        
+
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"LINE#{line_id:05d}",
             entity_class=Line,
-            converter_func=item_to_line
+            converter_func=item_to_line,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Line with image_id={image_id}, line_id={line_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_lines")
@@ -216,7 +216,7 @@ class _Line(
             converter_func=item_to_line,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True
+            scan_index_forward=True,
         )
 
     @handle_dynamodb_errors("list_lines_from_image")
@@ -239,6 +239,6 @@ class _Line(
             },
             converter_func=item_to_line,
             limit=None,
-            last_evaluated_key=None
+            last_evaluated_key=None,
         )
         return lines
