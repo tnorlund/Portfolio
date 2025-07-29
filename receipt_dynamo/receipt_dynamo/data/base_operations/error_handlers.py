@@ -179,22 +179,24 @@ class ErrorHandler:
         # Extract operation type to use operation-specific messages
         operation_type = self.context_extractor.extract_operation_type(operation)
         
-        # Check if we should use operation-specific message
-        if operation_type in self.config.OPERATION_MESSAGES:
-            entity_type = self.context_extractor.extract_entity_type(operation)
-            message = self.config.OPERATION_MESSAGES[operation_type].format(
-                entity_type=entity_type.replace("_", " ")
-            )
+        # First check if the original message contains "Table not found"
+        # This preserves specific error messages that tests expect
+        if (
+            "Table not found" in original_message
+            or "table not found" in original_message.lower()
+        ):
+            message = "Table not found"
         elif any(
             op in operation for op in ["receipt", "queue", "receipt_field"]
         ):
             # For backward compatibility with receipt tests
             message = f"Table not found for operation {operation}"
-        elif (
-            "Table not found" in original_message
-            or "table not found" in original_message.lower()
-        ):
-            message = "Table not found"
+        elif operation_type in self.config.OPERATION_MESSAGES:
+            # Use operation-specific message as a fallback
+            entity_type = self.context_extractor.extract_entity_type(operation)
+            message = self.config.OPERATION_MESSAGES[operation_type].format(
+                entity_type=entity_type.replace("_", " ")
+            )
         else:
             # Default to the "Table not found for operation X" format
             message = f"Table not found for operation {operation}"

@@ -51,7 +51,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     # You might also check that each key maps to a dictionary with a DynamoDB
     # type key (e.g., "S")
     for key in required_keys:
@@ -220,21 +220,23 @@ class _Receipt(
         if not isinstance(receipt_id, int):
             raise EntityValidationError("Receipt ID must be an integer.")
         if receipt_id < 0:
-            raise EntityValidationError("Receipt ID must be a positive integer.")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer."
+            )
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}",
             entity_class=Receipt,
-            converter_func=item_to_receipt
+            converter_func=item_to_receipt,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Receipt with ID {receipt_id} and Image ID "
                 f"'{image_id}' does not exist."
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_receipt_details")
@@ -250,42 +252,61 @@ class _Receipt(
         Returns:
             ReceiptDetails: Dataclass with receipt and related data
         """
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
-            "ExpressionAttributeValues": {
+
+        # Custom converter function that handles multiple entity types
+        def convert_item(item):
+            item_type = item.get("TYPE", {}).get("S")
+            if item_type == "RECEIPT":
+                return ("receipt", item_to_receipt(item))
+            elif item_type == "RECEIPT_LINE":
+                return ("line", item_to_receipt_line(item))
+            elif item_type == "RECEIPT_WORD":
+                return ("word", item_to_receipt_word(item))
+            elif item_type == "RECEIPT_LETTER":
+                return ("letter", item_to_receipt_letter(item))
+            elif item_type == "RECEIPT_WORD_LABEL":
+                return ("label", item_to_receipt_word_label(item))
+            return None
+
+        # Query all items for this receipt
+        items, _ = self._query_entities(
+            index_name=None,  # Query main table
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
             },
-        }
+            converter_func=convert_item,
+            limit=None,  # Get all items
+            last_evaluated_key=None,
+        )
+
         receipt = None
         lines, words, letters, labels = [], [], [], []
-        while True:
-            response = self._client.query(**query_params)
-            for item in response.get("Items", []):
-                if item["TYPE"]["S"] == "RECEIPT":
-                    receipt = item_to_receipt(item)
-                elif item["TYPE"]["S"] == "RECEIPT_LINE":
-                    lines.append(item_to_receipt_line(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD":
-                    words.append(item_to_receipt_word(item))
-                elif item["TYPE"]["S"] == "RECEIPT_LETTER":
-                    letters.append(item_to_receipt_letter(item))
-                elif item["TYPE"]["S"] == "RECEIPT_WORD_LABEL":
-                    labels.append(item_to_receipt_word_label(item))
-            # paginate
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                break
+
+        # Process converted items
+        for item in items:
+            if item is None:
+                continue
+            item_type, entity = item
+            if item_type == "receipt":
+                receipt = entity
+            elif item_type == "line":
+                lines.append(entity)
+            elif item_type == "word":
+                words.append(entity)
+            elif item_type == "letter":
+                letters.append(entity)
+            elif item_type == "label":
+                labels.append(entity)
+
         if receipt is None:
             raise EntityNotFoundError(
                 (
                     "Receipt not found for "
                     f"image_id={image_id}, receipt_id={receipt_id}"
-            )
+                )
             )
         return ReceiptDetails(
             receipt=receipt,
@@ -346,7 +367,9 @@ class _Receipt(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -356,7 +379,7 @@ class _Receipt(
             expression_attribute_values={":val": {"S": "RECEIPT"}},
             converter_func=item_to_receipt,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_receipts_from_image")
@@ -369,35 +392,19 @@ class _Receipt(
         Returns:
             list[Receipt]: A list of receipts from the image
         """
-        receipts: List[Receipt] = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": "RECEIPT#"},
-                },
-            )
-            receipts.extend(
-                [item_to_receipt(item) for item in response["Items"]]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                    ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {"S": "RECEIPT#"},
-                    },
-                )
-                receipts.extend(
-                    [item_to_receipt(item) for item in response["Items"]]
-                )
-            return receipts
-        except ClientError as e:
-            raise EntityValidationError(f"Error listing receipts from image: {e}") from e
+        receipts, _ = self._query_entities(
+            index_name=None,  # Query main table
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk": {"S": "RECEIPT#"},
+            },
+            converter_func=item_to_receipt,
+            limit=None,  # Get all receipts
+            last_evaluated_key=None,
+        )
+        return receipts
 
     @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
@@ -551,66 +558,52 @@ class _Receipt(
         if receipt_id < 0:
             raise EntityValidationError("Receipt ID must be positive")
 
-        try:
-            # Use GSI3 to get both receipt and words in a single query
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI3",
-                KeyConditionExpression=(
-                    "GSI3PK = :pk AND begins_with(GSI3SK, :sk)"
-                ),
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
+        # Custom converter function that handles both receipts and words
+        def convert_item(item):
+            item_type = item.get("TYPE", {}).get("S")
+            if item_type == "RECEIPT":
+                return ("receipt", item_to_receipt(item))
+            elif item_type == "RECEIPT_WORD":
+                try:
+                    return ("word", item_to_receipt_word(item))
+                except ValueError:
+                    # TODO: Use proper logging instead of print
+                    return None
+            return None
+
+        # Use GSI3 to get both receipt and words in a single query
+        items, _ = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+            converter_func=convert_item,
+            limit=None,  # Get all items
+            last_evaluated_key=None,
+        )
+
+        receipt = None
+        words = []
+
+        # Process converted items
+        for item in items:
+            if item is None:
+                continue
+            item_type, entity = item
+            if item_type == "receipt":
+                receipt = entity
+            elif item_type == "word":
+                words.append(entity)
+
+        if not receipt:
+            raise EntityNotFoundError(
+                f"Receipt with ID {receipt_id} and Image ID '{image_id}' does not exist"
             )
 
-            receipt = None
-            words = []
+        # Sort words by line_id and word_id
+        words.sort(key=lambda w: (w.line_id, w.word_id))
 
-            # Process items
-            for item in response.get("Items", []):
-                item_type = item.get("TYPE", {}).get("S")
-                if item_type == "RECEIPT":
-                    receipt = item_to_receipt(item)
-                elif item_type == "RECEIPT_WORD":
-                    try:
-                        word = item_to_receipt_word(item)
-                        words.append(word)
-                    except ValueError:
-                        # TODO: Use proper logging instead of print
-                        continue
-
-            if not receipt:
-                raise EntityNotFoundError(
-                    (
-                        f"Receipt with ID {receipt_id} and Image ID "
-                        f"'{image_id}' does not exist"
-            )
-                )
-
-            # Sort words by line_id and word_id
-            words.sort(key=lambda w: (w.line_id, w.word_id))
-
-            return receipt, words
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Receipt with receipt_id={receipt_id} not found"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"Validation exception: {e}"
-                ) from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt and words: {e}"
-                ) from e
+        return receipt, words

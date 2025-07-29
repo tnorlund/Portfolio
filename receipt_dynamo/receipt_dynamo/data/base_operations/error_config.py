@@ -71,9 +71,7 @@ class ErrorMessageConfig:
         "receipt_label_analysis": "receipt_label_analysis cannot be None",
         "ReceiptLabelAnalysis": "ReceiptLabelAnalysis cannot be None",
         "receipt_field": "receipt_field cannot be None",
-        "receipt_word_label": (
-            "ReceiptWordLabel parameter is required and cannot be None."
-        ),
+        "receipt_word_label": "receipt_word_label cannot be None",
         "analysis": "analysis cannot be None",
         "analyses": "analyses cannot be None",
         "categories": "categories cannot be None",
