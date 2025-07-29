@@ -62,6 +62,18 @@ class _ReceiptWordLabel(
     while maintaining full backward compatibility.
     """
 
+    def _validate_receipt_word_labels_for_add(self, receipt_word_labels: List[ReceiptWordLabel]) -> None:
+        """Custom validation for add operation with specific error messages"""
+        if receipt_word_labels is None:
+            raise EntityValidationError("receipt_word_labels cannot be None")
+        
+        if not isinstance(receipt_word_labels, list):
+            raise EntityValidationError("receipt_word_labels must be a list of ReceiptWordLabel instances.")
+        
+        for item in receipt_word_labels:
+            if not isinstance(item, ReceiptWordLabel):
+                raise EntityValidationError("All receipt word labels must be instances of the ReceiptWordLabel class.")
+
     @handle_dynamodb_errors("add_receipt_word_label")
     def add_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
         """Adds a receipt word label to the database
@@ -135,9 +147,8 @@ class _ReceiptWordLabel(
             ValueError: When a receipt word label with the same ID
                 already exists
         """
-        self._validate_entity_list(
-            receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
-        )
+        # Custom validation for add operation with specific error messages
+        self._validate_receipt_word_labels_for_add(receipt_word_labels)
         
         from receipt_dynamo.data.base_operations import PutRequestTypeDef, WriteRequestTypeDef
         

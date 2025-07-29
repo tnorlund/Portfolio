@@ -233,10 +233,13 @@ def assert_valid_uuid(uuid: str) -> None:
     """
     Assert that the UUID is valid.
     """
+    # Import here to avoid circular import
+    from receipt_dynamo.data.shared_exceptions import EntityValidationError
+    
     if not isinstance(uuid, str):
-        raise ValueError("uuid must be a string")
+        raise EntityValidationError("uuid must be a string")
     if not UUID_V4_REGEX.match(uuid):
-        raise ValueError("uuid must be a valid UUIDv4")
+        raise EntityValidationError("uuid must be a valid UUIDv4")
 
 
 def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
