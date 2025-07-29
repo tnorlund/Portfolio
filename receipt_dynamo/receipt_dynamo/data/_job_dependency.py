@@ -10,9 +10,11 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.job_dependency import (
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
     JobDependency,
     item_to_job_dependency,
 )
