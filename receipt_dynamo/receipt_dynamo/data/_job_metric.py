@@ -7,6 +7,10 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -15,12 +19,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing "
                 "a key 'S'"
             )
@@ -67,14 +71,14 @@ class _JobMetric(
             ValueError: If the job metric does not exist
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Metric name is required and must be a non-empty string."
             )
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
             )
 
@@ -86,7 +90,7 @@ class _JobMetric(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"No job metric found with job ID {job_id}, metric name "
                 f"{metric_name}, and timestamp {timestamp}"
             )
@@ -122,16 +126,16 @@ class _JobMetric(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         # Build the expression attribute values based on whether
@@ -183,17 +187,17 @@ class _JobMetric(
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Metric name is required and must be a non-empty string."
             )
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -240,17 +244,17 @@ class _JobMetric(
             Exception: If the underlying database query fails.
         """
         if not metric_name or not isinstance(metric_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Metric name is required and must be a non-empty string."
             )
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(

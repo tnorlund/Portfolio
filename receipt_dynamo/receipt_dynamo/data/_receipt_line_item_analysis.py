@@ -18,6 +18,10 @@ from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -209,11 +213,11 @@ class _ReceiptLineItemAnalysis(
                 DynamoDB.
         """
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 "receipt_id must be an integer, got"
                 f" {type(receipt_id).__name__}"
             )
@@ -227,7 +231,7 @@ class _ReceiptLineItemAnalysis(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Receipt Line Item Analysis for Image ID {image_id} and "
                 f"Receipt ID {receipt_id} does not exist"
             )
@@ -255,11 +259,11 @@ class _ReceiptLineItemAnalysis(
             Exception: If the analyses cannot be retrieved from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
@@ -292,7 +296,7 @@ class _ReceiptLineItemAnalysis(
             Exception: If the analyses cannot be retrieved from DynamoDB.
         """
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         assert_valid_uuid(image_id)

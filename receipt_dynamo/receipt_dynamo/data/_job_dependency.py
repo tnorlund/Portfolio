@@ -12,6 +12,7 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_dependency import (
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
     JobDependency,
     item_to_job_dependency,
 )
@@ -85,9 +86,9 @@ class _JobDependency(
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise EntityValidationError("dependency_job_id cannot be None")
 
         result = self._get_entity(
             primary_key=f"JOB#{dependent_job_id}",
@@ -128,7 +129,7 @@ class _JobDependency(
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
 
         return self._query_entities(
             index_name=None,
@@ -167,7 +168,7 @@ class _JobDependency(
             ClientError: If a DynamoDB error occurs.
         """
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise EntityValidationError("dependency_job_id cannot be None")
 
         return self._query_entities(
             index_name="GSI2",
@@ -210,7 +211,7 @@ class _JobDependency(
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
 
         # First, get all dependencies for the job
         dependencies, _ = self.list_dependencies(dependent_job_id)

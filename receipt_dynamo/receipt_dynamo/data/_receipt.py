@@ -49,14 +49,14 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     # You might also check that each key maps to a dictionary with a DynamoDB
     # type key (e.g., "S")
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -211,16 +211,16 @@ class _Receipt(
                 - or any other unexpected errors.
         """
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
 
         # Validate image_id as a UUID and receipt_id as a positive integer.
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int):
-            raise ValueError("Receipt ID must be an integer.")
+            raise EntityValidationError("Receipt ID must be an integer.")
         if receipt_id < 0:
-            raise ValueError("Receipt ID must be a positive integer.")
+            raise EntityValidationError("Receipt ID must be a positive integer.")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -281,11 +281,11 @@ class _Receipt(
             else:
                 break
         if receipt is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 (
                     "Receipt not found for "
                     f"image_id={image_id}, receipt_id={receipt_id}"
-                )
+            )
             )
         return ReceiptDetails(
             receipt=receipt,
@@ -341,12 +341,12 @@ class _Receipt(
                 multiple query operations.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -397,7 +397,7 @@ class _Receipt(
                 )
             return receipts
         except ClientError as e:
-            raise ValueError(f"Error listing receipts from image: {e}") from e
+            raise EntityValidationError(f"Error listing receipts from image: {e}") from e
 
     @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
@@ -517,7 +517,7 @@ class _Receipt(
                 ]
 
         except ClientError as e:
-            raise ValueError(
+            raise EntityValidationError(
                 "Could not list receipt details from the database"
             ) from e
 
@@ -542,14 +542,14 @@ class _Receipt(
             Exception: For underlying DynamoDB errors
         """
         if image_id is None:
-            raise ValueError("Image ID is required")
+            raise EntityValidationError("Image ID is required")
         if receipt_id is None:
-            raise ValueError("Receipt ID is required")
+            raise EntityValidationError("Receipt ID is required")
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int):
-            raise ValueError("Receipt ID must be an integer")
+            raise EntityValidationError("Receipt ID must be an integer")
         if receipt_id < 0:
-            raise ValueError("Receipt ID must be positive")
+            raise EntityValidationError("Receipt ID must be positive")
 
         try:
             # Use GSI3 to get both receipt and words in a single query
@@ -582,11 +582,11 @@ class _Receipt(
                         continue
 
             if not receipt:
-                raise ValueError(
+                raise EntityNotFoundError(
                     (
                         f"Receipt with ID {receipt_id} and Image ID "
                         f"'{image_id}' does not exist"
-                    )
+            )
                 )
 
             # Sort words by line_id and word_id

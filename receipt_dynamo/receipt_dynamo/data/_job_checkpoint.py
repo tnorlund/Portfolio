@@ -28,12 +28,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict "
                 "containing a key 'S'"
             )
@@ -110,10 +110,10 @@ class _JobCheckpoint(
             Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
             )
 
@@ -125,7 +125,7 @@ class _JobCheckpoint(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 "No job checkpoint found with job ID "
                 f"{job_id} and timestamp {timestamp}"
             )
@@ -149,10 +149,10 @@ class _JobCheckpoint(
             Exception: If the request failed due to an unknown error.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
             )
 
@@ -160,7 +160,7 @@ class _JobCheckpoint(
         try:
             self.get_job_checkpoint(job_id, timestamp)
         except ValueError as e:
-            raise ValueError(
+            raise EntityNotFoundError(
                 "Cannot update best checkpoint: "
                 "No checkpoint found with job "
                 f"ID {job_id} and timestamp {timestamp}"
@@ -222,16 +222,16 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -267,7 +267,7 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         results, _ = self._query_entities(
@@ -299,10 +299,10 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not timestamp or not isinstance(timestamp, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
             )
 
@@ -357,12 +357,12 @@ class _JobCheckpoint(
             Exception: If the underlying database query fails.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []

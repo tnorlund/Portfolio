@@ -15,6 +15,10 @@ from receipt_dynamo.entities.receipt_validation_result import (
     ReceiptValidationResult,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -225,42 +229,42 @@ class _ReceiptValidationResult(
         """
         # Custom parameter validation for backward compatibility
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if field_name is None:
-            raise ValueError("field_name cannot be None")
+            raise EntityValidationError("field_name cannot be None")
         if result_index is None:
-            raise ValueError("result_index cannot be None")
+            raise EntityValidationError("result_index cannot be None")
 
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 f"receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if not isinstance(field_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"field_name must be a string, got {type(field_name).__name__}"
             )
         if not field_name:
-            raise ValueError("field_name must not be empty.")
+            raise EntityValidationError("field_name must not be empty.")
 
         if not isinstance(result_index, int):
-            raise ValueError(
+            raise EntityValidationError(
                 f"result_index must be an integer, got "
                 f"{type(result_index).__name__}"
             )
         if result_index < 0:
-            raise ValueError("result_index must be non-negative.")
+            raise EntityValidationError("result_index must be non-negative.")
 
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -270,7 +274,7 @@ class _ReceiptValidationResult(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"ReceiptValidationResult with field {field_name} and "
                 f"index {result_index} not found"
             )
@@ -302,11 +306,11 @@ class _ReceiptValidationResult(
                 from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -351,38 +355,38 @@ class _ReceiptValidationResult(
                 from DynamoDB.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 f"receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if field_name is None:
-            raise ValueError("field_name cannot be None")
+            raise EntityValidationError("field_name cannot be None")
         if not isinstance(field_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"field_name must be a string, got {type(field_name).__name__}"
             )
         if not field_name:
-            raise ValueError("field_name must not be empty.")
+            raise EntityValidationError("field_name must not be empty.")
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
         return self._query_entities(
             index_name=None,
@@ -433,21 +437,21 @@ class _ReceiptValidationResult(
         """
         # Custom validation for backward compatibility
         if result_type is None:
-            raise ValueError("result_type parameter is required")
+            raise EntityValidationError("result_type parameter is required")
 
         if not isinstance(result_type, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"result_type must be a string, got "
                 f"{type(result_type).__name__}"
             )
         if not result_type:
-            raise ValueError("result_type must not be empty")
+            raise EntityValidationError("result_type must not be empty")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         return self._query_entities(
             index_name="GSI1",

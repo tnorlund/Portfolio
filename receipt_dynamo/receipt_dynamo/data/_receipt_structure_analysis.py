@@ -18,6 +18,10 @@ from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptStructureAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -222,25 +226,25 @@ class _ReceiptStructureAnalysis(
                 DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 (
                     f"receipt_id must be an integer, got"
                     f" {type(receipt_id).__name__}"
-                )
+            )
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 (
                     f"image_id must be a string, got"
                     f" {type(image_id).__name__}"
-                )
+            )
             )
         if version is not None and not isinstance(version, str):
-            raise ValueError(
+            raise EntityValidationError(
                 (
                     "version must be a string or None, got"
                     f" {type(version).__name__}"
-                )
+            )
             )
 
         assert_valid_uuid(image_id)
@@ -254,10 +258,10 @@ class _ReceiptStructureAnalysis(
                 converter_func=item_to_receipt_structure_analysis
             )
             if result is None:
-                raise ValueError(
+                raise EntityNotFoundError(
                     "No ReceiptStructureAnalysis found for receipt "
                     f"{receipt_id}, image {image_id}, and version {version}"
-                )
+            )
             return result
 
         # If no version is provided, query for all analyses and return the
@@ -280,7 +284,7 @@ class _ReceiptStructureAnalysis(
         )
 
         if not results:
-            raise ValueError(
+            raise EntityNotFoundError(
                 "Receipt Structure Analysis for Image ID "
                 f"{image_id} and Receipt ID {receipt_id} does not exist"
             )
@@ -312,11 +316,11 @@ class _ReceiptStructureAnalysis(
                 DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -349,18 +353,18 @@ class _ReceiptStructureAnalysis(
                 DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 (
                     f"receipt_id must be an integer, got"
                     f" {type(receipt_id).__name__}"
-                )
+            )
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 (
                     f"image_id must be a string, got"
                     f" {type(image_id).__name__}"
-                )
+            )
             )
 
         assert_valid_uuid(image_id)

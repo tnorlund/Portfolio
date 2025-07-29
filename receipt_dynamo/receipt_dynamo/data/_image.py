@@ -39,6 +39,7 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -82,7 +83,7 @@ class _Image(
     def get_image(self, image_id: str) -> Image:
         """Retrieves a single Image item by its ID from the database."""
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         result = self._get_entity(
@@ -206,7 +207,7 @@ class _Image(
         """Retrieves comprehensive details for an Image, including lines and
         receipts."""
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         response = self._client.query(
@@ -290,13 +291,13 @@ class _Image(
         # Validate image type
         if not isinstance(image_type, ImageType):
             if not isinstance(image_type, str):
-                raise ValueError("image_type must be a ImageType or a string")
+                raise EntityValidationError("image_type must be a ImageType or a string")
             if image_type not in [t.value for t in ImageType]:
-                raise ValueError(
+                raise EntityValidationError(
                     f"image_type must be one of: "
                     f"{', '.join(t.value for t in ImageType)}\n"
                     f"Got: {image_type}"
-                )
+            )
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 

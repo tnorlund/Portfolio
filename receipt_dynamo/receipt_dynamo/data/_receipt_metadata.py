@@ -19,6 +19,10 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     pass
@@ -284,16 +288,16 @@ class _ReceiptMetadata(
             If parameters are invalid or if the record does not exist.
         """
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         assert_valid_uuid(image_id)
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
+            raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+            raise EntityValidationError("receipt_id must be positive")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -331,20 +335,20 @@ class _ReceiptMetadata(
             If indices is invalid.
         """
         if indices is None:
-            raise ValueError("indices cannot be None")
+            raise EntityValidationError("indices cannot be None")
         if not isinstance(indices, list):
-            raise ValueError("indices must be a list")
+            raise EntityValidationError("indices must be a list")
         if not all(isinstance(index, tuple) for index in indices):
-            raise ValueError("indices must be a list of tuples")
+            raise EntityValidationError("indices must be a list of tuples")
         if not all(
             isinstance(index[0], str) and isinstance(index[1], int)
             for index in indices
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
             )
         if not all(index[1] > 0 for index in indices):
-            raise ValueError("receipt_id must be positive")
+            raise EntityValidationError("receipt_id must be positive")
 
         keys = [
             {
@@ -375,20 +379,20 @@ class _ReceiptMetadata(
             If keys is invalid.
         """
         if keys is None:
-            raise ValueError("keys cannot be None")
+            raise EntityValidationError("keys cannot be None")
         if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
+            raise EntityValidationError("keys must be a list")
         if not all(isinstance(key, dict) for key in keys):
-            raise ValueError("keys must be a list of dictionaries")
+            raise EntityValidationError("keys must be a list of dictionaries")
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'")
+                raise EntityValidationError("SK must start with 'RECEIPT#'")
             if not key["SK"]["S"].split("#")[-1] == "METADATA":
-                raise ValueError("SK must contain 'METADATA'")
+                raise EntityValidationError("SK must contain 'METADATA'")
 
         results = []
         for i in range(0, len(keys), CHUNK_SIZE):
@@ -435,14 +439,14 @@ class _ReceiptMetadata(
             If parameters are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("limit must be positive")
+            raise EntityValidationError("limit must be positive")
 
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary")
+            raise EntityValidationError("last_evaluated_key must be a dictionary")
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -484,9 +488,9 @@ class _ReceiptMetadata(
             If merchant_name is invalid.
         """
         if merchant_name is None:
-            raise ValueError("merchant_name cannot be None")
+            raise EntityValidationError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
-            raise ValueError("merchant_name must be a string")
+            raise EntityValidationError("merchant_name must be a string")
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
@@ -532,17 +536,17 @@ class _ReceiptMetadata(
             If place_id is invalid.
         """
         if not place_id:
-            raise ValueError("place_id cannot be empty")
+            raise EntityValidationError("place_id cannot be empty")
         if not isinstance(place_id, str):
-            raise ValueError("place_id must be a string")
+            raise EntityValidationError("place_id must be a string")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("limit must be positive")
+            raise EntityValidationError("limit must be positive")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary")
+            raise EntityValidationError("last_evaluated_key must be a dictionary")
 
         return self._query_entities(
             index_name="GSI2",
@@ -587,13 +591,13 @@ class _ReceiptMetadata(
             If confidence is invalid.
         """
         if confidence is None:
-            raise ValueError("confidence cannot be None")
+            raise EntityValidationError("confidence cannot be None")
         if not isinstance(confidence, float):
-            raise ValueError("confidence must be a float")
+            raise EntityValidationError("confidence must be a float")
         if confidence < 0 or confidence > 1:
-            raise ValueError("confidence must be between 0 and 1")
+            raise EntityValidationError("confidence must be between 0 and 1")
         if above is not None and not isinstance(above, bool):
-            raise ValueError("above must be a boolean")
+            raise EntityValidationError("above must be a boolean")
 
         formatted_score = f"CONFIDENCE#{confidence:.4f}"
 
@@ -628,17 +632,17 @@ class _ReceiptMetadata(
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ValidationException":
-                raise ValueError(
+                raise EntityValidationError(
                     (
                         "receipt_metadata contains invalid attributes or "
                         f"values: {e}"
-                    )
+            )
                 ) from e
             elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
+                raise EntityValidationError("internal server error") from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
+                raise EntityValidationError("provisioned throughput exceeded") from e
             elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
+                raise EntityNotFoundError("table not found") from e
             else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+                raise EntityValidationError(f"Error getting receipt metadata: {e}") from e

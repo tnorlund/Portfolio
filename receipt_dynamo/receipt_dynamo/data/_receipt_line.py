@@ -135,7 +135,7 @@ class _ReceiptLine(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"ReceiptLine with image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id} not found"
             )
@@ -147,24 +147,24 @@ class _ReceiptLine(
     ) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their indices."""
         if indices is None:
-            raise ValueError("indices cannot be None")
+            raise EntityValidationError("indices cannot be None")
         if not isinstance(indices, list):
-            raise ValueError("indices must be a list of tuples.")
+            raise EntityValidationError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):
-            raise ValueError("indices must be a list of tuples.")
+            raise EntityValidationError("indices must be a list of tuples.")
 
         for index in indices:
             if len(index) != 3:
-                raise ValueError(
+                raise EntityValidationError(
                     "indices must be a list of tuples with 3 elements."
-                )
+            )
             if not isinstance(index[0], str):
-                raise ValueError("First element of tuple must be a string.")
+                raise EntityValidationError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
-                raise ValueError("Second element of tuple must be an integer.")
+                raise EntityValidationError("Second element of tuple must be an integer.")
             if not isinstance(index[2], int):
-                raise ValueError("Third element of tuple must be an integer.")
+                raise EntityValidationError("Third element of tuple must be an integer.")
 
         # Assemble the keys
         keys = []
@@ -182,22 +182,22 @@ class _ReceiptLine(
     def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their keys."""
         if keys is None:
-            raise ValueError("keys cannot be None")
+            raise EntityValidationError("keys cannot be None")
         if not isinstance(keys, list):
-            raise ValueError("keys must be a list of dictionaries.")
+            raise EntityValidationError("keys must be a list of dictionaries.")
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'")
+                raise EntityValidationError("SK must start with 'RECEIPT#'")
             if len(key["SK"]["S"].split("#")[1]) != 5:
-                raise ValueError("SK must contain a 5-digit receipt ID")
+                raise EntityValidationError("SK must contain a 5-digit receipt ID")
             if not key["SK"]["S"].split("#")[2] == "LINE":
-                raise ValueError("SK must contain 'LINE'")
+                raise EntityValidationError("SK must contain 'LINE'")
             if len(key["SK"]["S"].split("#")[3]) != 5:
-                raise ValueError("SK must contain a 5-digit line ID")
+                raise EntityValidationError("SK must contain a 5-digit line ID")
 
         # Get the receipt lines
         results = []
@@ -228,9 +228,9 @@ class _ReceiptLine(
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
             except ClientError as e:
-                raise ValueError(
+                raise EntityValidationError(
                     f"Could not get ReceiptLines from the database: {e}"
-                ) from e
+            ) from e
 
         return [item_to_receipt_line(result) for result in results]
 
@@ -241,11 +241,11 @@ class _ReceiptLine(
     ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
         """Returns all ReceiptLines from the table."""
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
         return self._query_entities(
@@ -270,13 +270,13 @@ class _ReceiptLine(
         elif isinstance(embedding_status, str):
             status_str = embedding_status
         else:
-            raise ValueError(
+            raise EntityValidationError(
                 "embedding_status must be an instance of EmbeddingStatus "
                 "or a string"
             )
 
         if status_str not in [status.value for status in EmbeddingStatus]:
-            raise ValueError(
+            raise EntityValidationError(
                 "embedding_status must be a valid EmbeddingStatus"
             )
 
@@ -319,15 +319,15 @@ class _ReceiptLine(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             elif error_code == "ValidationException":
-                raise ValueError(
+                raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-                ) from e
+            ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
-                raise ValueError(
+                raise EntityValidationError(
                     f"Could not list ReceiptLines from the database: {e}"
-                ) from e
+            ) from e
 
     def list_receipt_lines_from_receipt(
         self, receipt_id: int, image_id: str
@@ -363,6 +363,6 @@ class _ReceiptLine(
 
             return receipt_lines
         except ClientError as e:
-            raise ValueError(
+            raise EntityValidationError(
                 "Could not list ReceiptLines from the database"
             ) from e

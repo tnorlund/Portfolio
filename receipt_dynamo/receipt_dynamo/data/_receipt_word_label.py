@@ -33,12 +33,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"last_evaluated_key must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"last_evaluated_key[{key}] must be a dict containing a key "
                 f"'S'"
             )
@@ -279,50 +279,50 @@ class _ReceiptWordLabel(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if line_id is None:
-            raise ValueError("line_id cannot be None")
+            raise EntityValidationError("line_id cannot be None")
         if word_id is None:
-            raise ValueError("word_id cannot be None")
+            raise EntityValidationError("word_id cannot be None")
         if label is None:
-            raise ValueError("label cannot be None")
+            raise EntityValidationError("label cannot be None")
 
         # Then check types
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 "receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if not isinstance(line_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 "line_id must be an integer, got " f"{type(line_id).__name__}"
             )
         if not isinstance(word_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 "word_id must be an integer, got " f"{type(word_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "image_id must be a string, got " f"{type(image_id).__name__}"
             )
         if not isinstance(label, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "label must be a string, got " f"{type(label).__name__}"
             )
 
         # Check for positive integers
         if receipt_id <= 0:
-            raise ValueError("Receipt ID must be a positive integer.")
+            raise EntityValidationError("Receipt ID must be a positive integer.")
         if line_id <= 0:
-            raise ValueError("Line ID must be a positive integer.")
+            raise EntityValidationError("Line ID must be a positive integer.")
         if word_id <= 0:
-            raise ValueError("Word ID must be a positive integer.")
+            raise EntityValidationError("Word ID must be a positive integer.")
 
         # Check for non-empty label
         if not label:
-            raise ValueError("Label must be a non-empty string.")
+            raise EntityValidationError("Label must be a non-empty string.")
 
         assert_valid_uuid(image_id)
 
@@ -334,7 +334,7 @@ class _ReceiptWordLabel(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Receipt Word Label for Receipt ID {receipt_id}, "
                 f"Line ID {line_id}, Word ID {word_id}, Label '{label}', "
                 f"and Image ID {image_id} does not exist"
@@ -358,9 +358,9 @@ class _ReceiptWordLabel(
             ValueError: When any key is invalid
         """
         if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
+            raise EntityValidationError("keys must be a list")
         if not all(isinstance(key, tuple) and len(key) == 3 for key in keys):
-            raise ValueError(
+            raise EntityValidationError(
                 "keys must be a list of (receipt_id, word_id, image_id) tuples"
             )
 
@@ -411,12 +411,12 @@ class _ReceiptWordLabel(
         """
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("limit must be an integer")
+                raise EntityValidationError("limit must be an integer")
             if limit <= 0:
-                raise ValueError("limit must be greater than 0")
+                raise EntityValidationError("limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -442,7 +442,7 @@ class _ReceiptWordLabel(
             List[ReceiptWordLabel]: The receipt word labels for the image
         """
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         assert_valid_uuid(image_id)
@@ -485,14 +485,14 @@ class _ReceiptWordLabel(
                 and last evaluated key
         """
         if not isinstance(status, ValidationStatus):
-            raise ValueError("status must be a ValidationStatus instance")
+            raise EntityValidationError("status must be a ValidationStatus instance")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError(
+                raise EntityValidationError(
                     "last_evaluated_key must be a dictionary or None"
-                )
+            )
             validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []
@@ -553,19 +553,19 @@ class _ReceiptWordLabel(
         """
         # Validate label
         if not isinstance(label, str) or not label:
-            raise ValueError("label must be a non-empty string")
+            raise EntityValidationError("label must be a non-empty string")
 
         # Validate limit
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("limit must be an integer")
+                raise EntityValidationError("limit must be an integer")
             if limit <= 0:
-                raise ValueError("limit must be greater than 0")
+                raise EntityValidationError("limit must be greater than 0")
 
         # Validate last_evaluated_key
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []
@@ -635,12 +635,12 @@ class _ReceiptWordLabel(
         """
         # Validate validation_status
         if not isinstance(validation_status, str) or not validation_status:
-            raise ValueError("validation status must be a non-empty string")
+            raise EntityValidationError("validation status must be a non-empty string")
 
         # Validate that validation_status is one of the valid values
         valid_statuses = [status.value for status in ValidationStatus]
         if validation_status not in valid_statuses:
-            raise ValueError(
+            raise EntityValidationError(
                 "validation status must be one of the following: "
                 f"{', '.join(valid_statuses)}"
             )
@@ -648,14 +648,14 @@ class _ReceiptWordLabel(
         # Validate limit
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("limit must be an integer")
+                raise EntityValidationError("limit must be an integer")
             if limit <= 0:
-                raise ValueError("limit must be greater than 0")
+                raise EntityValidationError("limit must be greater than 0")
 
         # Validate last_evaluated_key
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         word_labels = []

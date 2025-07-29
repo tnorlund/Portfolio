@@ -175,31 +175,31 @@ class _ReceiptWord(
     ) -> list[ReceiptWord]:
         """Retrieves multiple ReceiptWords by their indices."""
         if indices is None:
-            raise ValueError("indices cannot be None")
+            raise EntityValidationError("indices cannot be None")
         if not isinstance(indices, list):
-            raise ValueError("indices must be a list of tuples.")
+            raise EntityValidationError("indices must be a list of tuples.")
         if not all(isinstance(index, tuple) for index in indices):
-            raise ValueError("indices must be a list of tuples.")
+            raise EntityValidationError("indices must be a list of tuples.")
         for index in indices:
             if len(index) != 4:
-                raise ValueError(
+                raise EntityValidationError(
                     "indices must be a list of tuples with 4 elements."
-                )
+            )
             if not isinstance(index[0], str):
-                raise ValueError("First element of tuple must be a string.")
+                raise EntityValidationError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
-                raise ValueError("Second element of tuple must be an integer.")
+                raise EntityValidationError("Second element of tuple must be an integer.")
             if index[1] <= 0:
-                raise ValueError("Second element of tuple must be positive.")
+                raise EntityValidationError("Second element of tuple must be positive.")
             if not isinstance(index[2], int):
-                raise ValueError("Third element of tuple must be an integer.")
+                raise EntityValidationError("Third element of tuple must be an integer.")
             if index[2] <= 0:
-                raise ValueError("Third element of tuple must be positive.")
+                raise EntityValidationError("Third element of tuple must be positive.")
             if not isinstance(index[3], int):
-                raise ValueError("Fourth element of tuple must be an integer.")
+                raise EntityValidationError("Fourth element of tuple must be an integer.")
             if index[3] <= 0:
-                raise ValueError("Fourth element of tuple must be positive.")
+                raise EntityValidationError("Fourth element of tuple must be positive.")
 
         keys = [
             {
@@ -219,15 +219,15 @@ class _ReceiptWord(
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("Keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'")
+                raise EntityValidationError("SK must start with 'RECEIPT#'")
             if not key["SK"]["S"].split("#")[2] == "LINE":
-                raise ValueError("SK must contain 'LINE'")
+                raise EntityValidationError("SK must contain 'LINE'")
             if not key["SK"]["S"].split("#")[4] == "WORD":
-                raise ValueError("SK must contain 'WORD'")
+                raise EntityValidationError("SK must contain 'WORD'")
         results = []
 
         try:
@@ -268,7 +268,7 @@ class _ReceiptWord(
             return [item_to_receipt_word(result) for result in results]
 
         except ClientError as e:
-            raise ValueError(
+            raise EntityValidationError(
                 f"Could not get ReceiptWords from the database: {e}"
             ) from e
 
@@ -279,11 +279,11 @@ class _ReceiptWord(
     ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
         """Returns all ReceiptWords from the table."""
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
@@ -333,13 +333,13 @@ class _ReceiptWord(
                 querying DynamoDB
         """
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string.")
+            raise EntityValidationError("image_id must be a string.")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
 
         receipt_words = []
         try:
@@ -403,9 +403,9 @@ class _ReceiptWord(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             elif error_code == "ValidationException":
-                raise ValueError(
+                raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-                ) from e
+            ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
@@ -423,13 +423,13 @@ class _ReceiptWord(
         elif isinstance(embedding_status, str):
             status_str = embedding_status
         else:
-            raise ValueError(
+            raise EntityValidationError(
                 "embedding_status must be a string or " "EmbeddingStatus enum"
             )
         # Ensure the status_str is a valid EmbeddingStatus value
         valid_values = [s.value for s in EmbeddingStatus]
         if status_str not in valid_values:
-            raise ValueError(
+            raise EntityValidationError(
                 f"embedding_status must be one of: {', '.join(valid_values)};"
                 f" Got: {status_str}"
             )

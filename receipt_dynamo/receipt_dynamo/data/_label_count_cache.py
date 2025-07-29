@@ -36,9 +36,9 @@ class _LabelCountCache(
     @handle_dynamodb_errors("add_label_count_cache")
     def add_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
-            raise ValueError("item cannot be None")
+            raise EntityValidationError("item cannot be None")
         if not isinstance(item, LabelCountCache):
-            raise ValueError(
+            raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
         try:
@@ -60,11 +60,11 @@ class _LabelCountCache(
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
-            raise ValueError("items cannot be None")
+            raise EntityValidationError("items cannot be None")
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "items must be a list of LabelCountCache objects.f"
             )
         try:
@@ -100,9 +100,9 @@ class _LabelCountCache(
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:
-            raise ValueError("item cannot be None")
+            raise EntityValidationError("item cannot be None")
         if not isinstance(item, LabelCountCache):
-            raise ValueError(
+            raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
         try:
@@ -114,9 +114,9 @@ class _LabelCountCache(
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"LabelCountCache for label {item.label} does not exist"
-                ) from e
+            ) from e
             raise DynamoDBError(
                 f"Could not update label count cache in DynamoDB: {e}"
             ) from e

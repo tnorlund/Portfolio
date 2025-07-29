@@ -10,6 +10,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     pass
@@ -122,7 +123,7 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
         # Query using GSI1 to get metrics by date
         # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
         if not service:
-            raise ValueError(
+            raise EntityValidationError(
                 "Service parameter is required for date-based queries"
             )
 

@@ -27,12 +27,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -204,7 +204,7 @@ class _Job(
             Exception: For underlying DynamoDB errors.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
@@ -233,7 +233,7 @@ class _Job(
                 of its status updates
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
 
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
@@ -286,12 +286,12 @@ class _Job(
             Exception: If the underlying database query fails.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -339,24 +339,24 @@ class _Job(
             "interrupted",
         ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
-            raise ValueError(f"status must be one of {valid_statuses}")
+            raise EntityValidationError(f"status must be one of {valid_statuses}")
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
                 k in last_evaluated_key
                 for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
-                raise ValueError(
+                raise EntityValidationError(
                     "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK"
                     " keys"
-                )
+            )
 
         return self._query_entities(
             index_name="GSI1",
@@ -399,24 +399,24 @@ class _Job(
             Exception: If the underlying database query fails.
         """
         if not isinstance(user_id, str) or not user_id:
-            raise ValueError("user_id must be a non-empty string")
+            raise EntityValidationError("user_id must be a non-empty string")
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
                 k in last_evaluated_key
                 for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
-                raise ValueError(
+                raise EntityValidationError(
                     "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK"
                     " keys"
-                )
+            )
 
         return self._query_entities(
             index_name="GSI2",

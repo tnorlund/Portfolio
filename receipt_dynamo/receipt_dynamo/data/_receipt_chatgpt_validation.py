@@ -253,16 +253,16 @@ class _ReceiptChatGPTValidation(
             ReceiptChatGPTValidation: The retrieved receipt ChatGPT validation.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
         if timestamp is None:
-            raise ValueError("timestamp cannot be None")
+            raise EntityValidationError("timestamp cannot be None")
         if not isinstance(timestamp, str):
-            raise ValueError("timestamp must be a string.")
+            raise EntityValidationError("timestamp must be a string.")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -272,12 +272,12 @@ class _ReceiptChatGPTValidation(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 (
                     "ReceiptChatGPTValidation with receipt ID "
                     f"{receipt_id}, image ID {image_id}, and "
                     f"timestamp {timestamp} not found"
-                )
+            )
             )
         
         return result
@@ -308,11 +308,11 @@ class _ReceiptChatGPTValidation(
                 evaluated key (or None if no more results).
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
@@ -349,11 +349,11 @@ class _ReceiptChatGPTValidation(
                 A list of ChatGPT validations for the specified receipt.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
         results, _ = self._query_entities(
@@ -401,17 +401,17 @@ class _ReceiptChatGPTValidation(
                 evaluated key (or None if no more results).
         """
         if status is None:
-            raise ValueError("status cannot be None")
+            raise EntityValidationError("status cannot be None")
         if not isinstance(status, str):
-            raise ValueError("status must be a string.")
+            raise EntityValidationError("status must be a string.")
         if not status:
-            raise ValueError("status must not be empty.")
+            raise EntityValidationError("status must not be empty.")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 

@@ -39,12 +39,12 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     """
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -89,7 +89,7 @@ class _CompletionBatchResult(
         if not isinstance(results, list) or not all(
             isinstance(r, CompletionBatchResult) for r in results
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "Must provide a list of CompletionBatchResult instances."
             )
         for i in range(0, len(results), 25):
@@ -163,7 +163,7 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
-            raise ValueError("limit must be a positive integer.")
+            raise EntityValidationError("limit must be a positive integer.")
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
@@ -185,7 +185,7 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if status not in [s.value for s in ValidationStatus]:
-            raise ValueError("Invalid status.")
+            raise EntityValidationError("Invalid status.")
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
@@ -207,7 +207,7 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(label_target, str):
-            raise ValueError("label_target must be a string.")
+            raise EntityValidationError("label_target must be a string.")
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
@@ -231,7 +231,7 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise ValueError("receipt_id must be a positive integer")
+            raise EntityValidationError("receipt_id must be a positive integer")
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 

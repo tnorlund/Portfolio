@@ -19,6 +19,10 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     item_to_receipt_label_analysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -36,12 +40,12 @@ else:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -224,27 +228,27 @@ class _ReceiptLabelAnalysis(
         """
         # Check for None values first
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
 
         # Then check types
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 "receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if version is not None and not isinstance(version, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "version must be a string or None, got "
                 f"{type(version).__name__}"
             )
 
         # Check for positive integers
         if receipt_id <= 0:
-            raise ValueError("Receipt ID must be a positive integer.")
+            raise EntityValidationError("Receipt ID must be a positive integer.")
 
         assert_valid_uuid(image_id)
 
@@ -257,10 +261,10 @@ class _ReceiptLabelAnalysis(
                 converter_func=item_to_receipt_label_analysis
             )
             if result is None:
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"No ReceiptLabelAnalysis found for receipt {receipt_id}, "
                     f"image {image_id}, and version {version}"
-                )
+            )
             return result
         # Query for any version and return first
         results, _ = self._query_entities(
@@ -281,7 +285,7 @@ class _ReceiptLabelAnalysis(
         )
 
         if not results:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Receipt Label Analysis for Image ID {image_id} and "
                 f"Receipt ID {receipt_id} does not exist"
             )
@@ -307,12 +311,12 @@ class _ReceiptLabelAnalysis(
                 receipt label analyses and the last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -341,7 +345,7 @@ class _ReceiptLabelAnalysis(
                 The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         assert_valid_uuid(image_id)
 
         results, _ = self._query_entities(
@@ -382,18 +386,18 @@ class _ReceiptLabelAnalysis(
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         assert_valid_uuid(image_id)
 
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("Limit must be an integer")
+                raise EntityValidationError("Limit must be an integer")
             if limit <= 0:
-                raise ValueError("Limit must be greater than 0")
+                raise EntityValidationError("Limit must be greater than 0")
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
@@ -474,23 +478,23 @@ class _ReceiptLabelAnalysis(
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         assert_valid_uuid(image_id)
 
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be a positive integer")
+            raise EntityValidationError("receipt_id must be a positive integer")
         if receipt_id <= 0:
-            raise ValueError("receipt_id must be a positive integer")
+            raise EntityValidationError("receipt_id must be a positive integer")
 
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("Limit must be an integer")
+                raise EntityValidationError("Limit must be an integer")
             if limit <= 0:
-                raise ValueError("Limit must be greater than 0")
+                raise EntityValidationError("Limit must be greater than 0")
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []

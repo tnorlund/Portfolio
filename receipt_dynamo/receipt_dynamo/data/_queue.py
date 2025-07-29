@@ -9,6 +9,7 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -30,13 +31,13 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
         return
 
     if not all(k in lek for k in ["PK", "SK"]):
-        raise ValueError("LastEvaluatedKey must contain PK and SK")
+        raise EntityValidationError("LastEvaluatedKey must contain PK and SK")
 
     # Check if the values are in the correct format
     if not all(
         isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]
     ):
-        raise ValueError(
+        raise EntityValidationError(
             (
                 "LastEvaluatedKey values must be in "
                 "DynamoDB format with 'S' attribute"
@@ -136,7 +137,7 @@ class _Queue(
                 exist.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty")
+            raise EntityValidationError("queue_name cannot be empty")
 
         result = self._get_entity(
             primary_key=f"QUEUE#{queue_name}",
@@ -263,7 +264,7 @@ class _Queue(
                 is invalid.
         """
         if not queue_name:
-            raise ValueError("queue_name cannot be empty")
+            raise EntityValidationError("queue_name cannot be empty")
 
         # Check if the queue exists
         try:
@@ -312,7 +313,7 @@ class _Queue(
                 is invalid.
         """
         if not job_id:
-            raise ValueError("job_id cannot be empty")
+            raise EntityValidationError("job_id cannot be empty")
 
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)

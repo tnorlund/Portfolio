@@ -41,9 +41,9 @@ class _OCRRoutingDecision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):
         if ocr_routing_decision is None:
-            raise ValueError("ocr_routing_decision cannot be None")
+            raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
-            raise ValueError(
+            raise EntityValidationError(
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
@@ -78,14 +78,14 @@ class _OCRRoutingDecision(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
     ):
         if ocr_routing_decisions is None:
-            raise ValueError("ocr_routing_decisions cannot be None")
+            raise EntityValidationError("ocr_routing_decisions cannot be None")
         if not isinstance(ocr_routing_decisions, list):
-            raise ValueError("ocr_routing_decisions must be a list")
+            raise EntityValidationError("ocr_routing_decisions must be a list")
         if not all(
             isinstance(decision, OCRRoutingDecision)
             for decision in ocr_routing_decisions
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "All items in ocr_routing_decisions must be instances of "
                 "OCRRoutingDecision"
             )
@@ -127,9 +127,9 @@ class _OCRRoutingDecision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):
         if ocr_routing_decision is None:
-            raise ValueError("ocr_routing_decision cannot be None")
+            raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
-            raise ValueError(
+            raise EntityValidationError(
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
@@ -142,11 +142,11 @@ class _OCRRoutingDecision(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' not found"
-                ) from e
+            ) from e
             raise OperationError(
                 f"Error updating OCR routing decision: {e}"
             ) from e
@@ -156,13 +156,13 @@ class _OCRRoutingDecision(
         self, image_id: str, job_id: str
     ) -> OCRRoutingDecision:
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
+            raise EntityValidationError("image_id must be a string")
         if not isinstance(job_id, str):
-            raise ValueError("job_id must be a string")
+            raise EntityValidationError("job_id must be a string")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
         
@@ -174,7 +174,7 @@ class _OCRRoutingDecision(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"OCR routing decision for Image ID '{image_id}' "
                 f"and Job ID '{job_id}' not found"
             )
@@ -186,9 +186,9 @@ class _OCRRoutingDecision(
         self, ocr_routing_decision: OCRRoutingDecision
     ):
         if ocr_routing_decision is None:
-            raise ValueError("ocr_routing_decision cannot be None")
+            raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
-            raise ValueError(
+            raise EntityValidationError(
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
@@ -204,11 +204,11 @@ class _OCRRoutingDecision(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"OCR routing decision for Image ID "
                     f"'{ocr_routing_decision.image_id}' and Job ID "
                     f"'{ocr_routing_decision.job_id}' does not exist."
-                ) from e
+            ) from e
             raise OperationError(
                 f"Error deleting OCR routing decision: {e}"
             ) from e
@@ -217,14 +217,14 @@ class _OCRRoutingDecision(
         self, ocr_routing_decisions: list[OCRRoutingDecision]
     ):
         if ocr_routing_decisions is None:
-            raise ValueError("ocr_routing_decisions cannot be None")
+            raise EntityValidationError("ocr_routing_decisions cannot be None")
         if not isinstance(ocr_routing_decisions, list):
-            raise ValueError("ocr_routing_decisions must be a list")
+            raise EntityValidationError("ocr_routing_decisions must be a list")
         if not all(
             isinstance(decision, OCRRoutingDecision)
             for decision in ocr_routing_decisions
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "All ocr_routing_decisions must be instances of "
                 "OCRRoutingDecision"
             )
@@ -248,17 +248,17 @@ class _OCRRoutingDecision(
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
+                    raise EntityNotFoundError(
                         "OCR routing decision does not exist"
-                    ) from e
+            ) from e
                 if error_code == "ProvisionedThroughputExceededException":
-                    raise RuntimeError(
+                    raise DynamoDBThroughputError(
                         f"Provisioned throughput exceeded: {e}"
                     ) from e
                 if error_code == "InternalServerError":
-                    raise RuntimeError(f"Internal server error: {e}") from e
+                    raise DynamoDBServerError(f"Internal server error: {e}") from e
                 if error_code == "AccessDeniedException":
-                    raise RuntimeError(f"Access denied: {e}") from e
-                raise RuntimeError(
+                    raise DynamoDBAccessError(f"Access denied: {e}") from e
+                raise DynamoDBError(
                     f"Error deleting OCR routing decisions: {e}"
                 ) from e

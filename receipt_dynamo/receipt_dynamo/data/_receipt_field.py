@@ -41,12 +41,12 @@ CHUNK_SIZE = 25
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -271,18 +271,18 @@ class _ReceiptField(
             If input parameters are invalid or if the field does not exist.
         """
         if field_type is None:
-            raise ValueError("field_type cannot be None")
+            raise EntityValidationError("field_type cannot be None")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
 
         # Validate image_id as a UUID and receipt_id as a positive integer
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise ValueError("Receipt ID must be a positive integer.")
+            raise EntityValidationError("Receipt ID must be a positive integer.")
         if not isinstance(field_type, str) or not field_type:
-            raise ValueError("Field type must be a non-empty string.")
+            raise EntityValidationError("Field type must be a non-empty string.")
 
         result = self._get_entity(
             primary_key=f"FIELD#{field_type.upper()}",
@@ -329,12 +329,12 @@ class _ReceiptField(
             If the limit is not an integer or is less than or equal to 0.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -378,15 +378,15 @@ class _ReceiptField(
             If the image_id is invalid or if pagination parameters are invalid.
         """
         if not isinstance(image_id, str):
-            raise ValueError("Image ID must be a string")
+            raise EntityValidationError("Image ID must be a string")
         assert_valid_uuid(image_id)
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -436,17 +436,17 @@ class _ReceiptField(
             parameters are invalid.
         """
         if not isinstance(image_id, str):
-            raise ValueError("Image ID must be a string")
+            raise EntityValidationError("Image ID must be a string")
         assert_valid_uuid(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise ValueError("Receipt ID must be a positive integer")
+            raise EntityValidationError("Receipt ID must be a positive integer")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(

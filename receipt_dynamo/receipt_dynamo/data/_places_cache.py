@@ -97,9 +97,9 @@ class _PlacesCache(
             Exception: If there's an error updating the item.
         """
         if item is None:
-            raise ValueError("item cannot be None")
+            raise EntityValidationError("item cannot be None")
         if not isinstance(item, PlacesCache):
-            raise ValueError(
+            raise EntityValidationError(
                 "item must be an instance of the PlacesCache class."
             )
 
@@ -149,13 +149,13 @@ class _PlacesCache(
         Deletes a list of PlacesCache items from the database.
         """
         if places_cache_items is None:
-            raise ValueError("places_cache_items cannot be None")
+            raise EntityValidationError("places_cache_items cannot be None")
         if not isinstance(places_cache_items, list):
-            raise ValueError("places_cache_items must be a list.")
+            raise EntityValidationError("places_cache_items must be a list.")
         if not all(
             isinstance(item, PlacesCache) for item in places_cache_items
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "All items in places_cache_items must be PlacesCache objects."
             )
 
@@ -190,25 +190,25 @@ class _PlacesCache(
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "ConditionalCheckFailedException":
-                    raise ValueError(
+                    raise EntityValidationError(
                         "places_cache_items contains invalid attributes "
                         "or values"
-                    ) from e
+            ) from e
                 elif error_code == "ValidationException":
-                    raise ValueError(
+                    raise EntityValidationError(
                         "places_cache_items contains invalid attributes "
                         "or values"
-                    ) from e
+            ) from e
                 elif error_code == "InternalServerError":
-                    raise ValueError("internal server error") from e
+                    raise EntityValidationError("internal server error") from e
                 elif error_code == "ProvisionedThroughputExceededException":
-                    raise ValueError("provisioned throughput exceeded") from e
+                    raise EntityValidationError("provisioned throughput exceeded") from e
                 elif error_code == "ResourceNotFoundException":
-                    raise ValueError("table not found") from e
+                    raise EntityNotFoundError("table not found") from e
                 else:
-                    raise ValueError(
+                    raise EntityValidationError(
                         f"Error deleting places caches: {e}"
-                    ) from e
+            ) from e
 
     @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
@@ -290,11 +290,11 @@ class _PlacesCache(
                 evaluated key.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 

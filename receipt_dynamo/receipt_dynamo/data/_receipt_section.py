@@ -187,11 +187,11 @@ class _ReceiptSection(
                 e.response["Error"]["Code"]
                 == "ConditionalCheckFailedException"
             ):
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"ReceiptSection with receipt_id {receipt_id}, "
                     f"image_id {image_id}, and section_type {section_type} "
                     "not found"
-                ) from e
+            ) from e
             else:
                 raise
 
@@ -230,7 +230,7 @@ class _ReceiptSection(
                     )
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
-            raise ValueError(
+            raise EntityValidationError(
                 "Could not delete ReceiptSections from the database"
             ) from e
 
@@ -268,7 +268,7 @@ class _ReceiptSection(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"ReceiptSection with receipt_id {receipt_id}, "
                 f"image_id {image_id}, and section_type {section_type} "
                 "not found"
@@ -300,9 +300,9 @@ class _ReceiptSection(
             If parameters are invalid or query fails.
         """
         if image_id is None:
-            raise ValueError("image_id is required")
+            raise EntityValidationError("image_id is required")
         if receipt_id is None:
-            raise ValueError("receipt_id is required")
+            raise EntityValidationError("receipt_id is required")
         try:
             # Query by the image ID for the PK and
             expected_pk = f"IMAGE#{image_id}"
@@ -321,17 +321,17 @@ class _ReceiptSection(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
-                raise ValueError(
+                raise EntityValidationError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
-                ) from e
+            ) from e
             elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError(
+                raise EntityValidationError(
                     f"Provisioned throughput exceeded: {e}"
-                ) from e
+            ) from e
             else:
-                raise ValueError(
+                raise EntityValidationError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
-                ) from e
+            ) from e
 
     def list_receipt_sections(
         self,
@@ -359,11 +359,11 @@ class _ReceiptSection(
             If parameters are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
@@ -419,9 +419,9 @@ class _ReceiptSection(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             elif error_code == "ValidationException":
-                raise ValueError(
+                raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-                ) from e
+            ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:

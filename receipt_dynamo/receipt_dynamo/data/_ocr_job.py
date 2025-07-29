@@ -17,6 +17,13 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    EntityValidationError,
+    OperationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -102,9 +109,9 @@ class _OCRJob(
             ValueError: When the OCR job is not found
         """
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
         
@@ -183,12 +190,12 @@ class _OCRJob(
                 jobs and the last evaluated key
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -221,16 +228,16 @@ class _OCRJob(
                 jobs and the last evaluated key
         """
         if status is None:
-            raise ValueError("status cannot be None")
+            raise EntityValidationError("status cannot be None")
         if not isinstance(status, OCRStatus):
-            raise ValueError("Status must be a OCRStatus instance.")
+            raise EntityValidationError("Status must be a OCRStatus instance.")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
 
         jobs: List[OCRJob] = []
         try:
@@ -273,11 +280,11 @@ class _OCRJob(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ProvisionedThroughputExceededException":
-                raise RuntimeError(
+                raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
             if error_code == "InternalServerError":
-                raise RuntimeError(f"Internal server error: {e}") from e
+                raise DynamoDBServerError(f"Internal server error: {e}") from e
             if error_code == "AccessDeniedException":
-                raise RuntimeError(f"Access denied: {e}") from e
-            raise RuntimeError(f"Error getting OCR jobs by status: {e}") from e
+                raise DynamoDBAccessError(f"Access denied: {e}") from e
+            raise OperationError(f"Error getting OCR jobs by status: {e}") from e

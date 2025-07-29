@@ -25,12 +25,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -51,9 +51,9 @@ class _JobStatus(
                 exists
         """
         if job_status is None:
-            raise ValueError("job_status cannot be None")
+            raise EntityValidationError("job_status cannot be None")
         if not isinstance(job_status, JobStatus):
-            raise ValueError(
+            raise EntityValidationError(
                 "job_status must be an instance of the JobStatus class."
             )
         try:
@@ -99,7 +99,7 @@ class _JobStatus(
             ValueError: If the job does not exist or has no status updates
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         try:
@@ -115,9 +115,9 @@ class _JobStatus(
             )
 
             if not response["Items"]:
-                raise ValueError(
+                raise EntityNotFoundError(
                     f"No status updates found for job with ID {job_id}"
-                )
+            )
 
             return item_to_job_status(response["Items"][0])
         except ClientError as e:
@@ -165,16 +165,16 @@ class _JobStatus(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         statuses: List[JobStatus] = []
@@ -293,4 +293,4 @@ class _JobStatus(
             return job, statuses
 
         except ClientError as e:
-            raise ValueError(f"Error getting job with status: {e}") from e
+            raise EntityValidationError(f"Error getting job with status: {e}") from e

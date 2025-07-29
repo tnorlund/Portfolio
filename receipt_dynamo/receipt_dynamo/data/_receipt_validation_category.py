@@ -15,6 +15,10 @@ from receipt_dynamo.entities.receipt_validation_category import (
     ReceiptValidationCategory,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -228,23 +232,23 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 f"receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if not isinstance(field_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"field_name must be a string, got {type(field_name).__name__}"
             )
 
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -254,7 +258,7 @@ class _ReceiptValidationCategory(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"ReceiptValidationCategory for receipt {receipt_id}, "
                 f"image {image_id}, and field {field_name} does not exist"
             )
@@ -286,11 +290,11 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -331,15 +335,15 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(status, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"status must be a string, got {type(status).__name__}"
             )
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         return self._query_entities(
             index_name="GSI1",
@@ -382,25 +386,25 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
+            raise EntityValidationError(
                 f"receipt_id must be an integer, got "
                 f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
 
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
         return self._query_entities(
             index_name=None,

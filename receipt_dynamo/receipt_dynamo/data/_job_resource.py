@@ -26,12 +26,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
+            )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -74,10 +74,10 @@ class _JobResource(
             ValueError: If the job resource does not exist
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
             )
 
@@ -89,11 +89,11 @@ class _JobResource(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 (
                     "No job resource found with job ID "
                     f"{job_id} and resource ID {resource_id}"
-                )
+            )
             )
         
         return result
@@ -119,25 +119,25 @@ class _JobResource(
                 invalid
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
             )
         if not status or not isinstance(status, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Status is required and must be a non-empty string."
             )
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
         if status.lower() not in valid_statuses:
-            raise ValueError(
+            raise EntityValidationError(
                 f"Invalid status. Must be one of {valid_statuses}"
             )
 
         if status.lower() == "released" and not released_at:
-            raise ValueError(
+            raise EntityValidationError(
                 "released_at timestamp is required when status is 'released'"
             )
 
@@ -168,11 +168,11 @@ class _JobResource(
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ConditionalCheckFailedException":
-                raise ValueError(
+                raise EntityNotFoundError(
                     (
                         "No job resource found with job ID "
                         f"{job_id} and resource ID {resource_id}"
-                    )
+            )
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise ReceiptDynamoError(
@@ -215,16 +215,16 @@ class _JobResource(
             Exception: If the underlying database query fails.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -267,17 +267,17 @@ class _JobResource(
             Exception: If the underlying database query fails.
         """
         if not resource_type or not isinstance(resource_type, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Resource type is required and must be a non-empty string."
             )
 
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("Limit must be an integer")
+            raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
+            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -317,7 +317,7 @@ class _JobResource(
             Exception: If the underlying database query fails.
         """
         if not resource_id or not isinstance(resource_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
             )
 

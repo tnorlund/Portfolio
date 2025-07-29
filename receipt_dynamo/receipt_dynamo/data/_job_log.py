@@ -12,6 +12,7 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -74,11 +75,11 @@ class _JobLog(
             ClientError: If a DynamoDB error occurs.
         """
         if job_logs is None:
-            raise ValueError("job_logs cannot be None")
+            raise EntityValidationError("job_logs cannot be None")
         if not isinstance(job_logs, list):
-            raise ValueError(f"job_logs must be a list, got {type(job_logs)}")
+            raise EntityValidationError(f"job_logs must be a list, got {type(job_logs)}")
         if not all(isinstance(log, JobLog) for log in job_logs):
-            raise ValueError("All items in job_logs must be JobLog instances")
+            raise EntityValidationError("All items in job_logs must be JobLog instances")
 
         if not job_logs:
             return  # Nothing to do
@@ -144,9 +145,9 @@ class _JobLog(
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         if timestamp is None:
-            raise ValueError("timestamp cannot be None")
+            raise EntityValidationError("timestamp cannot be None")
 
         result = self._get_entity(
             primary_key=f"JOB#{job_id}",
@@ -187,7 +188,7 @@ class _JobLog(
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
 
         return self._query_entities(
             index_name=None,
@@ -214,9 +215,9 @@ class _JobLog(
             ClientError: If a DynamoDB error occurs.
         """
         if job_log is None:
-            raise ValueError("job_log cannot be None")
+            raise EntityValidationError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(
+            raise EntityValidationError(
                 f"job_log must be a JobLog instance, got {type(job_log)}"
             )
 

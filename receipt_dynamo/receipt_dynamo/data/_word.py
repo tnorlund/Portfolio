@@ -14,6 +14,7 @@ from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.word import Word
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -211,13 +212,13 @@ class _Word(
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("Keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("LINE#"):
-                raise ValueError("SK must start with 'LINE#'")
+                raise EntityValidationError("SK must start with 'LINE#'")
             if not key["SK"]["S"].split("#")[-2] == "WORD":
-                raise ValueError("SK must contain 'WORD'")
+                raise EntityValidationError("SK must contain 'WORD'")
         results = []
 
         # Split keys into chunks of up to 100

@@ -228,24 +228,24 @@ class _ReceiptLetter(
             If parameters are invalid or letter not found.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
         if line_id is None:
-            raise ValueError("line_id cannot be None")
+            raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer.")
         if word_id is None:
-            raise ValueError("word_id cannot be None")
+            raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer.")
         if letter_id is None:
-            raise ValueError("letter_id cannot be None")
+            raise EntityValidationError("letter_id cannot be None")
         if not isinstance(letter_id, int):
-            raise ValueError("letter_id must be an integer.")
+            raise EntityValidationError("letter_id must be an integer.")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -255,7 +255,7 @@ class _ReceiptLetter(
         )
         
         if result is None:
-            raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
+            raise EntityNotFoundError(f"ReceiptLetter with ID {letter_id} not found")
         
         return result
 
@@ -285,11 +285,11 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
@@ -331,20 +331,20 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
         if image_id is None:
-            raise ValueError("image_id cannot be None")
+            raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
         if line_id is None:
-            raise ValueError("line_id cannot be None")
+            raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer.")
         if word_id is None:
-            raise ValueError("word_id cannot be None")
+            raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer.")
 
         results, _ = self._query_entities(
             index_name=None,

@@ -123,7 +123,7 @@ class _Instance(
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
-            raise ValueError("instance_id cannot be None or empty")
+            raise EntityValidationError("instance_id cannot be None or empty")
 
         result = self._get_entity(
             primary_key=f"INSTANCE#{instance_id}",
@@ -133,7 +133,7 @@ class _Instance(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 f"Instance with instance id {instance_id} does not exist"
             )
         
@@ -240,9 +240,9 @@ class _Instance(
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
-            raise ValueError("instance_id cannot be None or empty")
+            raise EntityValidationError("instance_id cannot be None or empty")
         if not job_id:
-            raise ValueError("job_id cannot be None or empty")
+            raise EntityValidationError("job_id cannot be None or empty")
 
         result = self._get_entity(
             primary_key=f"INSTANCE#{instance_id}",
@@ -252,11 +252,11 @@ class _Instance(
         )
         
         if result is None:
-            raise ValueError(
+            raise EntityNotFoundError(
                 (
                     "InstanceJob for instance "
                     f"{instance_id} and job {job_id} does not exist"
-                )
+            )
             )
         
         return result
@@ -324,7 +324,7 @@ class _Instance(
         # Validate status
         valid_statuses = ["pending", "running", "stopped", "terminated"]
         if not status or status.lower() not in valid_statuses:
-            raise ValueError(f"status must be one of {valid_statuses}")
+            raise EntityValidationError(f"status must be one of {valid_statuses}")
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:
@@ -393,7 +393,7 @@ class _Instance(
             Exception: If the request failed due to an unknown error.
         """
         if not instance_id:
-            raise ValueError("instance_id cannot be None or empty")
+            raise EntityValidationError("instance_id cannot be None or empty")
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:
@@ -465,7 +465,7 @@ class _Instance(
             Exception: If the request failed due to an unknown error.
         """
         if not job_id:
-            raise ValueError("job_id cannot be None or empty")
+            raise EntityValidationError("job_id cannot be None or empty")
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:
