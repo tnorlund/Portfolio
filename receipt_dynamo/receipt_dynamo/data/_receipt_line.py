@@ -122,26 +122,25 @@ class _ReceiptLine(
         ]
         self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("get_receipt_line")
     def get_receipt_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                    },
-                },
-            )
-            return item_to_receipt_line(response["Item"])
-        except KeyError as e:
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}",
+            entity_class=ReceiptLine,
+            converter_func=item_to_receipt_line
+        )
+        
+        if result is None:
             raise ValueError(
                 f"ReceiptLine with image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id} not found"
-            ) from e
+            )
+        
+        return result
 
     def get_receipt_lines_by_indices(
         self, indices: list[tuple[str, int, int]]
@@ -249,64 +248,15 @@ class _ReceiptLine(
             raise ValueError(
                 "last_evaluated_key must be a dictionary or None."
             )
-        receipt_lines = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LINE"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-            response = self._client.query(**query_params)
-            receipt_lines.extend(
-                [item_to_receipt_line(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the receipt lines.
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    receipt_lines.extend(
-                        [
-                            item_to_receipt_line(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                # No further pages left. LEK is None.
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return receipt_lines, last_evaluated_key
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt lines from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt lines: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT_LINE"}},
+            converter_func=item_to_receipt_line,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str

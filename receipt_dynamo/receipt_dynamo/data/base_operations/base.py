@@ -13,6 +13,7 @@ from typing import (
     List,
     NoReturn,
     Optional,
+    Tuple,
     Type,
 )
 
@@ -173,9 +174,12 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         delete_params = {
             "TableName": self.table_name,
             "Key": entity.key,
-            "ConditionExpression": condition_expression,
             **kwargs,
         }
+        
+        # Only add ConditionExpression if provided
+        if condition_expression is not None:
+            delete_params["ConditionExpression"] = condition_expression
 
         self._client.delete_item(**delete_params)
 
@@ -339,3 +343,77 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 raise RuntimeError(
                     f"Failed to process all items after {max_retries} retries"
                 )
+
+    def _query_entities(
+        self,
+        index_name: Optional[str],
+        key_condition_expression: str,
+        expression_attribute_names: Optional[Dict[str, str]],
+        expression_attribute_values: Dict[str, Any],
+        converter_func: Any,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict] = None,
+        scan_index_forward: bool = True,
+        filter_expression: Optional[str] = None,
+    ) -> Tuple[List[Any], Optional[Dict]]:
+        """
+        Query entities from DynamoDB with pagination support.
+
+        Args:
+            index_name: The name of the GSI to query (None for main table)
+            key_condition_expression: The key condition expression
+            expression_attribute_names: Optional attribute name mappings
+            expression_attribute_values: The expression attribute values
+            converter_func: Function to convert items to entities
+            limit: Maximum number of items to return
+            last_evaluated_key: Key to start from for pagination
+            scan_index_forward: Whether to sort in ascending order
+            filter_expression: Optional filter expression to apply after key condition
+
+        Returns:
+            Tuple of entities list and last evaluated key for pagination
+
+        Raises:
+            ClientError: If the DynamoDB operation fails
+        """
+        entities = []
+        query_params: Dict[str, Any] = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": key_condition_expression,
+            "ExpressionAttributeValues": expression_attribute_values,
+        }
+        
+        # Only add ScanIndexForward if it's not the default value
+        if not scan_index_forward:
+            query_params["ScanIndexForward"] = scan_index_forward
+        
+        if index_name:
+            query_params["IndexName"] = index_name
+        
+        if expression_attribute_names:
+            query_params["ExpressionAttributeNames"] = expression_attribute_names
+            
+        if filter_expression:
+            query_params["FilterExpression"] = filter_expression
+            
+        if last_evaluated_key is not None:
+            query_params["ExclusiveStartKey"] = last_evaluated_key
+            
+        if limit is not None:
+            query_params["Limit"] = limit
+
+        response = self._client.query(**query_params)
+        entities.extend([converter_func(item) for item in response["Items"]])
+
+        if limit is None:
+            # If no limit is provided, paginate until all items are retrieved
+            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
+                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+                response = self._client.query(**query_params)
+                entities.extend([converter_func(item) for item in response["Items"]])
+            last_evaluated_key = None
+        else:
+            # If a limit is provided, capture the LastEvaluatedKey (if any)
+            last_evaluated_key = response.get("LastEvaluatedKey", None)
+
+        return entities, last_evaluated_key

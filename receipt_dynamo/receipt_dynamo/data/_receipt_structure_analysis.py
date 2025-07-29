@@ -247,56 +247,45 @@ class _ReceiptStructureAnalysis(
 
         if version:
             # If version is provided, get the exact item
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
-                            f"#{version}"
-                        )
-                    },
-                },
+            result = self._get_entity(
+                primary_key=f"IMAGE#{image_id}",
+                sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}",
+                entity_class=ReceiptStructureAnalysis,
+                converter_func=item_to_receipt_structure_analysis
             )
-            item = response.get("Item")
-            if not item:
+            if result is None:
                 raise ValueError(
                     "No ReceiptStructureAnalysis found for receipt "
                     f"{receipt_id}, image {image_id}, and version {version}"
                 )
-            return item_to_receipt_structure_analysis(item)
+            return result
 
         # If no version is provided, query for all analyses and return the
         # first one
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
                     "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
                 },
             },
-            "Limit": 1,  # We only need one result
-        }
+            converter_func=item_to_receipt_structure_analysis,
+            limit=1
+        )
 
-        query_response = self._client.query(**query_params)
-        items = query_response.get("Items", [])
-
-        if not items:
+        if not results:
             raise ValueError(
                 "Receipt Structure Analysis for Image ID "
                 f"{image_id} and Receipt ID {receipt_id} does not exist"
             )
 
-        return item_to_receipt_structure_analysis(items[0])
+        return results[0]
 
     @handle_dynamodb_errors("list_receipt_structure_analyses")
     def list_receipt_structure_analyses(
@@ -329,46 +318,17 @@ class _ReceiptStructureAnalysis(
         ):
             raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        structure_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
                 ":val": {"S": "RECEIPT_STRUCTURE_ANALYSIS"}
             },
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-        response = self._client.query(**query_params)
-        structure_analyses.extend(
-            [
-                item_to_receipt_structure_analysis(item)
-                for item in response["Items"]
-            ]
+            converter_func=item_to_receipt_structure_analysis,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all the structure analyses
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                structure_analyses.extend(
-                    [
-                        item_to_receipt_structure_analysis(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return structure_analyses, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_structure_analyses_from_receipt")
     def list_receipt_structure_analyses_from_receipt(
@@ -405,38 +365,20 @@ class _ReceiptStructureAnalysis(
 
         assert_valid_uuid(image_id)
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
                     "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
                 },
             },
-        }
+            converter_func=item_to_receipt_structure_analysis
+        )
 
-        response = self._client.query(**query_params)
-        analyses = [
-            item_to_receipt_structure_analysis(item)
-            for item in response["Items"]
-        ]
-
-        # Continue querying if there are more results
-        while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-            response = self._client.query(**query_params)
-            analyses.extend(
-                [
-                    item_to_receipt_structure_analysis(item)
-                    for item in response["Items"]
-                ]
-            )
-
-        return analyses
+        return results

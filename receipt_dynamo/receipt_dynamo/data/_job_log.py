@@ -148,22 +148,20 @@ class _JobLog(
         if timestamp is None:
             raise ValueError("timestamp cannot be None")
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": f"LOG#{timestamp}"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{job_id}",
+            sort_key=f"LOG#{timestamp}",
+            entity_class=JobLog,
+            converter_func=item_to_job_log
         )
-
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise EntityNotFoundError(
                 f"Job log with job_id {job_id} and timestamp {timestamp} "
                 f"not found"
             )
-
-        return item_to_job_log(item)
+        
+        return result
 
     @handle_dynamodb_errors("list_job_logs")
     def list_job_logs(
@@ -191,36 +189,18 @@ class _JobLog(
         if job_id is None:
             raise ValueError("job_id cannot be None")
 
-        # Prepare KeyConditionExpression
-        key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
-        expression_attribute_values = {
-            ":pk": {"S": f"JOB#{job_id}"},
-            ":sk_prefix": {"S": "LOG#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_logs = [
-            item_to_job_log(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_logs, last_evaluated_key
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{job_id}"},
+                ":sk_prefix": {"S": "LOG#"},
+            },
+            converter_func=item_to_job_log,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("delete_job_log")
     def delete_job_log(self, job_log: JobLog):

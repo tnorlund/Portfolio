@@ -57,6 +57,7 @@ class _ReceiptWordLabel(
     while maintaining full backward compatibility.
     """
 
+    @handle_dynamodb_errors("add_receipt_word_label")
     def add_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
         """Adds a receipt word label to the database
 
@@ -68,22 +69,10 @@ class _ReceiptWordLabel(
             ValueError: When a receipt word label with the same ID
                 already exists
         """
-        if receipt_word_label is None:
-            raise ValueError("receipt_word_label cannot be None")
-        if not isinstance(receipt_word_label, ReceiptWordLabel):
-            raise ValueError(
-                "receipt_word_label must be an instance of the "
-                "ReceiptWordLabel class."
-            )
-
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=receipt_word_label.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            self._handle_add_receipt_word_label_error(e, receipt_word_label)
+        self._validate_entity(
+            receipt_word_label, ReceiptWordLabel, "receipt_word_label"
+        )
+        self._add_entity(receipt_word_label)
 
     def _handle_add_receipt_word_label_error(
         self, error: ClientError, receipt_word_label: ReceiptWordLabel
@@ -127,6 +116,7 @@ class _ReceiptWordLabel(
                 f"Could not add receipt word label to DynamoDB: {error}"
             ) from error
 
+    @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
         self, receipt_word_labels: List[ReceiptWordLabel]
     ):
@@ -140,30 +130,19 @@ class _ReceiptWordLabel(
             ValueError: When a receipt word label with the same ID
                 already exists
         """
-        if receipt_word_labels is None:
-            raise ValueError("receipt_word_labels cannot be None")
-        if not isinstance(receipt_word_labels, list):
-            raise ValueError(
-                "receipt_word_labels must be a list of ReceiptWordLabel "
-                "instances."
+        self._validate_entity_list(
+            receipt_word_labels, ReceiptWordLabel, "receipt_word_labels"
+        )
+        
+        from receipt_dynamo.data.base_operations import PutRequestTypeDef, WriteRequestTypeDef
+        
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=label.to_item())
             )
-        if not all(
-            isinstance(label, ReceiptWordLabel)
             for label in receipt_word_labels
-        ):
-            raise ValueError(
-                "All receipt word labels must be instances of the "
-                "ReceiptWordLabel class."
-            )
-
-        try:
-            request_items = [
-                {"PutRequest": {"Item": label.to_item()}}
-                for label in receipt_word_labels
-            ]
-            self._batch_write_with_retry(request_items)
-        except ClientError as e:
-            self._handle_add_receipt_word_labels_error(e)
+        ]
+        self._batch_write_with_retry(request_items)
 
     def _handle_add_receipt_word_labels_error(self, error: ClientError):
         """Handle errors specific to add_receipt_word_labels"""
@@ -347,26 +326,20 @@ class _ReceiptWordLabel(
 
         assert_valid_uuid(image_id)
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                        f"#WORD#{word_id:05d}#LABEL#{label}"
-                    )
-                },
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}",
+            entity_class=ReceiptWordLabel,
+            converter_func=item_to_receipt_word_label
         )
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise ValueError(
                 f"Receipt Word Label for Receipt ID {receipt_id}, "
                 f"Line ID {line_id}, Word ID {word_id}, Label '{label}', "
                 f"and Image ID {image_id} does not exist"
             )
-        return item_to_receipt_word_label(item)
+        return result
 
     @handle_dynamodb_errors("get_receipt_word_labels")
     def get_receipt_word_labels(
@@ -446,42 +419,15 @@ class _ReceiptWordLabel(
                 raise ValueError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        word_labels = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD_LABEL"}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        word_labels.extend(
-            [item_to_receipt_word_label(item) for item in response["Items"]]
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT_WORD_LABEL"}},
+            converter_func=item_to_receipt_word_label,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all labels
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                word_labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return word_labels, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_word_labels_for_image")
     def list_receipt_word_labels_for_image(
@@ -501,41 +447,23 @@ class _ReceiptWordLabel(
             )
         assert_valid_uuid(image_id)
 
-        word_labels = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": "RECEIPT#"},
                 ":label_suffix": {"S": "#LABEL"},
             },
-            "FilterExpression": "contains(#sk, :label_suffix)",
-        }
-
-        response = self._client.query(**query_params)
-        word_labels.extend(
-            [item_to_receipt_word_label(item) for item in response["Items"]]
+            converter_func=item_to_receipt_word_label,
+            filter_expression="contains(#sk, :label_suffix)"
         )
 
-        # Continue querying if there are more results
-        while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-            response = self._client.query(**query_params)
-            word_labels.extend(
-                [
-                    item_to_receipt_word_label(item)
-                    for item in response["Items"]
-                ]
-            )
-
-        return word_labels
+        return results
 
     @handle_dynamodb_errors("list_receipt_word_labels_with_status")
     def list_receipt_word_labels_with_status(

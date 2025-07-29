@@ -18,7 +18,10 @@ from receipt_dynamo.data.base_operations import (
     TransactWriteItemTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,
     item_to_batch_summary,
@@ -34,12 +37,12 @@ if TYPE_CHECKING:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
         )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
@@ -214,21 +217,22 @@ class _BatchSummary(
             record does not exist.
         """
         if not isinstance(batch_id, str):
-            raise ValueError("batch_id must be a string")
+            raise EntityValidationError("batch_id must be a string")
         assert_valid_uuid(batch_id)
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"BATCH#{batch_id}"},
-                "SK": {"S": "STATUS"},
-            },
+        result = self._get_entity(
+            primary_key=f"BATCH#{batch_id}",
+            sort_key="STATUS",
+            entity_class=BatchSummary,
+            converter_func=item_to_batch_summary
         )
-        if "Item" in response:
-            return item_to_batch_summary(response["Item"])
-        raise EntityNotFoundError(
-            f"BatchSummary with ID {batch_id} does not exist"
-        )
+        
+        if result is None:
+            raise EntityNotFoundError(
+                f"BatchSummary with ID {batch_id} does not exist"
+            )
+        
+        return result
 
     @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(
@@ -256,52 +260,23 @@ class _BatchSummary(
             ValueError: If limit or last_evaluated_key are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("limit must be greater than 0")
+            raise EntityValidationError("limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError("last_evaluated_key must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        summaries: List[BatchSummary] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "BATCH_SUMMARY"}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit is not None:
-                remaining = limit - len(summaries)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            summaries.extend(
-                [item_to_batch_summary(item) for item in response["Items"]]
-            )
-
-            if limit is not None and len(summaries) >= limit:
-                summaries = summaries[:limit]
-                last_evaluated_key = response.get(
-                    "LastEvaluatedKey",
-                    None,
-                )
-                break
-
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return summaries, last_evaluated_key
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "BATCH_SUMMARY"}},
+            converter_func=item_to_batch_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_batch_summaries_by_status")
     def get_batch_summaries_by_status(
@@ -338,13 +313,13 @@ class _BatchSummary(
         elif isinstance(status, str):
             status_str = status
         else:
-            raise ValueError(
+            raise EntityValidationError(
                 "status must be either a BatchStatus enum or a string; got"
                 f" {type(status).__name__}"
             )
         valid_statuses = [s.value for s in BatchStatus]
         if status_str not in valid_statuses:
-            raise ValueError(
+            raise EntityValidationError(
                 "Invalid status: "
                 f"{status_str} must be one of {', '.join(valid_statuses)}"
             )
@@ -354,7 +329,7 @@ class _BatchSummary(
         elif isinstance(batch_type, str):
             batch_type_str = batch_type
         else:
-            raise ValueError(
+            raise EntityValidationError(
                 "batch_type must be either a BatchType enum or a string; got"
                 f" {type(batch_type).__name__}"
             )
@@ -362,62 +337,29 @@ class _BatchSummary(
         # Validate batch_type_str against allowed values
         valid_types = [t.value for t in BatchType]
         if batch_type_str not in valid_types:
-            raise ValueError(
+            raise EntityValidationError(
                 "Invalid batch type: "
                 f"{batch_type_str} must be one of {', '.join(valid_types)}"
             )
 
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
-            raise ValueError("Limit must be a positive integer")
+            raise EntityValidationError("Limit must be a positive integer")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        summaries: List[BatchSummary] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": (
-                "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
-            ),
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+            expression_attribute_names={"#batch_type": "batch_type"},
+            expression_attribute_values={
                 ":pk": {"S": f"STATUS#{status_str}"},
                 ":prefix": {"S": f"BATCH_TYPE#{batch_type_str}"},
+                ":batch_type_filter": {"S": batch_type_str},
             },
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit is not None:
-                remaining = limit - len(summaries)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            summaries.extend(
-                [item_to_batch_summary(item) for item in response["Items"]]
-            )
-
-            if limit is not None and len(summaries) >= limit:
-                summaries = summaries[:limit]
-                last_evaluated_key = response.get(
-                    "LastEvaluatedKey",
-                    None,
-                )
-                break
-
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        summaries = [
-            summary
-            for summary in summaries
-            if summary.batch_type == batch_type
-        ]
-        return summaries, last_evaluated_key
+            converter_func=item_to_batch_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            filter_expression="#batch_type = :batch_type_filter"
+        )

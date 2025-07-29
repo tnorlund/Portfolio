@@ -209,16 +209,17 @@ class _Job(
         # Validate job_id as a UUID
         assert_valid_uuid(job_id)
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": "JOB"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{job_id}",
+            sort_key="JOB",
+            entity_class=Job,
+            converter_func=item_to_job
         )
-        if "Item" in response:
-            return item_to_job(response["Item"])
-        raise EntityNotFoundError(f"Job with job id {job_id} does not exist")
+        
+        if result is None:
+            raise EntityNotFoundError(f"Job with job id {job_id} does not exist")
+        
+        return result
 
     @handle_dynamodb_errors("get_job_with_status")
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
@@ -293,45 +294,15 @@ class _Job(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        jobs: List[Job] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "JOB"}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            # If a limit is provided, adjust the query's Limit to only
-            # fetch what is needed.
-            if limit is not None:
-                remaining = limit - len(jobs)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            jobs.extend([item_to_job(item) for item in response["Items"]])
-
-            # If we have reached or exceeded the limit, trim the list and
-            # break.
-            if limit is not None and len(jobs) >= limit:
-                jobs = jobs[:limit]  # ensure we return exactly the limit
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-                break
-
-            # Continue paginating if there's more data; otherwise, we're
-            # done.
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return jobs, last_evaluated_key
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "JOB"}},
+            converter_func=item_to_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("list_jobs_by_status")
     def list_jobs_by_status(
@@ -387,49 +358,19 @@ class _Job(
                     " keys"
                 )
 
-        jobs: List[Job] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :status",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :status",
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
                 ":status": {"S": f"STATUS#{status.lower()}"},
                 ":job_type": {"S": "JOB"},
             },
-            "FilterExpression": "#type = :job_type",
-            "ExpressionAttributeNames": {"#type": "TYPE"},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            # If a limit is provided, adjust the query's Limit to only
-            # fetch what is needed.
-            if limit is not None:
-                remaining = limit - len(jobs)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            jobs.extend([item_to_job(item) for item in response["Items"]])
-
-            # If we have reached or exceeded the limit, trim the list and
-            # break.
-            if limit is not None and len(jobs) >= limit:
-                jobs = jobs[:limit]  # ensure we return exactly the limit
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-                break
-
-            # Continue paginating if there's more data; otherwise, we're
-            # done.
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return jobs, last_evaluated_key
+            converter_func=item_to_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            filter_expression="#type = :job_type"
+        )
 
     @handle_dynamodb_errors("list_jobs_by_user")
     def list_jobs_by_user(
@@ -477,46 +418,16 @@ class _Job(
                     " keys"
                 )
 
-        jobs: List[Job] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI2",
-            "KeyConditionExpression": "GSI2PK = :user",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :user",
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
                 ":user": {"S": f"USER#{user_id}"},
                 ":job_type": {"S": "JOB"},
             },
-            "FilterExpression": "#type = :job_type",
-            "ExpressionAttributeNames": {"#type": "TYPE"},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            # If a limit is provided, adjust the query's Limit to only
-            # fetch what is needed.
-            if limit is not None:
-                remaining = limit - len(jobs)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            jobs.extend([item_to_job(item) for item in response["Items"]])
-
-            # If we have reached or exceeded the limit, trim the list and
-            # break.
-            if limit is not None and len(jobs) >= limit:
-                jobs = jobs[:limit]  # ensure we return exactly the limit
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-                break
-
-            # Continue paginating if there's more data; otherwise, we're
-            # done.
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return jobs, last_evaluated_key
+            converter_func=item_to_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            filter_expression="#type = :job_type"
+        )

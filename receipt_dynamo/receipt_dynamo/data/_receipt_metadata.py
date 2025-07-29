@@ -295,34 +295,19 @@ class _ReceiptMetadata(
         if receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#METADATA"},
-                },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#METADATA",
+            entity_class=ReceiptMetadata,
+            converter_func=item_to_receipt_metadata
+        )
+        
+        if result is None:
+            raise EntityNotFoundError(
+                f"ReceiptMetadata with image_id={image_id}, receipt_id={receipt_id} does not exist"
             )
-            item = response.get("Item")
-            if item is None:
-                raise EntityNotFoundError(
-                    f"ReceiptMetadata with image_id={image_id}, receipt_id={receipt_id} does not exist"
-                )
-            return item_to_receipt_metadata(item)
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+        
+        return result
 
     def get_receipt_metadatas_by_indices(
         self, indices: list[tuple[str, int]]
@@ -459,43 +444,15 @@ class _ReceiptMetadata(
         ):
             raise ValueError("last_evaluated_key must be a dictionary")
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_METADATA"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT_METADATA"}},
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def get_receipt_metadatas_by_merchant(
         self,
@@ -533,41 +490,15 @@ class _ReceiptMetadata(
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
-                "ExpressionAttributeValues": {":pk": {"S": gsi1_pk}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#pk = :pk",
+            expression_attribute_names={"#pk": "GSI1PK"},
+            expression_attribute_values={":pk": {"S": gsi1_pk}},
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def list_receipt_metadatas_with_place_id(
         self,
@@ -613,42 +544,15 @@ class _ReceiptMetadata(
         ):
             raise ValueError("last_evaluated_key must be a dictionary")
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"PLACE#{place_id}"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={":pk": {"S": f"PLACE#{place_id}"}},
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def get_receipt_metadatas_by_confidence(
         self,

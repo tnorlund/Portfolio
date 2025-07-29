@@ -247,38 +247,17 @@ class _ReceiptLetter(
         if not isinstance(letter_id, int):
             raise ValueError("letter_id must be an integer.")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
-                            f"WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                        )
-                    },
-                },
-            )
-            if "Item" in response:
-                return item_to_receipt_letter(response["Item"])
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}",
+            entity_class=ReceiptLetter,
+            converter_func=item_to_receipt_letter
+        )
+        
+        if result is None:
             raise ValueError(f"ReceiptLetter with ID {letter_id} not found")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting receipt letter: {e}"
-                ) from e
+        
+        return result
 
     def list_receipt_letters(
         self,
@@ -314,63 +293,15 @@ class _ReceiptLetter(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        receipt_letters = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LETTER"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            receipt_letters.extend(
-                [item_to_receipt_letter(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the receipt letters.
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    receipt_letters.extend(
-                        [
-                            item_to_receipt_letter(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return receipt_letters, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt letters from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt letters: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT_LETTER"}},
+            converter_func=item_to_receipt_letter,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def list_receipt_letters_from_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
@@ -415,71 +346,21 @@ class _ReceiptLetter(
         if not isinstance(word_id, int):
             raise ValueError("word_id must be an integer.")
 
-        receipt_letters = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression=(
-                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                ),
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}"
-                            f"#LINE#{line_id:05d}"
-                            f"#WORD#{word_id:05d}"
-                            "#LETTER#"
-                        )
-                    },
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}"
+                        f"#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}"
+                        "#LETTER#"
+                    )
                 },
-            )
-            receipt_letters.extend(
-                [item_to_receipt_letter(item) for item in response["Items"]]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression=(
-                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                    ),
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {
-                            "S": (
-                                f"RECEIPT#{receipt_id:05d}"
-                                f"#LINE#{line_id:05d}"
-                                f"#WORD#{word_id:05d}"
-                                "#LETTER#"
-                            )
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_letters.extend(
-                    [
-                        item_to_receipt_letter(item)
-                        for item in response["Items"]
-                    ]
-                )
-            return receipt_letters
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list ReceiptLetters from the database: {e}"
-                ) from e
+            },
+            converter_func=item_to_receipt_letter
+        )
+        return results

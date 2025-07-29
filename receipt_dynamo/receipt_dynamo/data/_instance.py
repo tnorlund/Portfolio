@@ -125,37 +125,19 @@ class _Instance(
         if not instance_id:
             raise ValueError("instance_id cannot be None or empty")
 
-        try:
-            # Get the instance from DynamoDB
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"INSTANCE#{instance_id}"},
-                    "SK": {"S": "INSTANCE"},
-                },
+        result = self._get_entity(
+            primary_key=f"INSTANCE#{instance_id}",
+            sort_key="INSTANCE",
+            entity_class=Instance,
+            converter_func=item_to_instance
+        )
+        
+        if result is None:
+            raise ValueError(
+                f"Instance with instance id {instance_id} does not exist"
             )
-
-            # Check if the instance exists
-            if "Item" not in response:
-                raise ValueError(
-                    f"Instance with instance id {instance_id} does not exist"
-                )
-
-            # Convert the DynamoDB item to an Instance object
-            return item_to_instance(response["Item"])
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
-                f"Failed to get instance: {e.response['Error']['Message']}"
-            ) from e
+        
+        return result
 
     @handle_dynamodb_errors("get_instance_with_jobs")
     def get_instance_with_jobs(
@@ -262,43 +244,22 @@ class _Instance(
         if not job_id:
             raise ValueError("job_id cannot be None or empty")
 
-        try:
-            # Get the instance-job from DynamoDB
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"INSTANCE#{instance_id}"},
-                    "SK": {"S": f"JOB#{job_id}"},
-                },
-            )
-
-            # Check if the instance-job exists
-            if "Item" not in response:
-                raise ValueError(
-                    (
-                        "InstanceJob for instance "
-                        f"{instance_id} and job {job_id} does not exist"
-                    )
-                )
-
-            # Convert the DynamoDB item to an InstanceJob object
-            return item_to_instance_job(response["Item"])
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
+        result = self._get_entity(
+            primary_key=f"INSTANCE#{instance_id}",
+            sort_key=f"JOB#{job_id}",
+            entity_class=InstanceJob,
+            converter_func=item_to_instance_job
+        )
+        
+        if result is None:
+            raise ValueError(
                 (
-                    "Failed to get instance-job: "
-                    f"{e.response['Error']['Message']}"
+                    "InstanceJob for instance "
+                    f"{instance_id} and job {job_id} does not exist"
                 )
-            ) from e
+            )
+        
+        return result
 
     @handle_dynamodb_errors("list_instances")
     def list_instances(
@@ -326,43 +287,15 @@ class _Instance(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "INSTANCE"}},
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        try:
-            instances = []
-            response = self._client.query(**query_params)
-            instances = [
-                item_to_instance(item) for item in response.get("Items", [])
-            ]
-            return instances, response.get("LastEvaluatedKey")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
-                (
-                    "Failed to list instances: "
-                    f"{e.response['Error']['Message']}"
-                )
-            ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "INSTANCE"}},
+            converter_func=item_to_instance,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("list_instances_by_status")
     def list_instances_by_status(

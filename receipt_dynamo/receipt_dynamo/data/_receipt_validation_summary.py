@@ -144,18 +144,7 @@ class _ReceiptValidationSummary(
         """
         self._validate_entity(summary, ReceiptValidationSummary, "summary")
 
-        # Need to use direct delete since summaries don't have key() method
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{summary.image_id}"},
-                "SK": {
-                    "S": (
-                        f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
-                    )
-                },
-            },
-        )
+        self._delete_entity(summary, condition_expression=None)
 
     @handle_dynamodb_errors("get_receipt_validation_summary")
     def get_receipt_validation_summary(
@@ -190,22 +179,20 @@ class _ReceiptValidationSummary(
         except ValueError as e:
             raise ValueError(f"Invalid image_id format: {e}") from e
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"},
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION",
+            entity_class=ReceiptValidationSummary,
+            converter_func=item_to_receipt_validation_summary
         )
-
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise ValueError(
                 f"ReceiptValidationSummary for receipt {receipt_id} and "
                 f"image {image_id} does not exist"
             )
-
-        return item_to_receipt_validation_summary(item)
+        
+        return result
 
     @handle_dynamodb_errors("list_receipt_validation_summaries")
     def list_receipt_validation_summaries(
@@ -238,48 +225,17 @@ class _ReceiptValidationSummary(
         ):
             raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
                 ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        summaries = []
-        response = self._client.query(**query_params)
-        summaries.extend(
-            [
-                item_to_receipt_validation_summary(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all summaries
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [
-                        item_to_receipt_validation_summary(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return summaries, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_summaries_by_status")
     def list_receipt_validation_summaries_by_status(
@@ -318,45 +274,14 @@ class _ReceiptValidationSummary(
         ):
             raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI2",
-            "KeyConditionExpression": "#gsi2pk = :pk",
-            "ExpressionAttributeNames": {"#gsi2pk": "GSI2PK"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="#gsi2pk = :pk",
+            expression_attribute_names={"#gsi2pk": "GSI2PK"},
+            expression_attribute_values={
                 ":pk": {"S": f"VALIDATION_SUMMARY_STATUS#{status}"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        summaries = []
-        response = self._client.query(**query_params)
-        summaries.extend(
-            [
-                item_to_receipt_validation_summary(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all summaries
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [
-                        item_to_receipt_validation_summary(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return summaries, last_evaluated_key

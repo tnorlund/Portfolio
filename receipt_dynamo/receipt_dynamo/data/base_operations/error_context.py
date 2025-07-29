@@ -71,6 +71,7 @@ class ErrorContextExtractor:
             "receipt_word",
             "job_checkpoint",
             "job_dependency",
+            "job_resource",
             "job_log",
             "queue_job",
             "ocr_job",

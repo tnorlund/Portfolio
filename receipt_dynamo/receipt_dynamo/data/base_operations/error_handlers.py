@@ -176,12 +176,19 @@ class ErrorHandler:
             "Message", "Table not found"
         )
 
-        # For the receipt tests, they expect "Table not found for operation
-        # X" format. Check if this is a receipt-related operation or other
-        # operations that need the specific format
-        if any(
+        # Extract operation type to use operation-specific messages
+        operation_type = self.context_extractor.extract_operation_type(operation)
+        
+        # Check if we should use operation-specific message
+        if operation_type in self.config.OPERATION_MESSAGES:
+            entity_type = self.context_extractor.extract_entity_type(operation)
+            message = self.config.OPERATION_MESSAGES[operation_type].format(
+                entity_type=entity_type.replace("_", " ")
+            )
+        elif any(
             op in operation for op in ["receipt", "queue", "receipt_field"]
         ):
+            # For backward compatibility with receipt tests
             message = f"Table not found for operation {operation}"
         elif (
             "Table not found" in original_message
@@ -189,8 +196,7 @@ class ErrorHandler:
         ):
             message = "Table not found"
         else:
-            # Default to the "Table not found for operation X" format for
-            # most operations
+            # Default to the "Table not found for operation X" format
             message = f"Table not found for operation {operation}"
 
         raise DynamoDBError(message) from error
@@ -354,12 +360,23 @@ class ErrorHandler:
                 and context["args"]
             ):
                 entity = context["args"][0]
+                # Collect all available attributes for formatting
+                format_kwargs = {}
                 if hasattr(entity, "job_id"):
-                    message = message.format(job_id=entity.job_id)
-                elif hasattr(entity, "receipt_id"):
-                    message = message.format(receipt_id=entity.receipt_id)
-                elif hasattr(entity, "queue_name"):
-                    message = message.format(queue_name=entity.queue_name)
+                    format_kwargs["job_id"] = entity.job_id
+                if hasattr(entity, "receipt_id"):
+                    format_kwargs["receipt_id"] = entity.receipt_id
+                if hasattr(entity, "queue_name"):
+                    format_kwargs["queue_name"] = entity.queue_name
+                if hasattr(entity, "resource_id"):
+                    format_kwargs["resource_id"] = entity.resource_id
+                
+                # Format with all available attributes
+                try:
+                    message = message.format(**format_kwargs)
+                except KeyError:
+                    # If formatting fails, use the original message
+                    pass
         else:
             # Use entity context
             message = self.config.ENTITY_EXISTS_PATTERNS["default"].format(

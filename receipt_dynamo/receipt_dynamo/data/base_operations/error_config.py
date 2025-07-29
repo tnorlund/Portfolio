@@ -260,6 +260,9 @@ class ErrorMessageConfig:
         "job_checkpoint": (
             "Entity already exists: JobCheckpoint with job_id={job_id}"
         ),
+        "job_resource": (
+            "JobResource with resource ID {resource_id} for job {job_id} already exists"
+        ),
         "receipt_chatgpt_validation": (
             "Entity already exists: ReceiptChatGPTValidation with "
             "receipt_id={receipt_id}"

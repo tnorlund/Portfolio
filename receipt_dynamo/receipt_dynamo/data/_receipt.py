@@ -222,21 +222,20 @@ class _Receipt(
         if receipt_id < 0:
             raise ValueError("Receipt ID must be a positive integer.")
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}",
+            entity_class=Receipt,
+            converter_func=item_to_receipt
         )
-        if "Item" in response:
-            return item_to_receipt(response["Item"])
-        raise EntityNotFoundError(
-            (
+        
+        if result is None:
+            raise EntityNotFoundError(
                 f"Receipt with ID {receipt_id} and Image ID "
                 f"'{image_id}' does not exist."
             )
-        )
+        
+        return result
 
     @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
@@ -350,69 +349,15 @@ class _Receipt(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        receipts: List[Receipt] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                # If a limit is provided, adjust the query's Limit to only
-                # fetch what is needed.
-                if limit is not None:
-                    remaining = limit - len(receipts)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                receipts.extend(
-                    [item_to_receipt(item) for item in response["Items"]]
-                )
-
-                # If we have reached or exceeded the limit, trim the list and
-                # break.
-                if limit is not None and len(receipts) >= limit:
-                    # ensure we return exactly the limit
-                    receipts = receipts[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
-
-                # Continue paginating if there's more data; otherwise, we're
-                # done.
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return receipts, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipts from the database: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise DynamoDBError(
-                    f"Could not list receipts from the database: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT"}},
+            converter_func=item_to_receipt,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_receipts_from_image")
     def get_receipts_from_image(self, image_id: int) -> list[Receipt]:

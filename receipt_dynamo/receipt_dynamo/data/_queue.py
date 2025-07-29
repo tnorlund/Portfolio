@@ -138,21 +138,17 @@ class _Queue(
         if not queue_name:
             raise ValueError("queue_name cannot be empty")
 
-        # Get the item from the DynamoDB table
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"QUEUE#{queue_name}"},
-                "SK": {"S": "QUEUE"},
-            },
+        result = self._get_entity(
+            primary_key=f"QUEUE#{queue_name}",
+            sort_key="QUEUE",
+            entity_class=Queue,
+            converter_func=item_to_queue
         )
-
-        # Check if the item exists
-        if "Item" not in response:
+        
+        if result is None:
             raise EntityNotFoundError(f"Queue {queue_name} not found")
-
-        # Convert the DynamoDB item to a Queue object
-        return item_to_queue(response["Item"])
+        
+        return result
 
     @handle_dynamodb_errors("list_queues")
     def list_queues(
@@ -178,29 +174,15 @@ class _Queue(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
-        # Prepare the query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :queue_type",
-            "ExpressionAttributeValues": {":queue_type": {"S": "QUEUE"}},
-        }
-
-        # Add optional parameters if provided
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute the query
-        response = self._client.query(**query_params)
-
-        # Convert the DynamoDB items to Queue objects
-        queues = [item_to_queue(item) for item in response.get("Items", [])]
-
-        # Return the queues and the LastEvaluatedKey for pagination
-        return queues, response.get("LastEvaluatedKey")
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :queue_type",
+            expression_attribute_names=None,
+            expression_attribute_values={":queue_type": {"S": "QUEUE"}},
+            converter_func=item_to_queue,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("add_job_to_queue")
     def add_job_to_queue(self, queue_job: QueueJob) -> None:
@@ -292,35 +274,18 @@ class _Queue(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
-        # Prepare the query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "PK = :pk AND begins_with(SK, :job_prefix)"
-            ),
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :job_prefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"QUEUE#{queue_name}"},
                 ":job_prefix": {"S": "JOB#"},
             },
-        }
-
-        # Add optional parameters if provided
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute the query
-        response = self._client.query(**query_params)
-
-        # Convert the DynamoDB items to QueueJob objects
-        queue_jobs = [
-            item_to_queue_job(item) for item in response.get("Items", [])
-        ]
-
-        # Return the queue jobs and the LastEvaluatedKey for pagination
-        return queue_jobs, response.get("LastEvaluatedKey")
+            converter_func=item_to_queue_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("find_queues_for_job")
     def find_queues_for_job(
@@ -352,33 +317,15 @@ class _Queue(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
-        # Prepare the query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": (
-                "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)"
-            ),
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":job_type": {"S": "JOB"},
                 ":job_prefix": {"S": f"JOB#{job_id}#QUEUE#"},
             },
-        }
-
-        # Add optional parameters if provided
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute the query
-        response = self._client.query(**query_params)
-
-        # Convert the DynamoDB items to QueueJob objects
-        queue_jobs = [
-            item_to_queue_job(item) for item in response.get("Items", [])
-        ]
-
-        # Return the queue jobs and the LastEvaluatedKey for pagination
-        return queue_jobs, response.get("LastEvaluatedKey")
+            converter_func=item_to_queue_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )

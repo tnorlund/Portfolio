@@ -239,33 +239,26 @@ class _EmbeddingBatchResult(
         if not isinstance(word_id, int) or word_id < 0:
             raise ValueError("word_id must be zero or positive integer")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"BATCH#{batch_id}"},
-                    "SK": {
-                        "S": (
-                            f"RESULT#IMAGE#{image_id}"
-                            f"#RECEIPT#{receipt_id:05d}"
-                            f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
-                        )
-                    },
-                },
+        result = self._get_entity(
+            primary_key=f"BATCH#{batch_id}",
+            sort_key=(
+                f"RESULT#IMAGE#{image_id}"
+                f"#RECEIPT#{receipt_id:05d}"
+                f"#LINE#{line_id:03d}#WORD#{word_id:03d}"
+            ),
+            entity_class=EmbeddingBatchResult,
+            converter_func=item_to_embedding_batch_result
+        )
+        
+        if result is None:
+            raise ValueError(
+                "Embedding batch result for Batch ID "
+                f"'{batch_id}', Image ID {image_id}, "
+                f"Receipt ID {receipt_id}, Line ID {line_id}, "
+                f"Word ID {word_id} does not exist."
             )
-            if "Item" in response:
-                return item_to_embedding_batch_result(response["Item"])
-            else:
-                raise ValueError(
-                    "Embedding batch result for Batch ID "
-                    f"'{batch_id}', Image ID {image_id}, "
-                    f"Receipt ID {receipt_id}, Line ID {line_id}, "
-                    f"Word ID {word_id} does not exist."
-                )
-        except ClientError as e:
-            raise Exception(
-                f"Error getting embedding batch result: {e}"
-            ) from e
+        
+        return result
 
     @handle_dynamodb_errors("list_embedding_batch_results")
     def list_embedding_batch_results(
@@ -283,54 +276,17 @@ class _EmbeddingBatchResult(
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[EmbeddingBatchResult] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "EMBEDDING_BATCH_RESULT"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(results)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_embedding_batch_result(item)
-                        for item in response["Items"]
-                    ]
-                )
-
-                if limit is not None and len(results) >= limit:
-                    results = results[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return results, last_evaluated_key
-        except ClientError as e:
-            raise Exception(
-                f"Error listing embedding batch results: {e}"
-            ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
+                ":val": {"S": "EMBEDDING_BATCH_RESULT"}
+            },
+            converter_func=item_to_embedding_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_embedding_batch_results_by_status")
     def get_embedding_batch_results_by_status(
@@ -356,53 +312,17 @@ class _EmbeddingBatchResult(
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[EmbeddingBatchResult] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2SK = :sk",
-                "ExpressionAttributeValues": {
-                    ":sk": {"S": f"STATUS#{status}"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(results)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_embedding_batch_result(item)
-                        for item in response["Items"]
-                    ]
-                )
-
-                if limit is not None and len(results) >= limit:
-                    results = results[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return results, last_evaluated_key
-        except ClientError as e:
-            raise Exception(
-                f"Error querying embedding batch results by status: {e}"
-            ) from e
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2SK = :sk",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":sk": {"S": f"STATUS#{status}"}
+            },
+            converter_func=item_to_embedding_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_embedding_batch_results_by_receipt")
     def get_embedding_batch_results_by_receipt(
@@ -425,60 +345,25 @@ class _EmbeddingBatchResult(
                 raise ValueError("LastEvaluatedKey must be a dictionary.")
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[EmbeddingBatchResult] = []
-        try:
-            template_embedding_batch_result = EmbeddingBatchResult(
-                batch_id=str(uuid4()),
-                image_id=image_id,
-                receipt_id=receipt_id,
-                line_id=0,
-                word_id=0,
-                pinecone_id="dummy",
-                status="dummy",
-                text="dummy",
-                error_message="dummy",
-            )
-            template_key = template_embedding_batch_result.gsi3_key()["GSI3PK"]
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI3",
-                "KeyConditionExpression": "GSI3PK = :pk",
-                "ExpressionAttributeValues": {":pk": template_key},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(results)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_embedding_batch_result(item)
-                        for item in response["Items"]
-                    ]
-                )
-
-                if limit is not None and len(results) >= limit:
-                    results = results[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return results, last_evaluated_key
-        except ClientError as e:
-            raise Exception(
-                f"Error querying embedding batch results by receipt: {e}"
-            ) from e
+        template_embedding_batch_result = EmbeddingBatchResult(
+            batch_id=str(uuid4()),
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=0,
+            word_id=0,
+            pinecone_id="dummy",
+            status="dummy",
+            text="dummy",
+            error_message="dummy",
+        )
+        template_key = template_embedding_batch_result.gsi3_key()["GSI3PK"]
+        
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={":pk": template_key},
+            converter_func=item_to_embedding_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )

@@ -347,39 +347,12 @@ class _Image(
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Any], Optional[Dict]]:
         """Generic method to query entities by TYPE using GSITYPE index."""
-        entities = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": entity_type}},
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        entities.extend([converter_func(item) for item in response["Items"]])
-
-        if limit is None:
-            # If no limit is provided, paginate until all items are retrieved
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                entities.extend(
-                    [converter_func(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            # If a limit is provided, capture the LastEvaluatedKey (if any)
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return entities, last_evaluated_key
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": entity_type}},
+            converter_func=converter_func,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )

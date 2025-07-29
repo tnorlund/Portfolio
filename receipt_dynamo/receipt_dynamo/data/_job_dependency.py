@@ -89,22 +89,20 @@ class _JobDependency(
         if dependency_job_id is None:
             raise ValueError("dependency_job_id cannot be None")
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{dependent_job_id}"},
-                "SK": {"S": f"DEPENDS_ON#{dependency_job_id}"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{dependent_job_id}",
+            sort_key=f"DEPENDS_ON#{dependency_job_id}",
+            entity_class=JobDependency,
+            converter_func=item_to_job_dependency
         )
-
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise EntityNotFoundError(
                 f"Dependency between {dependent_job_id} and "
                 f"{dependency_job_id} not found"
             )
-
-        return item_to_job_dependency(item)
+        
+        return result
 
     @handle_dynamodb_errors("list_dependencies")
     def list_dependencies(
@@ -132,36 +130,18 @@ class _JobDependency(
         if dependent_job_id is None:
             raise ValueError("dependent_job_id cannot be None")
 
-        # Prepare KeyConditionExpression
-        key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
-        expression_attribute_values = {
-            ":pk": {"S": f"JOB#{dependent_job_id}"},
-            ":sk_prefix": {"S": "DEPENDS_ON#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_dependencies = [
-            item_to_job_dependency(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_dependencies, last_evaluated_key
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{dependent_job_id}"},
+                ":sk_prefix": {"S": "DEPENDS_ON#"},
+            },
+            converter_func=item_to_job_dependency,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("list_dependents")
     def list_dependents(
@@ -189,40 +169,18 @@ class _JobDependency(
         if dependency_job_id is None:
             raise ValueError("dependency_job_id cannot be None")
 
-        # Prepare index query parameters
-        index_name = "GSI2"
-        key_condition_expression = (
-            "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "DEPENDENCY"},
+                ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
+            },
+            converter_func=item_to_job_dependency,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-        expression_attribute_values = {
-            ":pk": {"S": "DEPENDENCY"},
-            ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": index_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_dependencies = [
-            item_to_job_dependency(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_dependencies, last_evaluated_key
 
     @handle_dynamodb_errors("delete_job_dependency")
     def delete_job_dependency(self, job_dependency: JobDependency):

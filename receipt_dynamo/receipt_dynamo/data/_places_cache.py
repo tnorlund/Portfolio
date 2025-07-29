@@ -15,9 +15,6 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     OperationError,
 )
 from receipt_dynamo.entities.places_cache import (
@@ -236,16 +233,12 @@ class _PlacesCache(
             last_updated="2021-01-01T00:00:00",  # Placeholder
         )
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key=temp_cache.key,
-            )
-            if "Item" not in response:
-                return None
-            return item_to_places_cache(response["Item"])
-        except ClientError as e:
-            raise OperationError(f"Error getting PlacesCache: {e}") from e
+        return self._get_entity(
+            primary_key=temp_cache.key["PK"]["S"],
+            sort_key=temp_cache.key["SK"]["S"],
+            entity_class=PlacesCache,
+            converter_func=item_to_places_cache
+        )
 
     @handle_dynamodb_errors("get_places_cache_by_place_id")
     def get_places_cache_by_place_id(
@@ -261,29 +254,21 @@ class _PlacesCache(
             Optional[PlacesCache]: The PlacesCache object if found, None
                 otherwise.
         """
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression=(
-                    "#gsi1pk = :gsi1pk AND #gsi1sk = :gsi1sk"
-                ),
-                ExpressionAttributeNames={
-                    "#gsi1pk": "GSI1PK",
-                    "#gsi1sk": "GSI1SK",
-                },
-                ExpressionAttributeValues={
-                    ":gsi1pk": {"S": "PLACE_ID"},
-                    ":gsi1sk": {"S": f"PLACE_ID#{place_id}"},
-                },
-            )
-            if not response["Items"]:
-                return None
-            return item_to_places_cache(response["Items"][0])
-        except ClientError as e:
-            raise OperationError(
-                f"Error getting PlacesCache by place_id: {e}"
-            ) from e
+        results, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#gsi1pk = :gsi1pk AND #gsi1sk = :gsi1sk",
+            expression_attribute_names={
+                "#gsi1pk": "GSI1PK",
+                "#gsi1sk": "GSI1SK",
+            },
+            expression_attribute_values={
+                ":gsi1pk": {"S": "PLACE_ID"},
+                ":gsi1sk": {"S": f"PLACE_ID#{place_id}"},
+            },
+            converter_func=item_to_places_cache,
+            limit=1
+        )
+        return results[0] if results else None
 
     @handle_dynamodb_errors("list_places_caches")
     def list_places_caches(
@@ -313,64 +298,15 @@ class _PlacesCache(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        places_caches = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "PLACES_CACHE"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            places_caches.extend(
-                [item_to_places_cache(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the places caches
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    places_caches.extend(
-                        [
-                            item_to_places_cache(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return places_caches, last_evaluated_key
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list places caches from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing places caches: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "PLACES_CACHE"}},
+            converter_func=item_to_places_cache,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("invalidate_old_cache_items")
     def invalidate_old_cache_items(self, days_old: int):

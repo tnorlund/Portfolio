@@ -234,6 +234,7 @@ class _ReceiptSection(
                 "Could not delete ReceiptSections from the database"
             ) from e
 
+    @handle_dynamodb_errors("get_receipt_section")
     def get_receipt_section(
         self, receipt_id: int, image_id: str, section_type: str
     ) -> ReceiptSection:
@@ -259,23 +260,21 @@ class _ReceiptSection(
         ValueError
             If the section is not found.
         """
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
-                    },
-                },
-            )
-            return item_to_receipt_section(response["Item"])
-        except KeyError as e:
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}",
+            entity_class=ReceiptSection,
+            converter_func=item_to_receipt_section
+        )
+        
+        if result is None:
             raise ValueError(
                 f"ReceiptSection with receipt_id {receipt_id}, "
                 f"image_id {image_id}, and section_type {section_type} "
                 "not found"
-            ) from e
+            )
+        
+        return result
 
     def get_receipt_sections_from_receipt(
         self, image_id: str, receipt_id: int

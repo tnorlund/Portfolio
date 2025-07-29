@@ -219,20 +219,19 @@ class _ReceiptLineItemAnalysis(
             )
         assert_valid_uuid(image_id)
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS",
+            entity_class=ReceiptLineItemAnalysis,
+            converter_func=item_to_receipt_line_item_analysis
         )
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise ValueError(
                 f"Receipt Line Item Analysis for Image ID {image_id} and "
                 f"Receipt ID {receipt_id} does not exist"
             )
-        return item_to_receipt_line_item_analysis(item)
+        return result
 
     @handle_dynamodb_errors("list_receipt_line_item_analyses")
     def list_receipt_line_item_analyses(
@@ -264,47 +263,17 @@ class _ReceiptLineItemAnalysis(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        line_item_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
                 ":val": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"}
             },
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        line_item_analyses.extend(
-            [
-                item_to_receipt_line_item_analysis(item)
-                for item in response["Items"]
-            ]
+            converter_func=item_to_receipt_line_item_analysis,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all analyses
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                line_item_analyses.extend(
-                    [
-                        item_to_receipt_line_item_analysis(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return line_item_analyses, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_line_item_analyses_for_image")
     def list_receipt_line_item_analyses_for_image(
@@ -328,38 +297,17 @@ class _ReceiptLineItemAnalysis(
             )
         assert_valid_uuid(image_id)
 
-        line_item_analyses = []
-        key_condition = "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-        expr_values = {
-            ":pk": {"S": f"IMAGE#{image_id}"},
-            ":sk_prefix": {"S": "RECEIPT#"},
-            ":analysis_type": {"S": "#ANALYSIS#LINE_ITEMS"},
-        }
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition,
-            "ExpressionAttributeNames": {"#pk": "PK", "#sk": "SK"},
-            "ExpressionAttributeValues": expr_values,
-            "FilterExpression": "contains(#sk, :analysis_type)",
-        }
-
-        response = self._client.query(**query_params)
-        line_item_analyses.extend(
-            [
-                item_to_receipt_line_item_analysis(item)
-                for item in response["Items"]
-            ]
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={"#pk": "PK", "#sk": "SK"},
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": "RECEIPT#"},
+                ":analysis_type": {"S": "#ANALYSIS#LINE_ITEMS"},
+            },
+            converter_func=item_to_receipt_line_item_analysis,
+            filter_expression="contains(#sk, :analysis_type)"
         )
 
-        # Continue querying if there are more results
-        while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-            response = self._client.query(**query_params)
-            line_item_analyses.extend(
-                [
-                    item_to_receipt_line_item_analysis(item)
-                    for item in response["Items"]
-                ]
-            )
-
-        return line_item_analyses
+        return results

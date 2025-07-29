@@ -137,23 +137,24 @@ class _CompletionBatchResult(
         word_id: int,
         label: str,
     ) -> CompletionBatchResult:
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"BATCH#{batch_id}"},
-                "SK": {
-                    "S": (
-                        f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
-                        f"#WORD#{word_id}#LABEL#{label}"
-                    )
-                },
-            },
+        result = self._get_entity(
+            primary_key=f"BATCH#{batch_id}",
+            sort_key=(
+                f"RESULT#RECEIPT#{receipt_id}#LINE#{line_id}"
+                f"#WORD#{word_id}#LABEL#{label}"
+            ),
+            entity_class=CompletionBatchResult,
+            converter_func=item_to_completion_batch_result
         )
-        if "Item" not in response:
+        
+        if result is None:
             raise EntityNotFoundError(
-                f"Completion batch result with batch_id={batch_id} and custom_id={custom_id} not found"
+                f"Completion batch result with batch_id={batch_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}, "
+                f"word_id={word_id}, label={label} not found"
             )
-        return item_to_completion_batch_result(response["Item"])
+        
+        return result
 
     @handle_dynamodb_errors("list_completion_batch_results")
     def list_completion_batch_results(
@@ -166,42 +167,15 @@ class _CompletionBatchResult(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[CompletionBatchResult] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "COMPLETION_BATCH_RESULT"}
-                },
-            }
-            if last_evaluated_key:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    query_params["Limit"] = limit - len(results)
-
-                response = self._client.query(**query_params)
-                results.extend(
-                    item_to_completion_batch_result(item)
-                    for item in response["Items"]
-                )
-
-                if limit and len(results) >= limit:
-                    return results[:limit], response.get("LastEvaluatedKey")
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    return results, None
-        except ClientError as e:
-            raise BatchOperationError(
-                f"Error listing completion batch results: {e}"
-            ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "COMPLETION_BATCH_RESULT"}},
+            converter_func=item_to_completion_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_status")
     def get_completion_batch_results_by_status(
@@ -215,34 +189,15 @@ class _CompletionBatchResult(
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[CompletionBatchResult] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI2",
-            "KeyConditionExpression": "GSI2SK = :val",
-            "ExpressionAttributeValues": {":val": {"S": f"STATUS#{status}"}},
-        }
-        if last_evaluated_key:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit:
-                query_params["Limit"] = limit - len(results)
-
-            response = self._client.query(**query_params)
-            results.extend(
-                item_to_completion_batch_result(item)
-                for item in response["Items"]
-            )
-
-            if limit and len(results) >= limit:
-                return results[:limit], response.get("LastEvaluatedKey")
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                return results, None
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2SK = :val",
+            expression_attribute_names=None,
+            expression_attribute_values={":val": {"S": f"STATUS#{status}"}},
+            converter_func=item_to_completion_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_label_target")
     def get_completion_batch_results_by_label_target(
@@ -256,34 +211,17 @@ class _CompletionBatchResult(
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[CompletionBatchResult] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :pk",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"LABEL_TARGET#{label_target}"}
             },
-        }
-        if last_evaluated_key:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit:
-                query_params["Limit"] = limit - len(results)
-            response = self._client.query(**query_params)
-            results.extend(
-                item_to_completion_batch_result(item)
-                for item in response["Items"]
-            )
-            if limit and len(results) >= limit:
-                return results[:limit], response.get("LastEvaluatedKey")
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                return results, None
+            converter_func=item_to_completion_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_receipt")
     def get_completion_batch_results_by_receipt(
@@ -297,31 +235,14 @@ class _CompletionBatchResult(
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
-        results: List[CompletionBatchResult] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI3",
-            "KeyConditionExpression": "GSI3PK = :pk",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"RECEIPT#{receipt_id}"}
             },
-        }
-        if last_evaluated_key:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit:
-                query_params["Limit"] = limit - len(results)
-            response = self._client.query(**query_params)
-            results.extend(
-                item_to_completion_batch_result(item)
-                for item in response["Items"]
-            )
-            if limit and len(results) >= limit:
-                return results[:limit], response.get("LastEvaluatedKey")
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                return results, None
+            converter_func=item_to_completion_batch_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )

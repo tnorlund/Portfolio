@@ -155,25 +155,20 @@ class _ReceiptWord(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#"
-                            f"{line_id:05d}#WORD#{word_id:05d}"
-                        )
-                    },
-                },
-            )
-            return item_to_receipt_word(response["Item"])
-        except KeyError as e:
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}",
+            entity_class=ReceiptWord,
+            converter_func=item_to_receipt_word
+        )
+        
+        if result is None:
             raise EntityNotFoundError(
                 f"ReceiptWord with image_id={image_id}, receipt_id={receipt_id}, "
                 f"line_id={line_id}, word_id={word_id} not found"
-            ) from e
+            )
+        
+        return result
 
     def get_receipt_words_by_indices(
         self, indices: list[tuple[str, int, int, int]]
@@ -292,116 +287,32 @@ class _ReceiptWord(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        receipt_words = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_WORD"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-            response = self._client.query(**query_params)
-            receipt_words.extend(
-                [item_to_receipt_word(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the receipt words.
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    receipt_words.extend(
-                        [
-                            item_to_receipt_word(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return receipt_words, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt words from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt words: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "RECEIPT_WORD"}},
+            converter_func=item_to_receipt_word,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     def list_receipt_words_from_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given
         receipt/image/line IDs."""
-        receipt_words = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression=(
-                    "#pk = :pk_val AND begins_with(#sk, :sk_val)"
-                ),
-                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                            "#WORD#"
-                        )
-                    },
-                },
-            )
-            receipt_words.extend(
-                [item_to_receipt_word(item) for item in response["Items"]]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression=(
-                        "#pk = :pk_val AND begins_with(#sk, :sk_val)"
-                    ),
-                    ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
-                    ExpressionAttributeValues={
-                        ":pk_val": {"S": f"IMAGE#{image_id}"},
-                        ":sk_val": {
-                            "S": (
-                                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                                "#WORD#"
-                            )
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_words.extend(
-                    [item_to_receipt_word(item) for item in response["Items"]]
-                )
-            return receipt_words
-        except ClientError as e:
-            raise ValueError(
-                f"Could not list ReceiptWords from the database: {e}"
-            ) from e
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+            expression_attribute_names={"#pk": "PK", "#sk": "SK"},
+            expression_attribute_values={
+                ":pk_val": {"S": f"IMAGE#{image_id}"},
+                ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
+            },
+            converter_func=item_to_receipt_word
+        )
+        return results
 
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int
@@ -506,7 +417,6 @@ class _ReceiptWord(
         self, embedding_status: EmbeddingStatus
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given embedding status."""
-        receipt_words: list[ReceiptWord] = []
         # Validate and normalize embedding_status argument
         if isinstance(embedding_status, EmbeddingStatus):
             status_str = embedding_status.value
@@ -523,36 +433,14 @@ class _ReceiptWord(
                 f"embedding_status must be one of: {', '.join(valid_values)};"
                 f" Got: {status_str}"
             )
-        try:
-            # Query the GSI1 index on embedding status
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression="#gsi1pk = :status",
-                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
-                ExpressionAttributeValues={
-                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
-                },
-            )
-            # First page
-            for item in response.get("Items", []):
-                receipt_words.append(item_to_receipt_word(item))
-            # Handle pagination
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSI1",
-                    KeyConditionExpression="#gsi1pk = :status",
-                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
-                    ExpressionAttributeValues={
-                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                for item in response.get("Items", []):
-                    receipt_words.append(item_to_receipt_word(item))
-            return receipt_words
-        except ClientError as e:
-            raise ValueError(
-                f"Could not list receipt words by embedding status: {e}"
-            ) from e
+        
+        results, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#gsi1pk = :status",
+            expression_attribute_names={"#gsi1pk": "GSI1PK"},
+            expression_attribute_values={
+                ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+            },
+            converter_func=item_to_receipt_word
+        )
+        return results

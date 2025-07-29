@@ -262,27 +262,20 @@ class _ReceiptValidationResult(
         except ValueError as e:
             raise ValueError(f"Invalid image_id format: {e}") from e
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
-                        f"CATEGORY#{field_name}#RESULT#{result_index}"
-                    )
-                },
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}",
+            entity_class=ReceiptValidationResult,
+            converter_func=item_to_receipt_validation_result
         )
-
-        item = response.get("Item")
-        if not item:
+        
+        if result is None:
             raise ValueError(
                 f"ReceiptValidationResult with field {field_name} and "
                 f"index {result_index} not found"
             )
-
-        return item_to_receipt_validation_result(item)
+        
+        return result
 
     @handle_dynamodb_errors("list_receipt_validation_results")
     def list_receipt_validation_results(
@@ -315,48 +308,17 @@ class _ReceiptValidationResult(
         ):
             raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
                 ":val": {"S": "RECEIPT_VALIDATION_RESULT"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        results = []
-        response = self._client.query(**query_params)
-        results.extend(
-            [
-                item_to_receipt_validation_result(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all results
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_receipt_validation_result(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return results, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_results_for_field")
     def list_receipt_validation_results_for_field(
@@ -422,16 +384,14 @@ class _ReceiptValidationResult(
         except ValueError as e:
             raise ValueError(f"Invalid image_id format: {e}") from e
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
                     "S": (
@@ -440,40 +400,10 @@ class _ReceiptValidationResult(
                     )
                 },
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        results = []
-        response = self._client.query(**query_params)
-        results.extend(
-            [
-                item_to_receipt_validation_result(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all results
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_receipt_validation_result(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return results, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_results_by_type")
     def list_receipt_validation_results_by_type(
@@ -519,45 +449,14 @@ class _ReceiptValidationResult(
         ):
             raise ValueError("last_evaluated_key must be a dictionary or None")
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "#gsi1pk = :pk",
-            "ExpressionAttributeNames": {"#gsi1pk": "GSI1PK"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#gsi1pk = :pk",
+            expression_attribute_names={"#gsi1pk": "GSI1PK"},
+            expression_attribute_values={
                 ":pk": {"S": f"RESULT_TYPE#{result_type}"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        results = []
-        response = self._client.query(**query_params)
-        results.extend(
-            [
-                item_to_receipt_validation_result(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_result,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all results
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                results.extend(
-                    [
-                        item_to_receipt_validation_result(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return results, last_evaluated_key

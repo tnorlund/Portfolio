@@ -107,30 +107,20 @@ class _OCRJob(
             raise ValueError("job_id cannot be None")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"OCR_JOB#{job_id}"},
-                },
-            )
-            if "Item" in response:
-                return item_to_ocr_job(response["Item"])
+        
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"OCR_JOB#{job_id}",
+            entity_class=OCRJob,
+            converter_func=item_to_ocr_job
+        )
+        
+        if result is None:
             raise EntityNotFoundError(
                 f"OCR job with image_id={image_id}, job_id={job_id} does not exist"
             )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise RuntimeError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise RuntimeError(f"Internal server error: {e}") from e
-            if error_code == "AccessDeniedException":
-                raise RuntimeError(f"Access denied: {e}") from e
-            raise RuntimeError(f"Error getting OCR job: {e}") from e
+        
+        return result
 
     @handle_dynamodb_errors("delete_ocr_job")
     def delete_ocr_job(self, ocr_job: OCRJob):
@@ -200,53 +190,15 @@ class _OCRJob(
             if not isinstance(last_evaluated_key, dict):
                 raise ValueError("LastEvaluatedKey must be a dictionary")
 
-        jobs: List[OCRJob] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "OCR_JOB"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(jobs)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                jobs.extend(
-                    [item_to_ocr_job(item) for item in response["Items"]]
-                )
-
-                if limit is not None and len(jobs) >= limit:
-                    jobs = jobs[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return jobs, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise RuntimeError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise RuntimeError(f"Internal server error: {e}") from e
-            if error_code == "AccessDeniedException":
-                raise RuntimeError(f"Access denied: {e}") from e
-            raise RuntimeError(f"Error listing OCR jobs: {e}") from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "OCR_JOB"}},
+            converter_func=item_to_ocr_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("get_ocr_jobs_by_status")
     def get_ocr_jobs_by_status(

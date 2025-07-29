@@ -123,19 +123,12 @@ class _LabelCountCache(
 
     @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": "LABEL_CACHE"},
-                    "SK": {"S": f"LABEL#{label}"},
-                },
-            )
-            if "Item" not in response:
-                return None
-            return item_to_label_count_cache(response["Item"])
-        except ClientError as e:
-            raise OperationError(f"Error getting LabelCountCache: {e}f") from e
+        return self._get_entity(
+            primary_key="LABEL_CACHE",
+            sort_key=f"LABEL#{label}",
+            entity_class=LabelCountCache,
+            converter_func=item_to_label_count_cache
+        )
 
     @handle_dynamodb_errors("list_label_count_caches")
     def list_label_count_caches(
@@ -143,44 +136,13 @@ class _LabelCountCache(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
-        counts: list[LabelCountCache] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "LABEL_COUNT_CACHE"}
-                },
-                "ScanIndexForward": True,
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-            response = self._client.query(**query_params)
-            counts.extend(
-                [item_to_label_count_cache(item) for item in response["Items"]]
-            )
-            if limit is None:
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    counts.extend(
-                        [
-                            item_to_label_count_cache(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-            return counts, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ResourceNotFoundException":
-                raise ValueError("LabelCountCache table does not exist") from e
-            raise OperationError(f"Error listing LabelCountCaches: {e}") from e
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "LABEL_COUNT_CACHE"}},
+            converter_func=item_to_label_count_cache,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=True
+        )

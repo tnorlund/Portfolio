@@ -165,36 +165,21 @@ class _OCRRoutingDecision(
             raise ValueError("job_id must be a string")
         assert_valid_uuid(image_id)
         assert_valid_uuid(job_id)
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"ROUTING#{job_id}"},
-                },
-            )
-            if "Item" in response:
-                return item_to_ocr_routing_decision(response["Item"])
+        
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"ROUTING#{job_id}",
+            entity_class=OCRRoutingDecision,
+            converter_func=item_to_ocr_routing_decision
+        )
+        
+        if result is None:
             raise ValueError(
                 f"OCR routing decision for Image ID '{image_id}' "
                 f"and Job ID '{job_id}' not found"
             )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise ValueError(
-                    f"OCR routing decision for Image ID '{image_id}' "
-                    f"and Job ID '{job_id}' not found"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise OperationError(
-                f"Error getting OCR routing decision: {e}"
-            ) from e
+        
+        return result
 
     @handle_dynamodb_errors("delete_ocr_routing_decision")
     def delete_ocr_routing_decision(

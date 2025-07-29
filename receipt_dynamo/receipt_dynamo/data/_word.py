@@ -187,20 +187,23 @@ class _Word(
             Word: The word object
 
         Raises:
-            ValueError: When the word is not found
+            EntityNotFoundError: When the word is not found
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-            },
+        assert_valid_uuid(image_id)
+        
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"LINE#{line_id:05d}#WORD#{word_id:05d}",
+            entity_class=Word,
+            converter_func=item_to_word
         )
-        if "Item" not in response:
+        
+        if result is None:
             raise EntityNotFoundError(
                 f"Word with image_id={image_id}, line_id={line_id}, word_id={word_id} not found"
             )
-        return item_to_word(response["Item"])
+        
+        return result
 
     @handle_dynamodb_errors("get_words")
     def get_words(self, keys: List[Dict]) -> List[Word]:
@@ -262,36 +265,15 @@ class _Word(
         Returns:
             Tuple of words list and last evaluated key for pagination
         """
-        words = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "WORD"}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        words.extend([item_to_word(item) for item in response["Items"]])
-
-        if limit is None:
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                words.extend(
-                    [item_to_word(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return words, last_evaluated_key
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={":val": {"S": "WORD"}},
+            converter_func=item_to_word,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("list_words_from_line")
     def list_words_from_line(self, image_id: str, line_id: int) -> List[Word]:
@@ -304,31 +286,16 @@ class _Word(
         Returns:
             List of Word objects from the specified line
         """
-        words = []
-        response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
-            ),
-            ExpressionAttributeValues={
+        words, _ = self._query_entities(
+            index_name=None,  # Main table query
+            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},
                 ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
             },
+            converter_func=item_to_word,
+            limit=None,
+            last_evaluated_key=None
         )
-        words.extend([item_to_word(item) for item in response["Items"]])
-
-        while "LastEvaluatedKey" in response:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression=(
-                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                ),
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            words.extend([item_to_word(item) for item in response["Items"]])
-
         return words

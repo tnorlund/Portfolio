@@ -264,22 +264,14 @@ class _ReceiptChatGPTValidation(
         if not isinstance(timestamp, str):
             raise ValueError("timestamp must be a string.")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                            f"VALIDATION#CHATGPT#"
-                            f"{timestamp}"
-                        )
-                    },
-                },
-            )
-            if "Item" in response:
-                return item_to_receipt_chat_gpt_validation(response["Item"])
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}",
+            entity_class=ReceiptChatGPTValidation,
+            converter_func=item_to_receipt_chat_gpt_validation
+        )
+        
+        if result is None:
             raise ValueError(
                 (
                     "ReceiptChatGPTValidation with receipt ID "
@@ -287,22 +279,8 @@ class _ReceiptChatGPTValidation(
                     f"timestamp {timestamp} not found"
                 )
             )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error getting receipt ChatGPT validation: {e}"
-                ) from e
+        
+        return result
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations")
     def list_receipt_chat_gpt_validations(
@@ -338,77 +316,18 @@ class _ReceiptChatGPTValidation(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        validations = []
-        try:
-            # Use GSI1 to query all validations
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": (
-                    "#pk = :pk_val AND begins_with(#sk, :sk_prefix)"
-                ),
-                "ExpressionAttributeNames": {"#pk": "GSI1PK", "#sk": "GSI1SK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": "ANALYSIS_TYPE"},
-                    ":sk_prefix": {"S": "VALIDATION_CHATGPT#"},
-                },
-            }
-
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            validations.extend(
-                [
-                    item_to_receipt_chat_gpt_validation(item)
-                    for item in response["Items"]
-                ]
-            )
-
-            if limit is None:
-                # Paginate through all the validations
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    validations.extend(
-                        [
-                            item_to_receipt_chat_gpt_validation(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return validations, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    (
-                        "Could not list receipt ChatGPT validations from "
-                        "DynamoDB: "
-                        f"{e}"
-                    )
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt ChatGPT validations: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={"#pk": "GSI1PK", "#sk": "GSI1SK"},
+            expression_attribute_values={
+                ":pk_val": {"S": "ANALYSIS_TYPE"},
+                ":sk_prefix": {"S": "VALIDATION_CHATGPT#"},
+            },
+            converter_func=item_to_receipt_chat_gpt_validation,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations_for_receipt")
     def list_receipt_chat_gpt_validations_for_receipt(
@@ -437,76 +356,22 @@ class _ReceiptChatGPTValidation(
             raise ValueError("image_id cannot be None")
         assert_valid_uuid(image_id)
 
-        validations = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression=(
-                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                ),
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                            f"VALIDATION#CHATGPT#"
-                        )
-                    },
-                },
-            )
-            validations.extend(
-                [
-                    item_to_receipt_chat_gpt_validation(item)
-                    for item in response["Items"]
-                ]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression=(
-                        "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                    ),
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {
-                            "S": (
-                                f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                                f"VALIDATION#CHATGPT#"
-                            )
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                validations.extend(
-                    [
-                        item_to_receipt_chat_gpt_validation(item)
-                        for item in response["Items"]
-                    ]
-                )
-            return validations
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            else:
-                raise DynamoDBError(
-                    (
-                        "Could not list ReceiptChatGPTValidations from the "
-                        f"database: {e}"
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
+                        f"VALIDATION#CHATGPT#"
                     )
-                ) from e
+                },
+            },
+            converter_func=item_to_receipt_chat_gpt_validation
+        )
+        return results
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations_by_status")
     def list_receipt_chat_gpt_validations_by_status(
@@ -550,71 +415,14 @@ class _ReceiptChatGPTValidation(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        validations = []
-        try:
-            # Use GSI3 to query validations by status
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI3",
-                "KeyConditionExpression": "#pk = :pk_val",
-                "ExpressionAttributeNames": {"#pk": "GSI3PK"},
-                "ExpressionAttributeValues": {
-                    ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
-                },
-            }
-
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            validations.extend(
-                [
-                    item_to_receipt_chat_gpt_validation(item)
-                    for item in response["Items"]
-                ]
-            )
-
-            if limit is None:
-                # Paginate through all the validations
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    validations.extend(
-                        [
-                            item_to_receipt_chat_gpt_validation(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return validations, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    (
-                        "Could not list receipt ChatGPT validations from "
-                        "DynamoDB: "
-                        f"{e}"
-                    )
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt ChatGPT validations: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="#pk = :pk_val",
+            expression_attribute_names={"#pk": "GSI3PK"},
+            expression_attribute_values={
+                ":pk_val": {"S": f"VALIDATION_STATUS#{status}"},
+            },
+            converter_func=item_to_receipt_chat_gpt_validation,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
+        )

@@ -250,54 +250,43 @@ class _ReceiptLabelAnalysis(
 
         if version:
             # Get specific version
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                            f"LABELS#{version}"
-                        )
-                    },
-                },
+            result = self._get_entity(
+                primary_key=f"IMAGE#{image_id}",
+                sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}",
+                entity_class=ReceiptLabelAnalysis,
+                converter_func=item_to_receipt_label_analysis
             )
-            item = response.get("Item")
-            if not item:
+            if result is None:
                 raise ValueError(
                     f"No ReceiptLabelAnalysis found for receipt {receipt_id}, "
                     f"image {image_id}, and version {version}"
                 )
-            return item_to_receipt_label_analysis(item)
+            return result
         # Query for any version and return first
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
                     "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
                 },
             },
-            "Limit": 1,
-        }
+            converter_func=item_to_receipt_label_analysis,
+            limit=1
+        )
 
-        response = self._client.query(**query_params)
-        items = response.get("Items", [])
-
-        if not items:
+        if not results:
             raise ValueError(
                 f"Receipt Label Analysis for Image ID {image_id} and "
                 f"Receipt ID {receipt_id} does not exist"
             )
 
-        return item_to_receipt_label_analysis(items[0])
+        return results[0]
 
     @handle_dynamodb_errors("list_receipt_label_analyses")
     def list_receipt_label_analyses(
@@ -326,47 +315,17 @@ class _ReceiptLabelAnalysis(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        label_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSITYPE",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "TYPE"},
+            expression_attribute_values={
                 ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
             },
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        label_analyses.extend(
-            [
-                item_to_receipt_label_analysis(item)
-                for item in response["Items"]
-            ]
+            converter_func=item_to_receipt_label_analysis,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key
         )
-
-        if limit is None:
-            # Paginate through all analyses
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                label_analyses.extend(
-                    [
-                        item_to_receipt_label_analysis(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return label_analyses, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_label_analyses_for_image")
     def list_receipt_label_analyses_for_image(
@@ -385,46 +344,23 @@ class _ReceiptLabelAnalysis(
             raise ValueError("image_id must be a string")
         assert_valid_uuid(image_id)
 
-        label_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            "ExpressionAttributeNames": {
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": "RECEIPT#"},
+                ":analysis_type": {"S": "#ANALYSIS#LABELS"},
             },
-            "FilterExpression": "contains(#sk, :analysis_type)",
-        }
-        query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LABELS"
-        }
-
-        response = self._client.query(**query_params)
-        label_analyses.extend(
-            [
-                item_to_receipt_label_analysis(item)
-                for item in response["Items"]
-            ]
+            converter_func=item_to_receipt_label_analysis,
+            filter_expression="contains(#sk, :analysis_type)"
         )
 
-        # Continue querying if there are more results
-        while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-            response = self._client.query(**query_params)
-            label_analyses.extend(
-                [
-                    item_to_receipt_label_analysis(item)
-                    for item in response["Items"]
-                ]
-            )
-
-        return label_analyses
+        return results
 
     @handle_dynamodb_errors("get_receipt_label_analyses_by_image")
     def get_receipt_label_analyses_by_image(

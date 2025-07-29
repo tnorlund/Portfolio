@@ -145,7 +145,7 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
     @handle_dynamodb_errors("get_ai_usage_metric")
     def get_ai_usage_metric(
         self, service: str, model: str, timestamp: str, request_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[AIUsageMetric]:
         """
         Get a specific AI usage metric.
 
@@ -156,14 +156,11 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
             request_id: Unique request identifier
 
         Returns:
-            The metric item if found, None otherwise
+            The metric if found, None otherwise
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"AI_USAGE#{service}#{model}"},
-                "SK": {"S": f"USAGE#{timestamp}#{request_id}"},
-            },
+        return self._get_entity(
+            primary_key=f"AI_USAGE#{service}#{model}",
+            sort_key=f"USAGE#{timestamp}#{request_id}",
+            entity_class=AIUsageMetric,
+            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item)
         )
-
-        return response.get("Item")

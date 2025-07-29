@@ -78,21 +78,20 @@ class _JobMetric(
                 "Timestamp is required and must be a non-empty string."
             )
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": f"METRIC#{metric_name}#{timestamp}"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{job_id}",
+            sort_key=f"METRIC#{metric_name}#{timestamp}",
+            entity_class=JobMetric,
+            converter_func=item_to_job_metric
         )
-
-        if "Item" not in response:
+        
+        if result is None:
             raise ValueError(
                 f"No job metric found with job ID {job_id}, metric name "
                 f"{metric_name}, and timestamp {timestamp}"
             )
-
-        return item_to_job_metric(response["Item"])
+        
+        return result
 
     @handle_dynamodb_errors("list_job_metrics")
     def list_job_metrics(
@@ -135,7 +134,6 @@ class _JobMetric(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        metrics: List[JobMetric] = []
         # Build the expression attribute values based on whether
         # metric_name is provided
         expression_attr_values = {
@@ -143,49 +141,20 @@ class _JobMetric(
         }
 
         if metric_name:
-            key_condition = "PK = :pk AND begins_with(SK, :sk)"
             expression_attr_values[":sk"] = {"S": f"METRIC#{metric_name}#"}
         else:
-            key_condition = "PK = :pk AND begins_with(SK, :sk)"
             expression_attr_values[":sk"] = {"S": "METRIC#"}
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition,
-            "ExpressionAttributeValues": expression_attr_values,
-            "ScanIndexForward": True,  # Ascending order by default
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit is not None:
-                remaining = limit - len(metrics)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            for item in response["Items"]:
-                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                    metrics.append(item_to_job_metric(item))
-
-            if limit is not None and len(metrics) >= limit:
-                metrics = metrics[:limit]
-                last_evaluated_key = response.get(
-                    "LastEvaluatedKey",
-                    None,
-                )
-                break
-
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return metrics, last_evaluated_key
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values=expression_attr_values,
+            converter_func=item_to_job_metric,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=True  # Ascending order by default
+        )
 
     @handle_dynamodb_errors("get_metrics_by_name")
     def get_metrics_by_name(
@@ -227,47 +196,18 @@ class _JobMetric(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        metrics: List[JobMetric] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :pk",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"METRIC#{metric_name}"},
             },
-            "ScanIndexForward": True,  # Ascending order by default
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit is not None:
-                remaining = limit - len(metrics)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            for item in response["Items"]:
-                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                    metrics.append(item_to_job_metric(item))
-
-            if limit is not None and len(metrics) >= limit:
-                metrics = metrics[:limit]
-                last_evaluated_key = response.get(
-                    "LastEvaluatedKey",
-                    None,
-                )
-                break
-
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return metrics, last_evaluated_key
+            converter_func=item_to_job_metric,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=True  # Ascending order by default
+        )
 
     def get_metrics_by_name_across_jobs(
         self,
@@ -313,44 +253,15 @@ class _JobMetric(
                 raise ValueError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
-        metrics: List[JobMetric] = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI2",
-            "KeyConditionExpression": "GSI2PK = :pk",
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"METRIC#{metric_name}"},
             },
-            "ScanIndexForward": True,  # Ascending order by default
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        while True:
-            if limit is not None:
-                remaining = limit - len(metrics)
-                query_params["Limit"] = remaining
-
-            response = self._client.query(**query_params)
-            for item in response["Items"]:
-                if item.get("TYPE", {}).get("S") == "JOB_METRIC":
-                    metrics.append(item_to_job_metric(item))
-
-            if limit is not None and len(metrics) >= limit:
-                metrics = metrics[:limit]
-                last_evaluated_key = response.get(
-                    "LastEvaluatedKey",
-                    None,
-                )
-                break
-
-            if "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-            else:
-                last_evaluated_key = None
-                break
-
-        return metrics, last_evaluated_key
+            converter_func=item_to_job_metric,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=True  # Ascending order by default
+        )
