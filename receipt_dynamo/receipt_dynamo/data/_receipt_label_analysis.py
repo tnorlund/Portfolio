@@ -14,20 +14,19 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.data.shared_exceptions import (
-    EntityNotFoundError,
-    EntityValidationError,
-)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
-        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
@@ -42,7 +41,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -248,7 +247,9 @@ class _ReceiptLabelAnalysis(
 
         # Check for positive integers
         if receipt_id <= 0:
-            raise EntityValidationError("Receipt ID must be a positive integer.")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer."
+            )
 
         assert_valid_uuid(image_id)
 
@@ -258,13 +259,13 @@ class _ReceiptLabelAnalysis(
                 primary_key=f"IMAGE#{image_id}",
                 sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}",
                 entity_class=ReceiptLabelAnalysis,
-                converter_func=item_to_receipt_label_analysis
+                converter_func=item_to_receipt_label_analysis,
             )
             if result is None:
                 raise EntityNotFoundError(
                     f"No ReceiptLabelAnalysis found for receipt {receipt_id}, "
                     f"image {image_id}, and version {version}"
-            )
+                )
             return result
         # Query for any version and return first
         results, _ = self._query_entities(
@@ -281,7 +282,7 @@ class _ReceiptLabelAnalysis(
                 },
             },
             converter_func=item_to_receipt_label_analysis,
-            limit=1
+            limit=1,
         )
 
         if not results:
@@ -316,7 +317,9 @@ class _ReceiptLabelAnalysis(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -328,7 +331,7 @@ class _ReceiptLabelAnalysis(
             },
             converter_func=item_to_receipt_label_analysis,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_label_analyses_for_image")
@@ -361,7 +364,7 @@ class _ReceiptLabelAnalysis(
                 ":analysis_type": {"S": "#ANALYSIS#LABELS"},
             },
             converter_func=item_to_receipt_label_analysis,
-            filter_expression="contains(#sk, :analysis_type)"
+            filter_expression="contains(#sk, :analysis_type)",
         )
 
         return results
@@ -397,7 +400,9 @@ class _ReceiptLabelAnalysis(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
@@ -482,9 +487,13 @@ class _ReceiptLabelAnalysis(
         assert_valid_uuid(image_id)
 
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -494,7 +503,9 @@ class _ReceiptLabelAnalysis(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []

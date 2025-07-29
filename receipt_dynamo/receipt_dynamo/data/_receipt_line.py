@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -133,15 +131,15 @@ class _ReceiptLine(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}",
             entity_class=ReceiptLine,
-            converter_func=item_to_receipt_line
+            converter_func=item_to_receipt_line,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"ReceiptLine with image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("get_receipt_lines_by_indices")
@@ -160,14 +158,20 @@ class _ReceiptLine(
             if len(index) != 3:
                 raise EntityValidationError(
                     "indices must be a list of tuples with 3 elements."
-            )
+                )
             if not isinstance(index[0], str):
-                raise EntityValidationError("First element of tuple must be a string.")
+                raise EntityValidationError(
+                    "First element of tuple must be a string."
+                )
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
-                raise EntityValidationError("Second element of tuple must be an integer.")
+                raise EntityValidationError(
+                    "Second element of tuple must be an integer."
+                )
             if not isinstance(index[2], int):
-                raise EntityValidationError("Third element of tuple must be an integer.")
+                raise EntityValidationError(
+                    "Third element of tuple must be an integer."
+                )
 
         # Assemble the keys
         keys = []
@@ -197,11 +201,15 @@ class _ReceiptLine(
             if not key["SK"]["S"].startswith("RECEIPT#"):
                 raise EntityValidationError("SK must start with 'RECEIPT#'")
             if len(key["SK"]["S"].split("#")[1]) != 5:
-                raise EntityValidationError("SK must contain a 5-digit receipt ID")
+                raise EntityValidationError(
+                    "SK must contain a 5-digit receipt ID"
+                )
             if not key["SK"]["S"].split("#")[2] == "LINE":
                 raise EntityValidationError("SK must contain 'LINE'")
             if len(key["SK"]["S"].split("#")[3]) != 5:
-                raise EntityValidationError("SK must contain a 5-digit line ID")
+                raise EntityValidationError(
+                    "SK must contain a 5-digit line ID"
+                )
 
         # Get the receipt lines
         results = []
@@ -234,7 +242,7 @@ class _ReceiptLine(
             except ClientError as e:
                 raise EntityValidationError(
                     f"Could not get ReceiptLines from the database: {e}"
-            ) from e
+                ) from e
 
         return [item_to_receipt_line(result) for result in results]
 
@@ -260,7 +268,7 @@ class _ReceiptLine(
             expression_attribute_values={":val": {"S": "RECEIPT_LINE"}},
             converter_func=item_to_receipt_line,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_lines_by_embedding_status")
@@ -327,13 +335,13 @@ class _ReceiptLine(
             elif error_code == "ValidationException":
                 raise EntityValidationError(
                     f"One or more parameters given were invalid: {e}"
-            ) from e
+                ) from e
             elif error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
             else:
                 raise EntityValidationError(
                     f"Could not list ReceiptLines from the database: {e}"
-            ) from e
+                ) from e
 
     @handle_dynamodb_errors("list_receipt_lines_from_receipt")
     def list_receipt_lines_from_receipt(

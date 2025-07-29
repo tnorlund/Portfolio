@@ -15,7 +15,8 @@ from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
+
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
@@ -181,20 +182,20 @@ class _Letter(
             EntityNotFoundError: When the letter is not found
         """
         assert_valid_uuid(image_id)
-        
+
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}",
             entity_class=Letter,
-            converter_func=item_to_letter
+            converter_func=item_to_letter,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Letter with image_id={image_id}, line_id={line_id}, "
                 f"word_id={word_id}, letter_id={letter_id} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_letters")
@@ -220,7 +221,7 @@ class _Letter(
             converter_func=item_to_letter,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True
+            scan_index_forward=True,
         )
 
     @handle_dynamodb_errors("list_letters_from_word")
@@ -249,6 +250,6 @@ class _Letter(
             },
             converter_func=item_to_letter,
             limit=None,
-            last_evaluated_key=None
+            last_evaluated_key=None,
         )
         return letters

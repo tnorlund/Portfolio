@@ -207,7 +207,9 @@ def assert_valid_point(
 
 
 def _format_float(
-    value: float, decimal_places: int = 10, total_length: int = 20
+    value: float,
+    decimal_places: int = 10,
+    total_length: int = 20,  # pylint: disable=unused-argument
 ) -> str:
     # Convert float → string → Decimal to avoid float binary representation
     # issues
@@ -235,7 +237,7 @@ def assert_valid_uuid(uuid: str) -> None:
     """
     # Import here to avoid circular import
     from receipt_dynamo.data.shared_exceptions import EntityValidationError
-    
+
     if not isinstance(uuid, str):
         raise EntityValidationError("uuid must be a string")
     if not UUID_V4_REGEX.match(uuid):
@@ -271,7 +273,7 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     )
 
 
-def shear_point(
+def shear_point(  # pylint: disable=too-many-positional-arguments
     px: float,
     py: float,
     pivot_x: float,
@@ -324,3 +326,271 @@ def normalize_address(addr: str) -> str:
     # Normalize whitespace
     addr = " ".join(addr.split())
     return addr
+
+
+# ============================================================================
+# DynamoDB Serialization Utilities
+# ============================================================================
+# These utilities eliminate code duplication in entity to_item() methods
+
+
+def serialize_bounding_box(bounding_box: Dict[str, float]) -> Dict[str, Any]:
+    """
+    Serialize a bounding box dictionary to DynamoDB format.
+
+    Eliminates duplicate code across receipt_line, word, receipt_word,
+    receipt_letter entities.
+
+    Args:
+        bounding_box: Dict with x, y, width, height float values
+
+    Returns:
+        DynamoDB-formatted bounding_box with proper number formatting
+    """
+    return {
+        "M": {
+            "x": {"N": _format_float(bounding_box["x"], 20, 22)},
+            "y": {"N": _format_float(bounding_box["y"], 20, 22)},
+            "width": {"N": _format_float(bounding_box["width"], 20, 22)},
+            "height": {"N": _format_float(bounding_box["height"], 20, 22)},
+        }
+    }
+
+
+def serialize_coordinate_point(point: Dict[str, float]) -> Dict[str, Any]:
+    """
+    Serialize a coordinate point (x, y) to DynamoDB format.
+
+    Used for top_right, top_left, bottom_right, bottom_left fields
+    in receipt_word, receipt_letter entities.
+
+    Args:
+        point: Dict with x, y float values
+
+    Returns:
+        DynamoDB-formatted coordinate point
+    """
+    return {
+        "M": {
+            "x": {"N": _format_float(point["x"], 20, 22)},
+            "y": {"N": _format_float(point["y"], 20, 22)},
+        }
+    }
+
+
+def serialize_confidence(confidence: float) -> Dict[str, str]:
+    """
+    Serialize a confidence value to DynamoDB format.
+
+    Standardizes confidence field formatting across entities.
+
+    Args:
+        confidence: Float confidence value (0.0 to 1.0)
+
+    Returns:
+        DynamoDB-formatted confidence field
+    """
+    return {"N": _format_float(confidence, 2, 2)}
+
+
+def build_base_item(entity, entity_type: str, gsi_keys=None) -> Dict[str, Any]:
+    """
+    Build the base structure for entity to_item() methods.
+
+    Eliminates duplicate code across entity to_item() methods by providing
+    a standard way to merge primary key, GSI keys, and TYPE field.
+
+    Args:
+        entity: Entity instance (must have .key property)
+        entity_type: TYPE field value (e.g., "RECEIPT_WORD", "LETTER")
+        gsi_keys: Optional list of GSI key method names to include
+                  (e.g., ["gsi1_key", "gsi2_key"])
+
+    Returns:
+        Dict with merged keys and TYPE field ready for additional fields
+
+    Example:
+        # Simple entity with just primary key
+        base = build_base_item(self, "LETTER")
+
+        # Entity with GSI keys
+        base = build_base_item(self, "RECEIPT_WORD",
+                              ["gsi1_key", "gsi2_key", "gsi3_key"])
+    """
+    # Start with primary key
+    item = {**entity.key}
+
+    # Add GSI keys if specified
+    if gsi_keys:
+        for gsi_key_method in gsi_keys:
+            if hasattr(entity, gsi_key_method):
+                gsi_method = getattr(entity, gsi_key_method)
+                # Handle both property and method patterns
+                if callable(gsi_method):
+                    item.update(gsi_method())
+                else:
+                    item.update(gsi_method)
+
+    # Add TYPE field
+    item["TYPE"] = {"S": entity_type}
+
+    return item
+
+
+# ============================================================================
+# DynamoDB Deserialization Utilities
+# ============================================================================
+# These utilities eliminate code duplication in item_to_* conversion functions
+
+
+def deserialize_bounding_box(item_field: Dict[str, Any]) -> Dict[str, float]:
+    """
+    Deserialize a DynamoDB bounding box field back to a Python dict.
+
+    Eliminates duplicate code across item_to_* conversion functions
+    for entities with bounding box data.
+
+    Args:
+        item_field: DynamoDB field in format {"M": {"x": {"N": "0.1"}, ...}}
+
+    Returns:
+        Python dict with float values: {"x": 0.1, "y": 0.2, ...}
+
+    Example:
+        # Instead of:
+        bounding_box = {
+            key: float(value["N"])
+            for key, value in item["bounding_box"]["M"].items()
+        }
+
+        # Use:
+        bounding_box = deserialize_bounding_box(item["bounding_box"])
+    """
+    return {key: float(value["N"]) for key, value in item_field["M"].items()}
+
+
+def deserialize_coordinate_point(
+    item_field: Dict[str, Any],
+) -> Dict[str, float]:
+    """
+    Deserialize a DynamoDB coordinate point field back to a Python dict.
+
+    Used for top_right, top_left, bottom_right, bottom_left fields
+    in geometric entities.
+
+    Args:
+        item_field: DynamoDB field in format {"M": {"x": {"N": "0.5"}, "y": {"N": "0.7"}}}
+
+    Returns:
+        Python dict with float values: {"x": 0.5, "y": 0.7}
+    """
+    return {key: float(value["N"]) for key, value in item_field["M"].items()}
+
+
+def deserialize_confidence(item_field: Dict[str, Any]) -> float:
+    """
+    Deserialize a DynamoDB confidence field back to a Python float.
+
+    Standardizes confidence field deserialization across entities.
+
+    Args:
+        item_field: DynamoDB field in format {"N": "0.95"}
+
+    Returns:
+        Python float: 0.95
+    """
+    return float(item_field["N"])
+
+
+# Validation utilities to eliminate duplicate __post_init__ code
+def validate_positive_int(field_name: str, value: Any) -> None:
+    """
+    Validate that a field is a positive integer.
+
+    Eliminates duplicate validation code across entities that require
+    positive integer fields like receipt_id, line_id, word_id, etc.
+
+    Args:
+        field_name: Name of the field being validated (for error messages)
+        value: Value to validate
+
+    Raises:
+        ValueError: If value is not an integer or not positive
+    """
+    if not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer")
+    if value <= 0:
+        raise ValueError(f"{field_name} must be positive")
+
+
+def validate_non_negative_int(field_name: str, value: Any) -> None:
+    """
+    Validate that a field is a non-negative integer (>= 0).
+
+    Eliminates duplicate validation code across entities that allow
+    zero values like line_id, word_id in some contexts.
+
+    Args:
+        field_name: Name of the field being validated (for error messages)
+        value: Value to validate
+
+    Raises:
+        ValueError: If value is not an integer or is negative
+    """
+    if not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+
+
+def validate_positive_dimensions(width: Any, height: Any) -> None:
+    """
+    Validate that width and height are positive integers.
+
+    Eliminates duplicate validation code across Image, Receipt, and
+    other entities that require positive dimensions.
+
+    Args:
+        width: Width value to validate
+        height: Height value to validate
+
+    Raises:
+        ValueError: If values are not integers or not positive
+    """
+    if (
+        not isinstance(width, int)
+        or not isinstance(height, int)
+        or width <= 0
+        or height <= 0
+    ):
+        raise ValueError("width and height must be positive integers")
+
+
+def validate_confidence_range(field_name: str, value: Any) -> float:
+    """
+    Validate and normalize confidence values to float in range (0, 1].
+
+    Eliminates duplicate validation code across entities with confidence
+    fields. Handles int->float conversion and range validation.
+
+    Args:
+        field_name: Name of the field being validated (for error messages)
+        value: Confidence value to validate and normalize
+
+    Returns:
+        Normalized float confidence value
+
+    Raises:
+        ValueError: If value is not numeric or not in valid range
+    """
+    # Convert int to float if needed
+    if isinstance(value, int):
+        value = float(value)
+
+    if not isinstance(value, float):
+        raise ValueError(f"{field_name} must be a float")
+
+    if value <= 0.0 or value > 1.0:
+        raise ValueError(f"{field_name} must be between 0 and 1")
+
+    return value

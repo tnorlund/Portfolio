@@ -6,10 +6,12 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -143,12 +145,12 @@ class _Queue(
             primary_key=f"QUEUE#{queue_name}",
             sort_key="QUEUE",
             entity_class=Queue,
-            converter_func=item_to_queue
+            converter_func=item_to_queue,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(f"Queue {queue_name} not found")
-        
+
         return result
 
     @handle_dynamodb_errors("list_queues")
@@ -182,7 +184,7 @@ class _Queue(
             expression_attribute_values={":queue_type": {"S": "QUEUE"}},
             converter_func=item_to_queue,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("add_job_to_queue")
@@ -285,7 +287,7 @@ class _Queue(
             },
             converter_func=item_to_queue_job,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("find_queues_for_job")
@@ -328,5 +330,5 @@ class _Queue(
             },
             converter_func=item_to_queue_job,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

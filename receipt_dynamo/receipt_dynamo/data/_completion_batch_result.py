@@ -42,7 +42,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -145,16 +145,16 @@ class _CompletionBatchResult(
                 f"#WORD#{word_id}#LABEL#{label}"
             ),
             entity_class=CompletionBatchResult,
-            converter_func=item_to_completion_batch_result
+            converter_func=item_to_completion_batch_result,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"Completion batch result with batch_id={batch_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id}, "
                 f"word_id={word_id}, label={label} not found"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_completion_batch_results")
@@ -172,10 +172,12 @@ class _CompletionBatchResult(
             index_name="GSITYPE",
             key_condition_expression="#t = :val",
             expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "COMPLETION_BATCH_RESULT"}},
+            expression_attribute_values={
+                ":val": {"S": "COMPLETION_BATCH_RESULT"}
+            },
             converter_func=item_to_completion_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_status")
@@ -197,7 +199,7 @@ class _CompletionBatchResult(
             expression_attribute_values={":val": {"S": f"STATUS#{status}"}},
             converter_func=item_to_completion_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_label_target")
@@ -221,7 +223,7 @@ class _CompletionBatchResult(
             },
             converter_func=item_to_completion_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("get_completion_batch_results_by_receipt")
@@ -232,7 +234,9 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
@@ -245,5 +249,5 @@ class _CompletionBatchResult(
             },
             converter_func=item_to_completion_batch_result,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )

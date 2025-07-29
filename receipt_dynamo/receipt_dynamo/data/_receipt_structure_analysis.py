@@ -13,15 +13,15 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities import item_to_receipt_structure_analysis
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptStructureAnalysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-from receipt_dynamo.data.shared_exceptions import (
-    EntityNotFoundError,
-    EntityValidationError,
-)
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -230,21 +230,21 @@ class _ReceiptStructureAnalysis(
                 (
                     f"receipt_id must be an integer, got"
                     f" {type(receipt_id).__name__}"
-            )
+                )
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
                 (
                     f"image_id must be a string, got"
                     f" {type(image_id).__name__}"
-            )
+                )
             )
         if version is not None and not isinstance(version, str):
             raise EntityValidationError(
                 (
                     "version must be a string or None, got"
                     f" {type(version).__name__}"
-            )
+                )
             )
 
         assert_valid_uuid(image_id)
@@ -255,13 +255,13 @@ class _ReceiptStructureAnalysis(
                 primary_key=f"IMAGE#{image_id}",
                 sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}",
                 entity_class=ReceiptStructureAnalysis,
-                converter_func=item_to_receipt_structure_analysis
+                converter_func=item_to_receipt_structure_analysis,
             )
             if result is None:
                 raise EntityNotFoundError(
                     "No ReceiptStructureAnalysis found for receipt "
                     f"{receipt_id}, image {image_id}, and version {version}"
-            )
+                )
             return result
 
         # If no version is provided, query for all analyses and return the
@@ -280,7 +280,7 @@ class _ReceiptStructureAnalysis(
                 },
             },
             converter_func=item_to_receipt_structure_analysis,
-            limit=1
+            limit=1,
         )
 
         if not results:
@@ -320,7 +320,9 @@ class _ReceiptStructureAnalysis(
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise EntityValidationError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         return self._query_entities(
             index_name="GSITYPE",
@@ -331,7 +333,7 @@ class _ReceiptStructureAnalysis(
             },
             converter_func=item_to_receipt_structure_analysis,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_structure_analyses_from_receipt")
@@ -357,14 +359,14 @@ class _ReceiptStructureAnalysis(
                 (
                     f"receipt_id must be an integer, got"
                     f" {type(receipt_id).__name__}"
-            )
+                )
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
                 (
                     f"image_id must be a string, got"
                     f" {type(image_id).__name__}"
-            )
+                )
             )
 
         assert_valid_uuid(image_id)
@@ -382,7 +384,7 @@ class _ReceiptStructureAnalysis(
                     "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
                 },
             },
-            converter_func=item_to_receipt_structure_analysis
+            converter_func=item_to_receipt_structure_analysis,
         )
 
         return results

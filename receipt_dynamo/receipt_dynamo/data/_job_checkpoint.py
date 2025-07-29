@@ -32,7 +32,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -123,15 +123,15 @@ class _JobCheckpoint(
             primary_key=f"JOB#{job_id}",
             sort_key=f"CHECKPOINT#{timestamp}",
             entity_class=JobCheckpoint,
-            converter_func=item_to_job_checkpoint
+            converter_func=item_to_job_checkpoint,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 "No job checkpoint found with job ID "
                 f"{job_id} and timestamp {timestamp}"
             )
-        
+
         return result
 
     def update_best_checkpoint(self, job_id: str, timestamp: str):
@@ -233,7 +233,9 @@ class _JobCheckpoint(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -247,7 +249,7 @@ class _JobCheckpoint(
             converter_func=item_to_job_checkpoint,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=False  # Descending order by default (most recent first)
+            scan_index_forward=False,  # Descending order by default (most recent first)
         )
 
     @handle_dynamodb_errors("get_best_checkpoint")
@@ -282,7 +284,7 @@ class _JobCheckpoint(
                 ":is_best": {"BOOL": True},
             },
             converter_func=item_to_job_checkpoint,
-            filter_expression="is_best = :is_best"
+            filter_expression="is_best = :is_best",
         )
 
         return results[0] if results else None
@@ -364,7 +366,9 @@ class _JobCheckpoint(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         checkpoints: List[JobCheckpoint] = []

@@ -5,15 +5,15 @@ from receipt_dynamo.data.base_operations import (
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
-from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
 )
+from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -21,7 +21,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -86,15 +86,15 @@ class _JobMetric(
             primary_key=f"JOB#{job_id}",
             sort_key=f"METRIC#{metric_name}#{timestamp}",
             entity_class=JobMetric,
-            converter_func=item_to_job_metric
+            converter_func=item_to_job_metric,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 f"No job metric found with job ID {job_id}, metric name "
                 f"{metric_name}, and timestamp {timestamp}"
             )
-        
+
         return result
 
     @handle_dynamodb_errors("list_job_metrics")
@@ -135,7 +135,9 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         # Build the expression attribute values based on whether
@@ -157,7 +159,7 @@ class _JobMetric(
             converter_func=item_to_job_metric,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True  # Ascending order by default
+            scan_index_forward=True,  # Ascending order by default
         )
 
     @handle_dynamodb_errors("get_metrics_by_name")
@@ -197,7 +199,9 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -210,7 +214,7 @@ class _JobMetric(
             converter_func=item_to_job_metric,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True  # Ascending order by default
+            scan_index_forward=True,  # Ascending order by default
         )
 
     def get_metrics_by_name_across_jobs(
@@ -254,7 +258,9 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -267,5 +273,5 @@ class _JobMetric(
             converter_func=item_to_job_metric,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True  # Ascending order by default
+            scan_index_forward=True,  # Ascending order by default
         )

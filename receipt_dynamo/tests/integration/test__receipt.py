@@ -601,9 +601,7 @@ def test_addReceipts_raises_clienterror(
             "BatchWriteItem",
         ),
     )
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         client.add_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -818,9 +816,7 @@ def test_updateReceipt_raises_clienterror(
             "PutItem",
         ),
     )
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         client.update_receipt(sample_receipt)
 
     mock_put.assert_called_once()
@@ -1063,9 +1059,7 @@ def test_updateReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(
-        DynamoDBError, match="Table not found"
-    ):
+    with pytest.raises(DynamoDBError, match="Table not found"):
         client.update_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1274,9 +1268,7 @@ def test_deleteReceipt_raises_client_error(
             "DeleteItem",
         ),
     )
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
 
@@ -1511,9 +1503,7 @@ def test_deleteReceipts_raises_client_error(
 
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(
-        DynamoDBError, match="Table not found"
-    ):
+    with pytest.raises(DynamoDBError, match="Table not found"):
         client.delete_receipts([sample_receipt])
 
     mock_batch.assert_called_once()
@@ -1572,7 +1562,9 @@ def test_getReceipt_raises_value_error_image_id_not_uuid(
     a valid UUID.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(EntityValidationError, match="uuid must be a valid UUIDv4"):
+    with pytest.raises(
+        EntityValidationError, match="uuid must be a valid UUIDv4"
+    ):
         client.get_receipt("not-a-uuid", sample_receipt.receipt_id)
 
 
@@ -1744,9 +1736,7 @@ def test_getReceipt_raises_client_error(
             "GetItem",
         ),
     )
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
     mock_get.assert_called_once()
 
@@ -1990,9 +1980,7 @@ def test_listReceipts_raises_resource_not_found(
             "Query",
         ),
     )
-    with pytest.raises(
-        Exception, match="Table not found"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         client.list_receipts()
     mock_query.assert_called_once()
 
@@ -2105,9 +2093,9 @@ def test_listReceiptDetails_success(
     result = client.list_receipt_details()
 
     # Verify the structure of the returned data
-    assert hasattr(result, 'summaries')
-    assert hasattr(result, 'last_evaluated_key')
-    
+    assert hasattr(result, "summaries")
+    assert hasattr(result, "last_evaluated_key")
+
     key = f"{receipt.image_id}_{receipt.receipt_id}"
     assert key in result
     assert len(result) == 1

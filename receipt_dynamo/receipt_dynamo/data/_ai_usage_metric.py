@@ -9,8 +9,8 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 if TYPE_CHECKING:
     pass
@@ -163,5 +163,5 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
             primary_key=f"AI_USAGE#{service}#{model}",
             sort_key=f"USAGE#{timestamp}#{request_id}",
             entity_class=AIUsageMetric,
-            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item)
+            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item),
         )

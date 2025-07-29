@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -29,7 +27,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -119,7 +117,7 @@ class _JobStatus(
             if not response["Items"]:
                 raise EntityNotFoundError(
                     f"No status updates found for job with ID {job_id}"
-            )
+                )
 
             return item_to_job_status(response["Items"][0])
         except ClientError as e:
@@ -176,7 +174,9 @@ class _JobStatus(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         statuses: List[JobStatus] = []
@@ -295,4 +295,6 @@ class _JobStatus(
             return job, statuses
 
         except ClientError as e:
-            raise EntityValidationError(f"Error getting job with status: {e}") from e
+            raise EntityValidationError(
+                f"Error getting job with status: {e}"
+            ) from e

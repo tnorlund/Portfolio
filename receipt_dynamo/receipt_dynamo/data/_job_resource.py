@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
@@ -30,7 +28,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
-            )
+        )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
@@ -58,7 +56,7 @@ class _JobResource(
             job_resource,
             condition_expression=(
                 "attribute_not_exists(PK) OR attribute_not_exists(SK)"
-            )
+            ),
         )
 
     @handle_dynamodb_errors("get_job_resource")
@@ -87,17 +85,17 @@ class _JobResource(
             primary_key=f"JOB#{job_id}",
             sort_key=f"RESOURCE#{resource_id}",
             entity_class=JobResource,
-            converter_func=item_to_job_resource
+            converter_func=item_to_job_resource,
         )
-        
+
         if result is None:
             raise EntityNotFoundError(
                 (
                     "No job resource found with job ID "
                     f"{job_id} and resource ID {resource_id}"
+                )
             )
-            )
-        
+
         return result
 
     def update_job_resource_status(
@@ -174,7 +172,7 @@ class _JobResource(
                     (
                         "No job resource found with job ID "
                         f"{job_id} and resource ID {resource_id}"
-            )
+                    )
                 ) from e
             elif error_code == "ResourceNotFoundException":
                 raise ReceiptDynamoError(
@@ -227,7 +225,9 @@ class _JobResource(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -241,7 +241,7 @@ class _JobResource(
             converter_func=item_to_job_resource,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True  # Ascending order by default
+            scan_index_forward=True,  # Ascending order by default
         )
 
     @handle_dynamodb_errors("list_resources_by_type")
@@ -281,7 +281,9 @@ class _JobResource(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -296,7 +298,7 @@ class _JobResource(
             limit=limit,
             last_evaluated_key=last_evaluated_key,
             scan_index_forward=True,  # Ascending order by default
-            filter_expression="resource_type = :rt"
+            filter_expression="resource_type = :rt",
         )
 
     @handle_dynamodb_errors("get_resource_by_id")
@@ -335,5 +337,5 @@ class _JobResource(
             },
             converter_func=item_to_job_resource,
             limit=None,
-            last_evaluated_key=None
+            last_evaluated_key=None,
         )

@@ -5,7 +5,10 @@ from botocore.exceptions import ClientError, ParamValidationError
 
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 
 # -------------------------------------------------------------------
 #                        FIXTURES

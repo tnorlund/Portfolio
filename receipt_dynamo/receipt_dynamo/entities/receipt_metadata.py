@@ -8,6 +8,7 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
     normalize_enum,
+    validate_positive_int,
 )
 
 # Validation thresholds
@@ -76,10 +77,7 @@ class ReceiptMetadata:
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         assert_valid_uuid(self.image_id)
 

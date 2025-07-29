@@ -253,12 +253,14 @@ class _ReceiptLetter(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}",
             entity_class=ReceiptLetter,
-            converter_func=item_to_receipt_letter
+            converter_func=item_to_receipt_letter,
         )
-        
+
         if result is None:
-            raise EntityNotFoundError(f"ReceiptLetter with ID {letter_id} not found")
-        
+            raise EntityNotFoundError(
+                f"ReceiptLetter with ID {letter_id} not found"
+            )
+
         return result
 
     @handle_dynamodb_errors("list_receipt_letters")
@@ -305,7 +307,7 @@ class _ReceiptLetter(
             expression_attribute_values={":val": {"S": "RECEIPT_LETTER"}},
             converter_func=item_to_receipt_letter,
             limit=limit,
-            last_evaluated_key=last_evaluated_key
+            last_evaluated_key=last_evaluated_key,
         )
 
     @handle_dynamodb_errors("list_receipt_letters_from_word")
@@ -367,6 +369,6 @@ class _ReceiptLetter(
                     )
                 },
             },
-            converter_func=item_to_receipt_letter
+            converter_func=item_to_receipt_letter,
         )
         return results

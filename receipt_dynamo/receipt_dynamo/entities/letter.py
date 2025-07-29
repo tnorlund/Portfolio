@@ -7,6 +7,15 @@ from receipt_dynamo.entities.util import (
     assert_valid_bounding_box,
     assert_valid_point,
     assert_valid_uuid,
+    build_base_item,
+    deserialize_bounding_box,
+    deserialize_confidence,
+    deserialize_coordinate_point,
+    serialize_bounding_box,
+    serialize_confidence,
+    serialize_coordinate_point,
+    validate_confidence_range,
+    validate_positive_int,
 )
 
 
@@ -60,20 +69,9 @@ class Letter(GeometryMixin):
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.line_id, int):
-            raise ValueError("line_id must be an integer")
-        if self.line_id <= 0:
-            raise ValueError("line_id must be positive")
-
-        if not isinstance(self.word_id, int):
-            raise ValueError("word_id must be an integer")
-        if self.word_id <= 0:
-            raise ValueError("word_id must be positive")
-
-        if not isinstance(self.letter_id, int):
-            raise ValueError("id must be an integer")
-        if self.letter_id <= 0:
-            raise ValueError("id must be positive")
+        validate_positive_int("line_id", self.line_id)
+        validate_positive_int("word_id", self.word_id)
+        validate_positive_int("letter_id", self.letter_id)
 
         if not isinstance(self.text, str):
             raise ValueError("text must be a string")
@@ -94,12 +92,9 @@ class Letter(GeometryMixin):
             raise ValueError("angle_radians must be a float or int")
         self.angle_radians = float(self.angle_radians)
 
-        if isinstance(self.confidence, int):
-            self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float):
-            raise ValueError("confidence must be a float")
-        if self.confidence <= 0.0 or self.confidence > 1.0:
-            raise ValueError("confidence must be between 0 and 1")
+        self.confidence = validate_confidence_range(
+            "confidence", self.confidence
+        )
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -125,48 +120,16 @@ class Letter(GeometryMixin):
                 item.
         """
         return {
-            **self.key,
-            "TYPE": {"S": "LETTER"},
+            **build_base_item(self, "LETTER"),
             "text": {"S": self.text},
-            "bounding_box": {
-                "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
-                }
-            },
-            "top_right": {
-                "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
-                }
-            },
-            "top_left": {
-                "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
-                }
-            },
-            "bottom_right": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
-                }
-            },
-            "bottom_left": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
-                }
-            },
+            "bounding_box": serialize_bounding_box(self.bounding_box),
+            "top_right": serialize_coordinate_point(self.top_right),
+            "top_left": serialize_coordinate_point(self.top_left),
+            "bottom_right": serialize_coordinate_point(self.bottom_right),
+            "bottom_left": serialize_coordinate_point(self.bottom_left),
             "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
             "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)},
+            "confidence": serialize_confidence(self.confidence),
         }
 
     def __repr__(self) -> str:
@@ -319,29 +282,14 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
             line_id=int(item["SK"]["S"].split("#")[1]),
             word_id=int(item["SK"]["S"].split("#")[3]),
             text=item["text"]["S"],
-            bounding_box={
-                key: float(value["N"])
-                for key, value in item["bounding_box"]["M"].items()
-            },
-            top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
-            },
-            top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
-            },
-            bottom_right={
-                key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()
-            },
-            bottom_left={
-                key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()
-            },
+            bounding_box=deserialize_bounding_box(item["bounding_box"]),
+            top_right=deserialize_coordinate_point(item["top_right"]),
+            top_left=deserialize_coordinate_point(item["top_left"]),
+            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
+            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
             angle_degrees=float(item["angle_degrees"]["N"]),
             angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),
+            confidence=deserialize_confidence(item["confidence"]),
         )
     except (KeyError, ValueError) as e:
         raise ValueError(f"Error converting item to Letter: {e}") from e

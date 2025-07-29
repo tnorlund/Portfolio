@@ -8,6 +8,8 @@ from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_point,
     assert_valid_uuid,
+    validate_positive_dimensions,
+    validate_positive_int,
 )
 
 
@@ -83,19 +85,8 @@ class Receipt(DynamoDBEntity):
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("id must be positive")
-
-        if (
-            self.width <= 0
-            or self.height <= 0
-            or not isinstance(self.width, int)
-            or not isinstance(self.height, int)
-        ):
-            raise ValueError("width and height must be positive integers")
+        validate_positive_int("receipt_id", self.receipt_id)
+        validate_positive_dimensions(self.width, self.height)
 
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
