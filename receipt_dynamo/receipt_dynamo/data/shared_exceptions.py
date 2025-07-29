@@ -58,7 +58,7 @@ class EntityError(ReceiptDynamoError):
     """Base exception for entity operations."""
 
 
-class EntityNotFoundError(EntityError):
+class EntityNotFoundError(EntityError, ValueError):
     """Raised when an entity is not found."""
 
 
@@ -66,7 +66,7 @@ class EntityAlreadyExistsError(EntityError):
     """Raised when attempting to create an entity that already exists."""
 
 
-class EntityValidationError(EntityError):
+class EntityValidationError(EntityError, ValueError):
     """Raised when entity validation fails."""
 
 
