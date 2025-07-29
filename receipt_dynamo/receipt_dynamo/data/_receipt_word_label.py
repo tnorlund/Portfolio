@@ -17,6 +17,11 @@ from receipt_dynamo.data.base_operations import (
     TransactionalOperationsMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBAccessError,
+    EntityNotFoundError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
@@ -79,7 +84,7 @@ class _ReceiptWordLabel(
     ):
         """Handle errors specific to add_receipt_word_label"""
         from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBAccessError,
+    EntityValidationError,
             DynamoDBError,
             DynamoDBServerError,
             DynamoDBThroughputError,
@@ -147,7 +152,7 @@ class _ReceiptWordLabel(
     def _handle_add_receipt_word_labels_error(self, error: ClientError):
         """Handle errors specific to add_receipt_word_labels"""
         from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBAccessError,
+    EntityValidationError,
             DynamoDBError,
             DynamoDBServerError,
             DynamoDBThroughputError,

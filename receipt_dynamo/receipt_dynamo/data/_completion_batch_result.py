@@ -13,6 +13,7 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import (
     BatchOperationError,
     EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.completion_batch_result import (

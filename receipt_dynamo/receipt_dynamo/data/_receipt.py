@@ -15,7 +15,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
+    EntityValidationError,
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
@@ -598,7 +598,7 @@ class _Receipt(
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
                 raise EntityNotFoundError(
-                    f"Receipt with custom_id={custom_id} not found"
+                    f"Receipt with receipt_id={receipt_id} not found"
                 ) from e
             elif error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(

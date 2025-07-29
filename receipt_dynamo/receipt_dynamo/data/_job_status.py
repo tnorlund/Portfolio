@@ -13,6 +13,8 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     DynamoDBValidationError,
     EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status

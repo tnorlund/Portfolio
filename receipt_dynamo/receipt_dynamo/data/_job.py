@@ -13,6 +13,7 @@ from receipt_dynamo.data.base_operations import (
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status

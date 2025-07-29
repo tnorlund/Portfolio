@@ -14,6 +14,8 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.label_count_cache import (

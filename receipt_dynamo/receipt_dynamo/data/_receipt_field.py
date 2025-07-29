@@ -17,7 +17,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
+    EntityValidationError,
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,

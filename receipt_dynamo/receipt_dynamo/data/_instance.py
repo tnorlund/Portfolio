@@ -17,6 +17,7 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.instance import Instance, item_to_instance

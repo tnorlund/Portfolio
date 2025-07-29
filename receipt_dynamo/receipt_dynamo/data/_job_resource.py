@@ -10,6 +10,8 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
     ReceiptDynamoError,
 )
