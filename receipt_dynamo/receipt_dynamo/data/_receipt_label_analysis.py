@@ -27,11 +27,13 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
     from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 

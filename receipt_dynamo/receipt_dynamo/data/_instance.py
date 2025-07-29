@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.data._job import validate_last_evaluated_key
 
 # Runtime imports needed by the class methods
@@ -25,7 +27,7 @@ from receipt_dynamo.entities.instance_job import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _Instance(

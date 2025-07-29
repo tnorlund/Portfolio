@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,

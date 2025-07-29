@@ -202,7 +202,8 @@ class _Word(
 
         if result is None:
             raise EntityNotFoundError(
-                f"Word with image_id={image_id}, line_id={line_id}, word_id={word_id} not found"
+                f"Word with image_id={image_id}, line_id={line_id}, "
+                f"word_id={word_id} not found"
             )
 
         return result
@@ -290,7 +291,9 @@ class _Word(
         """
         words, _ = self._query_entities(
             index_name=None,  # Main table query
-            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

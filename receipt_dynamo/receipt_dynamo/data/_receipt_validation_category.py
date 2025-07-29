@@ -252,7 +252,10 @@ class _ReceiptValidationCategory(
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY"
+                f"#{field_name}"
+            ),
             entity_class=ReceiptValidationCategory,
             converter_func=item_to_receipt_validation_category,
         )
@@ -414,7 +417,9 @@ class _ReceiptValidationCategory(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",

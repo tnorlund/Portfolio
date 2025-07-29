@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -24,7 +26,7 @@ from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    pass
+    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 class _OCRJob(

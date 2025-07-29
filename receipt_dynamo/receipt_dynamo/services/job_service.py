@@ -35,6 +35,7 @@ class JobService(
             table_name: Name of the DynamoDB table
             region: AWS region
         """
+        super().__init__()
         self.table_name = table_name
         self.region = region
         self._client = boto3.client("dynamodb", region_name=region)

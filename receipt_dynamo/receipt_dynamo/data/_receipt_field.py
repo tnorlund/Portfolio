@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
@@ -14,13 +14,8 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.receipt_field import (
     ReceiptField,

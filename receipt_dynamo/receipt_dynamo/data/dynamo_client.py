@@ -107,6 +107,7 @@ class DynamoClient(
             _client (DynamoDBClient): The Boto3 DynamoDB client.
             table_name (str): The name of the DynamoDB table.
         """
+        super().__init__()
 
         self._client: DynamoDBClient = boto3.client(
             "dynamodb", region_name=region
