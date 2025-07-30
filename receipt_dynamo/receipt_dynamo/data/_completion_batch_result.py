@@ -4,10 +4,12 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
+    CommonValidationMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
     TransactionalOperationsMixin,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -23,9 +25,7 @@ from receipt_dynamo.entities.completion_batch_result import (
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
 
 
@@ -52,9 +52,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _CompletionBatchResult(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     @handle_dynamodb_errors("add_completion_batch_result")
     def add_completion_batch_result(
@@ -77,7 +75,7 @@ class _CompletionBatchResult(
     @handle_dynamodb_errors("add_completion_batch_results")
     def add_completion_batch_results(
         self, results: List[CompletionBatchResult]
-    ):
+    ) -> None:
         """Add multiple completion batch results to DynamoDB in batches.
 
         Args:
@@ -87,29 +85,14 @@ class _CompletionBatchResult(
             ValueError: If results is None, empty, or contains invalid items.
             BatchOperationError: If any batch operation fails.
         """
-        if not isinstance(results, list) or not all(
-            isinstance(r, CompletionBatchResult) for r in results
-        ):
-            raise EntityValidationError(
-                "Must provide a list of CompletionBatchResult instances."
+        self._validate_entity_list(results, CompletionBatchResult, "results")
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=result.to_item())
             )
-        for i in range(0, len(results), 25):
-            chunk = results[i : i + 25]
-            request_items = [
-                WriteRequestTypeDef(
-                    PutRequest=PutRequestTypeDef(Item=r.to_item())
-                )
-                for r in chunk
-            ]
-            response = self._client.batch_write_item(
-                RequestItems={self.table_name: request_items}
-            )
-            unprocessed = response.get("UnprocessedItems", {})
-            while unprocessed.get(self.table_name):
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed
-                )
-                unprocessed = response.get("UnprocessedItems", {})
+            for result in results
+        ]
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_completion_batch_result")
     def update_completion_batch_result(
@@ -165,16 +148,8 @@ class _CompletionBatchResult(
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("limit must be a positive integer.")
-        if last_evaluated_key is not None:
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "COMPLETION_BATCH_RESULT"}
-            },
+        return self._query_by_type(
+            entity_type="COMPLETION_BATCH_RESULT",
             converter_func=item_to_completion_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

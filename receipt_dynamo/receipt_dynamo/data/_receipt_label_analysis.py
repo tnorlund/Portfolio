@@ -8,10 +8,8 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    QueryByParentMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -22,7 +20,6 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -52,10 +49,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _ReceiptLabelAnalysis(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    QueryByParentMixin,
 ):
     """
     A class used to access receipt label analyses in DynamoDB.
@@ -227,33 +222,15 @@ class _ReceiptLabelAnalysis(
         Raises:
             ValueError: When the receipt label analysis does not exist
         """
-        # Check for None values first
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
+        # Use CommonValidationMixin for standardized validation
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
 
-        # Then check types
-        if not isinstance(image_id, str):
-            raise EntityValidationError("image_id must be a string")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
-            )
         if version is not None and not isinstance(version, str):
             raise EntityValidationError(
                 "version must be a string or None, got "
                 f"{type(version).__name__}"
             )
-
-        # Check for positive integers
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "Receipt ID must be a positive integer."
-            )
-
-        assert_valid_uuid(image_id)
 
         if version:
             # Get specific version
@@ -270,19 +247,10 @@ class _ReceiptLabelAnalysis(
                 )
             return result
         # Query for any version and return first
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
-            expression_attribute_names={
-                "#pk": "PK",
-                "#sk": "SK",
-            },
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
-                },
-            },
+        # Use the QueryByParentMixin for standardized parent-child queries
+        results, _ = self._query_by_parent(
+            parent_key_prefix=f"IMAGE#{image_id}",
+            child_key_prefix=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS",
             converter_func=item_to_receipt_label_analysis,
             limit=1,
         )
@@ -313,24 +281,9 @@ class _ReceiptLabelAnalysis(
             Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: The
                 receipt label analyses and the last evaluated key
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer or None")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
-            },
+        # Use the QueryByTypeMixin for standardized GSITYPE queries
+        return self._query_by_type(
+            entity_type="RECEIPT_LABEL_ANALYSIS",
             converter_func=item_to_receipt_label_analysis,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -346,16 +299,24 @@ class _ReceiptLabelAnalysis(
             image_id (str): The image ID
 
         Returns:
+
             List[ReceiptLabelAnalysis]:
                 The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
             raise EntityValidationError("image_id must be a string")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
+        # WARNING: This query is potentially inefficient as it queries ALL
+        # receipts for an image and then filters for analysis labels. Consider
+        # using a GSI or accepting this limitation if the number of receipts
+        # per image is small.
+        # Cannot use QueryByParentMixin here due to the need for filtering.
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -392,7 +353,7 @@ class _ReceiptLabelAnalysis(
         """
         if not isinstance(image_id, str):
             raise EntityValidationError("image_id must be a string")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -486,7 +447,7 @@ class _ReceiptLabelAnalysis(
         """
         if not isinstance(image_id, str):
             raise EntityValidationError("image_id must be a string")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         if not isinstance(receipt_id, int):
             raise EntityValidationError(

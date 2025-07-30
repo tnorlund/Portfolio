@@ -5,27 +5,33 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.geometry_base import GeometryMixin
+from receipt_dynamo.entities.entity_mixins import (
+    GeometryHashMixin,
+    GeometryMixin,
+    GeometryReprMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+)
 from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
     assert_type,
-    assert_valid_bounding_box,
-    assert_valid_point,
     assert_valid_uuid,
-    deserialize_bounding_box,
-    deserialize_confidence,
-    deserialize_coordinate_point,
-    serialize_bounding_box,
-    serialize_confidence,
-    serialize_coordinate_point,
-    validate_confidence_range,
     validate_non_negative_int,
 )
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class Word(GeometryMixin, DynamoDBEntity):
+class Word(
+    GeometryHashMixin,
+    GeometryReprMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+    GeometryMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    DynamoDBEntity,
+):
     """Represents a word extracted from an image for DynamoDB.
 
     This class encapsulates word-related information such as its unique
@@ -82,22 +88,8 @@ class Word(GeometryMixin, DynamoDBEntity):
 
         assert_type("text", self.text, str, ValueError)
 
-        assert_valid_bounding_box(self.bounding_box)
-        assert_valid_point(self.top_right)
-        assert_valid_point(self.top_left)
-        assert_valid_point(self.bottom_right)
-        assert_valid_point(self.bottom_left)
-
-        assert_type(
-            "angle_degrees", self.angle_degrees, (float, int), ValueError
-        )
-        assert_type(
-            "angle_radians", self.angle_radians, (float, int), ValueError
-        )
-
-        self.confidence = validate_confidence_range(
-            "confidence", self.confidence
-        )
+        # Use validation utils mixin for common validation
+        self._validate_common_geometry_entity_fields()
 
         if self.extracted_data is not None:
             assert_type(
@@ -136,45 +128,40 @@ class Word(GeometryMixin, DynamoDBEntity):
             dict: A dictionary representing the Word object as a DynamoDB
             item.
         """
-        item: Dict[str, Any] = {
-            **self.key,
-            **self.gsi2_key(),
-            "TYPE": {"S": "WORD"},
-            "text": {"S": self.text},
-            "bounding_box": serialize_bounding_box(self.bounding_box),
-            "top_right": serialize_coordinate_point(self.top_right),
-            "top_left": serialize_coordinate_point(self.top_left),
-            "bottom_right": serialize_coordinate_point(self.bottom_right),
-            "bottom_left": serialize_coordinate_point(self.bottom_left),
-            "angle_degrees": {
-                "N": _format_float(
-                    self.angle_degrees,
-                    18,
-                    20,
-                )
-            },
-            "angle_radians": {
-                "N": _format_float(
-                    self.angle_radians,
-                    18,
-                    20,
-                )
-            },
-            "confidence": serialize_confidence(self.confidence),
-        }
+        # Use mixin for common geometry fields
+        custom_fields = self._get_geometry_fields()
 
         # Add extracted_data conditionally to avoid type conflicts
         if self.extracted_data:
-            item["extracted_data"] = {
+            custom_fields["extracted_data"] = {
                 "M": {
                     "type": {"S": self.extracted_data["type"]},
                     "value": {"S": self.extracted_data["value"]},
                 }
             }
         else:
-            item["extracted_data"] = {"NULL": True}
+            custom_fields["extracted_data"] = {"NULL": True}
 
-        return item
+        return self.build_dynamodb_item(
+            entity_type="WORD",
+            gsi_methods=["gsi2_key"],
+            custom_fields=custom_fields,
+            exclude_fields={
+                "image_id",
+                "line_id",
+                "word_id",
+                "text",
+                "bounding_box",
+                "top_right",
+                "top_left",
+                "bottom_right",
+                "bottom_left",
+                "angle_degrees",
+                "angle_radians",
+                "confidence",
+                "extracted_data",
+            },
+        )
 
     def calculate_centroid(
         self,
@@ -321,54 +308,49 @@ class Word(GeometryMixin, DynamoDBEntity):
             (bottom_right_x, bottom_right_y),
         )
 
-    def __repr__(self):
-        """Returns a string representation of the Word object.
-
-        Returns:
-            str: The string representation of the Word object.
-        """
-        return (
-            f"Word("
-            f"word_id={self.word_id}, "
-            f"text={_repr_str(self.text)}, "
-            f"bounding_box={self.bounding_box}, "
-            f"top_right={self.top_right}, "
-            f"top_left={self.top_left}, "
-            f"bottom_right={self.bottom_right}, "
-            f"bottom_left={self.bottom_left}, "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
-            f")"
+    def _get_geometry_hash_fields(self) -> tuple:
+        """Override to include entity-specific ID fields in hash computation."""
+        geometry_fields = (
+            self.text,
+            tuple(self.bounding_box.items()),
+            tuple(self.top_right.items()),
+            tuple(self.top_left.items()),
+            tuple(self.bottom_right.items()),
+            tuple(self.bottom_left.items()),
+            self.angle_degrees,
+            self.angle_radians,
+            self.confidence,
+        )
+        return geometry_fields + (
+            self.image_id,
+            self.line_id,
+            self.word_id,
+            (
+                tuple(self.extracted_data.items())
+                if self.extracted_data
+                else None
+            ),
         )
 
     def __hash__(self) -> int:
         """Returns the hash value of the Word object."""
-        return hash(
-            (
-                self.image_id,
-                self.line_id,
-                self.word_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-                (
-                    tuple(self.extracted_data.items())
-                    if self.extracted_data
-                    else None
-                ),
-            )
+        return hash(self._get_geometry_hash_fields())
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the Word object."""
+        geometry_fields = self._get_geometry_repr_fields()
+        return (
+            f"Word("
+            f"word_id={self.word_id}, "
+            f"{geometry_fields}"
+            f")"
         )
 
 
+
+
 def item_to_word(item: Dict[str, Any]) -> Word:
-    """Converts a DynamoDB item to a Word object.
+    """Converts a DynamoDB item to a Word object using EntityFactory.
 
     Args:
         item (dict): The DynamoDB item to convert.
@@ -380,6 +362,7 @@ def item_to_word(item: Dict[str, Any]) -> Word:
         ValueError: When the item is missing required keys or has malformed
         fields.
     """
+
     required_keys = {
         "PK",
         "SK",
@@ -393,38 +376,55 @@ def item_to_word(item: Dict[str, Any]) -> Word:
         "angle_radians",
         "confidence",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
 
-    try:
-        return Word(
-            image_id=item["PK"]["S"][6:],
-            line_id=int(item["SK"]["S"].split("#")[1]),
-            word_id=int(item["SK"]["S"].split("#")[3]),
-            text=item["text"]["S"],
-            bounding_box=deserialize_bounding_box(item["bounding_box"]),
-            top_right=deserialize_coordinate_point(item["top_right"]),
-            top_left=deserialize_coordinate_point(item["top_left"]),
-            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
-            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
-            angle_degrees=float(item["angle_degrees"]["N"]),
-            angle_radians=float(item["angle_radians"]["N"]),
-            confidence=deserialize_confidence(item["confidence"]),
-            extracted_data=(
-                None
-                if "NULL" in item.get("extracted_data", {})
-                else {
-                    "type": item.get("extracted_data", {})
-                    .get("M", {})
-                    .get("type", {})
-                    .get("S"),
-                    "value": item.get("extracted_data", {})
-                    .get("M", {})
-                    .get("value", {})
-                    .get("S"),
-                }
-            ),
+    # Custom SK parser for LINE#{line_id:05d}#WORD#{word_id:05d} pattern
+    def parse_word_sk(sk: str) -> Dict[str, Any]:
+        """Parse the SK to extract line_id and word_id."""
+        parts = sk.split("#")
+        if len(parts) < 4 or parts[0] != "LINE" or parts[2] != "WORD":
+            raise ValueError(f"Invalid SK format for Word: {sk}")
+
+        return {
+            "line_id": int(parts[1]),
+            "word_id": int(parts[3]),
+        }
+
+    # Import EntityFactory and related functions
+    from .entity_factory import (
+        EntityFactory,
+        create_geometry_extractors,
+        create_image_receipt_pk_parser,
+    )
+
+    # Type-safe extractors for all fields
+    custom_extractors = {
+        "text": EntityFactory.extract_text_field,
+        **create_geometry_extractors(),  # Handles all geometry fields
+    }
+
+    # Handle optional extracted_data field
+    if "extracted_data" in item and not item.get("extracted_data", {}).get(
+        "NULL"
+    ):
+        custom_extractors["extracted_data"] = (
+            EntityFactory.extract_optional_extracted_data
         )
-    except (KeyError, ValueError) as e:
+
+    # Use EntityFactory to create the entity with full type safety
+    try:
+        return EntityFactory.create_entity(
+            entity_class=Word,
+            item=item,
+            required_keys=required_keys,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": parse_word_sk,
+            },
+            custom_extractors=custom_extractors,
+        )
+    except ValueError as e:
+        # Check if it's a missing keys error and re-raise as-is
+        if str(e).startswith("Item is missing required keys:"):
+            raise
+        # Otherwise, wrap the error
         raise ValueError(f"Error converting item to Word: {e}") from e

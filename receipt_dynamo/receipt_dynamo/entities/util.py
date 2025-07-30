@@ -45,135 +45,6 @@ UUID_V4_REGEX = re.compile(
 )
 
 
-def compute_histogram(text: str) -> Dict[str, float]:
-    """Compute a character frequency histogram for the given text.
-
-    Calculates the relative frequency of each character in a predefined set
-    of known characters (ASCII printable characters). This is useful for
-    text analysis and character distribution comparisons.
-
-    Args:
-        text: The input text to analyze.
-
-    Returns:
-        A dictionary mapping each known character to its relative frequency
-        (0.0 to 1.0) in the input text. Characters not present in the text
-        will have a frequency of 0.0.
-
-    Example:
-        >>> compute_histogram("AAB")
-        {'A': 0.67, 'B': 0.33, ' ': 0.0, '!': 0.0, ...}
-    """
-    known_letters = [
-        " ",
-        "!",
-        '"',
-        "#",
-        "$",
-        "%",
-        "&",
-        "'",
-        "(",
-        ")",
-        "*",
-        "+",
-        ",",
-        "-",
-        ".",
-        "/",
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        ":",
-        ";",
-        "<",
-        "=",
-        ">",
-        "?",
-        "@",
-        "A",
-        "B",
-        "C",
-        "D",
-        "E",
-        "F",
-        "G",
-        "H",
-        "I",
-        "J",
-        "K",
-        "L",
-        "M",
-        "N",
-        "O",
-        "P",
-        "Q",
-        "R",
-        "S",
-        "T",
-        "U",
-        "V",
-        "W",
-        "X",
-        "Y",
-        "Z",
-        "[",
-        "\\",
-        "]",
-        "_",
-        "a",
-        "b",
-        "c",
-        "d",
-        "e",
-        "f",
-        "g",
-        "h",
-        "i",
-        "j",
-        "k",
-        "l",
-        "m",
-        "n",
-        "o",
-        "p",
-        "q",
-        "r",
-        "s",
-        "t",
-        "u",
-        "v",
-        "w",
-        "x",
-        "y",
-        "z",
-        "{",
-        "}",
-        "|",
-        "~",
-    ]
-    histogram: Dict[str, Union[int, float]] = {
-        letter: 0 for letter in known_letters
-    }
-    for letter in text:
-        if letter in known_letters:
-            histogram[letter] += 1
-    total_letters = sum(histogram.values())
-    if total_letters > 0:
-        histogram = {
-            letter: float(count) / total_letters
-            for letter, count in histogram.items()
-        }
-    return histogram
-
-
 def assert_valid_bounding_box(
     bounding_box: Dict[str, Union[int, float]],
 ) -> Dict[str, Union[int, float]]:
@@ -235,13 +106,10 @@ def assert_valid_uuid(uuid: str) -> None:
     """
     Assert that the UUID is valid.
     """
-    # Import here to avoid circular import
-    from receipt_dynamo.data.shared_exceptions import EntityValidationError
-
     if not isinstance(uuid, str):
-        raise EntityValidationError("uuid must be a string")
+        raise ValueError("uuid must be a string")
     if not UUID_V4_REGEX.match(uuid):
-        raise EntityValidationError("uuid must be a valid UUIDv4")
+        raise ValueError("uuid must be a valid UUIDv4")
 
 
 def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
@@ -479,7 +347,8 @@ def deserialize_coordinate_point(
     in geometric entities.
 
     Args:
-        item_field: DynamoDB field in format {"M": {"x": {"N": "0.5"}, "y": {"N": "0.7"}}}
+        item_field: DynamoDB field in format
+            {"M": {"x": {"N": "0.5"}, "y": {"N": "0.7"}}}
 
     Returns:
         Python dict with float values: {"x": 0.5, "y": 0.7}

@@ -1,7 +1,7 @@
 import pytest
 
 from receipt_dynamo import Job, item_to_job
-from receipt_dynamo.entities.job import _parse_dynamodb_map
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
 
 @pytest.fixture
@@ -630,7 +630,7 @@ def test_parse_dynamodb_map():
     }
 
     # Convert to Python values and test
-    result = _parse_dynamodb_map(dynamodb_map)
+    result = parse_dynamodb_map(dynamodb_map)
     assert result["string"] == "value"
     assert result["number"] == 42
     assert result["decimal"] == 3.14

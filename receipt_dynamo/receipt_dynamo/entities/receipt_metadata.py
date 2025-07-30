@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -20,7 +21,7 @@ MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptMetadata:
+class ReceiptMetadata(SerializationMixin):
     """
     Represents validated metadata for a receipt, specifically merchant-related
     information derived from Google Places API and optionally validated by GPT.
@@ -428,6 +429,13 @@ class ReceiptMetadata:
 
 
 def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
+    """Create ReceiptMetadata from DynamoDB item using EntityFactory."""
+    from receipt_dynamo.entities.entity_factory import (
+        EntityFactory,
+        create_image_receipt_pk_parser,
+        create_image_receipt_sk_parser,
+    )
+
     required_keys = {
         "PK",
         "SK",
@@ -437,88 +445,42 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         "timestamp",
     }
 
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            "Invalid item format\nmissing keys: "
-            f"{missing_keys}\nadditional keys: {additional_keys}"
-        )
-    try:
-        # Parse primary key components
-        pk_parts = item["PK"]["S"].split("#")
-        if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
-            raise ValueError(f"Invalid PK format: {item['PK']['S']}")
-        image_id = pk_parts[1]
+    # Type-safe extractors
+    custom_extractors = {
+        "place_id": EntityFactory.extract_string_field("place_id"),
+        "merchant_name": EntityFactory.extract_string_field("merchant_name"),
+        "matched_fields": EntityFactory.extract_string_list_field(
+            "matched_fields"
+        ),
+        "timestamp": EntityFactory.extract_datetime_field("timestamp"),
+        "merchant_category": EntityFactory.extract_string_field(
+            "merchant_category", ""
+        ),
+        "address": EntityFactory.extract_string_field("address", ""),
+        "phone_number": EntityFactory.extract_string_field("phone_number", ""),
+        "validated_by": EntityFactory.extract_string_field("validated_by", ""),
+        "reasoning": EntityFactory.extract_string_field("reasoning", ""),
+        "canonical_place_id": EntityFactory.extract_string_field(
+            "canonical_place_id", ""
+        ),
+        "canonical_merchant_name": EntityFactory.extract_string_field(
+            "canonical_merchant_name", ""
+        ),
+        "canonical_address": EntityFactory.extract_string_field(
+            "canonical_address", ""
+        ),
+        "canonical_phone_number": EntityFactory.extract_string_field(
+            "canonical_phone_number", ""
+        ),
+    }
 
-        # Parse sort key components
-        sk_parts = item["SK"]["S"].split("#")
-        if (
-            len(sk_parts) != 3
-            or sk_parts[0] != "RECEIPT"
-            or sk_parts[2] != "METADATA"
-        ):
-            raise ValueError(f"Invalid SK format: {item['SK']['S']}")
-
-        try:
-            receipt_id = int(sk_parts[1])
-        except ValueError as e:
-            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}") from e
-
-        # Extract required fields
-        place_id = item["place_id"]["S"]
-        merchant_name = item["merchant_name"]["S"]
-
-        # Extract optional fields with defaults
-        matched_fields = item.get("matched_fields", {}).get("SS", [])
-        merchant_category = item.get("merchant_category", {}).get("S") or ""
-        address = item.get("address", {}).get("S") or ""
-        phone_number = item.get("phone_number", {}).get("S") or ""
-        validated_by = item.get("validated_by", {}).get("S") or ""
-        reasoning = item.get("reasoning", {}).get("S") or ""
-        canonical_place_id = item.get("canonical_place_id", {}).get("S") or ""
-        canonical_merchant_name = (
-            item.get("canonical_merchant_name", {}).get("S") or ""
-        )
-        canonical_address = item.get("canonical_address", {}).get("S") or ""
-        canonical_phone_number = (
-            item.get("canonical_phone_number", {}).get("S") or ""
-        )
-
-        # Parse timestamp
-        timestamp_str = item["timestamp"]["S"]
-        try:
-            timestamp = datetime.fromisoformat(timestamp_str)
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid timestamp format: {timestamp_str}"
-            ) from e
-
-        return ReceiptMetadata(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            place_id=place_id,
-            merchant_name=merchant_name,
-            matched_fields=matched_fields,
-            timestamp=timestamp,
-            merchant_category=merchant_category,
-            address=address,
-            phone_number=phone_number,
-            validated_by=validated_by,
-            reasoning=reasoning,
-            canonical_place_id=canonical_place_id,
-            canonical_merchant_name=canonical_merchant_name,
-            canonical_address=canonical_address,
-            canonical_phone_number=canonical_phone_number,
-        )
-    except KeyError as e:
-        raise ValueError(f"Missing required field in item: {e}") from e
-    except IndexError as e:
-        raise ValueError(f"Error parsing key components: {e}") from e
-    except ValueError:
-        # Re-raise ValueError as is
-        raise
-    except Exception as e:
-        raise ValueError(
-            f"Unexpected error parsing receipt metadata: {e}"
-        ) from e
+    return EntityFactory.create_entity(
+        entity_class=ReceiptMetadata,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": create_image_receipt_sk_parser(),
+        },
+        custom_extractors=custom_extractors,
+    )

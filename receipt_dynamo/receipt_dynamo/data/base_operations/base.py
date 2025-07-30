@@ -5,7 +5,6 @@ This module provides the core base class that all DynamoDB data access
 classes should inherit from, providing common functionality and error handling.
 """
 
-import time
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -19,9 +18,12 @@ from typing import (
 
 from botocore.exceptions import ClientError
 
-from ..shared_exceptions import EntityValidationError
-from .error_config import ErrorMessageConfig
-from .error_handlers import ErrorHandler
+from .error_handling import ErrorHandler, ErrorMessageConfig
+from .shared_utils import (
+    batch_write_with_retry,
+    build_get_item_key,
+    validate_pagination_params,
+)
 from .types import DynamoClientProtocol
 from .validators import EntityValidator
 
@@ -91,7 +93,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """
         self._ensure_initialized()
         assert self._error_handler is not None  # For type checker
-        self._error_handler.handle_client_error(error, operation, context)
+        self._error_handler.handle_client_error(error, operation, **context)
 
     def _validate_entity(
         self, entity: Any, entity_class: Type[Any], param_name: str
@@ -287,10 +289,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """
         response = self._client.get_item(
             TableName=self.table_name,
-            Key={
-                "PK": {"S": primary_key},
-                "SK": {"S": sort_key},
-            },
+            Key=build_get_item_key(primary_key, sort_key),
             ConsistentRead=consistent_read,
         )
 
@@ -302,11 +301,10 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if converter_func:
             return converter_func(item)
         # Check if entity_class has a from_item method
-        elif hasattr(entity_class, "from_item"):
+        if hasattr(entity_class, "from_item"):
             return entity_class.from_item(item)
-        else:
-            # Fallback - return raw item
-            return item
+        # Fallback - return raw item
+        return item
 
     def _batch_write_with_retry(
         self,
@@ -319,31 +317,17 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         Args:
             request_items: List of write request items
-            max_retries: Maximum number of retries for unprocessed items
+            max_retries: Maximum number of retries for unprocessed
+                items
             initial_backoff: Initial backoff time in seconds
         """
-        # Format request items for DynamoDB
-        formatted_items = {self.table_name: request_items}
-        backoff = initial_backoff
-
-        for attempt in range(max_retries + 1):
-            response = self._client.batch_write_item(
-                RequestItems=formatted_items
-            )
-
-            unprocessed_items = response.get("UnprocessedItems", {})
-            if not unprocessed_items:
-                break
-
-            if attempt < max_retries:
-                time.sleep(backoff)
-                backoff *= 2  # Exponential backoff
-                formatted_items = unprocessed_items
-            else:
-                # Final attempt failed, log unprocessed items
-                raise RuntimeError(
-                    f"Failed to process all items after {max_retries} retries"
-                )
+        batch_write_with_retry(
+            self._client,
+            self.table_name,
+            request_items,
+            max_retries,
+            initial_backoff,
+        )
 
     def _query_entities(
         self,
@@ -369,7 +353,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             limit: Maximum number of items to return
             last_evaluated_key: Key to start from for pagination
             scan_index_forward: Whether to sort in ascending order
-            filter_expression: Optional filter expression to apply after key condition
+            filter_expression: Optional filter expression to apply after key
+                condition
 
         Returns:
             Tuple of entities list and last evaluated key for pagination
@@ -452,7 +437,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             # If we've collected all requested items but there's still a LEK,
             # we need to return None to indicate no more pages for the user
             if remaining == 0 and last_evaluated_key and len(items) > 0:
-                # We might have more items in the current page that we didn't process
+                # We might have more items in the current page that we didn't
+                # process
                 # In this case, keep the LEK to indicate there are more items
                 pass
             elif remaining > 0:
@@ -467,30 +453,6 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         last_evaluated_key: Optional[Dict[str, Any]],
     ) -> None:
         """Validate pagination parameters."""
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError("Limit must be an integer")
-            if limit <= 0:
-                raise EntityValidationError("Limit must be greater than 0")
-
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            # Validate DynamoDB LastEvaluatedKey structure
-            required_keys = {"PK", "SK"}
-            if not required_keys.issubset(last_evaluated_key.keys()):
-                raise EntityValidationError(
-                    f"LastEvaluatedKey must contain keys: {required_keys}"
-                )
-            # Validate proper DynamoDB attribute value format
-            for key in required_keys:
-                if (
-                    not isinstance(last_evaluated_key[key], dict)
-                    or "S" not in last_evaluated_key[key]
-                ):
-                    raise EntityValidationError(
-                        f"LastEvaluatedKey[{key}] must be a dict "
-                        f"containing a key 'S'"
-                    )
+        validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )

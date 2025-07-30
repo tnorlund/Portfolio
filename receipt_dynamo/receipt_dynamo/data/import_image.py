@@ -46,7 +46,7 @@ def import_image(table_name: str, json_path: str) -> None:
     dynamo_client = DynamoClient(table_name)
 
     # Read the JSON file
-    with open(json_path, "r") as f:
+    with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Convert dictionaries back to entity objects

@@ -3,11 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -26,12 +23,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _LabelCountCache(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _LabelCountCache(FlattenedStandardMixin):
     """Accessor methods for LabelCountCache items in DynamoDB."""
 
     @handle_dynamodb_errors("add_label_count_cache")
@@ -42,21 +34,7 @@ class _LabelCountCache(
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item.to_item(),
-                ConditionExpression="attribute_not_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise EntityAlreadyExistsError(
-                    f"LabelCountCache for label {item.label} already exists"
-                ) from e
-            raise DynamoDBError(
-                f"Could not add label count cache to DynamoDB: {e}"
-            ) from e
+        self._add_entity(item)
 
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
@@ -68,35 +46,13 @@ class _LabelCountCache(
             raise EntityValidationError(
                 "items must be a list of LabelCountCache objects.f"
             )
-        try:
-            for i in range(0, len(items), 25):
-                chunk = items[i : i + 25]
-                request_items = [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item.to_item())
-                    )
-                    for item in chunk
-                ]
-                response = self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
-                )
-                # Handle unprocessed items if they exist
-                unprocessed = response.get("UnprocessedItems", {})
-                while unprocessed.get(self.table_name):
-                    # If there are unprocessed items, retry them
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                # Note: 'item' is not defined here, using generic message
-                raise EntityAlreadyExistsError(
-                    "LabelCountCache already exists for one or more labels"
-                ) from e
-            raise DynamoDBError(
-                f"Could not add label count caches to DynamoDB: {e}"
-            ) from e
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=item.to_item())
+            )
+            for item in items
+        ]
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
@@ -106,21 +62,7 @@ class _LabelCountCache(
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=item.to_item(),
-                ConditionExpression="attribute_exists(PK)",
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ConditionalCheckFailedException":
-                raise EntityNotFoundError(
-                    f"LabelCountCache for label {item.label} does not exist"
-                ) from e
-            raise DynamoDBError(
-                f"Could not update label count cache in DynamoDB: {e}"
-            ) from e
+        self._update_entity(item)
 
     @handle_dynamodb_errors("get_label_count_cache")
     def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
@@ -137,13 +79,9 @@ class _LabelCountCache(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "LABEL_COUNT_CACHE"}},
+        return self._query_by_type(
+            entity_type="LABEL_COUNT_CACHE",
             converter_func=item_to_label_count_cache,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True,
         )

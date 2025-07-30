@@ -1,22 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
-    PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-    WriteRequestTypeDef,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -25,20 +14,16 @@ from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+
     from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
     )
 
 CHUNK_SIZE = 25
 
 
-class _ReceiptLine(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _ReceiptLine(FlattenedStandardMixin):
     """
     A class used to represent a ReceiptLine in the database
     (similar to _line.py).
@@ -71,18 +56,10 @@ class _ReceiptLine(
         self._validate_entity(line, ReceiptLine, "line")
         self._add_entity(line)
 
-    @handle_dynamodb_errors("add_receipt_lines")
     def add_receipt_lines(self, lines: list[ReceiptLine]) -> None:
-        """Adds multiple ReceiptLines to DynamoDB in batches of CHUNK_SIZE."""
+        """Adds multiple ReceiptLines to DynamoDB."""
         self._validate_entity_list(lines, ReceiptLine, "lines")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=ln.to_item())
-            )
-            for ln in lines
-        ]
-        self._batch_write_with_retry(request_items)
+        self._add_entities(lines)
 
     @handle_dynamodb_errors("update_receipt_line")
     def update_receipt_line(self, line: ReceiptLine) -> None:
@@ -93,6 +70,7 @@ class _ReceiptLine(
     @handle_dynamodb_errors("update_receipt_lines")
     def update_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Updates multiple existing ReceiptLines in DynamoDB."""
+        self._validate_entity_list(lines, ReceiptLine, "lines")
         self._update_entities(lines, ReceiptLine, "lines")
 
     @handle_dynamodb_errors("delete_receipt_line")
@@ -112,16 +90,10 @@ class _ReceiptLine(
             ConditionExpression="attribute_exists(PK)",
         )
 
-    @handle_dynamodb_errors("delete_receipt_lines")
     def delete_receipt_lines(self, lines: list[ReceiptLine]) -> None:
         """Deletes multiple ReceiptLines in batch."""
         self._validate_entity_list(lines, ReceiptLine, "lines")
-
-        request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=ln.key))
-            for ln in lines
-        ]
-        self._batch_write_with_retry(request_items)
+        self._delete_entities_batch(lines)
 
     @handle_dynamodb_errors("get_receipt_line")
     def get_receipt_line(
@@ -190,62 +162,63 @@ class _ReceiptLine(
     @handle_dynamodb_errors("get_receipt_lines_by_keys")
     def get_receipt_lines_by_keys(self, keys: list[dict]) -> list[ReceiptLine]:
         """Retrieves multiple ReceiptLines by their keys."""
-        if keys is None:
-            raise EntityValidationError("keys cannot be None")
+        if not keys:
+            raise EntityValidationError("keys cannot be None or empty")
         if not isinstance(keys, list):
             raise EntityValidationError("keys must be a list of dictionaries.")
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise EntityValidationError("SK must start with 'RECEIPT#'")
-            if len(key["SK"]["S"].split("#")[1]) != 5:
-                raise EntityValidationError(
-                    "SK must contain a 5-digit receipt ID"
-                )
-            if not key["SK"]["S"].split("#")[2] == "LINE":
-                raise EntityValidationError("SK must contain 'LINE'")
-            if len(key["SK"]["S"].split("#")[3]) != 5:
-                raise EntityValidationError(
-                    "SK must contain a 5-digit line ID"
-                )
 
-        # Get the receipt lines
-        results = []
+        # Validate all keys
+        for key in keys:
+            self._validate_receipt_line_key(key)
+
+        # Batch get items in chunks of 25 (DynamoDB limit)
+        results: List[Dict[str, Any]] = []
         for i in range(0, len(keys), CHUNK_SIZE):
             chunk = keys[i : i + CHUNK_SIZE]
             request: BatchGetItemInputTypeDef = {
-                "RequestItems": {
-                    self.table_name: {
-                        "Keys": chunk,
-                    }
-                }
+                "RequestItems": {self.table_name: {"Keys": chunk}}
             }
-            try:
-                response = self._client.batch_get_item(**request)
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
 
+            # Perform batch get with retry for unprocessed keys
+            response = self._client.batch_get_item(**request)
+            results.extend(response["Responses"].get(self.table_name, []))
+
+            # Handle unprocessed keys
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name, {}).get("Keys"):
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
+                results.extend(response["Responses"].get(self.table_name, []))
                 unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(  # type: ignore[call-overload]
-                    self.table_name, {}
-                ).get("Keys"):
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
-                    results.extend(batch_items)
-                    unprocessed = response.get("UnprocessedKeys", {})
-            except ClientError as e:
-                raise EntityValidationError(
-                    f"Could not get ReceiptLines from the database: {e}"
-                ) from e
 
-        return [item_to_receipt_line(result) for result in results]
+        return [item_to_receipt_line(item) for item in results]
+
+    def _validate_receipt_line_key(self, key: dict) -> None:
+        """Validates a single ReceiptLine key structure."""
+        if not isinstance(key, dict):
+            raise EntityValidationError("Each key must be a dictionary")
+        if not {"PK", "SK"}.issubset(key.keys()):
+            raise EntityValidationError("keys must contain 'PK' and 'SK'")
+
+        pk = key.get("PK", {}).get("S", "")
+        sk = key.get("SK", {}).get("S", "")
+
+        if not pk.startswith("IMAGE#"):
+            raise EntityValidationError("PK must start with 'IMAGE#'")
+        if not sk.startswith("RECEIPT#"):
+            raise EntityValidationError("SK must start with 'RECEIPT#'")
+
+        # Validate SK format: RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
+        sk_parts = sk.split("#")
+        if len(sk_parts) < 4:
+            raise EntityValidationError("Invalid SK format")
+        if sk_parts[2] != "LINE":
+            raise EntityValidationError("SK must contain 'LINE'")
+        if len(sk_parts[1]) != 5 or not sk_parts[1].isdigit():
+            raise EntityValidationError("SK must contain a 5-digit receipt ID")
+        if len(sk_parts[3]) != 5 or not sk_parts[3].isdigit():
+            raise EntityValidationError("SK must contain a 5-digit line ID")
 
     @handle_dynamodb_errors("list_receipt_lines")
     def list_receipt_lines(
@@ -262,24 +235,18 @@ class _ReceiptLine(
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_LINE"}},
+        return self._query_by_type(
+            entity_type="RECEIPT_LINE",
             converter_func=item_to_receipt_line,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
 
-    @handle_dynamodb_errors("list_receipt_lines_by_embedding_status")
     def list_receipt_lines_by_embedding_status(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptLine]:
         """Returns all ReceiptLines from the table with a given embedding
         status."""
-        receipt_lines: list[ReceiptLine] = []
-
         if isinstance(embedding_status, EmbeddingStatus):
             status_str = embedding_status.value
         elif isinstance(embedding_status, str):
@@ -295,90 +262,25 @@ class _ReceiptLine(
                 "embedding_status must be a valid EmbeddingStatus"
             )
 
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression="#gsi1pk = :status",
-                ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
-                ExpressionAttributeValues={
-                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
-                },
-            )
-            # First page
-            for item in response.get("Items", []):
-                receipt_lines.append(item_to_receipt_line(item))
-            # Handle pagination
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    IndexName="GSI1",
-                    KeyConditionExpression="#gsi1pk = :status",
-                    ExpressionAttributeNames={"#gsi1pk": "GSI1PK"},
-                    ExpressionAttributeValues={
-                        ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                for item in response.get("Items", []):
-                    receipt_lines.append(item_to_receipt_line(item))
-            return receipt_lines
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt lines from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise EntityValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise EntityValidationError(
-                    f"Could not list ReceiptLines from the database: {e}"
-                ) from e
+        results, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :status",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+            },
+            converter_func=item_to_receipt_line,
+        )
 
-    @handle_dynamodb_errors("list_receipt_lines_from_receipt")
+        return results
+
     def list_receipt_lines_from_receipt(
         self, receipt_id: int, image_id: str
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
-        receipt_lines = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                },
-            )
-            receipt_lines.extend(
-                [item_to_receipt_line(item) for item in response["Items"]]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                    ExpressionAttributeValues={
-                        ":pk": {"S": f"IMAGE#{image_id}"},
-                        ":sk": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_lines.extend(
-                    [item_to_receipt_line(item) for item in response["Items"]]
-                )
-
-            return receipt_lines
-        except ClientError as e:
-            raise EntityValidationError(
-                "Could not list ReceiptLines from the database"
-            ) from e
+        results, _ = self._query_by_parent(
+            parent_key_prefix=f"IMAGE#{image_id}",
+            child_key_prefix=f"RECEIPT#{receipt_id:05d}#LINE#",
+            converter_func=item_to_receipt_line,
+        )
+        return results

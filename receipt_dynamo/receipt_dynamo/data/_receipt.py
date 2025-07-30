@@ -2,12 +2,10 @@
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -32,16 +30,13 @@ from receipt_dynamo.entities.receipt_word import (
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 from ._receipt_details_processor import process_receipt_details_query
 
 
 class _Receipt(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
@@ -188,13 +183,7 @@ class _Receipt(
                 - AccessDeniedException (permission issues)
                 - or any other unexpected errors.
         """
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-
-        # Validate image_id as a UUID and receipt_id as a positive integer.
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("Receipt ID must be an integer.")
         if receipt_id < 0:
@@ -344,14 +333,8 @@ class _Receipt(
         self._validate_pagination_params(limit, last_evaluated_key)
 
         # Additional validation specific to list_receipts
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT"}},
+        return self._query_by_type(
+            entity_type="RECEIPT",
             converter_func=item_to_receipt,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -457,11 +440,7 @@ class _Receipt(
                 does not exist.
             Exception: For underlying DynamoDB errors
         """
-        if image_id is None:
-            raise EntityValidationError("image_id is required")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id is required")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id < 0:

@@ -7,7 +7,7 @@ across all DynamoDB data access classes.
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from .error_config import ErrorMessageConfig
+from .error_handling import ErrorMessageConfig
 
 
 class ValidationMessageGenerator:

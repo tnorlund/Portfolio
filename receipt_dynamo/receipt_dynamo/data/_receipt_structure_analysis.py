@@ -8,9 +8,10 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
+    CommonValidationMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
+    QueryByTypeMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -21,7 +22,6 @@ from receipt_dynamo.entities import item_to_receipt_structure_analysis
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ReceiptStructureAnalysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -40,8 +40,7 @@ else:
 
 class _ReceiptStructureAnalysis(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt structure analyses in DynamoDB.
@@ -247,13 +246,16 @@ class _ReceiptStructureAnalysis(
                 )
             )
 
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         if version:
             # If version is provided, get the exact item
             result = self._get_entity(
                 primary_key=f"IMAGE#{image_id}",
-                sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#{version}",
+                sort_key=(
+                    f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
+                    f"#{version}"
+                ),
                 entity_class=ReceiptStructureAnalysis,
                 converter_func=item_to_receipt_structure_analysis,
             )
@@ -268,7 +270,9 @@ class _ReceiptStructureAnalysis(
         # first one
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -324,13 +328,8 @@ class _ReceiptStructureAnalysis(
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_STRUCTURE_ANALYSIS"}
-            },
+        return self._query_by_type(
+            entity_type="RECEIPT_STRUCTURE_ANALYSIS",
             converter_func=item_to_receipt_structure_analysis,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -369,11 +368,13 @@ class _ReceiptStructureAnalysis(
                 )
             )
 
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",

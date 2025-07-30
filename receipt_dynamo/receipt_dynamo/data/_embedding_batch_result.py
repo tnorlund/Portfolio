@@ -1,14 +1,17 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
+    DeleteTypeDef,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
+    PutTypeDef,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -22,35 +25,9 @@ from receipt_dynamo.entities.embedding_batch_result import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        DeleteTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
-
 
 class _EmbeddingBatchResult(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """DynamoDB accessor for EmbeddingBatchResult items."""
 
@@ -80,7 +57,7 @@ class _EmbeddingBatchResult(
     @handle_dynamodb_errors("add_embedding_batch_results")
     def add_embedding_batch_results(
         self, embedding_batch_results: List[EmbeddingBatchResult]
-    ):
+    ) -> None:
         """
         Batch add EmbeddingBatchResults to DynamoDB.
 
@@ -93,7 +70,6 @@ class _EmbeddingBatchResult(
             EmbeddingBatchResult,
             "embedding_batch_results",
         )
-        # Create write request items for batch operation
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=result.to_item())
@@ -161,14 +137,7 @@ class _EmbeddingBatchResult(
                 )
                 for r in chunk
             ]
-            try:
-                self._client.transact_write_items(
-                    TransactItems=transact_items,
-                )
-            except ClientError as e:
-                raise BatchOperationError(
-                    f"Error updating embedding batch results: {e}"
-                ) from e
+            self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_embedding_batch_result")
     def delete_embedding_batch_result(
@@ -233,7 +202,7 @@ class _EmbeddingBatchResult(
         Gets an EmbeddingBatchResult from DynamoDB by primary key.
         """
         assert_valid_uuid(batch_id)
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "receipt_id must be a positive integer"
@@ -279,20 +248,8 @@ class _EmbeddingBatchResult(
         """
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary."
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "EMBEDDING_BATCH_RESULT"}
-            },
+        return self._query_by_type(
+            entity_type="EMBEDDING_BATCH_RESULT",
             converter_func=item_to_embedding_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -317,13 +274,6 @@ class _EmbeddingBatchResult(
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary."
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
         return self._query_entities(
             index_name="GSI2",
             key_condition_expression="GSI2SK = :sk",
@@ -345,20 +295,13 @@ class _EmbeddingBatchResult(
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
         """
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "receipt_id must be a positive integer."
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary."
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
         template_embedding_batch_result = EmbeddingBatchResult(
             batch_id=str(uuid4()),
             image_id=image_id,

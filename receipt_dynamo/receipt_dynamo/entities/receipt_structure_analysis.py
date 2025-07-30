@@ -6,12 +6,14 @@ This is used for storing and retrieving data from DynamoDB.
 
 import decimal
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class SpatialPattern:
     """
     Represents a spatial pattern found in receipt sections.
@@ -20,33 +22,25 @@ class SpatialPattern:
     receipt, such as being aligned, grouped, or separated by whitespace.
     """
 
-    def __init__(
-        self,
-        pattern_type: str,
-        description: str,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
+    pattern_type: str
+    description: str
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
         """
         Initialize a SpatialPattern.
-
-        Args:
-            pattern_type: The type of pattern (e.g., "alignment",
-                "grouping", "spacing")
-            description: Description of the pattern
-            metadata: Additional metadata for the pattern
 
         Raises:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        assert_type("pattern_type", pattern_type, str)
-        assert_type("description", description, str)
-        if metadata is not None:
-            assert_type("metadata", metadata, dict)
+        assert_type("pattern_type", self.pattern_type, str)
+        assert_type("description", self.description, str)
+        if self.metadata is not None:
+            assert_type("metadata", self.metadata, dict)
 
-        self.pattern_type = pattern_type
-        self.description = description
-        self.metadata = metadata or {}
+        if self.metadata is None:
+            self.metadata = {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the SpatialPattern to a dictionary."""
@@ -81,15 +75,6 @@ class SpatialPattern:
             metadata=data.get("metadata", {}),
         )
 
-    def __eq__(self, other: object) -> bool:
-        """Check if two SpatialPattern objects are equal."""
-        if not isinstance(other, SpatialPattern):
-            return False
-        return (
-            self.pattern_type == other.pattern_type
-            and self.description == other.description
-            and self.metadata == other.metadata
-        )
 
     def __repr__(self) -> str:
         """Return a string representation of the SpatialPattern."""
@@ -99,6 +84,7 @@ class SpatialPattern:
         )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ContentPattern:
     """
     Represents a content pattern found in receipt sections.
@@ -107,38 +93,30 @@ class ContentPattern:
     such as containing dates, prices, or specific keywords.
     """
 
-    def __init__(
-        self,
-        pattern_type: str,
-        description: str,
-        examples: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
+    pattern_type: str
+    description: str
+    examples: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
         """
         Initialize a ContentPattern.
-
-        Args:
-            pattern_type: The type of pattern (e.g., "keywords",
-                "formatting", "semantic")
-            description: Description of the pattern
-            examples: Example texts that demonstrate the pattern
-            metadata: Additional metadata for the pattern
 
         Raises:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        assert_type("pattern_type", pattern_type, str)
-        assert_type("description", description, str)
-        if examples is not None:
-            assert_type("examples", examples, list)
-        if metadata is not None:
-            assert_type("metadata", metadata, dict)
+        assert_type("pattern_type", self.pattern_type, str)
+        assert_type("description", self.description, str)
+        if self.examples is not None:
+            assert_type("examples", self.examples, list)
+        if self.metadata is not None:
+            assert_type("metadata", self.metadata, dict)
 
-        self.pattern_type = pattern_type
-        self.description = description
-        self.examples = examples or []
-        self.metadata = metadata or {}
+        if self.examples is None:
+            self.examples = []
+        if self.metadata is None:
+            self.metadata = {}
 
         # Validate that all examples are strings
         for i, example in enumerate(self.examples):
@@ -186,16 +164,6 @@ class ContentPattern:
             metadata=data.get("metadata", {}),
         )
 
-    def __eq__(self, other: object) -> bool:
-        """Check if two ContentPattern objects are equal."""
-        if not isinstance(other, ContentPattern):
-            return False
-        return (
-            self.pattern_type == other.pattern_type
-            and self.description == other.description
-            and self.examples == other.examples
-            and self.metadata == other.metadata
-        )
 
     def __repr__(self) -> str:
         """Return a string representation of the ContentPattern."""

@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class Queue:
     """
     Represents a queue for organizing training jobs in DynamoDB.
@@ -24,65 +26,48 @@ class Queue:
         job_count (int): The current number of jobs in the queue.
     """
 
-    def __init__(
-        self,
-        queue_name: str,
-        description: str,
-        created_at: datetime | str,
-        max_concurrent_jobs: int = 1,
-        priority: str = "medium",
-        job_count: int = 0,
-    ):
-        """Initializes a new Queue object for DynamoDB.
+    queue_name: str
+    description: str
+    created_at: datetime | str
+    max_concurrent_jobs: int = 1
+    priority: str = "medium"
+    job_count: int = 0
 
-        Args:
-            queue_name (str): The name of the queue (unique identifier).
-            description (str): A description of the queue.
-            created_at (datetime or str): The timestamp when the queue was
-                created.
-            max_concurrent_jobs (int, optional): Maximum concurrent jobs.
-                Defaults to 1.
-            priority (str, optional): Queue priority level. Defaults to
-                "medium".
-            job_count (int, optional): Current job count. Defaults to 0.
+    def __post_init__(self):
+        """Initializes and validates the Queue object.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an
                 invalid value.
         """
-        if not isinstance(queue_name, str) or not queue_name:
+        if not isinstance(self.queue_name, str) or not self.queue_name:
             raise ValueError("queue_name must be a non-empty string")
-        self.queue_name = queue_name
 
-        if not isinstance(description, str):
+        if not isinstance(self.description, str):
             raise ValueError("description must be a string")
-        self.description = description
 
-        self.created_at: str
-        if isinstance(created_at, datetime):
-            self.created_at = created_at.isoformat()
-        elif isinstance(created_at, str):
-            self.created_at = created_at
+        if isinstance(self.created_at, datetime):
+            self.created_at = self.created_at.isoformat()
+        elif isinstance(self.created_at, str):
+            pass  # Already a string
         else:
             raise ValueError(
                 "created_at must be a datetime object or a string"
             )
 
-        if not isinstance(max_concurrent_jobs, int) or max_concurrent_jobs < 1:
+        if not isinstance(self.max_concurrent_jobs, int) or self.max_concurrent_jobs < 1:
             raise ValueError("max_concurrent_jobs must be a positive integer")
-        self.max_concurrent_jobs = max_concurrent_jobs
 
         valid_priorities = ["low", "medium", "high", "critical"]
         if (
-            not isinstance(priority, str)
-            or priority.lower() not in valid_priorities
+            not isinstance(self.priority, str)
+            or self.priority.lower() not in valid_priorities
         ):
             raise ValueError(f"priority must be one of {valid_priorities}")
-        self.priority = priority.lower()
+        self.priority = self.priority.lower()
 
-        if not isinstance(job_count, int) or job_count < 0:
+        if not isinstance(self.job_count, int) or self.job_count < 0:
             raise ValueError("job_count must be a non-negative integer")
-        self.job_count: int = job_count
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -154,25 +139,6 @@ class Queue:
         yield "priority", self.priority
         yield "job_count", self.job_count
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two Queue objects are equal.
-
-        Args:
-            other (Queue): The other Queue object to compare.
-
-        Returns:
-            bool: True if the Queue objects are equal, False otherwise.
-        """
-        if not isinstance(other, Queue):
-            return False
-        return (
-            self.queue_name == other.queue_name
-            and self.description == other.description
-            and self.created_at == other.created_at
-            and self.max_concurrent_jobs == other.max_concurrent_jobs
-            and self.priority == other.priority
-            and self.job_count == other.job_count
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the Queue object.

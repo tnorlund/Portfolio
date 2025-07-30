@@ -7,6 +7,7 @@ from receipt_dynamo import Line, item_to_line
 
 @pytest.fixture
 def example_line():
+    """A pytest fixture for a sample Line object."""
     return Line(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         1,
@@ -386,7 +387,7 @@ def test_line_init_invalid_bottom_right():
 def test_line_init_invalid_angle():
     with pytest.raises(
         ValueError,
-        match="angle_degrees must be a float or int",
+        match="angle_degrees must be float or int, got",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -408,7 +409,7 @@ def test_line_init_invalid_angle():
         )
     with pytest.raises(
         ValueError,
-        match="angle_radians must be a float or int",
+        match="angle_radians must be float or int, got",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -435,7 +436,7 @@ def test_line_init_invalid_confidence():
     # fmt: off
     with pytest.raises(
         ValueError,
-        match="confidence must be a float between 0 and 1",
+        match="confidence must be float or int, got",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -465,7 +466,8 @@ def test_line_init_invalid_confidence():
     )
     assert line.confidence == 1.0
     with pytest.raises(
-        ValueError, match="confidence must be a float between 0 and 1",
+        ValueError,
+        match="confidence must be between 0 and 1, got",
     ):
         Line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

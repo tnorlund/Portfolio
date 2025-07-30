@@ -8,9 +8,8 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -21,7 +20,6 @@ from receipt_dynamo.entities import item_to_receipt_line_item_analysis
 from receipt_dynamo.entities.receipt_line_item_analysis import (
     ReceiptLineItemAnalysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
@@ -39,8 +37,7 @@ else:
 
 class _ReceiptLineItemAnalysis(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt line item analyses in DynamoDB.
@@ -220,7 +217,7 @@ class _ReceiptLineItemAnalysis(
                 "receipt_id must be an integer, got"
                 f" {type(receipt_id).__name__}"
             )
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -266,13 +263,8 @@ class _ReceiptLineItemAnalysis(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_LINE_ITEM_ANALYSIS"}
-            },
+        return self._query_by_type(
+            entity_type="RECEIPT_LINE_ITEM_ANALYSIS",
             converter_func=item_to_receipt_line_item_analysis,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -298,11 +290,13 @@ class _ReceiptLineItemAnalysis(
             raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={"#pk": "PK", "#sk": "SK"},
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},

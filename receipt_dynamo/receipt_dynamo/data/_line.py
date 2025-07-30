@@ -1,33 +1,21 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
 
 
 class _Line(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to represent a Line in the database.
@@ -123,15 +111,25 @@ class _Line(
             line_id (int): The ID of the line to delete
         """
         # Validate UUID
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}"},
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Create a temporary Line object with just the keys for deletion
+        temp_line = Line(
+            image_id=image_id,
+            line_id=line_id,
+            text="",  # Empty text is allowed
+            # Required geometry fields
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.5,
+        )
+        self._delete_entity(
+            temp_line, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_lines")
@@ -177,7 +175,7 @@ class _Line(
         Raises:
             EntityNotFoundError: When the line is not found
         """
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -208,15 +206,11 @@ class _Line(
         Returns:
             Tuple of lines list and last evaluated key for pagination
         """
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "LINE"}},
+        return self._query_by_type(
+            entity_type="LINE",
             converter_func=item_to_line,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True,
         )
 
     @handle_dynamodb_errors("list_lines_from_image")
@@ -231,7 +225,9 @@ class _Line(
         """
         lines, _ = self._query_entities(
             index_name="GSI1",
-            key_condition_expression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+            key_condition_expression=(
+                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+            ),
             expression_attribute_names={"#pk": "GSI1PK", "#sk": "GSI1SK"},
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},

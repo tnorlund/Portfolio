@@ -4,12 +4,10 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -36,10 +34,7 @@ CHUNK_SIZE = 25
 
 
 class _ReceiptWord(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to represent a ReceiptWord in the database.
@@ -160,15 +155,19 @@ class _ReceiptWord(
         """Retrieves a single ReceiptWord by IDs."""
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                f"#WORD#{word_id:05d}"
+            ),
             entity_class=ReceiptWord,
             converter_func=item_to_receipt_word,
         )
 
         if result is None:
             raise EntityNotFoundError(
-                f"ReceiptWord with image_id={image_id}, receipt_id={receipt_id}, "
-                f"line_id={line_id}, word_id={word_id} not found"
+                f"ReceiptWord with image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}, "
+                f"word_id={word_id} not found"
             )
 
         return result
@@ -307,11 +306,8 @@ class _ReceiptWord(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_WORD"}},
+        return self._query_by_type(
+            entity_type="RECEIPT_WORD",
             converter_func=item_to_receipt_word,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -325,7 +321,9 @@ class _ReceiptWord(
         receipt/image/line IDs."""
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
+            key_condition_expression=(
+                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+            ),
             expression_attribute_names={"#pk": "PK", "#sk": "SK"},
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
@@ -386,33 +384,35 @@ class _ReceiptWord(
                 },
             }
 
-            # Initial query
-            response = self._client.query(**query_params)
-            receipt_words.extend(
-                [
-                    item_to_receipt_word(item)
-                    for item in response["Items"]
-                    if "#WORD#" in item["SK"]["S"]
-                    and not item["SK"]["S"].endswith("#TAG#")
-                    and not item["SK"]["S"].endswith("#LETTER#")
-                ]
+            # Use the mixin method for query
+            results, _ = self._query_entities(
+                index_name=None,
+                key_condition_expression=(
+                    "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end"
+                ),
+                expression_attribute_names={"#pk": "PK", "#sk": "SK"},
+                expression_attribute_values={
+                    ":pk_val": {"S": f"IMAGE#{image_id}"},
+                    ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                    ":sk_end": {
+                        "S": (
+                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#"
+                            "\uffff"
+                        )
+                    },
+                },
+                converter_func=item_to_receipt_word,
+                filter_expression=None,
             )
 
-            # Handle pagination
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                receipt_words.extend(
-                    [
-                        item_to_receipt_word(item)
-                        for item in response["Items"]
-                        if "#WORD#" in item["SK"]["S"]
-                        and not item["SK"]["S"].endswith("#TAG#")
-                        and not item["SK"]["S"].endswith("#LETTER#")
-                    ]
-                )
+            # Filter results to only include WORD items (not TAG or LETTER)
+            receipt_words = [
+                word
+                for word in results
+                if "#WORD#" in word.to_item()["SK"]["S"]
+                and not word.to_item()["SK"]["S"].endswith("#TAG#")
+                and not word.to_item()["SK"]["S"].endswith("#LETTER#")
+            ]
 
             return receipt_words
 
@@ -439,7 +439,7 @@ class _ReceiptWord(
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(
-        self, embedding_status: EmbeddingStatus
+        self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given embedding status."""
         # Validate and normalize embedding_status argument
@@ -449,7 +449,7 @@ class _ReceiptWord(
             status_str = embedding_status
         else:
             raise EntityValidationError(
-                "embedding_status must be a string or " "EmbeddingStatus enum"
+                "embedding_status must be a string or EmbeddingStatus enum"
             )
         # Ensure the status_str is a valid EmbeddingStatus value
         valid_values = [s.value for s in EmbeddingStatus]

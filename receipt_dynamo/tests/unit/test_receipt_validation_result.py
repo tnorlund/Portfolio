@@ -366,7 +366,7 @@ def test_validation_result_init_invalid_actual_value():
 def test_validation_result_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
     with pytest.raises(
-        ValueError, match="validation_timestamp must be a datetime or string"
+        ValueError, match="validation_timestamp must be a datetime, string, or None"
     ):
         ReceiptValidationResult(
             receipt_id=1,

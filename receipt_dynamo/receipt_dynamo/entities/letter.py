@@ -1,26 +1,22 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.entities.geometry_base import GeometryMixin
+from receipt_dynamo.entities.entity_mixins import (
+    GeometryMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+)
 from receipt_dynamo.entities.util import (
-    _format_float,
-    assert_valid_bounding_box,
-    assert_valid_point,
     assert_valid_uuid,
     build_base_item,
-    deserialize_bounding_box,
-    deserialize_confidence,
-    deserialize_coordinate_point,
-    serialize_bounding_box,
-    serialize_confidence,
-    serialize_coordinate_point,
-    validate_confidence_range,
     validate_positive_int,
 )
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class Letter(GeometryMixin):
+class Letter(
+    GeometryMixin, GeometrySerializationMixin, GeometryValidationMixin
+):
     """Represents a single letter extracted from an image for DynamoDB.
 
     This class encapsulates letter-related information such as its unique
@@ -78,23 +74,8 @@ class Letter(GeometryMixin):
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
 
-        assert_valid_bounding_box(self.bounding_box)
-        assert_valid_point(self.top_right)
-        assert_valid_point(self.top_left)
-        assert_valid_point(self.bottom_right)
-        assert_valid_point(self.bottom_left)
-
-        if not isinstance(self.angle_degrees, (float, int)):
-            raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(self.angle_degrees)
-
-        if not isinstance(self.angle_radians, (float, int)):
-            raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(self.angle_radians)
-
-        self.confidence = validate_confidence_range(
-            "confidence", self.confidence
-        )
+        # Use mixin for common geometry validation
+        self._validate_geometry_fields()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -121,15 +102,7 @@ class Letter(GeometryMixin):
         """
         return {
             **build_base_item(self, "LETTER"),
-            "text": {"S": self.text},
-            "bounding_box": serialize_bounding_box(self.bounding_box),
-            "top_right": serialize_coordinate_point(self.top_right),
-            "top_left": serialize_coordinate_point(self.top_left),
-            "bottom_right": serialize_coordinate_point(self.bottom_right),
-            "bottom_left": serialize_coordinate_point(self.bottom_left),
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": serialize_confidence(self.confidence),
+            **self._get_geometry_fields(),
         }
 
     def __repr__(self) -> str:
@@ -246,18 +219,23 @@ class Letter(GeometryMixin):
 
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:
-    """Converts a DynamoDB item to a Letter object.
+    """Convert a DynamoDB item to a Letter object using type-safe EntityFactory.
 
     Args:
-        item (dict): The DynamoDB item to convert.
+        item: The DynamoDB item dictionary to convert.
 
     Returns:
-        Letter: The Letter object represented by the DynamoDB item.
+        A Letter object with all fields properly extracted and validated.
 
     Raises:
-        ValueError: If the item is missing required keys or has malformed
-            fields.
+        ValueError: If required fields are missing or have invalid format.
     """
+    from receipt_dynamo.entities.entity_factory import (
+        EntityFactory,
+        create_geometry_extractors,
+        create_image_receipt_pk_parser,
+    )
+
     required_keys = {
         "PK",
         "SK",
@@ -271,25 +249,43 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
         "angle_radians",
         "confidence",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
 
+    # Custom SK parser for LINE#...#WORD#...#LETTER#{letter_id:05d} pattern
+    def parse_letter_sk(sk: str) -> Dict[str, Any]:
+        """Parse the SK to extract line_id, word_id, and letter_id."""
+        parts = sk.split("#")
+        
+        # Expected format: LINE#{line_id}#WORD#{word_id}#LETTER#{letter_id}
+        if len(parts) < 6 or parts[0] != "LINE" or parts[2] != "WORD" or parts[4] != "LETTER":
+            raise ValueError(f"Invalid SK format for Letter: {sk}")
+
+        return {
+            "line_id": int(parts[1]),
+            "word_id": int(parts[3]),
+            "letter_id": int(parts[5])
+        }
+
+    # Type-safe extractors for all fields
+    custom_extractors = {
+        "text": EntityFactory.extract_text_field,
+        **create_geometry_extractors(),  # Handles all geometry fields
+    }
+
+    # Use EntityFactory to create the entity with full type safety
     try:
-        return Letter(
-            image_id=item["PK"]["S"][6:],  # strip off "IMAGE#"
-            letter_id=int(item["SK"]["S"].split("#")[5]),
-            line_id=int(item["SK"]["S"].split("#")[1]),
-            word_id=int(item["SK"]["S"].split("#")[3]),
-            text=item["text"]["S"],
-            bounding_box=deserialize_bounding_box(item["bounding_box"]),
-            top_right=deserialize_coordinate_point(item["top_right"]),
-            top_left=deserialize_coordinate_point(item["top_left"]),
-            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
-            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
-            angle_degrees=float(item["angle_degrees"]["N"]),
-            angle_radians=float(item["angle_radians"]["N"]),
-            confidence=deserialize_confidence(item["confidence"]),
+        return EntityFactory.create_entity(
+            entity_class=Letter,
+            item=item,
+            required_keys=required_keys,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": parse_letter_sk,
+            },
+            custom_extractors=custom_extractors,
         )
-    except (KeyError, ValueError) as e:
+    except ValueError as e:
+        # Check if it's a missing keys error and re-raise as-is
+        if str(e).startswith("Item is missing required keys:"):
+            raise
+        # Otherwise, wrap the error
         raise ValueError(f"Error converting item to Letter: {e}") from e

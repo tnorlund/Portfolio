@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class JobDependency:
     """
     Represents a dependency relationship between jobs stored in DynamoDB.
@@ -25,59 +27,40 @@ class JobDependency:
         created_at (str): The timestamp when the dependency was created.
     """
 
-    def __init__(
-        self,
-        dependent_job_id: str,
-        dependency_job_id: str,
-        type: str,
-        created_at: datetime,
-        condition: Optional[str] = None,
-    ):
-        """Initializes a new JobDependency object for DynamoDB.
+    dependent_job_id: str
+    dependency_job_id: str
+    type: str
+    created_at: str
+    condition: Optional[str] = None
 
-        Args:
-            dependent_job_id (str):
-                UUID identifying the job that depends on another.
-            dependency_job_id (str):
-                UUID identifying the job that is depended on.
-            type (str):
-                The type of dependency (COMPLETION, SUCCESS, ARTIFACT, etc).
-            created_at (datetime):
-                The timestamp when the dependency was created.
-            condition (str, optional):
-                Specific condition for the dependency. Defaults to None.
+    def __post_init__(self):
+        """Validates fields after dataclass initialization.
 
         Raises:
             ValueError: If any parameter is of invalid type or has
                 invalid value.
         """
-        assert_valid_uuid(dependent_job_id)
-        self.dependent_job_id = dependent_job_id
+        assert_valid_uuid(self.dependent_job_id)
+        assert_valid_uuid(self.dependency_job_id)
 
-        assert_valid_uuid(dependency_job_id)
-        self.dependency_job_id = dependency_job_id
-
-        if dependent_job_id == dependency_job_id:
+        if self.dependent_job_id == self.dependency_job_id:
             raise ValueError("A job cannot depend on itself")
 
         valid_types = ["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"]
-        if not isinstance(type, str) or type.upper() not in valid_types:
+        if not isinstance(self.type, str) or self.type.upper() not in valid_types:
             raise ValueError(f"type must be one of {valid_types}")
-        self.type = type.upper()
+        self.type = self.type.upper()
 
-        self.created_at: str
-        if isinstance(created_at, datetime):
-            self.created_at = created_at.isoformat()
-        elif isinstance(created_at, str):
-            self.created_at = created_at
-        else:
+        # Handle created_at conversion
+        if isinstance(self.created_at, datetime):
+            self.created_at = self.created_at.isoformat()
+        elif not isinstance(self.created_at, str):
             raise ValueError(
                 "created_at must be a datetime object or a string"
             )
 
-        if condition is not None and not isinstance(condition, str):
+        if self.condition is not None and not isinstance(self.condition, str):
             raise ValueError("condition must be a string")
-        self.condition: Optional[str] = condition
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -175,31 +158,6 @@ class JobDependency:
         yield "created_at", self.created_at
         yield "condition", self.condition
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two JobDependency objects are equal.
-
-        Args:
-            other (JobDependency):
-                The other JobDependency object to compare.
-
-        Returns:
-            bool:
-                True if the JobDependency objects are equal,
-                False otherwise.
-
-        Note:
-            If other is not an instance of JobDependency,
-            False is returned.
-        """
-        if not isinstance(other, JobDependency):
-            return False
-        return (
-            self.dependent_job_id == other.dependent_job_id
-            and self.dependency_job_id == other.dependency_job_id
-            and self.type == other.type
-            and self.created_at == other.created_at
-            and self.condition == other.condition
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobDependency object.

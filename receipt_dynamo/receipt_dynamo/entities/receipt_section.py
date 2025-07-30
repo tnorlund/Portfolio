@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
@@ -8,6 +9,7 @@ from receipt_dynamo.entities.util import (
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptSection:
     """
     Represents a classified section of a receipt stored in DynamoDB.
@@ -31,29 +33,26 @@ class ReceiptSection:
         model_source (str): The model or pipeline that identified this section.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        section_type: str | SectionType,
-        line_ids: list[int],
-        created_at: datetime | str,
-    ):
-        """Initialize a ReceiptSection instance."""
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
+    receipt_id: int
+    image_id: str
+    section_type: str | SectionType
+    line_ids: list[int]
+    created_at: datetime | str
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+    def __post_init__(self):
+        """Validate and initialize the ReceiptSection instance."""
+        if not isinstance(self.receipt_id, int):
+            raise ValueError("receipt_id must be an integer")
+        if self.receipt_id <= 0:
+            raise ValueError("receipt_id must be positive")
+
+        assert_valid_uuid(self.image_id)
 
         # Normalize and validate section_type (allow enum or string)
-        if isinstance(section_type, SectionType):
-            section_type_value = section_type.value
-        elif isinstance(section_type, str):
-            section_type_value = section_type
+        if isinstance(self.section_type, SectionType):
+            section_type_value = self.section_type.value
+        elif isinstance(self.section_type, str):
+            section_type_value = self.section_type
         else:
             raise ValueError(
                 "section_type must be a string or SectionType enum"
@@ -66,21 +65,19 @@ class ReceiptSection:
             )
         self.section_type = section_type_value
 
-        if not isinstance(line_ids, list):
+        if not isinstance(self.line_ids, list):
             raise ValueError("line_ids must be a list")
-        if not line_ids:
+        if not self.line_ids:
             raise ValueError("line_ids must not be empty")
-        if not all(isinstance(line_id, int) for line_id in line_ids):
+        if not all(isinstance(line_id, int) for line_id in self.line_ids):
             raise ValueError("line_ids must contain only integers")
-        self.line_ids: list[int] = line_ids
 
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-        elif isinstance(created_at, datetime):
-            created_at = created_at
+        if isinstance(self.created_at, str):
+            self.created_at = datetime.fromisoformat(self.created_at)
+        elif isinstance(self.created_at, datetime):
+            pass  # Already a datetime
         else:
             raise ValueError("created_at must be a datetime or ISO string")
-        self.created_at = created_at
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -107,17 +104,6 @@ class ReceiptSection:
             "created_at": {"S": self.created_at.isoformat()},
         }
 
-    def __eq__(self, other: object) -> bool:
-        """Determine whether two ReceiptSection objects are equal."""
-        if not isinstance(other, ReceiptSection):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.section_type == other.section_type
-            and self.line_ids == other.line_ids
-            and self.created_at == other.created_at
-        )
 
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptSection object."""

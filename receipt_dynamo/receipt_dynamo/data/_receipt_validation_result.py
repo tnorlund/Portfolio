@@ -1,12 +1,10 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -26,9 +24,7 @@ if TYPE_CHECKING:
 
 class _ReceiptValidationResult(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt validation results in DynamoDB.
@@ -268,7 +264,10 @@ class _ReceiptValidationResult(
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}#RESULT#{result_index}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                f"CATEGORY#{field_name}#RESULT#{result_index}"
+            ),
             entity_class=ReceiptValidationResult,
             converter_func=item_to_receipt_validation_result,
         )
@@ -316,13 +315,8 @@ class _ReceiptValidationResult(
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_VALIDATION_RESULT"}
-            },
+        return self._query_by_type(
+            entity_type="RECEIPT_VALIDATION_RESULT",
             converter_func=item_to_receipt_validation_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -398,7 +392,9 @@ class _ReceiptValidationResult(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",

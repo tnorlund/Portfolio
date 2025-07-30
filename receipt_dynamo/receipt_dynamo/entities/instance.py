@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class Instance:
     """
     Represents an EC2 instance and its associated metadata stored in a
@@ -28,84 +30,63 @@ class Instance:
             unhealthy).
     """
 
-    def __init__(
-        self,
-        instance_id: str,
-        instance_type: str,
-        gpu_count: int,
-        status: str,
-        launched_at: datetime,
-        ip_address: str,
-        availability_zone: str,
-        is_spot: bool,
-        health_status: str,
-    ):
-        """Initializes a new Instance object for DynamoDB.
+    instance_id: str
+    instance_type: str
+    gpu_count: int
+    status: str
+    launched_at: str
+    ip_address: str
+    availability_zone: str
+    is_spot: bool
+    health_status: str
 
-        Args:
-            instance_id (str): Amazon EC2 instance ID.
-            instance_type (str): The EC2 instance type.
-            gpu_count (int): Number of GPUs on the instance.
-            status (str): The current status of the instance.
-            launched_at (datetime): The timestamp when the instance was
-                launched.
-            ip_address (str): The IP address of the instance.
-            availability_zone (str): The AWS availability zone of the instance.
-            is_spot (bool): Whether the instance is a spot instance.
-            health_status (str): The health status of the instance.
+    def __post_init__(self):
+        """Validates fields after dataclass initialization.
 
         Raises:
             ValueError: If any parameter is of an invalid type or has an
                 invalid value.
         """
-        if not isinstance(instance_id, str) or not instance_id:
+        if not isinstance(self.instance_id, str) or not self.instance_id:
             raise ValueError("instance_id must be a non-empty string")
-        self.instance_id = instance_id
 
-        if not isinstance(instance_type, str) or not instance_type:
+        if not isinstance(self.instance_type, str) or not self.instance_type:
             raise ValueError("instance_type must be a non-empty string")
-        self.instance_type = instance_type
 
-        if not isinstance(gpu_count, int) or gpu_count < 0:
+        if not isinstance(self.gpu_count, int) or self.gpu_count < 0:
             raise ValueError("gpu_count must be a non-negative integer")
-        self.gpu_count: int = gpu_count
 
         valid_statuses = ["pending", "running", "stopped", "terminated"]
-        if not isinstance(status, str) or status.lower() not in valid_statuses:
+        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        self.status: str = status.lower()
+        self.status = self.status.lower()
 
-        self.launched_at: str
-        if isinstance(launched_at, datetime):
-            self.launched_at = launched_at.isoformat()
-        elif isinstance(launched_at, str):
-            self.launched_at = launched_at
-        else:
+        # Handle launched_at conversion
+        if isinstance(self.launched_at, datetime):
+            self.launched_at = self.launched_at.isoformat()
+        elif not isinstance(self.launched_at, str):
             raise ValueError(
                 "launched_at must be a datetime object or a string"
             )
 
-        if not isinstance(ip_address, str):
+        if not isinstance(self.ip_address, str):
             raise ValueError("ip_address must be a string")
-        self.ip_address: str = ip_address
 
-        if not isinstance(availability_zone, str) or not availability_zone:
+        if not isinstance(self.availability_zone, str) or not self.availability_zone:
             raise ValueError("availability_zone must be a non-empty string")
-        self.availability_zone = availability_zone
 
-        if not isinstance(is_spot, bool):
+        if not isinstance(self.is_spot, bool):
             raise ValueError("is_spot must be a boolean")
-        self.is_spot = is_spot
 
         valid_health_statuses = ["healthy", "unhealthy", "unknown"]
         if (
-            not isinstance(health_status, str)
-            or health_status.lower() not in valid_health_statuses
+            not isinstance(self.health_status, str)
+            or self.health_status.lower() not in valid_health_statuses
         ):
             raise ValueError(
                 f"health_status must be one of {valid_health_statuses}"
             )
-        self.health_status = health_status.lower()
+        self.health_status = self.health_status.lower()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -189,31 +170,6 @@ class Instance:
         yield "is_spot", self.is_spot
         yield "health_status", self.health_status
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two Instance objects are equal.
-
-        Args:
-            other (Instance): The other Instance object to compare.
-
-        Returns:
-            bool: True if the Instance objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of Instance, False is returned.
-        """
-        if not isinstance(other, Instance):
-            return False
-        return (
-            self.instance_id == other.instance_id
-            and self.instance_type == other.instance_type
-            and self.gpu_count == other.gpu_count
-            and self.status == other.status
-            and self.launched_at == other.launched_at
-            and self.ip_address == other.ip_address
-            and self.availability_zone == other.availability_zone
-            and self.is_spot == other.is_spot
-            and self.health_status == other.health_status
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the Instance object.

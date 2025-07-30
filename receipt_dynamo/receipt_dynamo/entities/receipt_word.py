@@ -1,27 +1,40 @@
 from dataclasses import dataclass
-from math import atan2, pi
+from math import atan2
 from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.geometry_base import GeometryMixin
-from receipt_dynamo.entities.util import (
-    _format_float,
-    assert_valid_bounding_box,
-    assert_valid_point,
-    assert_valid_uuid,
-    build_base_item,
-    deserialize_bounding_box,
-    deserialize_confidence,
-    deserialize_coordinate_point,
-    serialize_bounding_box,
-    serialize_confidence,
-    serialize_coordinate_point,
+from receipt_dynamo.entities.entity_mixins import (
+    GeometryHashMixin,
+    GeometryMixin,
+    GeometryReprMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+    WarpTransformMixin,
+)
+
+from .entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+    create_receipt_line_word_sk_parser,
 )
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptWord(GeometryMixin, DynamoDBEntity):
+class ReceiptWord(
+    GeometryHashMixin,
+    GeometryReprMixin,
+    WarpTransformMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+    GeometryMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    DynamoDBEntity,
+):
     """
     Represents a receipt word and its associated metadata stored in a
     DynamoDB table.
@@ -83,8 +96,6 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
         if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
-        assert_valid_uuid(self.image_id)
-
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
@@ -95,28 +106,12 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
         if self.word_id < 0:
             raise ValueError("id must be positive")
 
-        if not isinstance(self.text, str):
-            raise ValueError("text must be a string")
+        # Use validation utils mixin for common validation
+        self._validate_common_geometry_entity_fields()
 
-        assert_valid_bounding_box(self.bounding_box)
-        assert_valid_point(self.top_right)
-        assert_valid_point(self.top_left)
-        assert_valid_point(self.bottom_right)
-        assert_valid_point(self.bottom_left)
-
-        if not isinstance(self.angle_degrees, (float, int)):
-            raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(self.angle_degrees)
-
-        if not isinstance(self.angle_radians, (float, int)):
-            raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(self.angle_radians)
-
-        if isinstance(self.confidence, int):
-            self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float):
-            raise ValueError("confidence must be a float")
-        if self.confidence <= 0.0 or self.confidence > 1.0:
+        # Note: confidence validation in mixin allows <= 0.0, but receipt
+        # entities require > 0.0
+        if self.confidence <= 0.0:
             raise ValueError("confidence must be between 0 and 1")
 
         if self.extracted_data is not None and not isinstance(
@@ -225,181 +220,55 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
 
     def to_item(self) -> Dict[str, Any]:
         """
-        Converts the ReceiptWord object to a DynamoDB item.
+        Converts the ReceiptWord object to a DynamoDB item using
+        SerializationMixin.
 
         Returns:
             dict: A dictionary representing the ReceiptWord object as a
             DynamoDB item.
         """
-        return {
-            **build_base_item(
-                self, "RECEIPT_WORD", ["gsi1_key", "gsi2_key", "gsi3_key"]
-            ),
-            "text": {"S": self.text},
-            "bounding_box": serialize_bounding_box(self.bounding_box),
-            "top_right": serialize_coordinate_point(self.top_right),
-            "top_left": serialize_coordinate_point(self.top_left),
-            "bottom_right": serialize_coordinate_point(self.bottom_right),
-            "bottom_left": serialize_coordinate_point(self.bottom_left),
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": serialize_confidence(self.confidence),
-            "extracted_data": (
-                {
-                    "M": {
-                        "type": {"S": self.extracted_data["type"]},
-                        "value": {"S": self.extracted_data["value"]},
-                    }
-                }
-                if self.extracted_data
-                else {"NULL": True}
-            ),
+        # Use mixin for common geometry fields and add specialized fields
+        custom_fields = {
+            **self._get_geometry_fields(),
+            "extracted_data": self._serialize_value(self.extracted_data),
             "embedding_status": {"S": self.embedding_status},
             "is_noise": {"BOOL": self.is_noise},
         }
 
-    def warp_transform(
-        self,
-        a: float,
-        b: float,
-        c: float,
-        d: float,
-        e: float,
-        f: float,
-        g: float,
-        h: float,
-        src_width: int,
-        src_height: int,
-        dst_width: int,
-        dst_height: int,
-        flip_y: bool = False,
-    ):
-        """
-        Receipt-specific inverse perspective transform from 'new' space back to
-        'old' space.
+        return self.build_dynamodb_item(
+            entity_type="RECEIPT_WORD",
+            gsi_methods=["gsi1_key", "gsi2_key", "gsi3_key"],
+            custom_fields=custom_fields,
+            exclude_fields={
+                "text",
+                "bounding_box",
+                "top_right",
+                "top_left",
+                "bottom_right",
+                "bottom_left",
+                "angle_degrees",
+                "angle_radians",
+                "confidence",
+                "extracted_data",
+                "embedding_status",
+                "is_noise",
+            },
+        )
 
-        This implementation uses the 2x2 linear system approach optimized for
-        receipt coordinate systems, independent of the GeometryMixin's
-        vision-based implementation.
-
-        Args:
-            a, b, c, d, e, f, g, h (float): The perspective coefficients that
-                mapped
-                the original image -> new image.  We will invert them here
-                so we can map new coords -> old coords.
-            src_width (int): The original (old) image width in pixels.
-            src_height (int): The original (old) image height in pixels.
-            dst_width (int): The new (warped) image width in pixels.
-            dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, we treat the new coordinate system as
-                flipped in Y
-                (e.g. some OCR engines treat top=0).  Mirrors the logic in
-                warp_affine_normalized_forward(...).
-        """
-        # For each corner in the new space, we want to find
-        # (x_old_px, y_old_px).
-        # The forward perspective mapping was:
-        #   x_new = (a*x_old + b*y_old + c) / (1 + g*x_old + h*y_old)
-        #   y_new = (d*x_old + e*y_old + f) / (1 + g*x_old + h*y_old)
-        #
-        # We invert it by treating (x_new, y_new) as known, and solving
-        # for (x_old, y_old).  The code below does that in a 2×2 linear system.
-
-        corners = [
-            self.top_left,
-            self.top_right,
-            self.bottom_left,
-            self.bottom_right,
-        ]
-
-        for corner in corners:
-            # 1) Convert normalized new coords -> pixel coords in the 'new'
-            # (warped) image
-            x_new_px = corner["x"] * dst_width
-            y_new_px = corner["y"] * dst_height
-
-            if flip_y:
-                # If the new system's Y=0 was at the top, then from the
-                # perspective of a typical "bottom=0" system, we flip:
-                y_new_px = dst_height - y_new_px
-
-            # 2) Solve the perspective equations for old pixel coords
-            # (X_old, Y_old).
-            # We have the system:
-            #   x_new_px = (a*X_old + b*Y_old + c) / (1 + g*X_old + h*Y_old)
-            #   y_new_px = (d*X_old + e*Y_old + f) / (1 + g*X_old + h*Y_old)
-            #
-            # Put it in the form:
-            #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
-            #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
-
-            a11 = g * x_new_px - a
-            a12 = h * x_new_px - b
-            b1 = c - x_new_px
-
-            a21 = g * y_new_px - d
-            a22 = h * y_new_px - e
-            b2 = f - y_new_px
-
-            # Solve the 2×2 linear system via determinant
-            det = a11 * a22 - a12 * a21
-            if abs(det) < 1e-12:
-                # Degenerate or singular.  You can raise an exception or skip.
-                # For robust code, handle it gracefully:
-                raise ValueError(
-                    "Inverse perspective transform is singular for this "
-                    "corner."
-                )
-
-            x_old_px = (b1 * a22 - b2 * a12) / det
-            y_old_px = (a11 * b2 - a21 * b1) / det
-
-            # 3) Convert old pixel coords -> old normalized coords in [0..1]
-            corner["x"] = x_old_px / src_width
-            corner["y"] = y_old_px / src_height
-
-            if flip_y:
-                # If the old/original system also had Y=0 at top, do the final
-                # flip:
-                corner["y"] = 1.0 - corner["y"]
-
-        # 4) Recompute bounding box + angle
-        xs = [pt["x"] for pt in corners]
-        ys = [pt["y"] for pt in corners]
-        self.bounding_box["x"] = min(xs)
-        self.bounding_box["y"] = min(ys)
-        self.bounding_box["width"] = max(xs) - min(xs)
-        self.bounding_box["height"] = max(ys) - min(ys)
-
-        dx = self.top_right["x"] - self.top_left["x"]
-        dy = self.top_right["y"] - self.top_left["y"]
-        angle_radians = atan2(dy, dx)
-        self.angle_radians = angle_radians
-        self.angle_degrees = angle_radians * 180.0 / pi
+    def __hash__(self) -> int:
+        """Returns the hash value of the ReceiptWord object."""
+        return hash(self._get_geometry_hash_fields())
 
     def __repr__(self) -> str:
-        """
-        Returns a string representation of the ReceiptWord object.
-
-        Returns:
-            str: A string representation of the ReceiptWord object.
-        """
-
+        """Returns a string representation of the ReceiptWord object."""
+        geometry_fields = self._get_geometry_repr_fields()
         return (
             f"ReceiptWord("
             f"receipt_id={self.receipt_id}, "
             f"image_id='{self.image_id}', "
             f"line_id={self.line_id}, "
             f"word_id={self.word_id}, "
-            f"text='{self.text}', "
-            f"bounding_box={self.bounding_box}, "
-            f"top_right={self.top_right}, "
-            f"top_left={self.top_left}, "
-            f"bottom_right={self.bottom_right}, "
-            f"bottom_left={self.bottom_left}, "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}, "
+            f"{geometry_fields}, "
             f"embedding_status='{self.embedding_status}', "
             f"is_noise={self.is_noise}"
             f")"
@@ -455,37 +324,31 @@ class ReceiptWord(GeometryMixin, DynamoDBEntity):
                     differences[attr] = {"self": value, "other": other_value}
         return differences
 
-    def __hash__(self) -> int:
-        """Returns the hash value of the ReceiptWord object."""
-        return hash(
+    def _get_geometry_hash_fields(self) -> tuple:
+        """
+        Override to include entity-specific ID fields in hash computation.
+
+        Returns:
+            tuple: A tuple of fields used for hash computation.
+        """
+        return self._get_base_geometry_hash_fields() + (
+            self.receipt_id,
+            self.image_id,
+            self.line_id,
+            self.word_id,
             (
-                self.receipt_id,
-                self.image_id,
-                self.line_id,
-                self.word_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-                (
-                    tuple(self.extracted_data.items())
-                    if self.extracted_data
-                    else None
-                ),
-                self.embedding_status,
-                self.is_noise,
-            )
+                tuple(self.extracted_data.items())
+                if self.extracted_data
+                else None
+            ),
+            self.embedding_status,
+            self.is_noise,
         )
 
 
 def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
     """
-    Converts a DynamoDB item to a ReceiptWord object.
+    Converts a DynamoDB item to a ReceiptWord object using EntityFactory.
 
     Args:
         item (dict): The DynamoDB item to convert.
@@ -510,48 +373,31 @@ def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
         "angle_radians",
         "confidence",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
-    try:
-        # Safely extract embedding_status string from DynamoDB item (default to
-        # NONE)
-        es_attr = item.get("embedding_status")
-        if isinstance(es_attr, dict):
-            es_val = es_attr.get("S", EmbeddingStatus.NONE.value)
-        else:
-            es_val = EmbeddingStatus.NONE.value
 
-        return ReceiptWord(
-            receipt_id=int(item["SK"]["S"].split("#")[1]),
-            image_id=item["PK"]["S"].split("#")[1],
-            line_id=int(item["SK"]["S"].split("#")[3]),
-            word_id=int(item["SK"]["S"].split("#")[5]),
-            text=item["text"]["S"],
-            bounding_box=deserialize_bounding_box(item["bounding_box"]),
-            top_right=deserialize_coordinate_point(item["top_right"]),
-            top_left=deserialize_coordinate_point(item["top_left"]),
-            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
-            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
-            angle_degrees=float(item["angle_degrees"]["N"]),
-            angle_radians=float(item["angle_radians"]["N"]),
-            confidence=deserialize_confidence(item["confidence"]),
-            extracted_data=(
-                None
-                if "NULL" in item.get("extracted_data", {})
-                else {
-                    "type": item.get("extracted_data", {})
-                    .get("M", {})
-                    .get("type", {})
-                    .get("S"),
-                    "value": item.get("extracted_data", {})
-                    .get("M", {})
-                    .get("value", {})
-                    .get("S"),
-                }
-            ),
-            embedding_status=es_val,
-            is_noise=item.get("is_noise", {}).get("BOOL", False),
+    # Type-safe extractors for all fields
+    custom_extractors = {
+        "text": EntityFactory.extract_text_field,
+        "embedding_status": EntityFactory.extract_embedding_status,
+        "is_noise": EntityFactory.extract_is_noise,
+        **create_geometry_extractors(),  # Handles all geometry fields
+    }
+
+    # Handle optional extracted_data field
+    if "extracted_data" in item and not item.get("extracted_data", {}).get(
+        "NULL"
+    ):
+        custom_extractors["extracted_data"] = (
+            EntityFactory.extract_optional_extracted_data
         )
-    except (KeyError, ValueError) as e:
-        raise ValueError("Error converting item to ReceiptWord") from e
+
+    # Use EntityFactory to create the entity with full type safety
+    return EntityFactory.create_entity(
+        entity_class=ReceiptWord,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": create_receipt_line_word_sk_parser(),
+        },
+        custom_extractors=custom_extractors,
+    )

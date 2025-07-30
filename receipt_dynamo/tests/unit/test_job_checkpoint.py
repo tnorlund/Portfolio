@@ -5,10 +5,9 @@ import pytest
 
 from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
-    _parse_dynamodb_map,
-    _parse_dynamodb_value,
     item_to_job_checkpoint,
 )
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map, parse_dynamodb_value
 
 
 @pytest.fixture
@@ -686,7 +685,7 @@ def test_parse_dynamodb_map():
         "list": {"L": [{"S": "item1"}, {"N": "789"}, {"BOOL": False}]},
     }
 
-    result = _parse_dynamodb_map(dynamodb_map)
+    result = parse_dynamodb_map(dynamodb_map)
 
     assert result["string"] == "value"
     assert result["number"] == 123
@@ -701,28 +700,28 @@ def test_parse_dynamodb_map():
 
 
 @pytest.mark.unit
-def test_parse_dynamodb_value():
-    """Test the _parse_dynamodb_value function"""
-    assert _parse_dynamodb_value({"S": "value"}) == "value"
-    assert _parse_dynamodb_value({"N": "123"}) == 123
-    assert _parse_dynamodb_value({"N": "123.45"}) == 123.45
-    assert _parse_dynamodb_value({"BOOL": True}) is True
-    assert _parse_dynamodb_value({"NULL": True}) is None
+def testparse_dynamodb_value():
+    """Test the parse_dynamodb_value function"""
+    assert parse_dynamodb_value({"S": "value"}) == "value"
+    assert parse_dynamodb_value({"N": "123"}) == 123
+    assert parse_dynamodb_value({"N": "123.45"}) == 123.45
+    assert parse_dynamodb_value({"BOOL": True}) is True
+    assert parse_dynamodb_value({"NULL": True}) is None
 
     # Test list
     list_value = {"L": [{"S": "item1"}, {"N": "123"}]}
-    result = _parse_dynamodb_value(list_value)
+    result = parse_dynamodb_value(list_value)
     assert result[0] == "item1"
     assert result[1] == 123
 
     # Test map
     map_value = {"M": {"key": {"S": "value"}, "num": {"N": "123"}}}
-    result = _parse_dynamodb_value(map_value)
+    result = parse_dynamodb_value(map_value)
     assert result["key"] == "value"
     assert result["num"] == 123
 
     # Test empty value
-    assert _parse_dynamodb_value({}) is None
+    assert parse_dynamodb_value({}) is None
 
 
 @pytest.mark.unit

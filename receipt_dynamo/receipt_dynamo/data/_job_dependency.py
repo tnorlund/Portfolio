@@ -5,7 +5,6 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
 
 
 class _JobDependency(
-    DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     BatchOperationsMixin,
 ):
@@ -135,7 +133,9 @@ class _JobDependency(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            key_condition_expression=(
+                "PK = :pk AND begins_with(SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"JOB#{dependent_job_id}"},
@@ -174,7 +174,9 @@ class _JobDependency(
 
         return self._query_entities(
             index_name="GSI2",
-            key_condition_expression="GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)",
+            key_condition_expression=(
+                "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "DEPENDENCY"},
@@ -245,32 +247,7 @@ class _JobDependency(
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            # Handle unprocessed items with exponential backoff
-            unprocessed_items = response.get("UnprocessedItems", {})
-            retry_count = 0
-            max_retries = 3
-
-            while unprocessed_items and retry_count < max_retries:
-                retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
-                unprocessed_items = response.get("UnprocessedItems", {})
-
-            if unprocessed_items:
-                raise ClientError(
-                    {
-                        "Error": {
-                            "Code": "ProvisionedThroughputExceededException",
-                            "Message": (
-                                f"Could not process all items after "
-                                f"{max_retries} retries"
-                            ),
-                        }
-                    },
-                    "BatchWriteItem",
-                )
+            # Use the batch write retry method from the mixin
+            # Convert request_items to the expected format
+            write_requests = request_items[self.table_name]
+            self._batch_write_with_retry(write_requests)

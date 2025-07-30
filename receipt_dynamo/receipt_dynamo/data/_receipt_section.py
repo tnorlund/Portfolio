@@ -195,8 +195,8 @@ class _ReceiptSection(
                     f"image_id {image_id}, and section_type {section_type} "
                     "not found"
                 ) from e
-            else:
-                raise
+
+            raise
 
     @handle_dynamodb_errors("delete_receipt_sections")
     def delete_receipt_sections(self, sections: list[ReceiptSection]) -> None:
@@ -329,14 +329,15 @@ class _ReceiptSection(
                 raise EntityValidationError(
                     f"Could not get ReceiptSections from DynamoDB: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+
+            if error_code == "ProvisionedThroughputExceededException":
                 raise EntityValidationError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            else:
-                raise EntityValidationError(
-                    f"Could not get ReceiptSections from DynamoDB: {e}"
-                ) from e
+
+            raise EntityValidationError(
+                f"Could not get ReceiptSections from DynamoDB: {e}"
+            ) from e
 
     @handle_dynamodb_errors("list_receipt_sections")
     def list_receipt_sections(
@@ -373,64 +374,9 @@ class _ReceiptSection(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        receipt_sections = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_SECTION"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            receipt_sections.extend(
-                [item_to_receipt_section(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the receipt sections
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    receipt_sections.extend(
-                        [
-                            item_to_receipt_section(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                # No further pages left. LEK is None.
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return receipt_sections, last_evaluated_key
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt sections from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise EntityValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing receipt sections: {e}"
-                ) from e
+        return self._query_by_type(
+            entity_type="RECEIPT_SECTION",
+            converter_func=item_to_receipt_section,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

@@ -279,7 +279,9 @@ class _Queue(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :job_prefix)",
+            key_condition_expression=(
+                "PK = :pk AND begins_with(SK, :job_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"QUEUE#{queue_name}"},
@@ -322,7 +324,9 @@ class _Queue(
 
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression="GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)",
+            key_condition_expression=(
+                "GSI1PK = :job_type AND begins_with(GSI1SK, :job_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":job_type": {"S": "JOB"},

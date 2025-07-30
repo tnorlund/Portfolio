@@ -4,14 +4,12 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -21,7 +19,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
@@ -31,10 +28,7 @@ CHUNK_SIZE = 25
 
 
 class _ReceiptMetadata(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class providing methods to interact with "ReceiptMetadata" entities in
@@ -287,17 +281,8 @@ class _ReceiptMetadata(
         ValueError
             If parameters are invalid or if the record does not exist.
         """
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if not isinstance(image_id, str):
-            raise EntityValidationError("image_id must be a string")
-        assert_valid_uuid(image_id)
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -308,7 +293,8 @@ class _ReceiptMetadata(
 
         if result is None:
             raise EntityNotFoundError(
-                f"ReceiptMetadata with image_id={image_id}, receipt_id={receipt_id} does not exist"
+                f"ReceiptMetadata with image_id={image_id}, "
+                f"receipt_id={receipt_id} does not exist"
             )
 
         return result
@@ -453,11 +439,8 @@ class _ReceiptMetadata(
                 "last_evaluated_key must be a dictionary"
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_METADATA"}},
+        return self._query_by_type(
+            entity_type="RECEIPT_METADATA",
             converter_func=item_to_receipt_metadata,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -616,47 +599,15 @@ class _ReceiptMetadata(
         else:
             key_expr = "GSI2PK = :pk AND GSI2SK <= :sk"
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": key_expr,
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "MERCHANT_VALIDATION"},
-                    ":sk": {"S": formatted_score},
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise EntityValidationError(
-                    (
-                        "receipt_metadata contains invalid attributes or "
-                        f"values: {e}"
-                    )
-                ) from e
-            elif error_code == "InternalServerError":
-                raise EntityValidationError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise EntityValidationError(
-                    "provisioned throughput exceeded"
-                ) from e
-            elif error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError("table not found") from e
-            else:
-                raise EntityValidationError(
-                    f"Error getting receipt metadata: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression=key_expr,
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "MERCHANT_VALIDATION"},
+                ":sk": {"S": formatted_score},
+            },
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

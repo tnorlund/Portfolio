@@ -42,7 +42,6 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _JobCheckpoint(
-    DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
 ):
     """
@@ -249,7 +248,8 @@ class _JobCheckpoint(
             converter_func=item_to_job_checkpoint,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=False,  # Descending order by default (most recent first)
+            scan_index_forward=False,  # Descending order by default
+            # (most recent first)
         )
 
     @handle_dynamodb_errors("get_best_checkpoint")
@@ -310,30 +310,20 @@ class _JobCheckpoint(
                 "Timestamp is required and must be a non-empty string."
             )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_id}"},
-                    "SK": {"S": f"CHECKPOINT#{timestamp}"},
-                },
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise ReceiptDynamoError(
-                    f"Could not delete job checkpoint: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error deleting job checkpoint: {e}"
-                ) from e
+        # Create a checkpoint entity for deletion
+        checkpoint = JobCheckpoint(
+            job_id=job_id,
+            timestamp=timestamp,
+            # Other fields are not needed for deletion
+            epoch=0,
+            step=0,
+            learning_rate=0.0,
+            train_loss=0.0,
+            val_loss=0.0,
+            is_best=False,
+            metrics={},
+        )
+        self._delete_entity(checkpoint)
 
     @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(
@@ -371,67 +361,17 @@ class _JobCheckpoint(
                 )
             validate_last_evaluated_key(last_evaluated_key)
 
-        checkpoints: List[JobCheckpoint] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "GSI1PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "CHECKPOINT"},
-                },
-                # Descending order by default (most recent first)
-                "ScanIndexForward": False,
-            }
-
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(checkpoints)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                for item in response["Items"]:
-                    if item.get("TYPE", {}).get("S") == "JOB_CHECKPOINT":
-                        checkpoints.append(item_to_job_checkpoint(item))
-
-                if limit is not None and len(checkpoints) >= limit:
-                    checkpoints = checkpoints[:limit]
-                    last_evaluated_key = response.get(
-                        "LastEvaluatedKey",
-                        None,
-                    )
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return checkpoints, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    "Could not list all job checkpoints from the database: "
-                    f"{e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error listing all job checkpoints: {e}"
-                ) from e
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :pk",
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
+                ":pk": {"S": "CHECKPOINT"},
+                ":type": {"S": "JOB_CHECKPOINT"},
+            },
+            converter_func=item_to_job_checkpoint,
+            filter_expression="#type = :type",
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=False,  # Descending order by default
+        )

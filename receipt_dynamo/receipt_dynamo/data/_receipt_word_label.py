@@ -11,10 +11,8 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -50,10 +48,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 
 class _ReceiptWordLabel(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt word labels in DynamoDB.
@@ -71,13 +66,15 @@ class _ReceiptWordLabel(
 
         if not isinstance(receipt_word_labels, list):
             raise EntityValidationError(
-                "receipt_word_labels must be a list of ReceiptWordLabel instances."
+                "receipt_word_labels must be a list of ReceiptWordLabel "
+                "instances."
             )
 
         for item in receipt_word_labels:
             if not isinstance(item, ReceiptWordLabel):
                 raise EntityValidationError(
-                    "All receipt word labels must be instances of the ReceiptWordLabel class."
+                    "All receipt word labels must be instances of the "
+                    "ReceiptWordLabel class."
                 )
 
     @handle_dynamodb_errors("add_receipt_word_label")
@@ -116,28 +113,33 @@ class _ReceiptWordLabel(
                 "Receipt word label for Image ID "
                 f"'{receipt_word_label.image_id}' already exists"
             ) from error
-        elif error_code == "ResourceNotFoundException":
+
+        if error_code == "ResourceNotFoundException":
             raise DynamoDBError(
                 f"Could not add receipt word label to DynamoDB: {error}"
             ) from error
-        elif error_code == "ProvisionedThroughputExceededException":
+
+        if error_code == "ProvisionedThroughputExceededException":
             raise DynamoDBThroughputError(
                 f"Provisioned throughput exceeded: {error}"
             ) from error
-        elif error_code == "InternalServerError":
+
+        if error_code == "InternalServerError":
             raise DynamoDBServerError(
                 f"Internal server error: {error}"
             ) from error
-        elif error_code == "ValidationException":
+
+        if error_code == "ValidationException":
             raise DynamoDBValidationError(
                 "One or more parameters given were invalid"
             ) from error
-        elif error_code == "AccessDeniedException":
+
+        if error_code == "AccessDeniedException":
             raise DynamoDBAccessError("Access denied") from error
-        else:
-            raise DynamoDBError(
-                f"Could not add receipt word label to DynamoDB: {error}"
-            ) from error
+
+        raise DynamoDBError(
+            f"Could not add receipt word label to DynamoDB: {error}"
+        ) from error
 
     @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
@@ -184,18 +186,21 @@ class _ReceiptWordLabel(
             raise DynamoDBThroughputError(
                 f"Provisioned throughput exceeded: {error}"
             ) from error
-        elif error_code == "InternalServerError":
+
+        if error_code == "InternalServerError":
             raise DynamoDBServerError(
                 f"Internal server error: {error}"
             ) from error
-        elif error_code == "ValidationException":
+
+        if error_code == "ValidationException":
             raise DynamoDBValidationError(
                 "One or more parameters given were invalid"
             ) from error
-        elif error_code == "AccessDeniedException":
+
+        if error_code == "AccessDeniedException":
             raise DynamoDBAccessError("Access denied") from error
-        else:
-            raise DynamoDBError("Error adding receipt word labels") from error
+
+        raise DynamoDBError("Error adding receipt word labels") from error
 
     @handle_dynamodb_errors("update_receipt_word_label")
     def update_receipt_word_label(self, receipt_word_label: ReceiptWordLabel):
@@ -355,7 +360,10 @@ class _ReceiptWordLabel(
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#{label}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                f"WORD#{word_id:05d}#LABEL#{label}"
+            ),
             entity_class=ReceiptWordLabel,
             converter_func=item_to_receipt_word_label,
         )
@@ -441,18 +449,8 @@ class _ReceiptWordLabel(
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_WORD_LABEL"}},
+        return self._query_by_type(
+            entity_type="RECEIPT_WORD_LABEL",
             converter_func=item_to_receipt_word_label,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -478,7 +476,9 @@ class _ReceiptWordLabel(
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -519,219 +519,15 @@ class _ReceiptWordLabel(
             )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary or None"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
 
-        word_labels = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSIValidationStatus",
-            "KeyConditionExpression": "#vs = :status",
-            "ExpressionAttributeNames": {"#vs": "validation_status"},
-            "ExpressionAttributeValues": {":status": {"S": status.value}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        word_labels.extend(
-            [item_to_receipt_word_label(item) for item in response["Items"]]
-        )
-
-        if limit is None:
-            # Paginate through all labels
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                word_labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return word_labels, last_evaluated_key
-
-    @handle_dynamodb_errors("get_receipt_word_labels_by_label")
-    def get_receipt_word_labels_by_label(
-        self,
-        label: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
-        """Lists receipt word labels by label type
-
-        Args:
-            label (str): The label to filter by
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
-                from
-
-        Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
-                and last evaluated key
-        """
-        # Validate label
-        if not isinstance(label, str) or not label:
-            raise EntityValidationError("label must be a non-empty string")
-
-        # Validate limit
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError("limit must be an integer")
-            if limit <= 0:
-                raise EntityValidationError("limit must be greater than 0")
-
-        # Validate last_evaluated_key
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        word_labels = []
-
-        # Generate the GSI1PK for the label with proper padding
-        label_upper = label.upper()
-        prefix = "LABEL#"
-        current_length = len(prefix) + len(label_upper)
-        padding_length = 40 - current_length
-        gsi1pk = f"{prefix}{label_upper}{'_' * padding_length}"
-
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "#pk = :pk",
-            "ExpressionAttributeNames": {"#pk": "GSI1PK"},
-            "ExpressionAttributeValues": {":pk": {"S": gsi1pk}},
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        word_labels.extend(
-            [item_to_receipt_word_label(item) for item in response["Items"]]
-        )
-
-        if limit is None:
-            # Paginate through all labels
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                word_labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return word_labels, last_evaluated_key
-
-    @handle_dynamodb_errors("get_receipt_word_labels_by_validation_status")
-    def get_receipt_word_labels_by_validation_status(
-        self,
-        validation_status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
-        """Lists receipt word labels by validation status
-
-        Args:
-            validation_status (str): The validation status to filter by
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
-                from
-
-        Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
-                and last evaluated key
-        """
-        # Validate validation_status
-        if not isinstance(validation_status, str) or not validation_status:
-            raise EntityValidationError(
-                "validation status must be a non-empty string"
-            )
-
-        # Validate that validation_status is one of the valid values
-        valid_statuses = [status.value for status in ValidationStatus]
-        if validation_status not in valid_statuses:
-            raise EntityValidationError(
-                "validation status must be one of the following: "
-                f"{', '.join(valid_statuses)}"
-            )
-
-        # Validate limit
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError("limit must be an integer")
-            if limit <= 0:
-                raise EntityValidationError("limit must be greater than 0")
-
-        # Validate last_evaluated_key
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        word_labels = []
-
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI3",
-            "KeyConditionExpression": "#pk = :pk",
-            "ExpressionAttributeNames": {"#pk": "GSI3PK"},
-            "ExpressionAttributeValues": {
-                ":pk": {"S": f"VALIDATION_STATUS#{validation_status}"}
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="#pk = :pk",
+            expression_attribute_names={"#pk": "GSI3PK"},
+            expression_attribute_values={
+                ":pk": {"S": f"VALIDATION_STATUS#{status.value}"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        word_labels.extend(
-            [item_to_receipt_word_label(item) for item in response["Items"]]
+            converter_func=item_to_receipt_word_label,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all labels
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                word_labels.extend(
-                    [
-                        item_to_receipt_word_label(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return word_labels, last_evaluated_key

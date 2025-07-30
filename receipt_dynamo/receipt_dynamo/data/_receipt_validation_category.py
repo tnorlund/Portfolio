@@ -1,12 +1,10 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -18,7 +16,6 @@ from receipt_dynamo.entities import item_to_receipt_validation_category
 from receipt_dynamo.entities.receipt_validation_category import (
     ReceiptValidationCategory,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
@@ -26,9 +23,7 @@ if TYPE_CHECKING:
 
 class _ReceiptValidationCategory(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt validation categories in DynamoDB.
@@ -246,7 +241,7 @@ class _ReceiptValidationCategory(
             )
 
         try:
-            assert_valid_uuid(image_id)
+            self._validate_image_id(image_id)
         except ValueError as e:
             raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
@@ -301,13 +296,8 @@ class _ReceiptValidationCategory(
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_VALIDATION_CATEGORY"}
-            },
+        return self._query_by_type(
+            entity_type="RECEIPT_VALIDATION_CATEGORY",
             converter_func=item_to_receipt_validation_category,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -411,7 +401,7 @@ class _ReceiptValidationCategory(
             )
 
         try:
-            assert_valid_uuid(image_id)
+            self._validate_image_id(image_id)
         except ValueError as e:
             raise EntityValidationError(f"Invalid image_id format: {e}") from e
 

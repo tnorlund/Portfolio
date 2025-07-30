@@ -1,15 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DeleteTypeDef,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -32,10 +30,7 @@ CHUNK_SIZE = 25
 
 
 class _PlacesCache(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     Provides methods for accessing PlacesCache items in DynamoDB.
@@ -187,32 +182,7 @@ class _PlacesCache(
                     deduped_items.append(tx)
             transact_items = deduped_items
 
-            try:
-                self._client.transact_write_items(TransactItems=transact_items)
-            except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                if error_code == "ConditionalCheckFailedException":
-                    raise EntityValidationError(
-                        "places_cache_items contains invalid attributes "
-                        "or values"
-                    ) from e
-                elif error_code == "ValidationException":
-                    raise EntityValidationError(
-                        "places_cache_items contains invalid attributes "
-                        "or values"
-                    ) from e
-                elif error_code == "InternalServerError":
-                    raise EntityValidationError("internal server error") from e
-                elif error_code == "ProvisionedThroughputExceededException":
-                    raise EntityValidationError(
-                        "provisioned throughput exceeded"
-                    ) from e
-                elif error_code == "ResourceNotFoundException":
-                    raise EntityNotFoundError("table not found") from e
-                else:
-                    raise EntityValidationError(
-                        f"Error deleting places caches: {e}"
-                    ) from e
+            self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
@@ -302,11 +272,8 @@ class _PlacesCache(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "PLACES_CACHE"}},
+        return self._query_by_type(
+            entity_type="PLACES_CACHE",
             converter_func=item_to_places_cache,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -321,44 +288,32 @@ class _PlacesCache(
             days_old (int): Number of days after which items should be
                 considered old.
         """
-        from datetime import datetime, timedelta, timezone
-
         cutoff_date = (
             datetime.now(timezone.utc) - timedelta(days=days_old)
         ).isoformat()
 
-        try:
-            # Query using GSI2 (LAST_USED index)
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI2",
-                KeyConditionExpression="GSI2_PK = :pk AND GSI2_SK < :cutoff",
-                ExpressionAttributeValues={
-                    ":pk": {"S": "LAST_USED"},
-                    ":cutoff": {"S": cutoff_date},
-                },
-            )
+        # Query using GSI2 (LAST_USED index)
+        items, _ = self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2_PK = :pk AND GSI2_SK < :cutoff",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "LAST_USED"},
+                ":cutoff": {"S": cutoff_date},
+            },
+            converter_func=item_to_places_cache,
+            limit=None,
+            last_evaluated_key=None,
+        )
 
-            # Delete items in batches
-            items_to_delete = response["Items"]
-            while items_to_delete:
-                batch = items_to_delete[:CHUNK_SIZE]
-                items_to_delete = items_to_delete[CHUNK_SIZE:]
-
-                request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(
-                            Key={"PK": item["PK"], "SK": item["SK"]}
-                        )
+        # Delete items in batches
+        if items:
+            request_items = [
+                WriteRequestTypeDef(
+                    DeleteRequest=DeleteRequestTypeDef(
+                        Key={"PK": item.key["PK"], "SK": item.key["SK"]}
                     )
-                    for item in batch
-                ]
-
-                self._client.batch_write_item(
-                    RequestItems={self.table_name: request_items}
                 )
-
-        except ClientError as e:
-            raise OperationError(
-                f"Error invalidating old cache items: {e}"
-            ) from e
+                for item in items
+            ]
+            self._batch_write_with_retry(request_items)

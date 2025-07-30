@@ -1,21 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
+    QueryByParentMixin,
     SingleEntityCRUDMixin,
-    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -39,9 +31,9 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _JobStatus(
     DynamoDBBaseOperations,
+    QueryByParentMixin,
     SingleEntityCRUDMixin,
 ):
-    @handle_dynamodb_errors("add_job_status")
     def add_job_status(self, job_status: JobStatus):
         """Adds a job status update to the database
 
@@ -52,42 +44,13 @@ class _JobStatus(
             ValueError: When a job status with the same timestamp already
                 exists
         """
-        if job_status is None:
-            raise EntityValidationError("job_status cannot be None")
-        if not isinstance(job_status, JobStatus):
-            raise EntityValidationError(
-                "job_status must be an instance of the JobStatus class."
-            )
-        try:
-            self._client.put_item(
-                TableName=self.table_name,
-                Item=job_status.to_item(),
-                ConditionExpression=(
-                    "attribute_not_exists(PK) OR attribute_not_exists(SK)"
-                ),
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ConditionalCheckFailedException":
-                raise EntityAlreadyExistsError(
-                    f"JobStatus with timestamp {job_status.updated_at} for "
-                    f"job {job_status.job_id} already exists"
-                ) from e
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not add job status to DynamoDB: {e}"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise DynamoDBError(
-                f"Could not add job status to DynamoDB: {e}"
-            ) from e
+        self._add_entity(
+            job_status,
+            JobStatus,
+            "job_status",
+            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+        )
 
-    @handle_dynamodb_errors("get_latest_job_status")
     def get_latest_job_status(self, job_id: str) -> JobStatus:
         """Gets the latest status for a job
 
@@ -104,41 +67,25 @@ class _JobStatus(
             raise EntityValidationError("job_id cannot be None")
         assert_valid_uuid(job_id)
 
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "STATUS#"},
-                },
-                ScanIndexForward=False,  # Descending order based on sort key
-                Limit=1,  # We only want the most recent one)
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{job_id}"},
+                ":sk": {"S": "STATUS#"},
+            },
+            converter_func=item_to_job_status,
+            limit=1,
+            scan_index_forward=False,  # Descending order for latest
+        )
+
+        if not results:
+            raise EntityNotFoundError(
+                f"No status updates found for job with ID {job_id}"
             )
 
-            if not response["Items"]:
-                raise EntityNotFoundError(
-                    f"No status updates found for job with ID {job_id}"
-                )
-
-            return item_to_job_status(response["Items"][0])
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not get latest job status: {e}"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise OperationError(
-                f"Error getting latest job status: {e}"
-            ) from e
+        return results[0]
 
     def list_job_statuses(
         self,
@@ -181,65 +128,15 @@ class _JobStatus(
                 )
             validate_last_evaluated_key(last_evaluated_key)
 
-        statuses: List[JobStatus] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"JOB#{job_id}"},
-                    ":sk": {"S": "STATUS#"},
-                },
-                "ScanIndexForward": True,
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
+        return self._query_by_parent(
+            parent_pk=f"JOB#{job_id}",
+            child_sk_prefix="STATUS#",
+            converter_func=item_to_job_status,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
-            while True:
-                if limit is not None:
-                    remaining = limit - len(statuses)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                statuses.extend(
-                    [item_to_job_status(item) for item in response["Items"]]
-                )
-
-                if limit is not None and len(statuses) >= limit:
-                    statuses = statuses[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return statuses, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list job statuses from the database: {e}"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise DynamoDBError(
-                f"Could not list job statuses from the database: {e}"
-            ) from e
-
-    def _getJobWithStatus(
+    def _get_job_with_status(
         self, job_id: str
     ) -> Tuple[Optional[Any], List[JobStatus]]:
         """Get a job with all its status updates

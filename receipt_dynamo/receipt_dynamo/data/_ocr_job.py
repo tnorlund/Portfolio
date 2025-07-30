@@ -1,26 +1,18 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
@@ -31,9 +23,7 @@ if TYPE_CHECKING:
 
 class _OCRJob(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     @handle_dynamodb_errors("add_ocr_job")
     def add_ocr_job(self, ocr_job: OCRJob):
@@ -106,11 +96,7 @@ class _OCRJob(
         Raises:
             ValueError: When the OCR job is not found
         """
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         assert_valid_uuid(job_id)
 
         result = self._get_entity(
@@ -122,7 +108,8 @@ class _OCRJob(
 
         if result is None:
             raise EntityNotFoundError(
-                f"OCR job with image_id={image_id}, job_id={job_id} does not exist"
+                f"OCR job with image_id={image_id}, job_id={job_id} "
+                "does not exist"
             )
 
         return result
@@ -187,21 +174,14 @@ class _OCRJob(
             tuple[list[OCRJob], dict | None]: A tuple containing a list of OCR
                 jobs and the last evaluated key
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
                 raise EntityValidationError(
                     "LastEvaluatedKey must be a dictionary"
                 )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "OCR_JOB"}},
+        return self._query_by_type(
+            entity_type="OCR_JOB",
             converter_func=item_to_ocr_job,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -231,64 +211,20 @@ class _OCRJob(
             raise EntityValidationError("status cannot be None")
         if not isinstance(status, OCRStatus):
             raise EntityValidationError("Status must be a OCRStatus instance.")
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
                 raise EntityValidationError(
                     "LastEvaluatedKey must be a dictionary"
                 )
 
-        jobs: List[OCRJob] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "GSI1PK"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": f"OCR_JOB_STATUS#{status.value}"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-
-            while True:
-                if limit is not None:
-                    remaining = limit - len(jobs)
-                    query_params["Limit"] = remaining
-
-                response = self._client.query(**query_params)
-                jobs.extend(
-                    [item_to_ocr_job(item) for item in response["Items"]]
-                )
-
-                if limit is not None and len(jobs) >= limit:
-                    jobs = jobs[:limit]
-                    last_evaluated_key = response.get("LastEvaluatedKey", None)
-                    break
-
-                if "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                else:
-                    last_evaluated_key = None
-                    break
-
-            return jobs, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            if error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}") from e
-            raise OperationError(
-                f"Error getting OCR jobs by status: {e}"
-            ) from e
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "GSI1PK"},
+            expression_attribute_values={
+                ":val": {"S": f"OCR_JOB_STATUS#{status.value}"}
+            },
+            converter_func=item_to_ocr_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

@@ -1,26 +1,33 @@
 from dataclasses import dataclass
-from math import atan2, pi
 from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.geometry_base import GeometryMixin
+from receipt_dynamo.entities.entity_mixins import (
+    GeometryHashMixin,
+    GeometryMixin,
+    GeometryReprMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    GeometryValidationUtilsMixin,
+    WarpTransformMixin,
+)
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_bounding_box,
-    assert_valid_point,
     assert_valid_uuid,
-    deserialize_bounding_box,
-    deserialize_confidence,
-    deserialize_coordinate_point,
-    serialize_bounding_box,
-    serialize_confidence,
-    serialize_coordinate_point,
 )
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptLetter(GeometryMixin, DynamoDBEntity):
+class ReceiptLetter(
+    GeometryHashMixin,
+    GeometryReprMixin,
+    WarpTransformMixin,
+    GeometryValidationUtilsMixin,
+    GeometryMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    DynamoDBEntity,
+):
     """
     Represents a receipt letter and its associated metadata stored in a
     DynamoDB table.
@@ -79,8 +86,6 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
-        assert_valid_uuid(self.image_id)
-
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
@@ -96,30 +101,16 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         if self.letter_id < 0:
             raise ValueError("letter_id must be positive")
 
-        if not isinstance(self.text, str):
-            raise ValueError("text must be a string")
+        # Use validation utils mixin for common validation (handles image_id and text)
+        self._validate_common_geometry_entity_fields()
+        
+        # Additional validation specific to letter
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
 
-        assert_valid_bounding_box(self.bounding_box)
-        assert_valid_point(self.top_right)
-        assert_valid_point(self.top_left)
-        assert_valid_point(self.bottom_right)
-        assert_valid_point(self.bottom_left)
-
-        if not isinstance(self.angle_degrees, (float, int)):
-            raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(self.angle_degrees)
-
-        if not isinstance(self.angle_radians, (float, int)):
-            raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(self.angle_radians)
-
-        if isinstance(self.confidence, int):
-            self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float):
-            raise ValueError("confidence must be a float")
-        if self.confidence <= 0.0 or self.confidence > 1.0:
+        # Note: confidence validation in mixin allows <= 0.0, but receipt
+        # entities require > 0.0
+        if self.confidence <= 0.0:
             raise ValueError("confidence must be between 0 and 1")
 
     @property
@@ -153,15 +144,7 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         return {
             **self.key,
             "TYPE": {"S": "RECEIPT_LETTER"},
-            "text": {"S": self.text},
-            "bounding_box": serialize_bounding_box(self.bounding_box),
-            "top_right": serialize_coordinate_point(self.top_right),
-            "top_left": serialize_coordinate_point(self.top_left),
-            "bottom_right": serialize_coordinate_point(self.bottom_right),
-            "bottom_left": serialize_coordinate_point(self.bottom_left),
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": serialize_confidence(self.confidence),
+            **self._get_geometry_fields(),
         }
 
     def __eq__(self, other: object) -> bool:
@@ -223,6 +206,7 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         Returns:
             str: A string representation of the ReceiptLetter object.
         """
+        geometry_fields = self._get_geometry_repr_fields()
         return (
             f"ReceiptLetter("
             f"receipt_id={self.receipt_id}, "
@@ -230,16 +214,18 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
             f"line_id={self.line_id}, "
             f"word_id={self.word_id}, "
             f"letter_id={self.letter_id}, "
-            f"text={_repr_str(self.text)}, "
-            f"bounding_box={self.bounding_box}, "
-            f"top_right={self.top_right}, "
-            f"top_left={self.top_left}, "
-            f"bottom_right={self.bottom_right}, "
-            f"bottom_left={self.bottom_left}, "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
+            f"{geometry_fields}"
             f")"
+        )
+
+    def _get_geometry_hash_fields(self) -> tuple:
+        """Override to include entity-specific ID fields in hash computation."""
+        return self._get_base_geometry_hash_fields() + (
+            self.receipt_id,
+            self.image_id,
+            self.line_id,
+            self.word_id,
+            self.letter_id,
         )
 
     def __hash__(self) -> int:
@@ -249,142 +235,8 @@ class ReceiptLetter(GeometryMixin, DynamoDBEntity):
         Returns:
             int: The hash value for the ReceiptLetter object.
         """
-        return hash(
-            (
-                self.receipt_id,
-                self.image_id,
-                self.line_id,
-                self.word_id,
-                self.letter_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-            )
-        )
+        return hash(self._get_geometry_hash_fields())
 
-    def warp_transform(
-        self,
-        a: float,
-        b: float,
-        c: float,
-        d: float,
-        e: float,
-        f: float,
-        g: float,
-        h: float,
-        src_width: int,
-        src_height: int,
-        dst_width: int,
-        dst_height: int,
-        flip_y: bool = False,
-    ):
-        """
-        Receipt-specific inverse perspective transform from 'new' space back to
-        'old' space.
-
-        This implementation uses the 2x2 linear system approach optimized for
-        receipt coordinate systems, independent of the GeometryMixin's
-        vision-based implementation.
-
-        Args:
-            a, b, c, d, e, f, g, h (float): The perspective coefficients that
-                mapped the original image -> new image.
-                We will invert them here so we can map new coords ->
-                old coords.
-            src_width (int): The original (old) image width in pixels.
-            src_height (int): The original (old) image height in pixels.
-            dst_width (int): The new (warped) image width in pixels.
-            dst_height (int): The new (warped) image height in pixels.
-            flip_y (bool): If True, we treat the new coordinate system as
-                flipped in Y (e.g. some OCR engines treat top=0). Mirrors the
-                logic in warp_affine_normalized_forward(...).
-        """
-        # For each corner in the new space, we want to find
-        # (x_old_px, y_old_px).
-        # The forward perspective mapping was:
-        #   x_new = (a*x_old + b*y_old + c) / (1 + g*x_old + h*y_old)
-        #   y_new = (d*x_old + e*y_old + f) / (1 + g*x_old + h*y_old)
-        #
-        # We invert it by treating (x_new, y_new) as known, and solving
-        # for (x_old, y_old).  The code below does that in a 2×2 linear system.
-
-        corners = [
-            self.top_left,
-            self.top_right,
-            self.bottom_left,
-            self.bottom_right,
-        ]
-
-        for corner in corners:
-            # 1) Convert normalized new coords -> pixel coords in the 'new'
-            # (warped) image
-            x_new_px = corner["x"] * dst_width
-            y_new_px = corner["y"] * dst_height
-
-            if flip_y:
-                # If the new system’s Y=0 was at the top, then from the
-                # perspective of a typical "bottom=0" system, we flip:
-                y_new_px = dst_height - y_new_px
-
-            # 2) Solve the perspective equations for old pixel coords
-            # (X_old, Y_old).
-            # We have the system:
-            #   x_new_px = (a*X_old + b*Y_old + c) / (1 + g*X_old + h*Y_old)
-            #   y_new_px = (d*X_old + e*Y_old + f) / (1 + g*X_old + h*Y_old)
-            #
-            # Put it in the form:
-            #    (g*x_new_px - a)*X_old + (h*x_new_px - b)*Y_old = c - x_new_px
-            #    (g*y_new_px - d)*X_old + (h*y_new_px - e)*Y_old = f - y_new_px
-
-            a11 = g * x_new_px - a
-            a12 = h * x_new_px - b
-            b1 = c - x_new_px
-
-            a21 = g * y_new_px - d
-            a22 = h * y_new_px - e
-            b2 = f - y_new_px
-
-            # Solve the 2×2 linear system via determinant
-            det = a11 * a22 - a12 * a21
-            if abs(det) < 1e-12:
-                # Degenerate or singular.  You can raise an exception or skip.
-                # For robust code, handle it gracefully:
-                raise ValueError(
-                    "Inverse perspective transform is singular "
-                    "for this corner."
-                )
-
-            x_old_px = (b1 * a22 - b2 * a12) / det
-            y_old_px = (a11 * b2 - a21 * b1) / det
-
-            # 3) Convert old pixel coords -> old normalized coords in [0..1]
-            corner["x"] = x_old_px / src_width
-            corner["y"] = y_old_px / src_height
-
-            if flip_y:
-                # If the old/original system also had Y=0 at top, do the final
-                # flip:
-                corner["y"] = 1.0 - corner["y"]
-
-        # 4) Recompute bounding box + angle
-        xs = [pt["x"] for pt in corners]
-        ys = [pt["y"] for pt in corners]
-        self.bounding_box["x"] = min(xs)
-        self.bounding_box["y"] = min(ys)
-        self.bounding_box["width"] = max(xs) - min(xs)
-        self.bounding_box["height"] = max(ys) - min(ys)
-
-        dx = self.top_right["x"] - self.top_left["x"]
-        dy = self.top_right["y"] - self.top_left["y"]
-        angle_radians = atan2(dy, dx)
-        self.angle_radians = angle_radians
-        self.angle_degrees = angle_radians * 180.0 / pi
 
 
 def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
@@ -402,6 +254,7 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
         ValueError: When the item format is invalid or required keys are
         missing.
     """
+
     required_keys = {
         "PK",
         "SK",
@@ -415,25 +268,48 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
         "angle_radians",
         "confidence",
     }
-    if not required_keys.issubset(item):
-        missing_keys = required_keys - set(item)
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
-    try:
-        return ReceiptLetter(
-            receipt_id=int(item["SK"]["S"].split("#")[1]),
-            image_id=item["PK"]["S"].split("#")[1],
-            line_id=int(item["SK"]["S"].split("#")[3]),
-            word_id=int(item["SK"]["S"].split("#")[5]),
-            letter_id=int(item["SK"]["S"].split("#")[7]),
-            text=item["text"]["S"],
-            bounding_box=deserialize_bounding_box(item["bounding_box"]),
-            top_right=deserialize_coordinate_point(item["top_right"]),
-            top_left=deserialize_coordinate_point(item["top_left"]),
-            bottom_right=deserialize_coordinate_point(item["bottom_right"]),
-            bottom_left=deserialize_coordinate_point(item["bottom_left"]),
-            angle_degrees=float(item["angle_degrees"]["N"]),
-            angle_radians=float(item["angle_radians"]["N"]),
-            confidence=deserialize_confidence(item["confidence"]),
-        )
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to ReceiptLetter: {e}") from e
+
+    # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
+    def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
+        """Parse the SK to extract receipt_id, line_id, word_id, and letter_id."""
+        parts = sk.split("#")
+        if (
+            len(parts) < 8
+            or parts[0] != "RECEIPT"
+            or parts[2] != "LINE"
+            or parts[4] != "WORD"
+            or parts[6] != "LETTER"
+        ):
+            raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
+
+        return {
+            "receipt_id": int(parts[1]),
+            "line_id": int(parts[3]),
+            "word_id": int(parts[5]),
+            "letter_id": int(parts[7]),
+        }
+
+    # Import EntityFactory and related functions
+    from .entity_factory import (
+        EntityFactory,
+        create_geometry_extractors,
+        create_image_receipt_pk_parser,
+    )
+
+    # Type-safe extractors for all fields
+    custom_extractors = {
+        "text": EntityFactory.extract_text_field,
+        **create_geometry_extractors(),  # Handles all geometry fields
+    }
+
+    # Use EntityFactory to create the entity with full type safety
+    return EntityFactory.create_entity(
+        entity_class=ReceiptLetter,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": parse_receipt_letter_sk,
+        },
+        custom_extractors=custom_extractors,
+    )

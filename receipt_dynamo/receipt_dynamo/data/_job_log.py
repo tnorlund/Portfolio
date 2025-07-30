@@ -3,10 +3,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -22,11 +20,7 @@ if TYPE_CHECKING:
     )
 
 
-class _JobLog(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _JobLog(FlattenedStandardMixin):
     """
     Provides methods for accessing job log data in DynamoDB.
 
@@ -90,49 +84,15 @@ class _JobLog(
         if not job_logs:
             return  # Nothing to do
 
-        # DynamoDB batch write has a limit of 25 items
-        batch_size = 25
-        for i in range(0, len(job_logs), batch_size):
-            batch = job_logs[i : i + batch_size]
-
-            request_items = {
-                self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=log.to_item())
-                    )
-                    for log in batch
-                ]
-            }
-
-            response = self._client.batch_write_item(
-                RequestItems=request_items
+        # Convert to WriteRequestTypeDef format and use mixin method
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=log.to_item())
             )
+            for log in job_logs
+        ]
 
-            # Handle unprocessed items with exponential backoff
-            unprocessed_items = response.get("UnprocessedItems", {})
-            retry_count = 0
-            max_retries = 3
-
-            while unprocessed_items and retry_count < max_retries:
-                retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
-                unprocessed_items = response.get("UnprocessedItems", {})
-
-            if unprocessed_items:
-                raise ClientError(
-                    {
-                        "Error": {
-                            "Code": "ProvisionedThroughputExceededException",
-                            "Message": (
-                                f"Could not process all items after "
-                                f"{max_retries} retries"
-                            ),
-                        }
-                    },
-                    "BatchWriteItem",
-                )
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("get_job_log")
     def get_job_log(self, job_id: str, timestamp: str) -> JobLog:
@@ -198,7 +158,9 @@ class _JobLog(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            key_condition_expression=(
+                "PK = :pk AND begins_with(SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"JOB#{job_id}"},

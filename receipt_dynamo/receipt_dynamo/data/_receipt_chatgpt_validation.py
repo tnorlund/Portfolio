@@ -1,27 +1,18 @@
 from typing import TYPE_CHECKING, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities import (
     item_to_receipt_chat_gpt_validation,
@@ -29,7 +20,6 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -37,9 +27,7 @@ if TYPE_CHECKING:
 
 class _ReceiptChatGPTValidation(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt ChatGPT validations in DynamoDB.
@@ -253,13 +241,10 @@ class _ReceiptChatGPTValidation(
         Returns:
             ReceiptChatGPTValidation: The retrieved receipt ChatGPT validation.
         """
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
+        self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if timestamp is None:
             raise EntityValidationError("timestamp cannot be None")
         if not isinstance(timestamp, str):
@@ -267,7 +252,10 @@ class _ReceiptChatGPTValidation(
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#{timestamp}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                f"CHATGPT#{timestamp}"
+            ),
             entity_class=ReceiptChatGPTValidation,
             converter_func=item_to_receipt_chat_gpt_validation,
         )
@@ -319,7 +307,9 @@ class _ReceiptChatGPTValidation(
 
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression="#pk = :pk_val AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk_val AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={"#pk": "GSI1PK", "#sk": "GSI1SK"},
             expression_attribute_values={
                 ":pk_val": {"S": "ANALYSIS_TYPE"},
@@ -349,17 +339,16 @@ class _ReceiptChatGPTValidation(
             list[ReceiptChatGPTValidation]:
                 A list of ChatGPT validations for the specified receipt.
         """
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
+        self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

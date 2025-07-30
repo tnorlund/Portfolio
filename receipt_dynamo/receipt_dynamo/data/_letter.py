@@ -1,18 +1,13 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    WriteRequestTypeDef,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_letter
 from receipt_dynamo.entities.letter import Letter
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
@@ -25,8 +20,7 @@ CHUNK_SIZE = 25
 
 class _Letter(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to represent a Letter in the database.
@@ -67,7 +61,6 @@ class _Letter(
         self._validate_entity(letter, Letter, "letter")
         self._add_entity(letter)
 
-    @handle_dynamodb_errors("add_letters")
     def add_letters(self, letters: List[Letter]):
         """Adds a list of letters to the database
 
@@ -77,16 +70,7 @@ class _Letter(
         Raises:
             ValueError: When validation fails or letters cannot be added
         """
-        self._validate_entity_list(letters, Letter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=letter.to_item())
-            )
-            for letter in letters
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._add_entities(letters, Letter, "letters")
 
     @handle_dynamodb_errors("update_letter")
     def update_letter(self, letter: Letter):
@@ -114,39 +98,36 @@ class _Letter(
             letter_id (int): The ID of the letter to delete
         """
         # Validate UUID
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": (
-                        f"LINE#{line_id:05d}#WORD#{word_id:05d}#"
-                        f"LETTER#{letter_id:05d}"
-                    )
-                },
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Create a temporary Letter object with just the keys for deletion
+        temp_letter = Letter(
+            image_id=image_id,
+            line_id=line_id,
+            word_id=word_id,
+            letter_id=letter_id,
+            text="X",  # Single character required
+            # Required geometry fields
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.5,
+        )
+        self._delete_entity(
+            temp_letter, condition_expression="attribute_exists(PK)"
         )
 
-    @handle_dynamodb_errors("delete_letters")
     def delete_letters(self, letters: List[Letter]):
         """Deletes a list of letters from the database
 
         Args:
             letters (list[Letter]): The letters to delete
         """
-        self._validate_entity_list(letters, Letter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=letter.key)
-            )
-            for letter in letters
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(letters)
 
     @handle_dynamodb_errors("delete_letters_from_word")
     def delete_letters_from_word(
@@ -181,11 +162,13 @@ class _Letter(
         Raises:
             EntityNotFoundError: When the letter is not found
         """
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}",
+            sort_key=(
+                f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+            ),
             entity_class=Letter,
             converter_func=item_to_letter,
         )
@@ -213,15 +196,11 @@ class _Letter(
         Returns:
             Tuple of letters list and last evaluated key for pagination
         """
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "LETTER"}},
+        return self._query_by_type(
+            entity_type="LETTER",
             converter_func=item_to_letter,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True,
         )
 
     @handle_dynamodb_errors("list_letters_from_word")
@@ -240,7 +219,9 @@ class _Letter(
         """
         letters, _ = self._query_entities(
             index_name=None,  # Main table query
-            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

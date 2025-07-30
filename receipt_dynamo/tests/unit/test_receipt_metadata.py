@@ -159,7 +159,7 @@ def test_invalid_field_validation(field, value, error):
 @pytest.mark.unit
 def test_item_to_receipt_metadata_missing_keys():
     item = {"PK": {"S": "IMAGE#id"}}
-    with pytest.raises(ValueError, match="missing keys"):
+    with pytest.raises(ValueError, match="Item is missing required keys"):
         item_to_receipt_metadata(item)
 
 

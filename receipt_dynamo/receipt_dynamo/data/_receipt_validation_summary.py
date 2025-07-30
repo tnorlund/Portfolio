@@ -4,7 +4,7 @@ from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
-    QueryInputTypeDef,
+    QueryByTypeMixin,
     SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -24,7 +24,10 @@ if TYPE_CHECKING:
 
 
 class _ReceiptValidationSummary(
-    DynamoDBBaseOperations, SingleEntityCRUDMixin, BatchOperationsMixin
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    QueryByTypeMixin,
 ):
     """
     A class used to access receipt validation summaries in DynamoDB.
@@ -231,13 +234,8 @@ class _ReceiptValidationSummary(
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={
-                ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"}
-            },
+        return self._query_by_type(
+            entity_type="RECEIPT_VALIDATION_SUMMARY",
             converter_func=item_to_receipt_validation_summary,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

@@ -32,34 +32,37 @@ class ResilientDynamoClient(DynamoClient):
         self,
         table_name: str,
         region: str = "us-east-1",
-        # Resilience configuration
-        circuit_breaker_threshold: int = 5,
-        circuit_breaker_timeout: float = 30.0,
-        max_retry_attempts: int = 3,
-        retry_base_delay: float = 1.0,
-        batch_size: int = 25,
-        batch_flush_interval: float = 5.0,
-        enable_batch_processing: bool = True,
+        **resilience_config,
     ):
         """Initialize resilient DynamoDB client."""
         super().__init__(table_name, region)
 
         # Circuit breaker state
-        self.circuit_breaker_threshold = circuit_breaker_threshold
-        self.circuit_breaker_timeout = circuit_breaker_timeout
+        self.circuit_breaker_threshold = resilience_config.get(
+            "circuit_breaker_threshold", 5
+        )
+        self.circuit_breaker_timeout = resilience_config.get(
+            "circuit_breaker_timeout", 30.0
+        )
         self.circuit_state = CircuitBreakerState.CLOSED
         self.failure_count = 0
         self.last_failure_time: Optional[float] = None
         self.circuit_lock = threading.Lock()
 
         # Retry configuration
-        self.max_retry_attempts = max_retry_attempts
-        self.retry_base_delay = retry_base_delay
+        self.max_retry_attempts = resilience_config.get(
+            "max_retry_attempts", 3
+        )
+        self.retry_base_delay = resilience_config.get("retry_base_delay", 1.0)
 
         # Batch processing for AI usage metrics
-        self.batch_size = batch_size
-        self.batch_flush_interval = batch_flush_interval
-        self.enable_batch_processing = enable_batch_processing
+        self.batch_size = resilience_config.get("batch_size", 25)
+        self.batch_flush_interval = resilience_config.get(
+            "batch_flush_interval", 5.0
+        )
+        self.enable_batch_processing = resilience_config.get(
+            "enable_batch_processing", True
+        )
 
         if self.enable_batch_processing:
             self.metric_queue: List[AIUsageMetric] = []

@@ -11,11 +11,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -25,7 +22,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities import (
     ImageDetails,
-    assert_valid_uuid,
     item_to_image,
     item_to_letter,
     item_to_line,
@@ -49,12 +45,7 @@ if TYPE_CHECKING:
     )
 
 
-class _Image(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _Image(FlattenedStandardMixin):
     """
     Refactored Image class using base operations for all DynamoDB interactions.
 
@@ -84,9 +75,7 @@ class _Image(
     @handle_dynamodb_errors("get_image")
     def get_image(self, image_id: str) -> Image:
         """Retrieves a single Image item by its ID from the database."""
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -128,30 +117,19 @@ class _Image(
         ocr_jobs = []
         ocr_routing_decisions = []
 
-        response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression="#pk = :pk_value",
-            ExpressionAttributeNames={"#pk": "PK"},
-            ExpressionAttributeValues={
+        # Use _query_entities to gather all items for this image
+        items_list, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="#pk = :pk_value",
+            expression_attribute_names={"#pk": "PK"},
+            expression_attribute_values={
                 ":pk_value": {"S": f"IMAGE#{image_id}"}
             },
-            ScanIndexForward=True,
+            converter_func=lambda x: x,  # Return raw items
+            limit=None,  # Get all items
+            last_evaluated_key=None,
         )
-        items = response["Items"]
-
-        # Keep querying if there's a LastEvaluatedKey
-        while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="#pk = :pk_value",
-                ExpressionAttributeNames={"#pk": "PK"},
-                ExpressionAttributeValues={
-                    ":pk_value": {"S": f"IMAGE#{image_id}"},
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-                ScanIndexForward=True,
-            )
-            items += response["Items"]
+        items = items_list
 
         # Process items by type
         type_handlers = {
@@ -208,35 +186,21 @@ class _Image(
     ) -> tuple[Image, list[Line], list[Receipt]]:
         """Retrieves comprehensive details for an Image, including lines and
         receipts."""
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
 
-        response = self._client.query(
-            TableName=self.table_name,
-            IndexName="GSI1",
-            KeyConditionExpression="#pk = :pk_value",
-            ExpressionAttributeNames={"#pk": "GSI1PK"},
-            ExpressionAttributeValues={
+        # Use _query_entities for GSI1 query
+        items_list, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#pk = :pk_value",
+            expression_attribute_names={"#pk": "GSI1PK"},
+            expression_attribute_values={
                 ":pk_value": {"S": f"IMAGE#{image_id}"}
             },
-            ScanIndexForward=True,
+            converter_func=lambda x: x,  # Return raw items
+            limit=None,  # Get all items
+            last_evaluated_key=None,
         )
-        items = response["Items"]
-
-        while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression="#pk = :pk_value",
-                ExpressionAttributeNames={"#pk": "GSI1PK"},
-                ExpressionAttributeValues={
-                    ":pk_value": {"S": f"IMAGE#{image_id}"}
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-                ScanIndexForward=True,
-            )
-            items += response["Items"]
+        items = items_list
 
         image = None
         lines = []
@@ -260,11 +224,14 @@ class _Image(
     @handle_dynamodb_errors("delete_image")
     def delete_image(self, image_id: str) -> None:
         """Deletes an Image item from the database by its ID."""
-        # The original implementation uses delete_item directly with the key
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}},
-            ConditionExpression="attribute_exists(PK)",
+        # Create a temporary Image object to use _delete_entity
+        temp_image = type(
+            "TempImage",
+            (),
+            {"key": {"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}}},
+        )()
+        self._delete_entity(
+            temp_image, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_images")
@@ -307,44 +274,15 @@ class _Image(
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 
-        images = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI3",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "GSI3PK"},
-            "ExpressionAttributeValues": {
-                ":val": {"S": f"IMAGE#{image_type}"}
-            },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        images.extend([item_to_image(item) for item in response["Items"]])
-
-        if limit is None:
-            # If no limit is provided, paginate until all items are retrieved
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                images.extend(
-                    [item_to_image(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            # If a limit is provided, capture the LastEvaluatedKey (if any)
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return images, last_evaluated_key
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "GSI3PK"},
+            expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+            converter_func=item_to_image,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     def _query_by_type(
         self,

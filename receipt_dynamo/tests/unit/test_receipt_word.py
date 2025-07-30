@@ -6,6 +6,7 @@ from receipt_dynamo.constants import EmbeddingStatus
 
 @pytest.fixture
 def example_receipt_word():
+    """A pytest fixture for a sample ReceiptWord object."""
     return ReceiptWord(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -52,6 +53,7 @@ def test_receipt_word_init_valid(
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_receipt_id():
+    """Test that invalid receipt_id raises ValueError."""
     with pytest.raises(ValueError, match="^receipt_id must be an integer"):
         ReceiptWord(
             receipt_id="1",  # Not an integer
@@ -125,6 +127,7 @@ def test_receipt_word_init_invalid_uuid():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_line_id():
+    """Test that invalid line_id raises ValueError."""
     with pytest.raises(ValueError, match="^line_id must be an integer"):
         ReceiptWord(
             receipt_id=1,
@@ -161,6 +164,7 @@ def test_receipt_word_init_invalid_line_id():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_id():
+    """Test that invalid word_id raises ValueError."""
     with pytest.raises(ValueError, match="^id must be an integer"):
         ReceiptWord(
             receipt_id=1,
@@ -197,6 +201,7 @@ def test_receipt_word_init_invalid_id():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_text():
+    """Test that invalid text raises ValueError."""
     with pytest.raises(ValueError, match="^text must be a string"):
         ReceiptWord(
             receipt_id=1,
@@ -265,7 +270,7 @@ def test_receipt_word_angle_validation():
     """Test that angles outside [0, 360) raise ValueError."""
     with pytest.raises(
         ValueError,
-        match="angle_degrees must be a float or int",
+        match="angle_degrees must be float or int, got",
     ):
         ReceiptWord(
             receipt_id=1,
@@ -284,7 +289,7 @@ def test_receipt_word_angle_validation():
         )
     with pytest.raises(
         ValueError,
-        match="angle_radians must be a float or int",
+        match="angle_radians must be float or int, got",
     ):
         ReceiptWord(
             receipt_id=1,
@@ -306,7 +311,9 @@ def test_receipt_word_angle_validation():
 @pytest.mark.unit
 def test_receipt_word_init_invalid_confidence():
     """Test that confidence outside (0,1] raises ValueError."""
-    with pytest.raises(ValueError, match="confidence must be a float"):
+    with pytest.raises(
+        ValueError, match="confidence must be float or int, got"
+    ):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -338,7 +345,9 @@ def test_receipt_word_init_invalid_confidence():
         confidence=1,
     )
     assert receipt.confidence == 1.0
-    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
+    with pytest.raises(
+        ValueError, match="confidence must be between 0 and 1, got"
+    ):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -358,6 +367,7 @@ def test_receipt_word_init_invalid_confidence():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_extracted_data():
+    """Test that invalid extracted_data raises ValueError."""
     with pytest.raises(ValueError, match="extracted_data must be a dict"):
         ReceiptWord(
             receipt_id=1,
@@ -399,6 +409,7 @@ def test_receipt_word_init_invalid_extracted_data():
 
 @pytest.mark.unit
 def test_receipt_word_init_invalid_embedding_status():
+    """Test that invalid embedding_status raises ValueError."""
     with pytest.raises(
         ValueError,
         match="embedding_status must be a string or EmbeddingStatus enum",
@@ -469,29 +480,9 @@ def test_receipt_word_init_invalid_is_noise():
 
 
 @pytest.mark.unit
-def test_receipt_word_key():
+def test_receipt_word_key(example_receipt_word):
     """Test that the key() method returns a properly formatted DynamoDB key."""
-    word = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="TestWord",
-        bounding_box={
-            "x": 0.123456789012,
-            "y": 0.2,
-            "width": 0.3,
-            "height": 0.4,
-        },
-        top_right={"x": 1.0001, "y": 2.0001},
-        top_left={"x": 1.0001, "y": 2.0001},
-        bottom_right={"x": 1.0001, "y": 2.0001},
-        bottom_left={"x": 1.0001, "y": 2.0001},
-        angle_degrees=45.0,
-        angle_radians=0.7853981634,
-        confidence=0.95,
-    )
-    assert word.key == {
+    assert example_receipt_word.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
     }
@@ -644,40 +635,10 @@ def test_repr(example_receipt_word):
 
 
 @pytest.mark.unit
-def test_receipt_word_eq():
+def test_receipt_word_eq(example_receipt_word):
     """Test that two ReceiptWords with the same attributes are equal."""
-    bounding_box = {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
-    point = {"x": 1.0, "y": 2.0}
-    word1 = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box=bounding_box,
-        top_right=point,
-        top_left=point,
-        bottom_right=point,
-        bottom_left=point,
-        angle_degrees=45.0,
-        angle_radians=0.785398,
-        confidence=0.99,
-    )
-    word2 = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box=bounding_box,
-        top_right=point,
-        top_left=point,
-        bottom_right=point,
-        bottom_left=point,
-        angle_degrees=45.0,
-        angle_radians=0.785398,
-        confidence=0.99,
-    )
+    word1 = example_receipt_word
+    word2 = item_to_receipt_word(word1.to_item())
     assert word1 == word2
     assert word1 != "Test"
 
@@ -771,7 +732,7 @@ def test_item_to_receipt_word_round_trip(example_receipt_word):
         item_to_receipt_word({})
     with pytest.raises(
         ValueError,
-        match="^Error converting item to ReceiptWord",
+        match="^Failed to create ReceiptWord:",
     ):
         item_to_receipt_word(
             {
@@ -890,43 +851,11 @@ def test_item_to_receipt_word_backward_compatibility():
 
 
 @pytest.mark.unit
-def test_receipt_word_diff_includes_is_noise():
-    """Test that diff method includes is_noise field."""
-    word1 = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-        top_right={"x": 1.0, "y": 2.0},
-        top_left={"x": 1.0, "y": 3.0},
-        bottom_right={"x": 4.0, "y": 2.0},
-        bottom_left={"x": 1.0, "y": 1.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.9,
-        is_noise=False,
-    )
-
-    word2 = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-        top_right={"x": 1.0, "y": 2.0},
-        top_left={"x": 1.0, "y": 3.0},
-        bottom_right={"x": 4.0, "y": 2.0},
-        bottom_left={"x": 1.0, "y": 1.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.9,
-        is_noise=True,  # Different from word1
-    )
-
-    diff = word1.diff(word2)
-    assert "is_noise" in diff
-    assert diff["is_noise"]["self"] is False
-    assert diff["is_noise"]["other"] is True
+def test_item_to_receipt_word_with_optional_fields(example_receipt_word):
+    """Test that item_to_receipt_word handles optional fields."""
+    item = example_receipt_word.to_item()
+    item["is_noise"] = {"BOOL": True}
+    item["extracted_data"] = {"M": {"type": {"S": "test"}}}
+    word = item_to_receipt_word(item)
+    assert word.is_noise is True
+    assert word.extracted_data == {"type": "test"}

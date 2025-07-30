@@ -7,64 +7,33 @@ validation, and operation patterns.
 """
 
 from .base import DynamoDBBaseOperations
-from .error_config import ErrorMessageConfig
-from .error_context import ErrorContextExtractor
-from .error_handlers import ErrorHandler, handle_dynamodb_errors
+from .error_handling import (
+    ErrorContextExtractor,
+    ErrorHandler,
+    ErrorMessageConfig,
+    handle_dynamodb_errors,
+)
+from .flattened_mixin import FlattenedStandardMixin
 from .mixins import (
     BatchOperationsMixin,
+    CommonValidationMixin,
+    QueryByParentMixin,
+    QueryByTypeMixin,
+    SimplifiedAccessorMixin,
     SingleEntityCRUDMixin,
+    StandardAccessorMixin,
     TransactionalOperationsMixin,
 )
-from .types import (
-    AttributeValueTypeDef,
-    BatchGetItemInputTypeDef,
-    BatchWriteItemInputTypeDef,
-    ConditionCheckTypeDef,
-    DeleteItemInputTypeDef,
-    DeleteRequestTypeDef,
-    DeleteTypeDef,
-    DynamoClientProtocol,
-    DynamoDBClient,
-    GetItemInputTypeDef,
-    KeysAndAttributesTypeDef,
-    PutItemInputTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    QueryInputTypeDef,
-    ScanInputTypeDef,
-    TransactWriteItemsInputTypeDef,
-    TransactWriteItemTypeDef,
-    UpdateItemInputTypeDef,
-    UpdateTypeDef,
-    WriteRequestTypeDef,
-)
+from .types import *
 from .validators import EntityValidator, ValidationMessageGenerator
 
 __all__ = [
     # Main base class
     "DynamoDBBaseOperations",
-    # Type definitions
-    "DynamoDBClient",
-    "DynamoClientProtocol",
-    "QueryInputTypeDef",
-    "GetItemInputTypeDef",
-    "PutItemInputTypeDef",
-    "DeleteItemInputTypeDef",
-    "BatchWriteItemInputTypeDef",
-    "TransactWriteItemsInputTypeDef",
-    "UpdateItemInputTypeDef",
-    "BatchGetItemInputTypeDef",
-    "ScanInputTypeDef",
-    "WriteRequestTypeDef",
-    "PutRequestTypeDef",
-    "DeleteRequestTypeDef",
-    "TransactWriteItemTypeDef",
-    "KeysAndAttributesTypeDef",
-    "AttributeValueTypeDef",
-    "PutTypeDef",
-    "DeleteTypeDef",
-    "UpdateTypeDef",
-    "ConditionCheckTypeDef",
+    # Consolidated accessor mixins (recommended)
+    "StandardAccessorMixin",
+    "SimplifiedAccessorMixin",
+    "FlattenedStandardMixin",
     # Error handling
     "ErrorHandler",
     "handle_dynamodb_errors",
@@ -73,8 +42,13 @@ __all__ = [
     # Validation
     "EntityValidator",
     "ValidationMessageGenerator",
-    # Mixins for composable functionality
+    # Original mixins for composable functionality
     "SingleEntityCRUDMixin",
     "BatchOperationsMixin",
     "TransactionalOperationsMixin",
+    "QueryByTypeMixin",
+    "QueryByParentMixin",
+    "CommonValidationMixin",
+    # Flattened mixin that respects pylint's max-ancestors limit
+    "FlattenedStandardMixin",
 ]

@@ -7,6 +7,7 @@ from receipt_dynamo import ReceiptLetter, item_to_receipt_letter
 
 @pytest.fixture
 def example_receipt_letter():
+    """A pytest fixture for a sample ReceiptLetter object."""
     return ReceiptLetter(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -591,7 +592,9 @@ def test_receipt_letter_init_invalid_bottom_left():
 @pytest.mark.unit
 def test_receipt_letter_init_invalid_angles():
     """ReceiptLetter raises a ValueError if the angles are not floats"""
-    with pytest.raises(ValueError, match="angle_degrees must be a float"):
+    with pytest.raises(
+        ValueError, match="angle_degrees must be float or int, got"
+    ):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -613,7 +616,9 @@ def test_receipt_letter_init_invalid_angles():
             angle_radians=0.0872665,
             confidence=0.98,
         )
-    with pytest.raises(ValueError, match="angle_radians must be a float"):
+    with pytest.raises(
+        ValueError, match="angle_radians must be float or int, got"
+    ):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -640,7 +645,9 @@ def test_receipt_letter_init_invalid_angles():
 @pytest.mark.unit
 def test_receipt_letter_init_invalid_confidence():
     """ValueError if the confidence is not a float or between 0 and 1"""
-    with pytest.raises(ValueError, match="confidence must be a float"):
+    with pytest.raises(
+        ValueError, match="confidence must be float or int, got"
+    ):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -674,7 +681,9 @@ def test_receipt_letter_init_invalid_confidence():
         confidence=1,
     )
     assert receipt.confidence == 1
-    with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
+    with pytest.raises(
+        ValueError, match="confidence must be between 0 and 1, got"
+    ):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -844,7 +853,7 @@ def test_item_to_word(example_receipt_letter):
         item_to_receipt_letter({})
     with pytest.raises(
         ValueError,
-        match="^Error converting item to ReceiptLetter: ",
+        match="^Field 'text' must be a string type",
     ):
         item_to_receipt_letter(
             {

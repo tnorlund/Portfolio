@@ -1,5 +1,6 @@
 """Receipt line item analysis entity definitions."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
@@ -7,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptLineItemAnalysis:
     """
     Represents a receipt line item analysis stored in a DynamoDB table.
@@ -40,136 +42,94 @@ class ReceiptLineItemAnalysis:
             The timestamp when the analysis was last updated.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        receipt_id: int,
-        timestamp_added: Union[datetime, str],
-        items: List[Dict[str, Any]],
-        reasoning: str,
-        version: str,
-        subtotal: Optional[Union[Decimal, str]] = None,
-        tax: Optional[Union[Decimal, str]] = None,
-        total: Optional[Union[Decimal, str]] = None,
-        fees: Optional[Union[Decimal, str]] = None,
-        discounts: Optional[Union[Decimal, str]] = None,
-        tips: Optional[Union[Decimal, str]] = None,
-        total_found: Optional[int] = None,
-        discrepancies: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        word_labels: Optional[Dict[Tuple[int, int], Any]] = None,
-        timestamp_updated: Optional[str] = None,
-    ):
-        """Initializes a new ReceiptLineItemAnalysis object for DynamoDB.
+    image_id: str
+    receipt_id: int
+    timestamp_added: Union[datetime, str]
+    items: List[Dict[str, Any]]
+    reasoning: str
+    version: str
+    subtotal: Optional[Union[Decimal, str]] = None
+    tax: Optional[Union[Decimal, str]] = None
+    total: Optional[Union[Decimal, str]] = None
+    fees: Optional[Union[Decimal, str]] = None
+    discounts: Optional[Union[Decimal, str]] = None
+    tips: Optional[Union[Decimal, str]] = None
+    total_found: Optional[int] = None
+    discrepancies: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    word_labels: Optional[Dict[Tuple[int, int], Any]] = None
+    timestamp_updated: Optional[str] = None
 
-        Args:
-            image_id (str): UUID identifying the image the receipt is from.
-            receipt_id (int): Identifier for the receipt.
-            timestamp_added (Union[datetime, str]):
-                The timestamp when the analysis was added.
-            items (List[Dict]):
-                List of line items identified in the receipt.
-            reasoning (str):
-                Detailed reasoning explaining how the analysis was performed.
-            version (str): Version of the analysis.
-            subtotal (Optional[Union[Decimal, str]], optional):
-                The subtotal amount. Defaults to None.
-            tax (Optional[Union[Decimal, str]], optional):
-                The tax amount. Defaults to None.
-            total (Optional[Union[Decimal, str]], optional):
-                The total amount. Defaults to None.
-            fees (Optional[Union[Decimal, str]], optional):
-                Any fees on the receipt. Defaults to None.
-            discounts (Optional[Union[Decimal, str]], optional):
-                Any discounts on the receipt. Defaults to None.
-            tips (Optional[Union[Decimal, str]], optional):
-                Any tips on the receipt. Defaults to None.
-            total_found (Optional[int], optional):
-                The number of line items found. Defaults to None.
-            discrepancies (Optional[List[str]], optional):
-                Any discrepancies found during analysis. Defaults to None.
-            metadata (Optional[Dict], optional):
-                Additional metadata about the analysis. Defaults to None.
+    def __post_init__(self):
+        """Initializes and validates the ReceiptLineItemAnalysis object.
 
         Raises:
             ValueError:
                 If any parameter is of an invalid type or has an invalid value.
         """
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        if isinstance(timestamp_added, datetime):
-            self.timestamp_added: str = timestamp_added.isoformat()
-        elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif isinstance(self.timestamp_added, str):
+            pass  # Already a string
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
 
         # Store timestamp_updated if provided
-        self.timestamp_updated: Optional[str]
-        if timestamp_updated is not None:
-            if isinstance(timestamp_updated, datetime):
-                self.timestamp_updated = timestamp_updated.isoformat()
-            elif isinstance(timestamp_updated, str):
-                self.timestamp_updated = timestamp_updated
+        if self.timestamp_updated is not None:
+            if isinstance(self.timestamp_updated, datetime):
+                self.timestamp_updated = self.timestamp_updated.isoformat()
+            elif isinstance(self.timestamp_updated, str):
+                pass  # Already a string
             else:
                 raise ValueError(
                     "timestamp_updated must be a datetime object or a string"
                 )
-        else:
-            self.timestamp_updated = None
 
         # Validate and process items
-        if not isinstance(items, list):
+        if not isinstance(self.items, list):
             raise ValueError("items must be a list")
-        self.items: List[Dict[str, Any]] = items
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning: str = reasoning
 
-        if not isinstance(version, str):
+        if not isinstance(self.version, str):
             raise ValueError("version must be a string")
-        self.version: str = version
 
         # Process financial amounts (can be Decimal or string)
-        self.subtotal = self._process_decimal(subtotal, "subtotal")
-        self.tax = self._process_decimal(tax, "tax")
-        self.total = self._process_decimal(total, "total")
-        self.fees = self._process_decimal(fees, "fees")
-        self.discounts = self._process_decimal(discounts, "discounts")
-        self.tips = self._process_decimal(tips, "tips")
+        self.subtotal = self._process_decimal(self.subtotal, "subtotal")
+        self.tax = self._process_decimal(self.tax, "tax")
+        self.total = self._process_decimal(self.total, "total")
+        self.fees = self._process_decimal(self.fees, "fees")
+        self.discounts = self._process_decimal(self.discounts, "discounts")
+        self.tips = self._process_decimal(self.tips, "tips")
 
         # Process total_found
-        self.total_found: int
-        if total_found is not None:
-            if not isinstance(total_found, int) or total_found < 0:
+        if self.total_found is not None:
+            if not isinstance(self.total_found, int) or self.total_found < 0:
                 raise ValueError("total_found must be a non-negative integer")
-            self.total_found = total_found
         else:
-            self.total_found = len(items)
+            self.total_found = len(self.items)
 
         # Process discrepancies
-        if discrepancies is not None:
-            if not isinstance(discrepancies, list):
+        if self.discrepancies is not None:
+            if not isinstance(self.discrepancies, list):
                 raise ValueError("discrepancies must be a list")
-            self.discrepancies: List[str] = discrepancies
         else:
             self.discrepancies = []
 
         # Process metadata
-        if metadata is not None:
-            if not isinstance(metadata, dict):
+        if self.metadata is not None:
+            if not isinstance(self.metadata, dict):
                 raise ValueError("metadata must be a dictionary")
-            self.metadata = metadata
         else:
             self.metadata = {
                 "processing_metrics": {},
@@ -178,10 +138,9 @@ class ReceiptLineItemAnalysis:
             }
 
         # Process word_labels
-        if word_labels is not None:
-            if not isinstance(word_labels, dict):
+        if self.word_labels is not None:
+            if not isinstance(self.word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
-            self.word_labels = word_labels
         else:
             self.word_labels = {}
 
@@ -585,41 +544,6 @@ class ReceiptLineItemAnalysis:
         yield "metadata", self.metadata
         yield "word_labels", self.word_labels
 
-    def __eq__(self, other) -> bool:
-        """Determine whether two objects are equal.
-
-        Args:
-            other (ReceiptLineItemAnalysis):
-                The other :class:`ReceiptLineItemAnalysis` to compare.
-
-        Returns:
-            bool: True if the objects are equal, False otherwise.
-
-        Note:
-            If ``other`` is not an instance of ``ReceiptLineItemAnalysis``,
-            ``False`` is returned.
-        """
-        if not isinstance(other, ReceiptLineItemAnalysis):
-            return False
-        return (
-            self.image_id == other.image_id
-            and self.receipt_id == other.receipt_id
-            and self.timestamp_added == other.timestamp_added
-            and self.timestamp_updated == other.timestamp_updated
-            and self.items == other.items
-            and self.reasoning == other.reasoning
-            and self.subtotal == other.subtotal
-            and self.tax == other.tax
-            and self.total == other.total
-            and self.fees == other.fees
-            and self.discounts == other.discounts
-            and self.tips == other.tips
-            and self.total_found == other.total_found
-            and self.discrepancies == other.discrepancies
-            and self.version == other.version
-            and self.metadata == other.metadata
-            and self.word_labels == other.word_labels
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptLineItemAnalysis object.

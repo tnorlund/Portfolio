@@ -1,13 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
-    PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-    WriteRequestTypeDef,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -28,12 +22,7 @@ if TYPE_CHECKING:
 CHUNK_SIZE = 25
 
 
-class _Word(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _Word(FlattenedStandardMixin):
     """
     A class used to represent a Word in the database.
 
@@ -76,7 +65,6 @@ class _Word(
         self._validate_entity(word, Word, "word")
         self._add_entity(word)
 
-    @handle_dynamodb_errors("add_words")
     def add_words(self, words: List[Word]):
         """Adds a list of words to the database
 
@@ -86,16 +74,7 @@ class _Word(
         Raises:
             ValueError: When validation fails or words cannot be added
         """
-        self._validate_entity_list(words, Word, "words")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=word.to_item())
-            )
-            for word in words
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._add_entities_batch(words, Word, "words")
 
     @handle_dynamodb_errors("update_word")
     def update_word(self, word: Word):
@@ -142,28 +121,22 @@ class _Word(
         """
         # Validate UUID
         assert_valid_uuid(image_id)
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Create a temporary Word object for deletion
+        temp_word = Word(
+            image_id=image_id,
+            line_id=line_id,
+            word_id=word_id,
+            text="",  # Required field, but not used for deletion
+            bb_left=0,
+            bb_top=0,
+            bb_width=0,
+            bb_height=0,
         )
+        self._delete_entity(temp_word)
 
-    @handle_dynamodb_errors("delete_words")
     def delete_words(self, words: List[Word]):
         """Deletes a list of words from the database"""
-        self._validate_entity_list(words, Word, "words")
-
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=word.key)
-            )
-            for word in words
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(words)
 
     @handle_dynamodb_errors("delete_words_from_line")
     def delete_words_from_line(self, image_id: str, line_id: int):
@@ -268,11 +241,8 @@ class _Word(
         Returns:
             Tuple of words list and last evaluated key for pagination
         """
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "WORD"}},
+        return self._query_by_type(
+            entity_type="WORD",
             converter_func=item_to_word,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -289,6 +259,9 @@ class _Word(
         Returns:
             List of Word objects from the specified line
         """
+        # For words, we need to query by a composite parent (IMAGE + LINE)
+        # Since QueryByParentMixin expects a single parent, we'll use the
+        # original query
         words, _ = self._query_entities(
             index_name=None,  # Main table query
             key_condition_expression=(

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -9,53 +10,51 @@ from receipt_dynamo.entities.util import (
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class LabelMetadata:
-    def __init__(
-        self,
-        label: str,
-        status: str,
-        aliases: List[str],
-        description: str,
-        schema_version: int,
-        last_updated: datetime,
-        label_target: Optional[str] = None,
-        receipt_refs: Optional[list[tuple[str, int]]] = None,
-    ):
-        assert_type("label", label, str, ValueError)
-        self.label = label
+    label: str
+    status: str
+    aliases: List[str]
+    description: str
+    schema_version: int
+    last_updated: datetime
+    label_target: Optional[str] = None
+    receipt_refs: Optional[list[tuple[str, int]]] = None
 
-        self.status = normalize_enum(status, LabelStatus)
+    def __post_init__(self) -> None:
+        # Convert datetime to str if needed for last_updated
+        if isinstance(self.last_updated, datetime):
+            # Keep as datetime - no conversion needed for this field
+            pass
+        
+        assert_type("label", self.label, str, ValueError)
 
-        assert_type("aliases", aliases, list, ValueError)
-        self.aliases = aliases
+        self.status = normalize_enum(self.status, LabelStatus)
 
-        assert_type("description", description, str, ValueError)
-        self.description = description
+        assert_type("aliases", self.aliases, list, ValueError)
 
-        assert_type("schema_version", schema_version, int, ValueError)
-        self.schema_version = schema_version
+        assert_type("description", self.description, str, ValueError)
 
-        assert_type("last_updated", last_updated, datetime, ValueError)
-        self.last_updated = last_updated
+        assert_type("schema_version", self.schema_version, int, ValueError)
 
-        if label_target is not None:
-            assert_type("label_target", label_target, str, ValueError)
-        self.label_target = label_target
+        assert_type("last_updated", self.last_updated, datetime, ValueError)
 
-        if receipt_refs is not None:
-            assert_type("receipt_refs", receipt_refs, list, ValueError)
+        if self.label_target is not None:
+            assert_type("label_target", self.label_target, str, ValueError)
+
+        if self.receipt_refs is not None:
+            assert_type("receipt_refs", self.receipt_refs, list, ValueError)
             if not all(
                 isinstance(ref, tuple)
                 and len(ref) == 2
                 and isinstance(ref[0], str)
                 and isinstance(ref[1], int)
-                for ref in receipt_refs
+                for ref in self.receipt_refs
             ):
                 raise ValueError(
                     "receipt_refs must be a list of (image_id: str, "
                     "receipt_id: int) tuples"
                 )
-        self.receipt_refs = receipt_refs
 
     @property
     def key(self) -> Dict[str, Any]:

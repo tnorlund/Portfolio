@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -38,10 +37,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobResource(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-):
+class _JobResource(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_job_resource")
     def add_job_resource(self, job_resource: JobResource):
         """Adds a job resource to the database
@@ -176,20 +172,20 @@ class _JobResource(
                         f"{job_id} and resource ID {resource_id}"
                     )
                 ) from e
-            elif error_code == "ResourceNotFoundException":
+            if error_code == "ResourceNotFoundException":
                 raise ReceiptDynamoError(
                     f"Could not update job resource status: {e}"
                 ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
+            if error_code == "ProvisionedThroughputExceededException":
                 raise DynamoDBThroughputError(
                     f"Provisioned throughput exceeded: {e}"
                 ) from e
-            elif error_code == "InternalServerError":
+            if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            else:
-                raise OperationError(
-                    f"Error updating job resource status: {e}"
-                ) from e
+
+            raise OperationError(
+                f"Error updating job resource status: {e}"
+            ) from e
 
     @handle_dynamodb_errors("list_job_resources")
     def list_job_resources(
@@ -243,7 +239,6 @@ class _JobResource(
             converter_func=item_to_job_resource,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True,  # Ascending order by default
         )
 
     @handle_dynamodb_errors("list_resources_by_type")
@@ -299,7 +294,6 @@ class _JobResource(
             converter_func=item_to_job_resource,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
-            scan_index_forward=True,  # Ascending order by default
             filter_expression="resource_type = :rt",
         )
 

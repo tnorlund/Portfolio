@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
     PutTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -49,9 +49,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _BatchSummary(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
 
     @handle_dynamodb_errors("add_batch_summary")
@@ -90,10 +88,16 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        # Use the mixin's batch operation method directly
-        self._add_entities_batch(
+        self._validate_entity_list(
             batch_summaries, BatchSummary, "batch_summaries"
         )
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=batch_summary.to_item())
+            )
+            for batch_summary in batch_summaries
+        ]
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_batch_summary")
     def update_batch_summary(self, batch_summary: BatchSummary) -> None:
@@ -263,18 +267,8 @@ class _BatchSummary(
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "BATCH_SUMMARY"}},
+        return self._query_by_type(
+            entity_type="BATCH_SUMMARY",
             converter_func=item_to_batch_summary,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -346,16 +340,11 @@ class _BatchSummary(
 
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression="GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+            key_condition_expression=(
+                "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
+            ),
             expression_attribute_names={"#batch_type": "batch_type"},
             expression_attribute_values={
                 ":pk": {"S": f"STATUS#{status_str}"},

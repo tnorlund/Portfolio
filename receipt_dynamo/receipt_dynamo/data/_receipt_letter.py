@@ -1,44 +1,25 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_letter.py
 from typing import TYPE_CHECKING, Optional
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    PutRequestTypeDef,
-    QueryInputTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-    WriteRequestTypeDef,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_letter
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
 
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
-
 
 class _ReceiptLetter(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class providing methods to interact with "ReceiptLetter" entities in
@@ -108,15 +89,7 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=lt.to_item())
-            )
-            for lt in letters
-        ]
-        self._batch_write_with_retry(request_items)
+        self._add_entities_batch(letters, ReceiptLetter, "letters")
 
     @handle_dynamodb_errors("update_receipt_letter")
     def update_receipt_letter(self, letter: ReceiptLetter) -> None:
@@ -187,12 +160,7 @@ class _ReceiptLetter(
             If the letters are invalid.
         """
         self._validate_entity_list(letters, ReceiptLetter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=lt.key))
-            for lt in letters
-        ]
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(letters)
 
     @handle_dynamodb_errors("get_receipt_letter")
     def get_receipt_letter(
@@ -229,13 +197,10 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid or letter not found.
         """
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
+        self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
@@ -251,7 +216,11 @@ class _ReceiptLetter(
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                f"WORD#{word_id:05d}#LETTER#"
+                f"{letter_id:05d}"
+            ),
             entity_class=ReceiptLetter,
             converter_func=item_to_receipt_letter,
         )
@@ -300,11 +269,8 @@ class _ReceiptLetter(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_LETTER"}},
+        return self._query_by_type(
+            entity_type="RECEIPT_LETTER",
             converter_func=item_to_receipt_letter,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -338,13 +304,10 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid.
         """
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
+        self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
@@ -356,7 +319,9 @@ class _ReceiptLetter(
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression="PK = :pkVal AND begins_with(SK, :skPrefix)",
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

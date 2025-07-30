@@ -1,12 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -40,9 +38,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _Job(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to represent a Job in the database.
@@ -244,21 +240,19 @@ class _Job(
         # Get the job first
         job = self.get_job(job_id)
 
-        # Get the job status updates
-        status_response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues={
+        # Get the job status updates using base operations
+        statuses, _ = self._query_entities(
+            index_name=None,  # Main table query
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pk": {"S": f"JOB#{job_id}"},
                 ":sk": {"S": "STATUS#"},
             },
+            converter_func=item_to_job_status,
+            limit=None,
+            last_evaluated_key=None,
         )
-
-        statuses = []
-        if "Items" in status_response:
-            # Convert DynamoDB items to JobStatus objects
-            for item in status_response["Items"]:
-                statuses.append(item_to_job_status(item))
 
         return job, statuses
 
@@ -288,22 +282,8 @@ class _Job(
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "JOB"}},
+        return self._query_by_type(
+            entity_type="JOB",
             converter_func=item_to_job,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -348,10 +328,6 @@ class _Job(
                 f"status must be one of {valid_statuses}"
             )
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
                 raise EntityValidationError(
@@ -410,10 +386,6 @@ class _Job(
         if not isinstance(user_id, str) or not user_id:
             raise EntityValidationError("user_id must be a non-empty string")
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
                 raise EntityValidationError(

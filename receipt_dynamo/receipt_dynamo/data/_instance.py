@@ -1,24 +1,17 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from botocore.exceptions import ClientError
-
-from receipt_dynamo.data._job import validate_last_evaluated_key
-
 # Runtime imports needed by the class methods
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    QueryByParentMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBServerError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.instance import Instance, item_to_instance
 from receipt_dynamo.entities.instance_job import (
@@ -32,9 +25,8 @@ if TYPE_CHECKING:
 
 class _Instance(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    QueryByParentMixin,
 ):
     """Class for interacting with instance-related data in DynamoDB."""
 
@@ -158,10 +150,14 @@ class _Instance(
         # First, get the instance
         instance = self.get_instance(instance_id)
 
-        # Then, query for its jobs
-        instance_jobs = self.list_instance_jobs(instance_id)[
-            0
-        ]  # Ignore last_evaluated_key
+        # Then, query for its jobs using _query_by_parent
+        instance_jobs, _ = self._query_by_parent(
+            parent_key_prefix=f"INSTANCE#{instance_id}",
+            child_key_prefix="JOB#",
+            converter_func=item_to_instance_job,
+            limit=None,
+            last_evaluated_key=None,
+        )
 
         return instance, instance_jobs
 
@@ -283,14 +279,8 @@ class _Instance(
             Exception: If the request failed due to an unknown error.
         """
         # Validate the last_evaluated_key if provided
-        if last_evaluated_key is not None:
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "INSTANCE"}},
+        return self._query_by_type(
+            entity_type="INSTANCE",
             converter_func=item_to_instance,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -329,187 +319,17 @@ class _Instance(
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:
-            validate_last_evaluated_key(last_evaluated_key)
+            self._validate_pagination_params(limit, last_evaluated_key)
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "GSI1PK = :gsi1pk",
-            "ExpressionAttributeValues": {
+        # Query instances by status using GSI1
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :gsi1pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":gsi1pk": {"S": f"STATUS#{status.lower()}"},
             },
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        try:
-            response = self._client.query(**query_params)
-            instances = [
-                item_to_instance(item) for item in response.get("Items", [])
-            ]
-            return instances, response.get("LastEvaluatedKey")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
-                (
-                    "Failed to list instances by status: "
-                    f"{e.response['Error']['Message']}"
-                )
-            ) from e
-
-    @handle_dynamodb_errors("list_instance_jobs")
-    def list_instance_jobs(
-        self,
-        instance_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[InstanceJob], Optional[Dict]]:
-        """Lists jobs associated with an instance in the DynamoDB table.
-
-        Args:
-            instance_id (str): The ID of the instance.
-            limit (int, optional): The maximum number of jobs to return.
-            last_evaluated_key (dict, optional):
-                The exclusive start key for pagination.
-
-        Returns:
-            Tuple[List[InstanceJob], Optional[Dict]]:
-                A tuple containing the list of instance-job associations and
-                the last evaluated key for pagination, if any.
-
-        Raises:
-            ValueError: If the instance_id or last_evaluated_key is invalid.
-            Exception: If the request failed due to an unknown error.
-        """
-        if not instance_id:
-            raise EntityValidationError("instance_id cannot be None or empty")
-
-        # Validate the last_evaluated_key if provided
-        if last_evaluated_key is not None:
-            validate_last_evaluated_key(last_evaluated_key)
-
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": (
-                "PK = :pk AND begins_with(SK, :sk_prefix)"
-            ),
-            "ExpressionAttributeValues": {
-                ":pk": {"S": f"INSTANCE#{instance_id}"},
-                ":sk_prefix": {"S": "JOB#"},
-            },
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        try:
-            response = self._client.query(**query_params)
-            instance_jobs = [
-                item_to_instance_job(item)
-                for item in response.get("Items", [])
-            ]
-            return instance_jobs, response.get("LastEvaluatedKey")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
-                (
-                    "Failed to list instance jobs: "
-                    f"{e.response['Error']['Message']}"
-                )
-            ) from e
-
-    @handle_dynamodb_errors("list_instances_for_job")
-    def list_instances_for_job(
-        self,
-        job_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[InstanceJob], Optional[Dict]]:
-        """Lists instances associated with a job in the DynamoDB table.
-
-        Args:
-            job_id (str): The ID of the job.
-            limit (int, optional): The maximum number of instances to return.
-            last_evaluated_key (dict, optional):
-                The exclusive start key for pagination.
-
-        Returns:
-            Tuple[List[InstanceJob], Optional[Dict]]:
-                A tuple containing the list of instance-job associations and
-                the last evaluated key for pagination, if any.
-
-        Raises:
-            ValueError: If the job_id or last_evaluated_key is invalid.
-            Exception: If the request failed due to an unknown error.
-        """
-        if not job_id:
-            raise EntityValidationError("job_id cannot be None or empty")
-
-        # Validate the last_evaluated_key if provided
-        if last_evaluated_key is not None:
-            validate_last_evaluated_key(last_evaluated_key)
-
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": (
-                "GSI1PK = :gsi1pk AND begins_with(GSI1SK, :gsi1sk_prefix)"
-            ),
-            "ExpressionAttributeValues": {
-                ":gsi1pk": {"S": "JOB"},
-                ":gsi1sk_prefix": {"S": f"JOB#{job_id}#INSTANCE#"},
-            },
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        try:
-            response = self._client.query(**query_params)
-            instance_jobs = [
-                item_to_instance_job(item)
-                for item in response.get("Items", [])
-            ]
-            return instance_jobs, response.get("LastEvaluatedKey")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise EntityNotFoundError(
-                    f"Table {self.table_name} does not exist"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(
-                    "Internal server error, retry later"
-                ) from e
-            raise OperationError(
-                (
-                    "Failed to list instances for job: "
-                    f"{e.response['Error']['Message']}"
-                )
-            ) from e
+            converter_func=item_to_instance,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

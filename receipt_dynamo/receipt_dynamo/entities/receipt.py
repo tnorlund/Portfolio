@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -14,7 +15,7 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class Receipt(DynamoDBEntity):
+class Receipt(DynamoDBEntity, CDNFieldsMixin):
     """
     Represents a receipt associated with an image in a DynamoDB table.
 
@@ -82,6 +83,10 @@ class Receipt(DynamoDBEntity):
     cdn_medium_webp_s3_key: Optional[str] = None
     cdn_medium_avif_s3_key: Optional[str] = None
 
+    # CDN field lists for CDNFieldsMixin
+    CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
+    CDN_SIZE_FIELDS = ["thumbnail", "small", "medium"]
+
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
@@ -110,62 +115,9 @@ class Receipt(DynamoDBEntity):
 
         if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
-        if self.cdn_s3_key and not isinstance(self.cdn_s3_key, str):
-            raise ValueError("cdn_s3_key must be a string")
 
-        if self.cdn_webp_s3_key and not isinstance(self.cdn_webp_s3_key, str):
-            raise ValueError("cdn_webp_s3_key must be a string")
-
-        if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
-            raise ValueError("cdn_avif_s3_key must be a string")
-
-        # Validate thumbnail fields
-        if self.cdn_thumbnail_s3_key and not isinstance(
-            self.cdn_thumbnail_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_s3_key must be a string")
-
-        if self.cdn_thumbnail_webp_s3_key and not isinstance(
-            self.cdn_thumbnail_webp_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_webp_s3_key must be a string")
-
-        if self.cdn_thumbnail_avif_s3_key and not isinstance(
-            self.cdn_thumbnail_avif_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_avif_s3_key must be a string")
-
-        # Validate small fields
-        if self.cdn_small_s3_key and not isinstance(
-            self.cdn_small_s3_key, str
-        ):
-            raise ValueError("cdn_small_s3_key must be a string")
-
-        if self.cdn_small_webp_s3_key and not isinstance(
-            self.cdn_small_webp_s3_key, str
-        ):
-            raise ValueError("cdn_small_webp_s3_key must be a string")
-
-        if self.cdn_small_avif_s3_key and not isinstance(
-            self.cdn_small_avif_s3_key, str
-        ):
-            raise ValueError("cdn_small_avif_s3_key must be a string")
-
-        # Validate medium fields
-        if self.cdn_medium_s3_key and not isinstance(
-            self.cdn_medium_s3_key, str
-        ):
-            raise ValueError("cdn_medium_s3_key must be a string")
-
-        if self.cdn_medium_webp_s3_key and not isinstance(
-            self.cdn_medium_webp_s3_key, str
-        ):
-            raise ValueError("cdn_medium_webp_s3_key must be a string")
-
-        if self.cdn_medium_avif_s3_key and not isinstance(
-            self.cdn_medium_avif_s3_key, str
-        ):
-            raise ValueError("cdn_medium_avif_s3_key must be a string")
+        # Use CDNFieldsMixin to validate all CDN fields
+        self.validate_cdn_fields()
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -261,67 +213,7 @@ class Receipt(DynamoDBEntity):
                 if self.cdn_s3_bucket
                 else {"NULL": True}
             ),
-            "cdn_s3_key": (
-                {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
-            ),
-            "cdn_webp_s3_key": (
-                {"S": self.cdn_webp_s3_key}
-                if self.cdn_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_avif_s3_key": (
-                {"S": self.cdn_avif_s3_key}
-                if self.cdn_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Thumbnail versions
-            "cdn_thumbnail_s3_key": (
-                {"S": self.cdn_thumbnail_s3_key}
-                if self.cdn_thumbnail_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_thumbnail_webp_s3_key": (
-                {"S": self.cdn_thumbnail_webp_s3_key}
-                if self.cdn_thumbnail_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_thumbnail_avif_s3_key": (
-                {"S": self.cdn_thumbnail_avif_s3_key}
-                if self.cdn_thumbnail_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Small versions
-            "cdn_small_s3_key": (
-                {"S": self.cdn_small_s3_key}
-                if self.cdn_small_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_small_webp_s3_key": (
-                {"S": self.cdn_small_webp_s3_key}
-                if self.cdn_small_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_small_avif_s3_key": (
-                {"S": self.cdn_small_avif_s3_key}
-                if self.cdn_small_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Medium versions
-            "cdn_medium_s3_key": (
-                {"S": self.cdn_medium_s3_key}
-                if self.cdn_medium_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_medium_webp_s3_key": (
-                {"S": self.cdn_medium_webp_s3_key}
-                if self.cdn_medium_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_medium_avif_s3_key": (
-                {"S": self.cdn_medium_avif_s3_key}
-                if self.cdn_medium_avif_s3_key
-                else {"NULL": True}
-            ),
+            **self.cdn_fields_to_dynamodb_item(),
         }
 
     def __repr__(self) -> str:

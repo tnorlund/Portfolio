@@ -2,13 +2,11 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteTypeDef,
     DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -21,7 +19,6 @@ from receipt_dynamo.entities.receipt_field import (
     ReceiptField,
     item_to_receipt_field,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     pass
@@ -45,9 +42,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 class _ReceiptField(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class providing methods to interact with "ReceiptField" entities in
@@ -265,13 +260,7 @@ class _ReceiptField(
         """
         if field_type is None:
             raise EntityValidationError("field_type cannot be None")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-
-        # Validate image_id as a UUID and receipt_id as a positive integer
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "Receipt ID must be a positive integer."
@@ -337,11 +326,9 @@ class _ReceiptField(
                 )
             validate_last_evaluated_key(last_evaluated_key)
 
-        return self._query_entities(
-            index_name="GSITYPE",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "TYPE"},
-            expression_attribute_values={":val": {"S": "RECEIPT_FIELD"}},
+        # Use the QueryByTypeMixin for standardized GSITYPE queries
+        return self._query_by_type(
+            entity_type="RECEIPT_FIELD",
             converter_func=item_to_receipt_field,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -380,7 +367,7 @@ class _ReceiptField(
         """
         if not isinstance(image_id, str):
             raise EntityValidationError("Image ID must be a string")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
@@ -439,7 +426,7 @@ class _ReceiptField(
         """
         if not isinstance(image_id, str):
             raise EntityValidationError("Image ID must be a string")
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "Receipt ID must be a positive integer"
@@ -457,7 +444,9 @@ class _ReceiptField(
 
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression="GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)",
+            key_condition_expression=(
+                "GSI1PK = :pk AND begins_with(GSI1SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
