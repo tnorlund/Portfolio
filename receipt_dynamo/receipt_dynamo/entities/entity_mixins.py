@@ -1220,7 +1220,7 @@ class GeometryMixin:
         self.bounding_box["width"] = max(xs) - min(xs)
         self.bounding_box["height"] = max(ys) - min(ys)
 
-    # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
+    # pylint: disable=too-many-arguments,too-many-locals
     def inverse_perspective_transform(
         self,
         a: float,

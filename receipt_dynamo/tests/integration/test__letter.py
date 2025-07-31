@@ -83,18 +83,20 @@ def _batch_letters() -> List[Letter]:
     letters = []
     base_params = CORRECT_LETTER_PARAMS.copy()
 
-    # Create letters across different words
-    for word_id in range(1, 11):  # 10 words
-        for letter_id in range(1, 11):  # 10 letters per word
-            letter_params = base_params.copy()
-            letter_params.update(
-                {
-                    "word_id": word_id,
-                    "letter_id": letter_id,
-                    "text": chr(ord("A") + (letter_id - 1) % 26),  # A-Z
-                }
-            )
-            letters.append(Letter(**letter_params))
+    # Create letters across different words and lines
+    for line_id in range(1, 11):  # 10 lines
+        for word_id in range(1, 11):  # 10 words per line
+            for letter_id in range(1, 6):  # 5 letters per word
+                letter_params = base_params.copy()
+                letter_params.update(
+                    {
+                        "line_id": line_id,
+                        "word_id": word_id,
+                        "letter_id": letter_id,
+                        "text": chr(ord("A") + (letter_id - 1) % 26),
+                    }
+                )
+                letters.append(Letter(**letter_params))
 
     return letters
 
@@ -251,8 +253,12 @@ class TestLetterBatchOperations:
         # Arrange
         letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
-            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 3, "text": "2"}),
+            Letter(
+                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
+            ),
+            Letter(
+                **{**CORRECT_LETTER_PARAMS, "letter_id": 3, "text": "2"}
+            ),
         ]
 
         # Act
@@ -264,25 +270,107 @@ class TestLetterBatchOperations:
                 letter.image_id,
                 letter.line_id,
                 letter.word_id,
-                letter.letter_id
+                letter.letter_id,
             )
             assert retrieved == letter
 
     def test_add_letters_large_batch(
         self, dynamodb_client: DynamoClient, batch_letters: List[Letter]
     ) -> None:
-        """Test adding a large batch of letters (100 items)."""
+        """Test adding a large batch of letters (500 items)."""
         # Act
         dynamodb_client.add_letters(batch_letters)
 
         # Assert - spot check a few
-        for i in [0, 50, 99]:
+        for i in [0, 250, 499]:
             letter = batch_letters[i]
             retrieved = dynamodb_client.get_letter(
                 letter.image_id,
                 letter.line_id,
                 letter.word_id,
-                letter.letter_id
+                letter.letter_id,
+            )
+            assert retrieved == letter
+
+    def test_delete_letters_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful batch deletion of letters."""
+        # Arrange
+        letters = [
+            Letter(**CORRECT_LETTER_PARAMS),
+            Letter(
+                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
+            ),
+        ]
+        dynamodb_client.add_letters(letters)
+
+        # Act
+        dynamodb_client.delete_letters(letters)
+
+        # Assert
+        for letter in letters:
+            with pytest.raises(EntityNotFoundError):
+                dynamodb_client.get_letter(
+                    letter.image_id,
+                    letter.line_id,
+                    letter.word_id,
+                    letter.letter_id,
+                )
+
+    def test_delete_letters_from_word(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test deleting all letters from a specific word."""
+        # Arrange - add letters to multiple words
+        word1_letters = [
+            Letter(**CORRECT_LETTER_PARAMS),
+            Letter(
+                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
+            ),
+        ]
+        word2_letters = [
+            Letter(
+                **{
+                    **CORRECT_LETTER_PARAMS,
+                    "word_id": 2,
+                    "letter_id": 1,
+                    "text": "A",
+                }
+            ),
+            Letter(
+                **{
+                    **CORRECT_LETTER_PARAMS,
+                    "word_id": 2,
+                    "letter_id": 2,
+                    "text": "B",
+                }
+            ),
+        ]
+
+        dynamodb_client.add_letters(word1_letters + word2_letters)
+
+        # Act - delete only word 1 letters
+        dynamodb_client.delete_letters_from_word(
+            CORRECT_LETTER_PARAMS["image_id"], 1, 1
+        )
+
+        # Assert - word 1 letters deleted, word 2 letters remain
+        for letter in word1_letters:
+            with pytest.raises(EntityNotFoundError):
+                dynamodb_client.get_letter(
+                    letter.image_id,
+                    letter.line_id,
+                    letter.word_id,
+                    letter.letter_id,
+                )
+
+        for letter in word2_letters:
+            retrieved = dynamodb_client.get_letter(
+                letter.image_id,
+                letter.line_id,
+                letter.word_id,
+                letter.letter_id,
             )
             assert retrieved == letter
 
@@ -311,46 +399,6 @@ class TestLetterBatchOperations:
                 letter.letter_id
             )
             assert retrieved.text == letter.text
-
-    def test_delete_letters_from_word(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
-        """Test deleting all letters from a specific word."""
-        # Arrange - add letters to multiple words
-        word1_letters = [
-            Letter(**{**CORRECT_LETTER_PARAMS, "word_id": 1, "letter_id": 1}),
-            Letter(**{**CORRECT_LETTER_PARAMS, "word_id": 1, "letter_id": 2}),
-        ]
-        word2_letters = [
-            Letter(**{**CORRECT_LETTER_PARAMS, "word_id": 2, "letter_id": 1}),
-            Letter(**{**CORRECT_LETTER_PARAMS, "word_id": 2, "letter_id": 2}),
-        ]
-
-        dynamodb_client.add_letters(word1_letters + word2_letters)
-
-        # Act - delete only word 1 letters
-        dynamodb_client.delete_letters_from_word(
-            CORRECT_LETTER_PARAMS["image_id"], 1, 1
-        )
-
-        # Assert - word 1 letters deleted, word 2 letters remain
-        for letter in word1_letters:
-            with pytest.raises(EntityNotFoundError):
-                dynamodb_client.get_letter(
-                    letter.image_id,
-                    letter.line_id,
-                    letter.word_id,
-                    letter.letter_id
-                )
-
-        for letter in word2_letters:
-            retrieved = dynamodb_client.get_letter(
-                letter.image_id,
-                letter.line_id,
-                letter.word_id,
-                letter.letter_id
-            )
-            assert retrieved == letter
 
 
 # =============================================================================
@@ -440,7 +488,9 @@ class TestLetterListOperations:
         # Arrange
         letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
+            Letter(
+                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
+            ),
         ]
         dynamodb_client.add_letters(letters)
 
@@ -486,39 +536,40 @@ class TestLetterListOperations:
     ) -> None:
         """Test listing letters from a specific word."""
         # Arrange - add letters to different words
-        word1_letters = [
-            Letter(**CORRECT_LETTER_PARAMS),
-            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
-        ]
+        word1_letter1 = Letter(**CORRECT_LETTER_PARAMS)
+        word1_letter2 = Letter(
+            **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
+        )
         word2_letter = Letter(
             **{
                 **CORRECT_LETTER_PARAMS,
                 "word_id": 2,
                 "letter_id": 1,
-                "text": "2",
+                "text": "A",
             }
         )
 
-        dynamodb_client.add_letters(word1_letters + [word2_letter])
+        dynamodb_client.add_letters(
+            [word1_letter1, word1_letter2, word2_letter]
+        )
 
         # Act
-        retrieved_letters = dynamodb_client.list_letters_from_word(
+        word1_letters = dynamodb_client.list_letters_from_word(
             CORRECT_LETTER_PARAMS["image_id"], 1, 1
         )
 
         # Assert
-        assert len(retrieved_letters) == 2
-        # Sort by letter_id for consistent comparison
-        retrieved_letters.sort(key=lambda x: x.letter_id)
-        word1_letters.sort(key=lambda x: x.letter_id)
-        assert retrieved_letters == word1_letters
+        assert len(word1_letters) == 2
+        assert word1_letter1 in word1_letters
+        assert word1_letter2 in word1_letters
+        assert word2_letter not in word1_letters
 
     def test_list_letters_from_word_empty(
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test listing letters from a word with no letters."""
         letters = dynamodb_client.list_letters_from_word(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
         )
         assert letters == []
 
@@ -640,7 +691,7 @@ class TestLetterErrorHandling:
         "error_code,expected_exception,expected_message",
         ERROR_SCENARIOS,
     )
-    def test_add_letter_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def test_add_letter_error_handling(  # pylint: disable=too-many-positional-arguments
         self,
         dynamodb_client: DynamoClient,
         example_letter: Letter,
@@ -673,7 +724,7 @@ class TestLetterErrorHandling:
         "error_code,expected_exception,expected_message",
         ERROR_SCENARIOS,
     )
-    def test_get_letter_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def test_get_letter_error_handling(  # pylint: disable=too-many-positional-arguments
         self,
         dynamodb_client: DynamoClient,
         error_code: str,
@@ -707,7 +758,41 @@ class TestLetterErrorHandling:
         "error_code,expected_exception,expected_message",
         ERROR_SCENARIOS,
     )
-    def test_update_letter_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def test_delete_letter_error_handling(  # pylint: disable=too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for delete_letter operation."""
+        # Mock the delete_item to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "delete_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "DeleteItem",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.delete_letter(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
+            )
+
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_update_letter_error_handling(  # pylint: disable=too-many-positional-arguments
         self,
         dynamodb_client: DynamoClient,
         example_letter: Letter,
@@ -761,7 +846,7 @@ class TestLetterErrorHandling:
         "error_code,expected_exception,expected_message",
         ERROR_SCENARIOS,
     )
-    def test_update_letters_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def test_update_letters_error_handling(  # pylint: disable=too-many-positional-arguments
         self,
         dynamodb_client: DynamoClient,
         example_letter: Letter,
@@ -826,12 +911,12 @@ class TestLetterSpecialCases:
     ) -> None:
         """Test handling letters with special characters."""
         # Arrange
-        special_texts = ["@", "#", "$", "!", "?", "&"]
+        special_chars = ["@", "#", "$", "%", "&", "*", "(", ")", "!", "?"]
         letters = []
 
-        for i, text in enumerate(special_texts):
+        for i, char in enumerate(special_chars):
             letter_params = CORRECT_LETTER_PARAMS.copy()
-            letter_params.update({"letter_id": i + 1, "text": text})
+            letter_params.update({"letter_id": i + 1, "text": char})
             letters.append(Letter(**letter_params))
 
         # Act
@@ -839,21 +924,21 @@ class TestLetterSpecialCases:
 
         # Assert
         retrieved, _ = dynamodb_client.list_letters()
-        assert len(retrieved) == len(special_texts)
-        retrieved_texts = {l.text for l in retrieved}
-        assert retrieved_texts == set(special_texts)
+        assert len(retrieved) == len(special_chars)
+        retrieved_chars = {l.text for l in retrieved}
+        assert retrieved_chars == set(special_chars)
 
     def test_letter_with_unicode_text(
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test handling letters with unicode characters."""
         # Arrange
-        unicode_texts = ["é", "ñ", "ü", "京", "🌟", "α"]
+        unicode_chars = ["α", "β", "γ", "中", "文", "😀", "🚀"]
         letters = []
 
-        for i, text in enumerate(unicode_texts):
+        for i, char in enumerate(unicode_chars):
             letter_params = CORRECT_LETTER_PARAMS.copy()
-            letter_params.update({"letter_id": i + 1, "text": text})
+            letter_params.update({"letter_id": i + 1, "text": char})
             letters.append(Letter(**letter_params))
 
         # Act
@@ -865,7 +950,7 @@ class TestLetterSpecialCases:
                 letter.image_id,
                 letter.line_id,
                 letter.word_id,
-                letter.letter_id
+                letter.letter_id,
             )
             assert retrieved.text == letter.text
 
@@ -873,7 +958,7 @@ class TestLetterSpecialCases:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test letters with boundary values for numeric fields."""
-        # Test with very small confidence
+        # Test with very small confidence (must be > 0)
         letter_params = CORRECT_LETTER_PARAMS.copy()
         letter_params["confidence"] = 0.01
         letter1 = Letter(**letter_params)
@@ -885,8 +970,8 @@ class TestLetterSpecialCases:
 
         # Test with large IDs
         letter_params["letter_id"] = 99999
-        letter_params["word_id"] = 99999
         letter_params["line_id"] = 99999
+        letter_params["word_id"] = 99999
         letter3 = Letter(**letter_params)
 
         # Act
@@ -898,7 +983,7 @@ class TestLetterSpecialCases:
                 letter.image_id,
                 letter.line_id,
                 letter.word_id,
-                letter.letter_id
+                letter.letter_id,
             )
             assert retrieved == letter
 

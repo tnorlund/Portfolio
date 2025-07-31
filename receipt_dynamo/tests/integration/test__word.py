@@ -1,4 +1,12 @@
-from typing import Any, Dict, Literal
+"""
+Integration tests for Word operations in DynamoDB.
+
+This module tests the Word-related methods of DynamoClient, including
+add, get, update, delete, and list operations. It follows the perfect
+test patterns established in test__receipt.py and test__image.py.
+"""
+
+from typing import Any, Dict, List
 
 import boto3
 import pytest
@@ -6,16 +14,19 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo import DynamoClient, Word
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
+    DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
-    DynamoDBValidationError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
+    OperationError,
 )
 
-correct_word_params: Dict[str, Any] = {
+# =============================================================================
+# TEST DATA AND FIXTURES
+# =============================================================================
+
+CORRECT_WORD_PARAMS: Dict[str, Any] = {
     "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
     "line_id": 2,
     "word_id": 3,
@@ -35,462 +46,796 @@ correct_word_params: Dict[str, Any] = {
     "confidence": 1,
 }
 
-
-@pytest.mark.integration
-def test_word_add_no_tags(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-
-    # Act
-    client.add_word(word)
-
-    # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key=word.key,
-    )
-    assert "Item" in response, f"Item not found. response: {response}"
-    assert response["Item"] == word.to_item()
+ERROR_SCENARIOS = [
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
+    ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
+    (
+        "ResourceNotFoundException",
+        OperationError,
+        "DynamoDB resource not found",
+    ),
+    ("AccessDeniedException", DynamoDBError, "DynamoDB error"),
+    ("UnknownException", DynamoDBError, "DynamoDB error"),
+]
 
 
-@pytest.mark.integration
-def test_word_add_error(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-
-    # Act
-    client.add_word(word)
-    with pytest.raises(EntityAlreadyExistsError):
-        client.add_word(word)
+@pytest.fixture(name="example_word")
+def _example_word() -> Word:
+    """Provides a sample Word for testing."""
+    return Word(**CORRECT_WORD_PARAMS)
 
 
-@pytest.mark.integration
-def test_word_add_all(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word1 = Word(**correct_word_params)
-    word2_params = correct_word_params.copy()
-    word2_params["word_id"] = 4
-    word2 = Word(**word2_params)
-
-    # Act
-    client.add_words([word1, word2])
-
-    # Assert
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key=word1.key,
-    )
-    assert "Item" in response, f"Item not found. response: {response}"
-    assert response["Item"] == word1.to_item()
-
-    response = boto3.client("dynamodb", region_name="us-east-1").get_item(
-        TableName=dynamodb_table,
-        Key=word2.key,
-    )
-    assert "Item" in response, f"Item not found. response: {response}"
-    assert response["Item"] == word2.to_item()
+@pytest.fixture(name="dynamodb_client")
+def _dynamodb_client(dynamodb_table: str) -> DynamoClient:
+    """Provides a DynamoClient instance."""
+    return DynamoClient(dynamodb_table)
 
 
-@pytest.mark.integration
-def test_word_delete(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    client.add_word(word)
+@pytest.fixture(name="batch_words")
+def _batch_words() -> List[Word]:
+    """Provides a list of words for batch testing."""
+    words = []
+    base_params = CORRECT_WORD_PARAMS.copy()
 
-    # Act
-    client.delete_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
-
-    # Assert
-    with pytest.raises(EntityNotFoundError):
-        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3)
-
-
-@pytest.mark.integration
-def test_word_delete_error(dynamodb_table: Literal["MyMockedTable"]):
-    """Raises exception when word is not found"""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-
-    # Act
-    with pytest.raises(ValueError):
-        client.delete_word("invalid-uuid", 2, 3)
-
-
-@pytest.mark.integration
-def test_word_delete_from_line(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word1 = Word(**correct_word_params)
-    word2_params = correct_word_params.copy()
-    word2_params["word_id"] = 4
-    word2_params["line_id"] = (
-        1  # Set line_id to 1 so we can delete from line 1
-    )
-    word2 = Word(**word2_params)
-    client.add_word(word1)
-    client.add_word(word2)
-
-    # Act
-    client.delete_words_from_line("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1)
-
-    # Assert
-    with pytest.raises(EntityNotFoundError):
-        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 3)
-    with pytest.raises(EntityNotFoundError):
-        client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 4)
-
-
-@pytest.mark.integration
-def test_word_get(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    client.add_word(word)
-
-    # Act
-    retrieved_word = client.get_word(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2, 3
-    )
-
-    # Assert
-    assert retrieved_word == word
-
-
-@pytest.mark.integration
-def test_word_get_error(dynamodb_table: Literal["MyMockedTable"]):
-    """Raises exception when word is not found"""
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-
-    # Act
-    with pytest.raises(EntityValidationError):
-        client.get_word("invalid-uuid", 2, 3)
-
-
-@pytest.mark.integration
-def test_word_get_all(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    words = [
-        Word(**correct_word_params),
-        Word(**{**correct_word_params, "word_id": 4}),
-    ]
-    client.add_words(words)
-
-    # Act
-    words_retrieved = client.get_words([words[0].key, words[1].key])
-
-    # Assert
-    assert words_retrieved == words
-
-
-@pytest.mark.integration
-def test_word_get_invalid_keys(dynamodb_table: Literal["MyMockedTable"]):
-    """
-    Shows how to test for invalid keys. We expect ValueError when PK or SK is
-    invalid.
-    """
-    client = DynamoClient(dynamodb_table)
-
-    # A key missing 'PK'
-    bad_keys_missing_pk = [{"SK": {"S": "LINE#00002#WORD#00003"}}]
-    with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
-        client.get_words(bad_keys_missing_pk)
-
-    # A key with PK not starting with 'IMAGE#'
-    bad_keys_wrong_prefix = [
-        {
-            "PK": {"S": "FOO#00001"},
-            "SK": {"S": "LINE#00002#WORD#00003"},
-        }
-    ]
-    with pytest.raises(ValueError, match="PK must start with 'IMAGE#'"):
-        client.get_words(bad_keys_wrong_prefix)
-
-    # A key with SK missing 'WORD'
-    bad_keys_no_word = [
-        {
-            "PK": {"S": "IMAGE#00001"},
-            "SK": {"S": "LINE#00002#FOO#00003"},
-        }
-    ]
-    with pytest.raises(ValueError, match="SK must contain 'WORD'"):
-        client.get_words(bad_keys_no_word)
-
-
-@pytest.mark.integration
-def test_word_list(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    words = [
-        Word(**correct_word_params),
-        Word(**{**correct_word_params, "word_id": 4}),
-    ]
-    client.add_words(words)
-
-    # Act
-    words_retrieved, _ = client.list_words()
-
-    # Assert
-    assert words_retrieved == words
-
-
-@pytest.mark.integration
-def test_word_list_from_line(dynamodb_table: Literal["MyMockedTable"]):
-    # Arrange
-    client = DynamoClient(dynamodb_table)
-    words = [
-        Word(**correct_word_params),
-        Word(**{**correct_word_params, "word_id": 1}),
-        Word(**{**correct_word_params, "word_id": 2}),
-    ]
-    client.add_words(words)
-    # sort words by id
-    words = sorted(words, key=lambda x: x.word_id)
-
-    # Act
-    response = client.list_words_from_line(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 2
-    )
-
-    # Assert
-    assert words == response
-
-
-@pytest.mark.integration
-def test_updateWords_success(dynamodb_table):
-    """
-    Tests happy path for updateWords.
-    """
-    client = DynamoClient(dynamodb_table)
-    word1 = Word(**correct_word_params)
-    word2 = Word(**{**correct_word_params, "word_id": 4})
-    client.add_words([word1, word2])
-
-    # Now update them
-    word1.text = "updated_text_1"
-    word2.text = "updated_text_2"
-    client.update_words([word1, word2])
-
-    # Verify updates
-    retrieved_words = client.get_words([word1.key, word2.key])
-    assert len(retrieved_words) == 2
-    for word in retrieved_words:
-        if word.word_id == word1.word_id:
-            assert word.text == "updated_text_1"
-        else:
-            assert word.text == "updated_text_2"
-
-
-@pytest.mark.integration
-def test_updateWords_raises_value_error_words_none(dynamodb_table):
-    """
-    Tests that updateWords raises ValueError when the words parameter is None.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="words cannot be None"):
-        client.update_words(None)  # type: ignore
-
-
-@pytest.mark.integration
-def test_updateWords_raises_value_error_words_not_list(dynamodb_table):
-    """
-    Tests that updateWords raises ValueError when the words parameter is not a
-    list.
-    """
-    client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="words must be a list"):
-        client.update_words("not-a-list")  # type: ignore
-
-
-@pytest.mark.integration
-def test_updateWords_raises_value_error_words_not_list_of_words(
-    dynamodb_table,
-):
-    """
-    Tests that updateWords raises ValueError when the words parameter is not a
-    list of Word instances.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    with pytest.raises(
-        ValueError,
-        match="words must be a list of ReceiptWord instances.",
-    ):
-        client.update_words([word, "not-a-word"])  # type: ignore
-
-
-@pytest.mark.integration
-def test_updateWords_raises_clienterror_conditional_check_failed(
-    dynamodb_table, mocker
-):
-    """
-    Tests that updateWords raises ValueError when trying to update
-    non-existent words.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ConditionalCheckFailedException",
-                    "Message": "One or more words do not exist",
+    # Create words across different lines
+    for line_id in range(1, 11):  # 10 lines
+        for word_id in range(1, 21):  # 20 words per line
+            word_params = base_params.copy()
+            word_params.update(
+                {
+                    "line_id": line_id,
+                    "word_id": word_id,
+                    "text": f"word_{line_id}_{word_id}",
                 }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    with pytest.raises(EntityNotFoundError, match="Entity does not exist"):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+            )
+            words.append(Word(**word_params))
+
+    return words
+
+
+# =============================================================================
+# BASIC CRUD OPERATIONS
+# =============================================================================
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_provisioned_throughput_exceeded(
-    dynamodb_table, mocker
-):
-    """
-    Tests that updateWords raises an Exception when the
-    ProvisionedThroughputExceededException error is raised.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ProvisionedThroughputExceededException",
-                    "Message": "Provisioned throughput exceeded",
-                }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    with pytest.raises(
-        DynamoDBThroughputError, match="Provisioned throughput exceeded"
-    ):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+class TestWordBasicOperations:
+    """Test basic CRUD operations for words."""
+
+    def test_add_word_success(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test successful addition of a word."""
+        # Act
+        dynamodb_client.add_word(example_word)
+
+        # Assert - verify through get
+        retrieved = dynamodb_client.get_word(
+            example_word.image_id,
+            example_word.line_id,
+            example_word.word_id,
+        )
+        assert retrieved == example_word
+
+        # Also verify through direct DynamoDB check
+        response = boto3.client("dynamodb", region_name="us-east-1").get_item(
+            TableName=dynamodb_client.table_name,
+            Key=example_word.key,
+        )
+        assert "Item" in response
+        assert response["Item"] == example_word.to_item()
+
+    def test_add_word_duplicate_raises_error(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test that adding a duplicate word raises EntityValidationError."""
+        # Arrange
+        dynamodb_client.add_word(example_word)
+
+        # Act & Assert
+        with pytest.raises(
+            EntityValidationError, match="word already exists"
+        ):
+            dynamodb_client.add_word(example_word)
+
+    def test_get_word_success(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test successful retrieval of a word."""
+        # Arrange
+        dynamodb_client.add_word(example_word)
+
+        # Act
+        retrieved = dynamodb_client.get_word(
+            example_word.image_id,
+            example_word.line_id,
+            example_word.word_id,
+        )
+
+        # Assert
+        assert retrieved == example_word
+
+    def test_get_word_not_found(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test get word raises EntityNotFoundError when not found."""
+        with pytest.raises(EntityNotFoundError, match="not found"):
+            dynamodb_client.get_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
+            )
+
+    def test_update_word_success(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test successful update of a word."""
+        # Arrange
+        dynamodb_client.add_word(example_word)
+
+        # Act - modify and update
+        example_word.text = "updated_text"
+        example_word.confidence = 0.95
+        dynamodb_client.update_word(example_word)
+
+        # Assert
+        retrieved = dynamodb_client.get_word(
+            example_word.image_id,
+            example_word.line_id,
+            example_word.word_id,
+        )
+        assert retrieved.text == "updated_text"
+        assert retrieved.confidence == 0.95
+
+    def test_update_word_not_found(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test update word raises EntityNotFoundError when not found."""
+        with pytest.raises(EntityNotFoundError, match="not found"):
+            dynamodb_client.update_word(example_word)
+
+    def test_delete_word_success(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test successful deletion of a word."""
+        # Arrange
+        dynamodb_client.add_word(example_word)
+
+        # Act
+        dynamodb_client.delete_word(
+            example_word.image_id,
+            example_word.line_id,
+            example_word.word_id,
+        )
+
+        # Assert
+        with pytest.raises(EntityNotFoundError):
+            dynamodb_client.get_word(
+                example_word.image_id,
+                example_word.line_id,
+                example_word.word_id,
+            )
+
+    def test_delete_word_not_found(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test delete non-existent word raises EntityNotFoundError."""
+        with pytest.raises(EntityNotFoundError, match="not found"):
+            dynamodb_client.delete_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
+            )
+
+
+# =============================================================================
+# BATCH OPERATIONS
+# =============================================================================
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_internal_server_error(
-    dynamodb_table, mocker
-):
-    """
-    Tests that updateWords raises an Exception when the InternalServerError
-    error is raised.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "InternalServerError",
-                    "Message": "Internal server error",
-                }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    with pytest.raises(DynamoDBServerError, match="Internal server error"):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+class TestWordBatchOperations:
+    """Test batch operations for words."""
+
+    def test_add_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful batch addition of words."""
+        # Arrange
+        words = [
+            Word(**CORRECT_WORD_PARAMS),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 5, "text": "word3"}),
+        ]
+
+        # Act
+        dynamodb_client.add_words(words)
+
+        # Assert
+        for word in words:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved == word
+
+    def test_add_words_large_batch(
+        self, dynamodb_client: DynamoClient, batch_words: List[Word]
+    ) -> None:
+        """Test adding a large batch of words (200 items)."""
+        # Act
+        dynamodb_client.add_words(batch_words)
+
+        # Assert - spot check a few
+        for i in [0, 100, 199]:
+            word = batch_words[i]
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved == word
+
+    def test_update_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful batch update of words."""
+        # Arrange
+        words = [
+            Word(**CORRECT_WORD_PARAMS),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
+        ]
+        dynamodb_client.add_words(words)
+
+        # Act - modify and update
+        words[0].text = "updated_text_1"
+        words[1].text = "updated_text_2"
+        dynamodb_client.update_words(words)
+
+        # Assert
+        for word in words:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved.text == word.text
+
+    def test_delete_words_from_line(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test deleting all words from a specific line."""
+        # Arrange - add words to multiple lines
+        line1_words = [
+            Word(**{**CORRECT_WORD_PARAMS, "line_id": 1, "word_id": 1}),
+            Word(**{**CORRECT_WORD_PARAMS, "line_id": 1, "word_id": 2}),
+        ]
+        line2_words = [
+            Word(**{**CORRECT_WORD_PARAMS, "line_id": 2, "word_id": 1}),
+            Word(**{**CORRECT_WORD_PARAMS, "line_id": 2, "word_id": 2}),
+        ]
+
+        dynamodb_client.add_words(line1_words + line2_words)
+
+        # Act - delete only line 1 words
+        dynamodb_client.delete_words_from_line(
+            CORRECT_WORD_PARAMS["image_id"], 1
+        )
+
+        # Assert - line 1 words deleted, line 2 words remain
+        for word in line1_words:
+            with pytest.raises(EntityNotFoundError):
+                dynamodb_client.get_word(
+                    word.image_id, word.line_id, word.word_id
+                )
+
+        for word in line2_words:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved == word
+
+
+# =============================================================================
+# ADVANCED OPERATIONS
+# =============================================================================
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_validation_exception(
-    dynamodb_table, mocker
-):
-    """
-    Tests that updateWords raises an Exception when the ValidationException
-    error is raised.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ValidationException",
-                    "Message": "One or more parameters given were invalid",
+class TestWordAdvancedOperations:
+    """Test advanced word operations."""
+
+    def test_get_words_by_keys_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful retrieval of words by keys."""
+        # Arrange
+        words = [
+            Word(**CORRECT_WORD_PARAMS),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
+        ]
+        dynamodb_client.add_words(words)
+
+        # Act
+        keys = [word.key for word in words]
+        retrieved_words = dynamodb_client.get_words(keys)
+
+        # Assert
+        assert len(retrieved_words) == 2
+        assert set(w.word_id for w in retrieved_words) == {3, 4}
+
+    def test_get_words_invalid_keys(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that get_words validates key structure."""
+        # Test missing PK
+        with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
+            dynamodb_client.get_words([{"SK": {"S": "LINE#00002#WORD#00003"}}])
+
+        # Test wrong PK prefix
+        with pytest.raises(ValueError, match="PK must start with 'IMAGE#'"):
+            dynamodb_client.get_words([
+                {
+                    "PK": {"S": "FOO#00001"},
+                    "SK": {"S": "LINE#00002#WORD#00003"},
                 }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    with pytest.raises(
-        DynamoDBValidationError,
-        match=r"One or more parameters.*invalid",
-    ):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+            ])
+
+        # Test SK missing WORD
+        with pytest.raises(ValueError, match="SK must contain 'WORD'"):
+            dynamodb_client.get_words([
+                {
+                    "PK": {"S": "IMAGE#00001"},
+                    "SK": {"S": "LINE#00002#FOO#00003"},
+                }
+            ])
+
+
+# =============================================================================
+# LIST AND QUERY OPERATIONS
+# =============================================================================
 
 
 @pytest.mark.integration
-def test_updateWords_raises_clienterror_access_denied(dynamodb_table, mocker):
-    """
-    Tests that updateWords raises an Exception when the AccessDeniedException
-    error is raised.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "AccessDeniedException",
-                    "Message": "Access denied",
-                }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    with pytest.raises(DynamoDBAccessError, match="Access denied"):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+class TestWordListOperations:
+    """Test list and query operations for words."""
+
+    def test_list_words_empty(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test listing words when table is empty."""
+        words, last_key = dynamodb_client.list_words()
+        assert words == []
+        assert last_key is None
+
+    def test_list_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test listing all words."""
+        # Arrange
+        words = [
+            Word(**CORRECT_WORD_PARAMS),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
+        ]
+        dynamodb_client.add_words(words)
+
+        # Act
+        retrieved_words, last_key = dynamodb_client.list_words()
+
+        # Assert
+        assert len(retrieved_words) == 2
+        assert set(w.word_id for w in retrieved_words) == {3, 4}
+        assert last_key is None
+
+    def test_list_words_with_pagination(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test listing words with pagination."""
+        # Arrange - add 10 words
+        words = []
+        for i in range(10):
+            word_params = CORRECT_WORD_PARAMS.copy()
+            word_params["word_id"] = i + 1
+            word_params["text"] = f"word_{i}"
+            words.append(Word(**word_params))
+        dynamodb_client.add_words(words)
+
+        # Act - get first page
+        page1, last_key1 = dynamodb_client.list_words(limit=5)
+        assert len(page1) == 5
+        assert last_key1 is not None
+
+        # Act - get second page
+        page2, last_key2 = dynamodb_client.list_words(
+            limit=5, last_evaluated_key=last_key1
+        )
+        assert len(page2) == 5
+        assert last_key2 is None
+
+        # Verify all words retrieved
+        all_retrieved = page1 + page2
+        assert len(all_retrieved) == 10
+
+    def test_list_words_from_line_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test listing words from a specific line."""
+        # Arrange - add words to different lines
+        line2_words = [
+            Word(**CORRECT_WORD_PARAMS),
+            Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
+        ]
+        line3_word = Word(
+            **{**CORRECT_WORD_PARAMS, "line_id": 3, "word_id": 1, "text": "word3"}
+        )
+
+        dynamodb_client.add_words(line2_words + [line3_word])
+
+        # Act
+        retrieved_words = dynamodb_client.list_words_from_line(
+            CORRECT_WORD_PARAMS["image_id"], 2
+        )
+
+        # Assert
+        assert len(retrieved_words) == 2
+        # Sort by word_id for consistent comparison
+        retrieved_words.sort(key=lambda x: x.word_id)
+        line2_words.sort(key=lambda x: x.word_id)
+        assert retrieved_words == line2_words
+
+    def test_list_words_from_line_empty(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test listing words from a line with no words."""
+        words = dynamodb_client.list_words_from_line(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 999
+        )
+        assert words == []
+
+
+# =============================================================================
+# VALIDATION TESTS
+# =============================================================================
 
 
 @pytest.mark.integration
-def test_updateWords_raises_client_error(dynamodb_table, mocker):
-    """
-    Simulate any error (ResourceNotFound, etc.) in transact_write_items.
-    """
-    client = DynamoClient(dynamodb_table)
-    word = Word(**correct_word_params)
-    mock_transact = mocker.patch.object(
-        client._client,
-        "transact_write_items",
-        side_effect=ClientError(
-            {
-                "Error": {
-                    "Code": "ResourceNotFoundException",
-                    "Message": "No table found",
-                }
-            },
-            "TransactWriteItems",
-        ),
-    )
-    from receipt_dynamo.data.shared_exceptions import DynamoDBError
+class TestWordValidation:
+    """Test validation for word operations."""
 
-    with pytest.raises(
-        DynamoDBError, match="Table not found for operation update_words"
-    ):
-        client.update_words([word])
-    mock_transact.assert_called_once()
+    def test_add_word_none_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that adding None raises OperationError."""
+        with pytest.raises(OperationError, match="word cannot be None"):
+            dynamodb_client.add_word(None)  # type: ignore
+
+    def test_add_word_wrong_type_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that adding wrong type raises OperationError."""
+        with pytest.raises(
+            OperationError, match="word must be an instance of Word"
+        ):
+            dynamodb_client.add_word("not-a-word")  # type: ignore
+
+    def test_add_words_none_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that adding None list raises OperationError."""
+        with pytest.raises(OperationError, match="words cannot be None"):
+            dynamodb_client.add_words(None)  # type: ignore
+
+    def test_add_words_not_list_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that adding non-list raises OperationError."""
+        with pytest.raises(OperationError, match="words must be a list"):
+            dynamodb_client.add_words("not-a-list")  # type: ignore
+
+    def test_add_words_wrong_item_type_raises_error(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test that adding list with wrong item type raises OperationError."""
+        with pytest.raises(
+            OperationError,
+            match="words must be a list of Word instances",
+        ):
+            dynamodb_client.add_words([example_word, "not-a-word"])  # type: ignore
+
+    def test_get_word_invalid_uuid_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that invalid UUID raises OperationError."""
+        with pytest.raises(
+            OperationError, match="uuid must be a valid UUIDv4"
+        ):
+            dynamodb_client.get_word("invalid-uuid", 1, 1)
+
+    def test_delete_word_invalid_uuid_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that delete with invalid UUID raises OperationError."""
+        with pytest.raises(
+            OperationError, match="uuid must be a valid UUIDv4"
+        ):
+            dynamodb_client.delete_word("invalid-uuid", 1, 1)
+
+    def test_update_words_validation_errors(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test update_words validation error handling."""
+        # None parameter
+        with pytest.raises(OperationError, match="words cannot be None"):
+            dynamodb_client.update_words(None)  # type: ignore
+
+        # Non-list parameter
+        with pytest.raises(OperationError, match="words must be a list"):
+            dynamodb_client.update_words("not-a-list")  # type: ignore
+
+        # Wrong item types
+        with pytest.raises(
+            OperationError, match="words must be a list of Word instances"
+        ):
+            dynamodb_client.update_words([example_word, "not-a-word"])  # type: ignore
+
+
+# =============================================================================
+# ERROR HANDLING TESTS
+# =============================================================================
+
+
+@pytest.mark.integration
+class TestWordErrorHandling:
+    """Test error handling for word operations."""
+
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_add_word_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        example_word: Word,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for add_word operation."""
+        # Mock the put_item to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "put_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "PutItem",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.add_word(example_word)
+
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_get_word_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for get_word operation."""
+        # Mock the get_item to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "get_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "GetItem",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.get_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
+            )
+
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_update_words_error_handling(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        example_word: Word,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for update_words operation."""
+        # Mock the transact_write_items to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "transact_write_items",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "TransactWriteItems",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.update_words([example_word])
+
+    def test_update_words_conditional_check_failed(
+        self, dynamodb_client: DynamoClient, example_word: Word, mocker
+    ) -> None:
+        """Test update_words when word doesn't exist."""
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "transact_write_items",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "One or more words do not exist",
+                    }
+                },
+                "TransactWriteItems",
+            ),
+        )
+
+        with pytest.raises(EntityNotFoundError, match="one or more words not found"):
+            dynamodb_client.update_words([example_word])
+
+
+# =============================================================================
+# SPECIAL CASES AND EDGE CASES
+# =============================================================================
+
+
+@pytest.mark.integration
+class TestWordSpecialCases:
+    """Test special cases and edge cases for word operations."""
+
+    def test_word_with_special_characters(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test handling words with special characters."""
+        # Arrange
+        special_texts = ["@word", "#hashtag", "$money", "word!", "word?", "word&more"]
+        words = []
+
+        for i, text in enumerate(special_texts):
+            word_params = CORRECT_WORD_PARAMS.copy()
+            word_params.update({"word_id": i + 1, "text": text})
+            words.append(Word(**word_params))
+
+        # Act
+        dynamodb_client.add_words(words)
+
+        # Assert
+        retrieved, _ = dynamodb_client.list_words()
+        assert len(retrieved) == len(special_texts)
+        retrieved_texts = {w.text for w in retrieved}
+        assert retrieved_texts == set(special_texts)
+
+    def test_word_with_unicode_text(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test handling words with unicode characters."""
+        # Arrange
+        unicode_texts = ["café", "naïve", "Zürich", "北京", "🌟", "αβγ"]
+        words = []
+
+        for i, text in enumerate(unicode_texts):
+            word_params = CORRECT_WORD_PARAMS.copy()
+            word_params.update({"word_id": i + 1, "text": text})
+            words.append(Word(**word_params))
+
+        # Act
+        dynamodb_client.add_words(words)
+
+        # Assert
+        for word in words:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved.text == word.text
+
+    def test_word_boundary_values(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test words with boundary values for numeric fields."""
+        # Test with very small confidence
+        word_params = CORRECT_WORD_PARAMS.copy()
+        word_params["confidence"] = 0.01
+        word1 = Word(**word_params)
+
+        # Test with maximum confidence
+        word_params["word_id"] = 2
+        word_params["confidence"] = 1.0
+        word2 = Word(**word_params)
+
+        # Test with large IDs
+        word_params["word_id"] = 99999
+        word_params["line_id"] = 99999
+        word3 = Word(**word_params)
+
+        # Act
+        dynamodb_client.add_words([word1, word2, word3])
+
+        # Assert
+        for word in [word1, word2, word3]:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved == word
+
+    def test_concurrent_word_operations(
+        self, dynamodb_client: DynamoClient, example_word: Word
+    ) -> None:
+        """Test that concurrent operations are handled correctly."""
+        # This tests the conditional checks in DynamoDB
+        # Add the word
+        dynamodb_client.add_word(example_word)
+
+        # Try to add again (should fail)
+        with pytest.raises(EntityValidationError):
+            dynamodb_client.add_word(example_word)
+
+        # Update should succeed
+        example_word.text = "updated_concurrent"
+        dynamodb_client.update_word(example_word)
+
+        # Delete should succeed
+        dynamodb_client.delete_word(
+            example_word.image_id,
+            example_word.line_id,
+            example_word.word_id,
+        )
+
+        # Update after delete should fail
+        with pytest.raises(EntityNotFoundError):
+            dynamodb_client.update_word(example_word)
+
+    def test_empty_and_long_text_values(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test words with empty and very long text values."""
+        # Empty text (if allowed by entity validation)
+        word_params = CORRECT_WORD_PARAMS.copy()
+        word_params["text"] = ""
+        word_params["word_id"] = 1
+        word1 = Word(**word_params)
+
+        # Very long text
+        word_params["text"] = "a" * 1000  # 1000 character word
+        word_params["word_id"] = 2
+        word2 = Word(**word_params)
+
+        # Act
+        dynamodb_client.add_words([word1, word2])
+
+        # Assert
+        for word in [word1, word2]:
+            retrieved = dynamodb_client.get_word(
+                word.image_id, word.line_id, word.word_id
+            )
+            assert retrieved.text == word.text

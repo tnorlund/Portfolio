@@ -30,15 +30,15 @@ class _ReceiptLine(FlattenedStandardMixin):
 
     Methods
     -------
-    add_receipt_line(line: ReceiptLine)
+    add_receipt_line(receipt_line: ReceiptLine)
         Adds a receipt-line to the database.
-    add_receipt_lines(lines: list[ReceiptLine])
+    add_receipt_lines(receipt_lines: list[ReceiptLine])
         Adds multiple receipt-lines in batch.
-    update_receipt_line(line: ReceiptLine)
+    update_receipt_line(receipt_line: ReceiptLine)
         Updates an existing receipt-line.
     delete_receipt_line(receipt_id: int, image_id: str, line_id: int)
         Deletes a specific receipt-line by IDs.
-    delete_receipt_lines(lines: list[ReceiptLine])
+    delete_receipt_lines(receipt_lines: list[ReceiptLine])
         Deletes multiple receipt-lines in batch.
     get_receipt_line(receipt_id: int, image_id: str, line_id: int)
         -> ReceiptLine
@@ -51,33 +51,76 @@ class _ReceiptLine(FlattenedStandardMixin):
     """
 
     @handle_dynamodb_errors("add_receipt_line")
-    def add_receipt_line(self, line: ReceiptLine) -> None:
+    def add_receipt_line(self, receipt_line: ReceiptLine) -> None:
         """Adds a single ReceiptLine to DynamoDB."""
-        self._validate_entity(line, ReceiptLine, "line")
-        self._add_entity(line)
+        if receipt_line is None:
+            raise EntityValidationError("receipt_line cannot be None")
+        if not isinstance(receipt_line, ReceiptLine):
+            raise EntityValidationError(
+                "receipt_line must be an instance of ReceiptLine"
+            )
+        self._add_entity(receipt_line)
 
-    def add_receipt_lines(self, lines: list[ReceiptLine]) -> None:
+    @handle_dynamodb_errors("add_receipt_lines")
+    def add_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
         """Adds multiple ReceiptLines to DynamoDB."""
-        self._validate_entity_list(lines, ReceiptLine, "lines")
-        self._add_entities(lines)
+        if receipt_lines is None:
+            raise EntityValidationError("receipt_lines cannot be None")
+        if not isinstance(receipt_lines, list):
+            raise EntityValidationError("receipt_lines must be a list")
+        for i, line in enumerate(receipt_lines):
+            if not isinstance(line, ReceiptLine):
+                raise EntityValidationError(
+                    f"receipt_lines[{i}] must be an instance of ReceiptLine, "
+                    f"got {type(line).__name__}"
+                )
+        self._add_entities(receipt_lines, ReceiptLine, "receipt_lines")
 
     @handle_dynamodb_errors("update_receipt_line")
-    def update_receipt_line(self, line: ReceiptLine) -> None:
+    def update_receipt_line(self, receipt_line: ReceiptLine) -> None:
         """Updates an existing ReceiptLine in DynamoDB."""
-        self._validate_entity(line, ReceiptLine, "line")
-        self._update_entity(line)
+        if receipt_line is None:
+            raise EntityValidationError("receipt_line cannot be None")
+        if not isinstance(receipt_line, ReceiptLine):
+            raise EntityValidationError(
+                "receipt_line must be an instance of ReceiptLine"
+            )
+        self._update_entity(receipt_line)
 
     @handle_dynamodb_errors("update_receipt_lines")
-    def update_receipt_lines(self, lines: list[ReceiptLine]) -> None:
+    def update_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
         """Updates multiple existing ReceiptLines in DynamoDB."""
-        self._validate_entity_list(lines, ReceiptLine, "lines")
-        self._update_entities(lines, ReceiptLine, "lines")
+        if receipt_lines is None:
+            raise EntityValidationError("receipt_lines cannot be None")
+        if not isinstance(receipt_lines, list):
+            raise EntityValidationError("receipt_lines must be a list")
+        for i, line in enumerate(receipt_lines):
+            if not isinstance(line, ReceiptLine):
+                raise EntityValidationError(
+                    f"receipt_lines[{i}] must be an instance of ReceiptLine, "
+                    f"got {type(line).__name__}"
+                )
+        self._update_entities(receipt_lines, ReceiptLine, "receipt_lines")
 
     @handle_dynamodb_errors("delete_receipt_line")
     def delete_receipt_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> None:
         """Deletes a single ReceiptLine by IDs."""
+        # Validate parameters
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
+        if line_id is None or not isinstance(line_id, int):
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         # Direct key-based deletion is more efficient than creating
         # dummy objects
         key = {
@@ -90,16 +133,40 @@ class _ReceiptLine(FlattenedStandardMixin):
             ConditionExpression="attribute_exists(PK)",
         )
 
-    def delete_receipt_lines(self, lines: list[ReceiptLine]) -> None:
+    @handle_dynamodb_errors("delete_receipt_lines")
+    def delete_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
         """Deletes multiple ReceiptLines in batch."""
-        self._validate_entity_list(lines, ReceiptLine, "lines")
-        self._delete_entities_batch(lines)
+        if receipt_lines is None:
+            raise EntityValidationError("receipt_lines cannot be None")
+        if not isinstance(receipt_lines, list):
+            raise EntityValidationError("receipt_lines must be a list")
+        for i, line in enumerate(receipt_lines):
+            if not isinstance(line, ReceiptLine):
+                raise EntityValidationError(
+                    f"receipt_lines[{i}] must be an instance of ReceiptLine, "
+                    f"got {type(line).__name__}"
+                )
+        self._delete_entities(receipt_lines)
 
     @handle_dynamodb_errors("get_receipt_line")
     def get_receipt_line(
         self, receipt_id: int, image_id: str, line_id: int
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
+        # Validate parameters
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
+        if line_id is None or not isinstance(line_id, int):
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}",
@@ -227,8 +294,15 @@ class _ReceiptLine(FlattenedStandardMixin):
         last_evaluated_key: dict | None = None,
     ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
         """Returns all ReceiptLines from the table."""
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer or None.")
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise EntityValidationError(
+                    "limit must be an integer or None."
+                )
+            if limit <= 0:
+                raise EntityValidationError(
+                    "limit must be greater than 0."
+                )
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
