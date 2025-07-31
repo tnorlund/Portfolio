@@ -388,6 +388,9 @@ Track which files have been updated to avoid duplicate work:
 | test__word.py | ✅ Complete | Perfect test patterns |
 | test__letter.py | ✅ Complete | Perfect test patterns |
 | test__line.py | ✅ Complete | Updated to match test__receipt_line.py patterns |
+| test__receipt_line.py | ✅ Complete | Comprehensive parameterized tests |
+| test__receipt_word.py | ✅ Complete | Following perfect test patterns |
+| test__receipt_letter.py | ❌ Needs update | 66 tests failing - wrong error messages |
 | test__batch_summary.py | ❌ Needs update | Wrong exception types |
 | test__cluster.py.skip | ⏭️ Skipped | - |
 | test__export_and_import.py | ❓ Unknown | - |
@@ -405,15 +408,12 @@ Track which files have been updated to avoid duplicate work:
 | test__receipt_chatgpt_validation.py | ❓ Unknown | - |
 | test__receipt_field.py | ❓ Unknown | - |
 | test__receipt_label_analysis.py | ❓ Unknown | - |
-| test__receipt_letter.py | ❓ Unknown | - |
-| test__receipt_line.py | ❓ Unknown | - |
 | test__receipt_line_item_analysis.py | ❓ Unknown | - |
 | test__receipt_section.py | ❓ Unknown | - |
 | test__receipt_structure_analysis.py | ❓ Unknown | - |
 | test__receipt_validation_category.py | ❓ Unknown | - |
 | test__receipt_validation_result.py | ❓ Unknown | - |
 | test__receipt_validation_summary.py | ❓ Unknown | - |
-| test__receipt_word.py | ❓ Unknown | - |
 | test__receipt_word_label.py | ❓ Unknown | - |
 | test_dynamo_client.py | ❓ Unknown | - |
 
