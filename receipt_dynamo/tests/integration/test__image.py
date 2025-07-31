@@ -259,7 +259,8 @@ UPDATE_ERROR_SCENARIOS = [
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS
 )
-def test_add_image_client_errors(  # pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
+def test_add_image_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     mocker: MockerFixture,
@@ -606,7 +607,7 @@ def test_list_images_by_type_invalid_type(
     client = DynamoClient(dynamodb_table)
     with pytest.raises(
         EntityValidationError,
-        match="image_type must be one of: SCAN, PHOTO, NATIVE"
+        match="image_type must be one of: SCAN, PHOTO, NATIVE",
     ):
         client.list_images_by_type("INVALID")
 
@@ -714,8 +715,8 @@ def test_get_image_details_complete(  # pylint: disable=too-many-positional-argu
     assert retrieved_decision.image_id == sample_routing_decision.image_id
     assert retrieved_decision.job_id == sample_routing_decision.job_id
     assert (
-        retrieved_decision.receipt_count ==
-        sample_routing_decision.receipt_count
+        retrieved_decision.receipt_count
+        == sample_routing_decision.receipt_count
     )
     assert retrieved_decision.status == sample_routing_decision.status
 
@@ -738,12 +739,13 @@ def test_get_image_details_multiple_receipt_metadatas(
             place_id=f"place_{i}",
             merchant_name=f"Merchant {chr(65 + i - 1)}",  # A,B,C
             matched_fields=(
-                ["name"] if i == 2 else
-                ["name", "address" if i == 1 else "phone"]
+                ["name"]
+                if i == 2
+                else ["name", "address" if i == 1 else "phone"]
             ),
-            validated_by=[
-                "NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"
-            ][i - 1],
+            validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][
+                i - 1
+            ],
             timestamp=datetime(2025, 1, 1, i - 1, 0, 0),
         )
         client.add_receipt_metadata(metadata)
