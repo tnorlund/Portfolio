@@ -141,7 +141,7 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     )
 
 
-def shear_point(  # pylint: disable=too-many-positional-arguments
+def shear_point(  # pylint: disable=too-many-arguments
     px: float,
     py: float,
     pivot_x: float,

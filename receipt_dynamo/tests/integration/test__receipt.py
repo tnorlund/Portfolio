@@ -1,4 +1,4 @@
-# infra/lambda_layer/python/test/integration/test__receipt.py
+# pylint: disable=too-many-lines
 """
 Parameterized integration tests for receipt operations.
 This file contains refactored tests using pytest.mark.parametrize to reduce
@@ -195,7 +195,7 @@ ERROR_SCENARIOS = [
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_add_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -231,7 +231,7 @@ def test_add_receipt_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_update_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -269,7 +269,7 @@ def test_update_receipt_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_delete_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -307,7 +307,7 @@ def test_delete_receipt_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_get_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -350,7 +350,7 @@ def test_get_receipt_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_add_receipts_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -408,7 +408,7 @@ def test_add_receipts_client_errors(
         ),
     ],
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_update_receipts_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -466,7 +466,7 @@ def test_update_receipts_client_errors(
         ),
     ],
 )
-# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
 def test_delete_receipts_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
@@ -984,6 +984,7 @@ def test_add_receipts_unprocessed_items_retry(
     )
     receipts.append(second_receipt)
 
+    # pylint: disable=protected-access
     real_batch_write_item = client._client.batch_write_item
     call_count = {"value": 0}
 
@@ -999,9 +1000,9 @@ def test_add_receipts_unprocessed_items_retry(
                     ]
                 }
             }
-        else:
-            return {"UnprocessedItems": {}}
+        return {"UnprocessedItems": {}}
 
+    # pylint: disable=protected-access
     mocker.patch.object(
         client._client,
         "batch_write_item",
@@ -1306,7 +1307,8 @@ def test_list_receipt_details_invalid_last_evaluated_key(
     with pytest.raises(
         EntityValidationError, match="LastEvaluatedKey must be a dictionary"
     ):
-        client.list_receipt_details(last_evaluated_key="invalid")  # type: ignore
+        # type: ignore
+        client.list_receipt_details(last_evaluated_key="invalid")
 
 
 # -------------------------------------------------------------------
@@ -1466,6 +1468,9 @@ def test_list_receipt_and_words_not_found(
 
     with pytest.raises(
         EntityNotFoundError,
-        match=f"receipt with receipt_id=1 and image_id={unique_image_id} does not exist",
+        match=(
+            f"receipt with receipt_id=1 and "
+            f"image_id={unique_image_id} does not exist"
+        ),
     ):
         client.list_receipt_and_words(unique_image_id, 1)
