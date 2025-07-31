@@ -1,3 +1,5 @@
+# pylint: disable=redefined-outer-name,protected-access
+"""Unit tests for JobCheckpoint entity."""
 import uuid
 from datetime import datetime, timezone
 
@@ -7,7 +9,10 @@ from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
     item_to_job_checkpoint,
 )
-from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map, parse_dynamodb_value
+from receipt_dynamo.entities.dynamodb_utils import (
+    parse_dynamodb_map,
+    parse_dynamodb_value,
+)
 
 
 @pytest.fixture
@@ -725,7 +730,7 @@ def testparse_dynamodb_value():
 
 
 @pytest.mark.unit
-def test_itemToJobCheckpoint(
+def test_item_to_job_checkpoint(
     example_job_checkpoint, example_job_checkpoint_minimal
 ):
     """Test that a DynamoDB item can be converted to a JobCheckpoint"""
