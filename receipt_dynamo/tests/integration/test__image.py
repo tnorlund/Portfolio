@@ -259,14 +259,14 @@ UPDATE_ERROR_SCENARIOS = [
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS
 )
-def test_add_image_client_errors(
+def test_add_image_client_errors(  # pylint: disable=too-many-positional-arguments
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     mocker: MockerFixture,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
-) -> None:  # pylint: disable=too-many-arguments
+) -> None:
     """Tests that add_image raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
@@ -294,14 +294,14 @@ def test_add_image_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", UPDATE_ERROR_SCENARIOS
 )
-def test_update_images_client_errors(
+def test_update_images_client_errors(  # pylint: disable=too-many-positional-arguments
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     mocker: MockerFixture,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
-) -> None:  # pylint: disable=too-many-arguments
+) -> None:
     """Tests that update_images raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
@@ -329,14 +329,14 @@ def test_update_images_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-def test_delete_image_client_errors(
+def test_delete_image_client_errors(  # pylint: disable=too-many-positional-arguments
     dynamodb_table: Literal["MyMockedTable"],
     unique_image_id: str,
     mocker: MockerFixture,
     error_code: str,
     expected_exception: Type[Exception],
     error_match: str,
-) -> None:  # pylint: disable=too-many-arguments
+) -> None:
     """Tests that delete_image raises appropriate exceptions for various
     ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
@@ -657,7 +657,7 @@ def test_list_images_by_type_with_pagination(
 
 
 @pytest.mark.integration
-def test_get_image_details_complete(
+def test_get_image_details_complete(  # pylint: disable=too-many-positional-arguments
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     sample_line: Line,
@@ -667,7 +667,7 @@ def test_get_image_details_complete(
     sample_ocr_job: OCRJob,
     sample_routing_decision: OCRRoutingDecision,
     sample_receipt_word_label: ReceiptWordLabel,
-) -> None:  # pylint: disable=too-many-arguments
+) -> None:
     """Tests get_image_details with all related entities."""
     client = DynamoClient(dynamodb_table)
 
@@ -714,7 +714,8 @@ def test_get_image_details_complete(
     assert retrieved_decision.image_id == sample_routing_decision.image_id
     assert retrieved_decision.job_id == sample_routing_decision.job_id
     assert (
-        retrieved_decision.receipt_count == sample_routing_decision.receipt_count
+        retrieved_decision.receipt_count ==
+        sample_routing_decision.receipt_count
     )
     assert retrieved_decision.status == sample_routing_decision.status
 
@@ -740,7 +741,9 @@ def test_get_image_details_multiple_receipt_metadatas(
                 ["name"] if i == 2 else
                 ["name", "address" if i == 1 else "phone"]
             ),
-            validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][i - 1],
+            validated_by=[
+                "NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"
+            ][i - 1],
             timestamp=datetime(2025, 1, 1, i - 1, 0, 0),
         )
         client.add_receipt_metadata(metadata)
