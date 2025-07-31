@@ -387,6 +387,7 @@ Track which files have been updated to avoid duplicate work:
 | test__image.py | ✅ Complete | Perfect test patterns |
 | test__word.py | ✅ Complete | Perfect test patterns |
 | test__letter.py | ✅ Complete | Perfect test patterns |
+| test__line.py | ✅ Complete | Updated to match test__receipt_line.py patterns |
 | test__batch_summary.py | ❌ Needs update | Wrong exception types |
 | test__cluster.py.skip | ⏭️ Skipped | - |
 | test__export_and_import.py | ❓ Unknown | - |
@@ -397,7 +398,6 @@ Track which files have been updated to avoid duplicate work:
 | test__job_log.py | ❓ Unknown | - |
 | test__job_metric.py | ❓ Unknown | - |
 | test__job_resource.py | ❓ Unknown | - |
-| test__line.py | ❓ Unknown | - |
 | test__ocr_job.py | ❓ Unknown | - |
 | test__places_cache.py | ❓ Unknown | - |
 | test__pulumi.py | ❓ Unknown | - |
