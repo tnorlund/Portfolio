@@ -19,6 +19,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -240,7 +241,7 @@ ERROR_SCENARIOS = [
 ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
-        EntityValidationError,
+        EntityAlreadyExistsError,
         "image already exists",
     ),
 ] + ERROR_SCENARIOS
@@ -452,11 +453,11 @@ def test_add_image_duplicate_raises(
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
 ) -> None:
-    """Tests that adding a duplicate image raises EntityValidationError."""
+    """Tests that adding a duplicate image raises EntityAlreadyExistsError."""
     client = DynamoClient(dynamodb_table)
     client.add_image(sample_image)
 
-    with pytest.raises(EntityValidationError, match="image already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="image already exists"):
         client.add_image(sample_image)
 
 
