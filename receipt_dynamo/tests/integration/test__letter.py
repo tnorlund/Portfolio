@@ -3,7 +3,8 @@ Integration tests for Letter operations in DynamoDB.
 
 This module tests the Letter-related methods of DynamoClient, including
 add, get, update, delete, and list operations. It follows the perfect
-test patterns established in test__receipt.py.
+test patterns established in test__receipt.py, test__image.py, and
+test__word.py.
 """
 
 from typing import Any, Dict, List
@@ -17,6 +18,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -142,7 +144,7 @@ class TestLetterBasicOperations:
 
         # Act & Assert
         with pytest.raises(
-            EntityValidationError, match="letter already exists"
+            EntityAlreadyExistsError, match="letter already exists"
         ):
             dynamodb_client.add_letter(example_letter)
 
@@ -199,7 +201,7 @@ class TestLetterBasicOperations:
         self, dynamodb_client: DynamoClient, example_letter: Letter
     ) -> None:
         """Test update letter raises EntityNotFoundError when not found."""
-        with pytest.raises(EntityNotFoundError, match="letter not found"):
+        with pytest.raises(EntityNotFoundError, match="not found"):
             dynamodb_client.update_letter(example_letter)
 
     def test_delete_letter_success(
@@ -373,6 +375,95 @@ class TestLetterBatchOperations:
             )
             assert retrieved == letter
 
+    def test_update_letters_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful batch update of letters."""
+        # Arrange
+        letters = [
+            Letter(**CORRECT_LETTER_PARAMS),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
+        ]
+        dynamodb_client.add_letters(letters)
+
+        # Act - modify and update
+        letters[0].text = "X"
+        letters[1].text = "Y"
+        dynamodb_client.update_letters(letters)
+
+        # Assert
+        for letter in letters:
+            retrieved = dynamodb_client.get_letter(
+                letter.image_id,
+                letter.line_id,
+                letter.word_id,
+                letter.letter_id
+            )
+            assert retrieved.text == letter.text
+
+
+# =============================================================================
+# ADVANCED OPERATIONS
+# =============================================================================
+
+
+@pytest.mark.integration
+class TestLetterAdvancedOperations:
+    """Test advanced letter operations."""
+
+    def test_get_letters_by_keys_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test successful retrieval of letters by keys."""
+        # Arrange
+        letters = [
+            Letter(**CORRECT_LETTER_PARAMS),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
+        ]
+        dynamodb_client.add_letters(letters)
+
+        # Act
+        keys = [letter.key for letter in letters]
+        retrieved_letters = dynamodb_client.get_letters(keys)
+
+        # Assert
+        assert len(retrieved_letters) == 2
+        assert set(l.letter_id for l in retrieved_letters) == {1, 2}
+
+    def test_get_letters_invalid_keys(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test that get_letters validates key structure."""
+        # Test missing PK
+        with pytest.raises(
+            EntityValidationError, match="Keys must contain 'PK' and 'SK'"
+        ):
+            dynamodb_client.get_letters(
+                [{"SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"}}]
+            )
+
+        # Test wrong PK prefix
+        with pytest.raises(
+            EntityValidationError, match="PK must start with 'IMAGE#'"
+        ):
+            dynamodb_client.get_letters([
+                {
+                    "PK": {"S": "FOO#00001"},
+                    "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
+                }
+            ])
+
+        # Test SK missing LETTER
+        with pytest.raises(
+            EntityValidationError, match="SK must contain 'LETTER'"
+        ):
+            dynamodb_client.get_letters([
+                {
+                    "PK": {"S": "IMAGE#00001"},
+                    "SK": {"S": "LINE#00001#WORD#00001#FOO#00001"},
+                }
+            ])
+
 
 # =============================================================================
 # LIST AND QUERY OPERATIONS
@@ -512,23 +603,23 @@ class TestLetterValidation:
     def test_add_letters_none_raises_error(
         self, dynamodb_client: DynamoClient
     ) -> None:
-        """Test that adding None list raises ValueError."""
-        with pytest.raises(ValueError, match="letters cannot be None"):
+        """Test that adding None list raises OperationError."""
+        with pytest.raises(OperationError, match="letters cannot be None"):
             dynamodb_client.add_letters(None)  # type: ignore
 
     def test_add_letters_not_list_raises_error(
         self, dynamodb_client: DynamoClient
     ) -> None:
-        """Test that adding non-list raises ValueError."""
-        with pytest.raises(ValueError, match="letters must be a list"):
+        """Test that adding non-list raises OperationError."""
+        with pytest.raises(OperationError, match="letters must be a list"):
             dynamodb_client.add_letters("not-a-list")  # type: ignore
 
     def test_add_letters_wrong_item_type_raises_error(
         self, dynamodb_client: DynamoClient, example_letter: Letter
     ) -> None:
-        """Test that adding list with wrong item type raises ValueError."""
+        """Test that adding list with wrong item type raises OperationError."""
         with pytest.raises(
-            ValueError,
+            OperationError,
             match="letters must be a list of Letter instances",
         ):
             dynamodb_client.add_letters(
@@ -542,7 +633,7 @@ class TestLetterValidation:
         with pytest.raises(
             OperationError, match="uuid must be a valid UUIDv4"
         ):
-            dynamodb_client.get_letter("1", 1, 1, 1)
+            dynamodb_client.get_letter("invalid-uuid", 1, 1, 1)
 
     def test_delete_letter_invalid_uuid_raises_error(
         self, dynamodb_client: DynamoClient
@@ -552,6 +643,40 @@ class TestLetterValidation:
             OperationError, match="uuid must be a valid UUIDv4"
         ):
             dynamodb_client.delete_letter("invalid-uuid", 1, 1, 1)
+
+    def test_update_letter_validation_errors(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
+        """Test update_letter validation error handling."""
+        # None parameter
+        with pytest.raises(OperationError, match="letter cannot be None"):
+            dynamodb_client.update_letter(None)  # type: ignore
+
+        # Wrong type parameter
+        with pytest.raises(
+            OperationError, match="letter must be an instance of Letter"
+        ):
+            dynamodb_client.update_letter("not-a-letter")  # type: ignore
+
+    def test_update_letters_validation_errors(
+        self, dynamodb_client: DynamoClient, example_letter: Letter
+    ) -> None:
+        """Test update_letters validation error handling."""
+        # None parameter
+        with pytest.raises(OperationError, match="letters cannot be None"):
+            dynamodb_client.update_letters(None)  # type: ignore
+
+        # Non-list parameter
+        with pytest.raises(OperationError, match="letters must be a list"):
+            dynamodb_client.update_letters("not-a-list")  # type: ignore
+
+        # Wrong item types
+        with pytest.raises(
+            OperationError, match="letters must be a list of Letter instances"
+        ):
+            dynamodb_client.update_letters(
+                [example_letter, "not-a-letter"]  # type: ignore
+            )
 
 
 # =============================================================================
@@ -664,6 +789,113 @@ class TestLetterErrorHandling:
                 "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
             )
 
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_update_letter_error_handling(  # pylint: disable=too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        example_letter: Letter,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for update_letter operation."""
+        # Mock the put_item to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "put_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "PutItem",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.update_letter(example_letter)
+
+    def test_update_letter_conditional_check_failed(
+        self, dynamodb_client: DynamoClient, example_letter: Letter, mocker
+    ) -> None:
+        """Test update_letter when letter doesn't exist."""
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "put_item",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "The letter does not exist",
+                    }
+                },
+                "PutItem",
+            ),
+        )
+
+        with pytest.raises(EntityNotFoundError, match="not found"):
+            dynamodb_client.update_letter(example_letter)
+
+    @pytest.mark.parametrize(
+        "error_code,expected_exception,expected_message",
+        ERROR_SCENARIOS,
+    )
+    def test_update_letters_error_handling(  # pylint: disable=too-many-positional-arguments
+        self,
+        dynamodb_client: DynamoClient,
+        example_letter: Letter,
+        error_code: str,
+        expected_exception: type,
+        expected_message: str,
+        mocker,
+    ) -> None:
+        """Test error handling for update_letters operation."""
+        # Mock the transact_write_items to raise specific error
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "transact_write_items",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": error_code,
+                        "Message": f"Mocked {error_code}",
+                    }
+                },
+                "TransactWriteItems",
+            ),
+        )
+
+        # Act & Assert
+        with pytest.raises(expected_exception, match=expected_message):
+            dynamodb_client.update_letters([example_letter])
+
+    def test_update_letters_conditional_check_failed(
+        self, dynamodb_client: DynamoClient, example_letter: Letter, mocker
+    ) -> None:
+        """Test update_letters when letter doesn't exist."""
+        mocker.patch.object(
+            dynamodb_client._client,  # pylint: disable=protected-access
+            "transact_write_items",
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "One or more letters do not exist",
+                    }
+                },
+                "TransactWriteItems",
+            ),
+        )
+
+        with pytest.raises(EntityNotFoundError, match="not found"):
+            dynamodb_client.update_letters([example_letter])
 
 
 # =============================================================================
@@ -765,7 +997,7 @@ class TestLetterSpecialCases:
         dynamodb_client.add_letter(example_letter)
 
         # Try to add again (should fail)
-        with pytest.raises(EntityValidationError):
+        with pytest.raises(EntityAlreadyExistsError):
             dynamodb_client.add_letter(example_letter)
 
         # Update should succeed
