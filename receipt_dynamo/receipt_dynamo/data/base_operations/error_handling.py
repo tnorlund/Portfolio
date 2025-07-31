@@ -31,24 +31,39 @@ class ErrorMessageConfig:
 
     # Entity not found patterns for different operations
     ENTITY_NOT_FOUND_PATTERNS = {
-        "get_entity": "Entity with {entity_name}={entity_id} not found",
+        "get_entity": (
+            "{entity_name} with {entity_name}={entity_id} not found"
+        ),
         "update_entity": (
             "Cannot update {entity_name} with {entity_name}={entity_id}: "
-            "entity not found"
+            "{entity_name} not found"
         ),
         "delete_entity": (
             "Cannot delete {entity_name} with {entity_name}={entity_id}: "
-            "entity not found"
+            "{entity_name} not found"
         ),
-        "get_receipt": "Receipt with receipt_id={receipt_id} not found",
-        "get_image": "Image with image_id={image_id} not found",
-        "get_job": "Job with job_id={job_id} not found",
+        "get_receipt": "receipt with receipt_id={receipt_id} not found",
+        "get_image": "image with image_id={image_id} not found",
+        "get_job": "job with job_id={job_id} not found",
         "get_word": (
-            "Word with image_id={image_id}, line_id={line_id}, "
+            "word with image_id={image_id}, line_id={line_id}, "
             "word_id={word_id} not found"
         ),
         "get_line": (
-            "Line with image_id={image_id}, line_id={line_id} not found"
+            "line with image_id={image_id}, line_id={line_id} not found"
+        ),
+        # Batch/plural operations
+        "update_receipts": (
+            "Cannot update receipts: one or more receipts not found"
+        ),
+        "delete_receipts": (
+            "Cannot delete receipts: one or more receipts not found"
+        ),
+        "update_entities": (
+            "Cannot update {entity_name}: one or more {entity_name} not found"
+        ),
+        "delete_entities": (
+            "Cannot delete {entity_name}: one or more {entity_name} not found"
         ),
     }
 
@@ -63,6 +78,57 @@ class ErrorMessageConfig:
         "transact_write": "Failed to execute transaction",
         "query_by_type": "Failed to query entities by type",
         "query_entities": "Failed to query entities",
+    }
+
+    # Required parameter messages
+    REQUIRED_PARAM_MESSAGES = {
+        "receipt": "receipt cannot be None",
+        "receipts": "receipts cannot be None",
+        "image": "image cannot be None",
+        "images": "images cannot be None",
+        "word": "word cannot be None",
+        "words": "words cannot be None",
+        "line": "line cannot be None",
+        "lines": "lines cannot be None",
+        "letter": "letter cannot be None",
+        "letters": "letters cannot be None",
+    }
+
+    # Parameter validation message patterns
+    PARAM_VALIDATION = {
+        "required": "{param} cannot be None",
+        "type_mismatch": "{param} must be an instance of {class_name}",
+        "list_required": "{param} must be a list",
+        "list_type_mismatch": "All items in {param} must be instances of {class_name}",
+    }
+
+    # Type mismatch messages for specific entities
+    TYPE_MISMATCH_MESSAGES = {
+        "receipt": "receipt must be an instance of Receipt",
+        "receipts": "receipts must be a list of Receipt instances",
+        "image": "image must be an instance of Image",
+        "images": "images must be a list of Image instances",
+        "word": "word must be an instance of Word",
+        "words": "words must be a list of Word instances",
+        "line": "line must be an instance of Line",
+        "lines": "lines must be a list of Line instances",
+        "letter": "letter must be an instance of Letter",
+        "letters": "letters must be a list of Letter instances",
+    }
+
+    # List required messages for specific entities
+    LIST_REQUIRED_MESSAGES = {
+        "receipts": "receipts must be a list",
+        "images": "images must be a list",
+        "words": "words must be a list",
+        "lines": "lines must be a list",
+        "letters": "letters must be a list",
+    }
+
+    # Parameter name mappings for backward compatibility
+    PARAM_NAME_MAPPINGS = {
+        "entity": "item",
+        "entities": "items",
     }
 
 
@@ -129,9 +195,10 @@ class ErrorHandler:
         # Map AWS error codes to domain exceptions
         if error_code == "ConditionalCheckFailedException":
             if "add_" in operation:
-                entity_type = operation.replace("add_", "").replace("_", " ")
+                entity_type = operation.replace("add_", "")
+                # Keep snake_case to match parameter naming convention
                 raise EntityValidationError(
-                    f"Entity {entity_type} already exists"
+                    f"{entity_type} already exists"
                 )
             if any(op in operation for op in ["update_", "delete_"]):
                 self._raise_not_found_error(operation, context_kwargs)
@@ -179,7 +246,17 @@ class ErrorHandler:
                 **context
             )
         else:
-            message = f"Entity not found during {operation}"
+            # Try to extract entity type from context for more descriptive message
+            entity_type = context.get("entity_type", "")
+            entity_name = context.get("entity_name", "")
+            
+            # Use the more specific one if available
+            if entity_type:
+                message = f"{entity_type} not found during {operation}"
+            elif entity_name:
+                message = f"{entity_name} not found during {operation}"
+            else:
+                message = f"entity not found during {operation}"
         raise EntityNotFoundError(message)
 
 
@@ -239,26 +316,59 @@ def _extract_operation_context(
     """Extract relevant context from operation parameters."""
     context = {}
 
-    # Common patterns for extracting IDs from parameters
-    if "receipt_id" in kwargs:
-        context["receipt_id"] = kwargs["receipt_id"]
-    elif len(args) > 0 and hasattr(args[0], "receipt_id"):
-        context["receipt_id"] = args[0].receipt_id
+    # Check if this is a batch operation (plural)
+    is_batch = any(
+        plural in operation_name
+        for plural in ["receipts", "entities", "words", "lines", "letters"]
+    )
 
-    if "image_id" in kwargs:
-        context["image_id"] = kwargs["image_id"]
-    elif len(args) > 0 and hasattr(args[0], "image_id"):
-        context["image_id"] = args[0].image_id
+    if is_batch and len(args) > 0 and isinstance(args[0], list):
+        # For batch operations, extract info from the list of entities
+        entities = args[0]
+        if entities:
+            # Get the entity type from the first item
+            entity_type = type(entities[0]).__name__.lower()
+            context["entity_type"] = entity_type
+            context["entity_count"] = len(entities)
 
-    if "job_id" in kwargs:
-        context["job_id"] = kwargs["job_id"]
-    elif len(args) > 0 and hasattr(args[0], "job_id"):
-        context["job_id"] = args[0].job_id
+            # For small batches, include some IDs for context
+            if len(entities) <= 3:
+                if hasattr(entities[0], "receipt_id"):
+                    context["receipt_ids"] = [e.receipt_id for e in entities]
+                if hasattr(entities[0], "image_id"):
+                    context["image_ids"] = list(
+                        set(e.image_id for e in entities)
+                    )
+    else:
+        # Single entity operations - also try to extract entity type
+        if len(args) > 0 and hasattr(args[0], "__class__"):
+            entity_type = type(args[0]).__name__.lower()
+            context["entity_type"] = entity_type
+            
+        if "receipt_id" in kwargs:
+            context["receipt_id"] = kwargs["receipt_id"]
+        elif len(args) > 0 and hasattr(args[0], "receipt_id"):
+            context["receipt_id"] = args[0].receipt_id
+
+        if "image_id" in kwargs:
+            context["image_id"] = kwargs["image_id"]
+        elif len(args) > 0 and hasattr(args[0], "image_id"):
+            context["image_id"] = args[0].image_id
+
+        if "job_id" in kwargs:
+            context["job_id"] = kwargs["job_id"]
+        elif len(args) > 0 and hasattr(args[0], "job_id"):
+            context["job_id"] = args[0].job_id
 
     # Extract entity name from operation
     if "_" in operation_name:
         entity_name = operation_name.split("_", 1)[1]
-        context["entity_name"] = entity_name
+        # Handle special case where entities becomes receipts/words/etc.
+        if entity_name == "entities" and "entity_type" in context:
+            # Use the actual entity type for more specific messages
+            context["entity_name"] = context["entity_type"] + "s"
+        else:
+            context["entity_name"] = entity_name
 
     return context
 

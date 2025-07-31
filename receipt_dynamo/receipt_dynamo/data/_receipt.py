@@ -185,10 +185,10 @@ class _Receipt(
         """
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("Receipt ID must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer.")
         if receipt_id < 0:
             raise EntityValidationError(
-                "Receipt ID must be a positive integer."
+                "receipt_id must be a positive integer."
             )
 
         result = self._get_entity(
@@ -200,7 +200,7 @@ class _Receipt(
 
         if result is None:
             raise EntityNotFoundError(
-                f"Receipt with receipt_id={receipt_id} and "
+                f"receipt with receipt_id={receipt_id} and "
                 f"image_id={image_id} does not exist."
             )
 
@@ -272,7 +272,7 @@ class _Receipt(
         if receipt is None:
             raise EntityNotFoundError(
                 (
-                    "Receipt not found for "
+                    "receipt not found for "
                     f"image_id={image_id}, receipt_id={receipt_id}"
                 )
             )
@@ -490,7 +490,7 @@ class _Receipt(
 
         if not receipt:
             raise EntityNotFoundError(
-                f"Receipt with receipt_id={receipt_id} and "
+                f"receipt with receipt_id={receipt_id} and "
                 f"image_id={image_id} does not exist"
             )
 

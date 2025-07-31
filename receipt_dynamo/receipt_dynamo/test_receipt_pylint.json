@@ -1,0 +1,15 @@
+[
+    {
+        "type": "fatal",
+        "module": "tests/integration/test__receipt.py",
+        "obj": "",
+        "line": 1,
+        "column": 0,
+        "endLine": null,
+        "endColumn": null,
+        "path": "tests/integration/test__receipt.py",
+        "symbol": "fatal",
+        "message": "No module named tests/integration/test__receipt.py",
+        "message-id": "F0001"
+    }
+]
