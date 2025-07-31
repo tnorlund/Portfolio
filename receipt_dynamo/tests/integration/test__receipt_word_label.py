@@ -703,6 +703,164 @@ def test_list_receipt_word_labels_success(
     assert len(retrieved) >= 6  # May have more from other tests
 
 
+@pytest.mark.integration
+def test_list_receipt_word_labels_for_receipt_success(
+    dynamodb_table: Literal["MyMockedTable"],
+) -> None:
+    """Tests listing all receipt word labels for a specific receipt."""
+    client = DynamoClient(dynamodb_table)
+    image_id = str(uuid4())
+    
+    # Add labels for multiple receipts
+    labels_receipt_1 = []
+    labels_receipt_2 = []
+    
+    # Add 5 labels for receipt 1
+    for i in range(5):
+        label = ReceiptWordLabel(
+            receipt_id=1,
+            image_id=image_id,
+            line_id=i + 1,
+            word_id=i + 1,
+            label="ITEM" if i % 2 == 0 else "PRICE",
+            reasoning=f"Receipt 1 label {i}",
+            timestamp_added="2024-03-20T12:00:00+00:00",
+        )
+        labels_receipt_1.append(label)
+        client.add_receipt_word_label(label)
+    
+    # Add 3 labels for receipt 2
+    for i in range(3):
+        label = ReceiptWordLabel(
+            receipt_id=2,
+            image_id=image_id,
+            line_id=i + 1,
+            word_id=i + 1,
+            label="MERCHANT_NAME" if i == 0 else "DATE",
+            reasoning=f"Receipt 2 label {i}",
+            timestamp_added="2024-03-20T12:00:00+00:00",
+        )
+        labels_receipt_2.append(label)
+        client.add_receipt_word_label(label)
+    
+    # List labels for receipt 1
+    retrieved_r1, last_key = client.list_receipt_word_labels_for_receipt(
+        image_id, 1
+    )
+    
+    assert len(retrieved_r1) == 5
+    assert all(l.receipt_id == 1 for l in retrieved_r1)
+    assert all(l.image_id == image_id for l in retrieved_r1)
+    assert last_key is None
+    
+    # List labels for receipt 2
+    retrieved_r2, last_key = client.list_receipt_word_labels_for_receipt(
+        image_id, 2
+    )
+    
+    assert len(retrieved_r2) == 3
+    assert all(l.receipt_id == 2 for l in retrieved_r2)
+    assert all(l.image_id == image_id for l in retrieved_r2)
+    assert last_key is None
+
+
+@pytest.mark.integration
+def test_list_receipt_word_labels_for_receipt_empty(
+    dynamodb_table: Literal["MyMockedTable"],
+) -> None:
+    """Tests listing receipt word labels for a receipt with no labels."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Use a new image ID and receipt ID that have no labels
+    empty_image_id = str(uuid4())
+    
+    # List labels for non-existent receipt
+    retrieved, last_key = client.list_receipt_word_labels_for_receipt(
+        empty_image_id, 999
+    )
+    
+    assert len(retrieved) == 0
+    assert last_key is None
+
+
+@pytest.mark.integration
+def test_list_receipt_word_labels_for_receipt_with_pagination(
+    dynamodb_table: Literal["MyMockedTable"],
+) -> None:
+    """Tests listing receipt word labels for a receipt with pagination."""
+    client = DynamoClient(dynamodb_table)
+    image_id = str(uuid4())
+    receipt_id = 1
+    
+    # Add 20 labels for the same receipt to test pagination
+    labels = []
+    for line_id in range(1, 11):  # 10 lines
+        for word_id in range(1, 3):  # 2 words per line = 20 total
+            label = ReceiptWordLabel(
+                receipt_id=receipt_id,
+                image_id=image_id,
+                line_id=line_id,
+                word_id=word_id,
+                label="ITEM" if word_id == 1 else "PRICE",
+                reasoning=f"Line {line_id} word {word_id}",
+                timestamp_added="2024-03-20T12:00:00+00:00",
+            )
+            labels.append(label)
+            client.add_receipt_word_label(label)
+    
+    # Test pagination with limit
+    page1, last_key1 = client.list_receipt_word_labels_for_receipt(
+        image_id, receipt_id, limit=8
+    )
+    assert len(page1) == 8
+    assert last_key1 is not None
+    
+    # Get second page
+    page2, last_key2 = client.list_receipt_word_labels_for_receipt(
+        image_id, receipt_id, limit=8, last_evaluated_key=last_key1
+    )
+    assert len(page2) == 8
+    assert last_key2 is not None
+    
+    # Get remaining items
+    page3, last_key3 = client.list_receipt_word_labels_for_receipt(
+        image_id, receipt_id, limit=8, last_evaluated_key=last_key2
+    )
+    assert len(page3) == 4  # Only 4 items left
+    assert last_key3 is None  # No more items
+    
+    # Verify all items retrieved
+    all_retrieved = page1 + page2 + page3
+    assert len(all_retrieved) == 20
+    assert all(l.image_id == image_id for l in all_retrieved)
+    assert all(l.receipt_id == receipt_id for l in all_retrieved)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "image_id,receipt_id,expected_error",
+    [
+        (None, 1, "image_id must be a string, got NoneType"),
+        ("not-a-uuid", 1, "uuid must be a valid UUIDv4"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", None, "receipt_id must be an integer, got NoneType"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "receipt_id must be an integer, got str"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 0, "receipt_id must be a positive integer"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "receipt_id must be a positive integer"),
+    ],
+)
+def test_list_receipt_word_labels_for_receipt_validation(
+    dynamodb_table: Literal["MyMockedTable"],
+    image_id: Any,
+    receipt_id: Any,
+    expected_error: str,
+) -> None:
+    """Tests validation for list_receipt_word_labels_for_receipt parameters."""
+    client = DynamoClient(dynamodb_table)
+    
+    with pytest.raises((EntityValidationError, OperationError), match=expected_error):
+        client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+
+
 # -------------------------------------------------------------------
 #                   BATCH OPERATIONS WITH UNPROCESSED ITEMS
 # -------------------------------------------------------------------
