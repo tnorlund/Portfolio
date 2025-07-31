@@ -20,6 +20,7 @@ from typing import (
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -143,7 +144,7 @@ class FlattenedStandardMixin:
             ):
                 entity_name = entity.__class__.__name__
                 entity_id = getattr(entity, "id", "unknown")
-                raise EntityValidationError(
+                raise EntityAlreadyExistsError(
                     f"{entity_name} with ID {entity_id} already exists"
                 ) from e
             raise

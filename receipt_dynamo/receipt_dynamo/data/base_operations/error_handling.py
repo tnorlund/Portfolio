@@ -15,6 +15,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -90,6 +91,8 @@ class ErrorMessageConfig:
         "words": "words cannot be None",
         "line": "line cannot be None",
         "lines": "lines cannot be None",
+        "receipt_line": "receipt_line cannot be None",
+        "receipt_lines": "receipt_lines cannot be None",
         "letter": "letter cannot be None",
         "letters": "letters cannot be None",
     }
@@ -112,6 +115,8 @@ class ErrorMessageConfig:
         "words": "words must be a list of Word instances",
         "line": "line must be an instance of Line",
         "lines": "lines must be a list of Line instances",
+        "receipt_line": "receipt_line must be an instance of ReceiptLine",
+        "receipt_lines": "receipt_lines must be a list of ReceiptLine instances",
         "letter": "letter must be an instance of Letter",
         "letters": "letters must be a list of Letter instances",
     }
@@ -122,6 +127,7 @@ class ErrorMessageConfig:
         "images": "images must be a list",
         "words": "words must be a list",
         "lines": "lines must be a list",
+        "receipt_lines": "receipt_lines must be a list",
         "letters": "letters must be a list",
     }
 
@@ -197,7 +203,7 @@ class ErrorHandler:
             if "add_" in operation:
                 entity_type = operation.replace("add_", "")
                 # Keep snake_case to match parameter naming convention
-                raise EntityValidationError(
+                raise EntityAlreadyExistsError(
                     f"{entity_type} already exists"
                 )
             if any(op in operation for op in ["update_", "delete_"]):
@@ -290,6 +296,7 @@ def handle_dynamodb_errors(operation_name: str):
                 error_handler.handle_client_error(e, operation_name, **context)
                 return None
             except (
+                EntityAlreadyExistsError,
                 EntityNotFoundError,
                 EntityValidationError,
                 DynamoDBThroughputError,
