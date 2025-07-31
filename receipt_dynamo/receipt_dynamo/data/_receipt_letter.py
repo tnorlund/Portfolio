@@ -9,6 +9,7 @@ from receipt_dynamo.data.base_operations import (
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_letter
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
@@ -71,7 +72,12 @@ class _ReceiptLetter(
         ValueError
             If the letter is invalid or already exists.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
+        if letter is None:
+            raise EntityValidationError("letter cannot be None")
+        if not isinstance(letter, ReceiptLetter):
+            raise EntityValidationError(
+                "letter must be an instance of ReceiptLetter"
+            )
         self._add_entity(letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
@@ -89,7 +95,19 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid.
         """
-        self._add_entities_batch(letters, ReceiptLetter, "letters")
+        if letters is None:
+            raise EntityValidationError("letters cannot be None")
+        if not isinstance(letters, list):
+            raise EntityValidationError("letters must be a list")
+        for i, letter in enumerate(letters):
+            if not isinstance(letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(letter).__name__}"
+                )
+        if not letters:  # Empty list check
+            raise OperationError("Parameter validation failed")
+        self._add_entities(letters, ReceiptLetter, "letters")
 
     @handle_dynamodb_errors("update_receipt_letter")
     def update_receipt_letter(self, letter: ReceiptLetter) -> None:
@@ -106,7 +124,12 @@ class _ReceiptLetter(
         ValueError
             If the letter is invalid or does not exist.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
+        if letter is None:
+            raise EntityValidationError("letter cannot be None")
+        if not isinstance(letter, ReceiptLetter):
+            raise EntityValidationError(
+                "letter must be an instance of ReceiptLetter"
+            )
         self._update_entity(letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
@@ -124,25 +147,75 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid or do not exist.
         """
+        if letters is None:
+            raise EntityValidationError("letters cannot be None")
+        if not isinstance(letters, list):
+            raise EntityValidationError("letters must be a list")
+        for i, letter in enumerate(letters):
+            if not isinstance(letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(letter).__name__}"
+                )
         self._update_entities(letters, ReceiptLetter, "letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
-    def delete_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def delete_receipt_letter(
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+        letter_id: int,
+    ) -> None:
         """
         Deletes a single ReceiptLetter.
 
         Parameters
         ----------
-        letter : ReceiptLetter
-            The ReceiptLetter to delete.
+        receipt_id : int
+            The receipt ID.
+        image_id : str
+            The image ID.
+        line_id : int
+            The line ID.
+        word_id : int
+            The word ID.
+        letter_id : int
+            The letter ID.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or does not exist.
+            If parameters are invalid or letter does not exist.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
-        self._delete_entity(letter)
+        self._validate_receipt_id(receipt_id)
+        self._validate_image_id(image_id)
+        if line_id is None:
+            raise EntityValidationError("line_id cannot be None")
+        if not isinstance(line_id, int):
+            raise EntityValidationError("line_id must be an integer.")
+        if word_id is None:
+            raise EntityValidationError("word_id cannot be None")
+        if not isinstance(word_id, int):
+            raise EntityValidationError("word_id must be an integer.")
+        if letter_id is None:
+            raise EntityValidationError("letter_id cannot be None")
+        if not isinstance(letter_id, int):
+            raise EntityValidationError("letter_id must be an integer.")
+
+        # Direct key-based deletion is more efficient
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {
+                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+            },
+        }
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key=key,
+            ConditionExpression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("delete_receipt_letters")
     def delete_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
@@ -159,7 +232,16 @@ class _ReceiptLetter(
         ValueError
             If the letters are invalid.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
+        if letters is None:
+            raise EntityValidationError("letters cannot be None")
+        if not isinstance(letters, list):
+            raise EntityValidationError("letters must be a list")
+        for i, letter in enumerate(letters):
+            if not isinstance(letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(letter).__name__}"
+                )
         self._delete_entities(letters)
 
     @handle_dynamodb_errors("get_receipt_letter")
@@ -197,22 +279,34 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid or letter not found.
         """
-        self._validate_receipt_id(receipt_id)
+        # Validate all parameters
+        if receipt_id is None:
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError("receipt_id must be a positive integer")
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         if word_id is None:
             raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer")
+        if word_id <= 0:
+            raise EntityValidationError("word_id must be a positive integer")
         if letter_id is None:
             raise EntityValidationError("letter_id cannot be None")
         if not isinstance(letter_id, int):
-            raise EntityValidationError("letter_id must be an integer.")
+            raise EntityValidationError("letter_id must be an integer")
+        if letter_id <= 0:
+            raise EntityValidationError("letter_id must be a positive integer")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -304,18 +398,32 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid.
         """
-        self._validate_receipt_id(receipt_id)
+        # Validate parameters
+        if receipt_id is None:
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer.")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         if word_id is None:
             raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer")
+        if word_id <= 0:
+            raise EntityValidationError("word_id must be a positive integer")
 
         results, _ = self._query_entities(
             index_name=None,
