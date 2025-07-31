@@ -456,8 +456,8 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             1,
             1,
-            EntityNotFoundError,
-            "ReceiptLetter with ID 1 not found",
+            EntityValidationError,
+            "receipt_id must be a positive integer",
         ),
         (1, None, 1, 1, 1, EntityValidationError, "image_id cannot be None"),
         (
@@ -493,8 +493,8 @@ def test_batch_receipt_letter_validation_mixed_types(
             -1,
             1,
             1,
-            EntityNotFoundError,
-            "ReceiptLetter with ID 1 not found",
+            EntityValidationError,
+            "line_id must be a positive integer",
         ),
         (
             1,
@@ -520,8 +520,8 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             -1,
             1,
-            EntityNotFoundError,
-            "ReceiptLetter with ID 1 not found",
+            EntityValidationError,
+            "word_id must be a positive integer",
         ),
         (
             1,
@@ -547,8 +547,8 @@ def test_batch_receipt_letter_validation_mixed_types(
             1,
             1,
             -1,
-            EntityNotFoundError,
-            "ReceiptLetter with ID -1 not found",
+            EntityValidationError,
+            "letter_id must be a positive integer",
         ),
     ],
 )

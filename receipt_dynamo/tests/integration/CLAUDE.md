@@ -417,10 +417,11 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_line.py                        | ✅ Complete     | Updated to match test\_\_receipt_line.py patterns                |
 | test\_\_receipt_line.py                | ✅ Complete     | Comprehensive parameterized tests                                |
 | test\_\_receipt_word.py                | ✅ Complete     | Following perfect test patterns                                  |
-| test\_\_receipt_letter.py              | ✅ Complete     | Fixed all validation patterns, 4 tests fail due to design choice |
+| test\_\_receipt_letter.py              | ✅ Complete     | All 104 tests passing - fixed validation patterns and error types |
 | test\_\_pulumi.py                      | ✅ Complete     | -                                                                |
 | test\_\_export_and_import.py           | ✅ Complete     | -                                                                |
 | test_dynamo_client.py                  | ✅ Complete     | -                                                                |
+| test\_\_receipt_word_label.py          | ✅ Complete     | -                                                                |
 | test\_\_batch_summary.py               | ❌ Needs update | Wrong exception types                                            |
 | test\_\_instance.py                    | ❓ Unknown      | -                                                                |
 | test\_\_job.py                         | ❓ Unknown      | -                                                                |
@@ -441,7 +442,6 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_receipt_validation_category.py | ❓ Unknown      | -                                                                |
 | test\_\_receipt_validation_result.py   | ❓ Unknown      | -                                                                |
 | test\_\_receipt_validation_summary.py  | ❓ Unknown      | -                                                                |
-| test\_\_receipt_word_label.py          | ✅ Complete     | -                                                                |
 
 ## References
 
