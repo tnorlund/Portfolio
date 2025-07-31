@@ -18,6 +18,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -143,7 +144,7 @@ class TestLetterBasicOperations:
 
         # Act & Assert
         with pytest.raises(
-            EntityValidationError, match="letter already exists"
+            EntityAlreadyExistsError, match="letter already exists"
         ):
             dynamodb_client.add_letter(example_letter)
 
@@ -996,7 +997,7 @@ class TestLetterSpecialCases:
         dynamodb_client.add_letter(example_letter)
 
         # Try to add again (should fail)
-        with pytest.raises(EntityValidationError):
+        with pytest.raises(EntityAlreadyExistsError):
             dynamodb_client.add_letter(example_letter)
 
         # Update should succeed
