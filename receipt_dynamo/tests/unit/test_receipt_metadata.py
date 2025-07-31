@@ -1,4 +1,4 @@
-import os
+# pylint: disable=redefined-outer-name,protected-access
 from datetime import datetime
 
 import pytest
@@ -138,19 +138,19 @@ def test_to_item_and_back(example_receipt_metadata):
     ],
 )
 def test_invalid_field_validation(field, value, error):
-    kwargs = dict(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        place_id="id",
-        merchant_name="Name",
-        merchant_category="Cat",
-        address="Addr",
-        phone_number="Phone",
-        matched_fields=[],
-        validated_by="NEARBY_LOOKUP",
-        timestamp=datetime.now(),
-        reasoning="Reason",
-    )
+    kwargs = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "receipt_id": 1,
+        "place_id": "id",
+        "merchant_name": "Name",
+        "merchant_category": "Cat",
+        "address": "Addr",
+        "phone_number": "Phone",
+        "matched_fields": [],
+        "validated_by": "NEARBY_LOOKUP",
+        "timestamp": datetime.now(),
+        "reasoning": "Reason",
+    }
     kwargs[field] = value
     with pytest.raises(ValueError, match=error):
         ReceiptMetadata(**kwargs)
@@ -173,7 +173,8 @@ def test_item_to_receipt_metadata_parse_error(example_receipt_metadata):
 
 @pytest.mark.unit
 def test_configurable_validation_thresholds(monkeypatch):
-    """Test that validation thresholds can be configured via environment variables."""
+    """Test that validation thresholds can be configured via environment
+    variables."""
     # Test with custom thresholds: 3 fields for MATCHED, 2 for UNSURE
     monkeypatch.setenv("MIN_FIELDS_FOR_MATCH", "3")
     monkeypatch.setenv("MIN_FIELDS_FOR_UNSURE", "2")
@@ -226,7 +227,8 @@ def test_configurable_validation_thresholds(monkeypatch):
 
 @pytest.mark.unit
 def test_address_validation_quality():
-    """Test that address validation properly handles various address formats."""
+    """Test that address validation properly handles various address
+    formats."""
     test_cases = [
         # (address, should_pass, description)
         ("123 Main St", True, "Common format with abbreviation"),
@@ -259,21 +261,25 @@ def test_address_validation_quality():
             reasoning="testing address validation",
         )
 
-        # With default thresholds, 2 fields = MATCHED, but only if quality passes
+        # With default thresholds, 2 fields = MATCHED, but only if quality
+        # passes
         if should_pass:
             assert (
                 m.validation_status == MerchantValidationStatus.MATCHED.value
-            ), f"{description}: Address '{address}' should have passed validation"
+            ), (f"{description}: Address '{address}' should have passed "
+                "validation")
         else:
             # If address quality fails, it's effectively only 1 field (phone)
             assert (
                 m.validation_status == MerchantValidationStatus.UNSURE.value
-            ), f"{description}: Address '{address}' should have failed quality validation"
+            ), (f"{description}: Address '{address}' should have failed "
+                "quality validation")
 
 
 @pytest.mark.unit
 def test_get_high_quality_matched_fields():
-    """Test the _get_high_quality_matched_fields method with various edge cases."""
+    """Test the _get_high_quality_matched_fields method with various edge
+    cases."""
 
     # Test phone validation edge cases
     phone_test_cases = [

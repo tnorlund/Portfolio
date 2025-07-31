@@ -1,3 +1,5 @@
+# pylint: disable=redefined-outer-name
+"""Unit tests for JobResource entity."""
 import pytest
 
 from receipt_dynamo import JobResource, item_to_job_resource
@@ -565,7 +567,9 @@ def test_job_resource_eq():
 
 
 @pytest.mark.unit
-def test_itemToJobResource(example_job_resource, example_job_resource_minimal):
+def test_item_to_job_resource(
+    example_job_resource, example_job_resource_minimal
+):
     """Test the item_to_job_resource() function."""
     # Test with full job resource
     item = example_job_resource.to_item()
