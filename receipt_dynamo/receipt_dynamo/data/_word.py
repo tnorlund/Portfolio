@@ -65,6 +65,7 @@ class _Word(FlattenedStandardMixin):
         self._validate_entity(word, Word, "word")
         self._add_entity(word)
 
+    @handle_dynamodb_errors("add_words")
     def add_words(self, words: List[Word]):
         """Adds a list of words to the database
 
@@ -74,6 +75,7 @@ class _Word(FlattenedStandardMixin):
         Raises:
             ValueError: When validation fails or words cannot be added
         """
+        self._validate_entity_list(words, Word, "words")
         self._add_entities_batch(words, Word, "words")
 
     @handle_dynamodb_errors("update_word")
@@ -127,15 +129,21 @@ class _Word(FlattenedStandardMixin):
             line_id=line_id,
             word_id=word_id,
             text="",  # Required field, but not used for deletion
-            bb_left=0,
-            bb_top=0,
-            bb_width=0,
-            bb_height=0,
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.01,
         )
         self._delete_entity(temp_word)
 
+    @handle_dynamodb_errors("delete_words")
     def delete_words(self, words: List[Word]):
         """Deletes a list of words from the database"""
+        self._validate_entity_list(words, Word, "words")
         self._delete_entities(words)
 
     @handle_dynamodb_errors("delete_words_from_line")
