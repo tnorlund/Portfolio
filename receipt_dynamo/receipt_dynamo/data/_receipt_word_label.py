@@ -458,15 +458,21 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("list_receipt_word_labels_for_image")
     def list_receipt_word_labels_for_image(
-        self, image_id: str
-    ) -> List[ReceiptWordLabel]:
+        self, 
+        image_id: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
         """Lists all receipt word labels for a given image
 
         Args:
             image_id (str): The image ID
+            limit (Optional[int]): Maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            List[ReceiptWordLabel]: The receipt word labels for the image
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt 
+                word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -474,11 +480,18 @@ class _ReceiptWordLabel(
             )
         assert_valid_uuid(image_id)
 
-        results, _ = self._query_entities(
+        if limit is not None:
+            if not isinstance(limit, int):
+                raise EntityValidationError("limit must be an integer")
+            if limit <= 0:
+                raise EntityValidationError("limit must be greater than 0")
+                
+        if last_evaluated_key is not None:
+            validate_last_evaluated_key(last_evaluated_key)
+
+        results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)",
-            ),
+            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -486,13 +499,15 @@ class _ReceiptWordLabel(
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": "RECEIPT#"},
-                ":label_suffix": {"S": "#LABEL"},
+                ":label_suffix": {"S": "#LABEL#"},
             },
             converter_func=item_to_receipt_word_label,
             filter_expression="contains(#sk, :label_suffix)",
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
 
-        return results
+        return results, last_key
 
     @handle_dynamodb_errors("list_receipt_word_labels_with_status")
     def list_receipt_word_labels_with_status(

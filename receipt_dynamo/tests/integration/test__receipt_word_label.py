@@ -600,8 +600,14 @@ def test_list_receipt_word_labels_for_image_success(
         labels.append(label)
         client.add_receipt_word_label(label)
     
-    # Skip this test due to bug in implementation with tuple key_condition_expression
-    pytest.skip("Bug in list_receipt_word_labels_for_image implementation")
+    # List them
+    retrieved, last_key = client.list_receipt_word_labels_for_image(
+        sample_receipt_word_label.image_id
+    )
+    
+    assert len(retrieved) == 5
+    assert all(l.image_id == sample_receipt_word_label.image_id for l in retrieved)
+    assert last_key is None
 
 
 @pytest.mark.integration
@@ -609,8 +615,16 @@ def test_list_receipt_word_labels_for_image_empty(
     dynamodb_table: Literal["MyMockedTable"],
 ) -> None:
     """Tests listing receipt word labels for an image with no labels."""
-    # Skip this test due to bug in implementation with tuple key_condition_expression
-    pytest.skip("Bug in list_receipt_word_labels_for_image implementation")
+    client = DynamoClient(dynamodb_table)
+    
+    # Use a new image ID that has no labels
+    empty_image_id = str(uuid4())
+    
+    # List labels for empty image
+    retrieved, last_key = client.list_receipt_word_labels_for_image(empty_image_id)
+    
+    assert len(retrieved) == 0
+    assert last_key is None
 
 
 @pytest.mark.integration
@@ -618,8 +632,47 @@ def test_list_receipt_word_labels_for_image_with_pagination(
     dynamodb_table: Literal["MyMockedTable"],
 ) -> None:
     """Tests listing receipt word labels with pagination."""
-    # Skip this test due to bug in implementation and no pagination support
-    pytest.skip("list_receipt_word_labels_for_image doesn't support pagination")
+    client = DynamoClient(dynamodb_table)
+    
+    # Add 30 labels for the same image to test pagination
+    image_id = str(uuid4())
+    labels = []
+    for i in range(30):
+        label = ReceiptWordLabel(
+            receipt_id=(i // 3) + 1,  # 10 receipts
+            image_id=image_id,
+            line_id=(i % 3) + 1,      # 3 lines per receipt
+            word_id=(i % 2) + 1,      # 2 words per line
+            label="ITEM" if i % 2 == 0 else "PRICE",
+            reasoning=f"Label {i}",
+            timestamp_added="2024-03-20T12:00:00+00:00",
+        )
+        labels.append(label)
+        client.add_receipt_word_label(label)
+    
+    # Test pagination with limit
+    page1, last_key1 = client.list_receipt_word_labels_for_image(image_id, limit=10)
+    assert len(page1) == 10
+    assert last_key1 is not None
+    
+    # Get second page
+    page2, last_key2 = client.list_receipt_word_labels_for_image(
+        image_id, limit=10, last_evaluated_key=last_key1
+    )
+    assert len(page2) == 10
+    assert last_key2 is not None
+    
+    # Get remaining items
+    page3, last_key3 = client.list_receipt_word_labels_for_image(
+        image_id, limit=10, last_evaluated_key=last_key2
+    )
+    assert len(page3) == 10
+    assert last_key3 is None  # No more items
+    
+    # Verify all items retrieved
+    all_retrieved = page1 + page2 + page3
+    assert len(all_retrieved) == 30
+    assert all(l.image_id == image_id for l in all_retrieved)
 
 
 @pytest.mark.integration
