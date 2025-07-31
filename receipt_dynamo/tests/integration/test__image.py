@@ -296,7 +296,8 @@ def test_add_image_client_errors(
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", UPDATE_ERROR_SCENARIOS
 )
-def test_update_images_client_errors(  # pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
+def test_update_images_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     mocker: MockerFixture,
@@ -331,7 +332,8 @@ def test_update_images_client_errors(  # pylint: disable=too-many-positional-arg
 @pytest.mark.parametrize(
     "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
-def test_delete_image_client_errors(  # pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
+def test_delete_image_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     unique_image_id: str,
     mocker: MockerFixture,
@@ -659,7 +661,8 @@ def test_list_images_by_type_with_pagination(
 
 
 @pytest.mark.integration
-def test_get_image_details_complete(  # pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-arguments
+def test_get_image_details_complete(
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
     sample_line: Line,
