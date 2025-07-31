@@ -37,17 +37,17 @@ class _ReceiptLetter(
 
     Methods
     -------
-    add_receipt_letter(letter: ReceiptLetter):
+    add_receipt_letter(receipt_letter: ReceiptLetter):
         Adds a ReceiptLetter to DynamoDB.
-    add_receipt_letters(letters: list[ReceiptLetter]):
+    add_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Adds multiple ReceiptLetters to DynamoDB in batches.
-    update_receipt_letter(letter: ReceiptLetter):
+    update_receipt_letter(receipt_letter: ReceiptLetter):
         Updates an existing ReceiptLetter in the database.
-    update_receipt_letters(letters: list[ReceiptLetter]):
+    update_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Updates multiple ReceiptLetters in the database.
-    delete_receipt_letter(letter: ReceiptLetter):
+    delete_receipt_letter(receipt_id, image_id, line_id, word_id, letter_id):
         Deletes a single ReceiptLetter by IDs.
-    delete_receipt_letters(letters: list[ReceiptLetter]):
+    delete_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Deletes multiple ReceiptLetters in batch.
     get_receipt_letter(...) -> ReceiptLetter:
         Retrieves a single ReceiptLetter by IDs.
@@ -58,106 +58,106 @@ class _ReceiptLetter(
     """
 
     @handle_dynamodb_errors("add_receipt_letter")
-    def add_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def add_receipt_letter(self, receipt_letter: ReceiptLetter) -> None:
         """
         Adds a ReceiptLetter to DynamoDB.
 
         Parameters
         ----------
-        letter : ReceiptLetter
+        receipt_letter : ReceiptLetter
             The ReceiptLetter to add.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or already exists.
+            If the receipt_letter is invalid or already exists.
         """
-        if letter is None:
-            raise EntityValidationError("letter cannot be None")
-        if not isinstance(letter, ReceiptLetter):
+        if receipt_letter is None:
+            raise EntityValidationError("receipt_letter cannot be None")
+        if not isinstance(receipt_letter, ReceiptLetter):
             raise EntityValidationError(
-                "letter must be an instance of ReceiptLetter"
+                "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._add_entity(letter)
+        self._add_entity(receipt_letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
-    def add_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def add_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Adds multiple ReceiptLetters to DynamoDB in batches.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to add.
 
         Raises
         ------
         ValueError
-            If the letters are invalid.
+            If the receipt_letters are invalid.
         """
-        if letters is None:
-            raise EntityValidationError("letters cannot be None")
-        if not isinstance(letters, list):
-            raise EntityValidationError("letters must be a list")
-        for i, letter in enumerate(letters):
-            if not isinstance(letter, ReceiptLetter):
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
                 )
-        if not letters:  # Empty list check
+        if not receipt_letters:  # Empty list check
             raise OperationError("Parameter validation failed")
-        self._add_entities(letters, ReceiptLetter, "letters")
+        self._add_entities(receipt_letters, ReceiptLetter, "receipt_letters")
 
     @handle_dynamodb_errors("update_receipt_letter")
-    def update_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def update_receipt_letter(self, receipt_letter: ReceiptLetter) -> None:
         """
         Updates an existing ReceiptLetter in the database.
 
         Parameters
         ----------
-        letter : ReceiptLetter
+        receipt_letter : ReceiptLetter
             The ReceiptLetter to update.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or does not exist.
+            If the receipt_letter is invalid or does not exist.
         """
-        if letter is None:
-            raise EntityValidationError("letter cannot be None")
-        if not isinstance(letter, ReceiptLetter):
+        if receipt_letter is None:
+            raise EntityValidationError("receipt_letter cannot be None")
+        if not isinstance(receipt_letter, ReceiptLetter):
             raise EntityValidationError(
-                "letter must be an instance of ReceiptLetter"
+                "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._update_entity(letter)
+        self._update_entity(receipt_letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
-    def update_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def update_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Updates multiple ReceiptLetters in the database.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to update.
 
         Raises
         ------
         ValueError
-            If the letters are invalid or do not exist.
+            If the receipt_letters are invalid or do not exist.
         """
-        if letters is None:
-            raise EntityValidationError("letters cannot be None")
-        if not isinstance(letters, list):
-            raise EntityValidationError("letters must be a list")
-        for i, letter in enumerate(letters):
-            if not isinstance(letter, ReceiptLetter):
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
                 )
-        self._update_entities(letters, ReceiptLetter, "letters")
+        self._update_entities(receipt_letters, ReceiptLetter, "receipt_letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
@@ -218,31 +218,31 @@ class _ReceiptLetter(
         )
 
     @handle_dynamodb_errors("delete_receipt_letters")
-    def delete_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def delete_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Deletes multiple ReceiptLetters in batch.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to delete.
 
         Raises
         ------
         ValueError
-            If the letters are invalid.
+            If the receipt_letters are invalid.
         """
-        if letters is None:
-            raise EntityValidationError("letters cannot be None")
-        if not isinstance(letters, list):
-            raise EntityValidationError("letters must be a list")
-        for i, letter in enumerate(letters):
-            if not isinstance(letter, ReceiptLetter):
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
                 )
-        self._delete_entities(letters)
+        self._delete_entities(receipt_letters)
 
     @handle_dynamodb_errors("get_receipt_letter")
     def get_receipt_letter(

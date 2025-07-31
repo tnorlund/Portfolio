@@ -55,17 +55,17 @@ class _ReceiptSection(
 
     Methods
     -------
-    add_receipt_section(section: ReceiptSection):
+    add_receipt_section(receipt_section: ReceiptSection):
         Adds a single ReceiptSection.
-    add_receipt_sections(sections: list[ReceiptSection]):
+    add_receipt_sections(receipt_sections: list[ReceiptSection]):
         Adds multiple ReceiptSections.
-    update_receipt_section(section: ReceiptSection):
+    update_receipt_section(receipt_section: ReceiptSection):
         Updates a ReceiptSection.
-    update_receipt_sections(sections: list[ReceiptSection]):
+    update_receipt_sections(receipt_sections: list[ReceiptSection]):
         Updates multiple ReceiptSections.
     delete_receipt_section(receipt_id: int, image_id: str, section_type: str):
         Deletes a single ReceiptSection by IDs.
-    delete_receipt_sections(sections: list[ReceiptSection]):
+    delete_receipt_sections(receipt_sections: list[ReceiptSection]):
         Deletes multiple ReceiptSections.
     get_receipt_section(receipt_id: int, image_id: str, section_type: str)
         -> ReceiptSection:
@@ -78,80 +78,80 @@ class _ReceiptSection(
     """
 
     @handle_dynamodb_errors("add_receipt_section")
-    def add_receipt_section(self, section: ReceiptSection) -> None:
+    def add_receipt_section(self, receipt_section: ReceiptSection) -> None:
         """
         Adds a single ReceiptSection to DynamoDB.
 
         Parameters
         ----------
-        section : ReceiptSection
+        receipt_section : ReceiptSection
             The ReceiptSection to add.
 
         Raises
         ------
         ValueError
-            If the section already exists.
+            If the receipt_section already exists.
         """
-        self._validate_entity(section, ReceiptSection, "section")
-        self._add_entity(section)
+        self._validate_entity(receipt_section, ReceiptSection, "receipt_section")
+        self._add_entity(receipt_section)
 
     @handle_dynamodb_errors("add_receipt_sections")
-    def add_receipt_sections(self, sections: list[ReceiptSection]) -> None:
+    def add_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Adds multiple ReceiptSections to DynamoDB in batches.
 
         Parameters
         ----------
-        sections : list[ReceiptSection]
+        receipt_sections : list[ReceiptSection]
             The ReceiptSections to add.
 
         Raises
         ------
         ValueError
-            If sections is invalid.
+            If receipt_sections is invalid.
         """
-        self._validate_entity_list(sections, ReceiptSection, "sections")
+        self._validate_entity_list(receipt_sections, ReceiptSection, "receipt_sections")
 
         request_items = [
             WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=s.to_item()))
-            for s in sections
+            for s in receipt_sections
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_section")
-    def update_receipt_section(self, section: ReceiptSection) -> None:
+    def update_receipt_section(self, receipt_section: ReceiptSection) -> None:
         """
         Updates an existing ReceiptSection in DynamoDB.
 
         Parameters
         ----------
-        section : ReceiptSection
+        receipt_section : ReceiptSection
             The ReceiptSection to update.
 
         Raises
         ------
         ValueError
-            If the section does not exist.
+            If the receipt_section does not exist.
         """
-        self._validate_entity(section, ReceiptSection, "section")
-        self._update_entity(section)
+        self._validate_entity(receipt_section, ReceiptSection, "receipt_section")
+        self._update_entity(receipt_section)
 
     @handle_dynamodb_errors("update_receipt_sections")
-    def update_receipt_sections(self, sections: list[ReceiptSection]) -> None:
+    def update_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Updates multiple existing ReceiptSections in DynamoDB.
 
         Parameters
         ----------
-        sections : list[ReceiptSection]
+        receipt_sections : list[ReceiptSection]
             The ReceiptSections to update.
 
         Raises
         ------
         ValueError
-            If sections is invalid or if any section does not exist.
+            If receipt_sections is invalid or if any receipt_section does not exist.
         """
-        self._update_entities(sections, ReceiptSection, "sections")
+        self._update_entities(receipt_sections, ReceiptSection, "receipt_sections")
 
     @handle_dynamodb_errors("delete_receipt_section")
     def delete_receipt_section(
@@ -199,25 +199,25 @@ class _ReceiptSection(
             raise
 
     @handle_dynamodb_errors("delete_receipt_sections")
-    def delete_receipt_sections(self, sections: list[ReceiptSection]) -> None:
+    def delete_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Deletes multiple ReceiptSections in batch.
 
         Parameters
         ----------
-        sections : list[ReceiptSection]
+        receipt_sections : list[ReceiptSection]
             The ReceiptSections to delete.
 
         Raises
         ------
         ValueError
-            If unable to delete sections.
+            If unable to delete receipt_sections.
         """
-        self._validate_entity_list(sections, ReceiptSection, "sections")
+        self._validate_entity_list(receipt_sections, ReceiptSection, "receipt_sections")
 
         try:
-            for i in range(0, len(sections), CHUNK_SIZE):
-                chunk = sections[i : i + CHUNK_SIZE]
+            for i in range(0, len(receipt_sections), CHUNK_SIZE):
+                chunk = receipt_sections[i : i + CHUNK_SIZE]
                 request_items = [
                     WriteRequestTypeDef(
                         DeleteRequest=DeleteRequestTypeDef(Key=s.key)

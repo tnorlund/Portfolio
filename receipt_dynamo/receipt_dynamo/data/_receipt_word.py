@@ -37,20 +37,15 @@ class _ReceiptWord(
 
     Methods
     -------
-    add_receipt_word(word: ReceiptWord)
+    add_receipt_word(receipt_word: ReceiptWord)
         Adds a single ReceiptWord.
-    add_receipt_words(words: list[ReceiptWord])
+    add_receipt_words(receipt_words: list[ReceiptWord])
         Adds multiple ReceiptWords.
-    update_receipt_word(word: ReceiptWord)
+    update_receipt_word(receipt_word: ReceiptWord)
         Updates a ReceiptWord.
-    delete_receipt_word(
-        receipt_id: int,
-        image_id: str,
-        line_id: int,
-        word_id: int,
-    )
-        Deletes a single ReceiptWord by IDs.
-    delete_receipt_words(words: list[ReceiptWord])
+    delete_receipt_word(receipt_word: ReceiptWord)
+        Deletes a single ReceiptWord.
+    delete_receipt_words(receipt_words: list[ReceiptWord])
         Deletes multiple ReceiptWords.
     delete_receipt_words_from_line(
         receipt_id: int,
@@ -85,82 +80,82 @@ class _ReceiptWord(
     """
 
     @handle_dynamodb_errors("add_receipt_word")
-    def add_receipt_word(self, word: ReceiptWord) -> None:
+    def add_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Adds a single ReceiptWord to DynamoDB."""
-        if word is None:
-            raise EntityValidationError("word cannot be None")
-        if not isinstance(word, ReceiptWord):
+        if receipt_word is None:
+            raise EntityValidationError("receipt_word cannot be None")
+        if not isinstance(receipt_word, ReceiptWord):
             raise EntityValidationError(
-                "word must be an instance of ReceiptWord"
+                "receipt_word must be an instance of ReceiptWord"
             )
-        self._add_entity(word)
+        self._add_entity(receipt_word)
 
     @handle_dynamodb_errors("add_receipt_words")
-    def add_receipt_words(self, words: list[ReceiptWord]) -> None:
+    def add_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
         """Adds multiple ReceiptWords to DynamoDB."""
-        if words is None:
-            raise EntityValidationError("words cannot be None")
-        if not isinstance(words, list):
-            raise EntityValidationError("words must be a list")
-        for i, word in enumerate(words):
-            if not isinstance(word, ReceiptWord):
+        if receipt_words is None:
+            raise EntityValidationError("receipt_words cannot be None")
+        if not isinstance(receipt_words, list):
+            raise EntityValidationError("receipt_words must be a list")
+        for i, receipt_word in enumerate(receipt_words):
+            if not isinstance(receipt_word, ReceiptWord):
                 raise EntityValidationError(
-                    f"words[{i}] must be an instance of ReceiptWord, "
-                    f"got {type(word).__name__}"
+                    f"receipt_words[{i}] must be an instance of ReceiptWord, "
+                    f"got {type(receipt_word).__name__}"
                 )
-        self._add_entities(words, ReceiptWord, "words")
+        self._add_entities(receipt_words, ReceiptWord, "receipt_words")
 
     @handle_dynamodb_errors("update_receipt_word")
-    def update_receipt_word(self, word: ReceiptWord) -> None:
+    def update_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Updates an existing ReceiptWord in DynamoDB."""
-        if word is None:
-            raise EntityValidationError("word cannot be None")
-        if not isinstance(word, ReceiptWord):
+        if receipt_word is None:
+            raise EntityValidationError("receipt_word cannot be None")
+        if not isinstance(receipt_word, ReceiptWord):
             raise EntityValidationError(
-                "word must be an instance of ReceiptWord"
+                "receipt_word must be an instance of ReceiptWord"
             )
-        self._update_entity(word)
+        self._update_entity(receipt_word)
 
     @handle_dynamodb_errors("update_receipt_words")
-    def update_receipt_words(self, words: list[ReceiptWord]) -> None:
+    def update_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
         """Updates multiple existing ReceiptWords in DynamoDB."""
-        if words is None:
-            raise EntityValidationError("words cannot be None")
-        if not isinstance(words, list):
-            raise EntityValidationError("words must be a list")
-        for i, word in enumerate(words):
-            if not isinstance(word, ReceiptWord):
+        if receipt_words is None:
+            raise EntityValidationError("receipt_words cannot be None")
+        if not isinstance(receipt_words, list):
+            raise EntityValidationError("receipt_words must be a list")
+        for i, receipt_word in enumerate(receipt_words):
+            if not isinstance(receipt_word, ReceiptWord):
                 raise EntityValidationError(
-                    f"words[{i}] must be an instance of ReceiptWord, "
-                    f"got {type(word).__name__}"
+                    f"receipt_words[{i}] must be an instance of ReceiptWord, "
+                    f"got {type(receipt_word).__name__}"
                 )
-        self._update_entities(words, ReceiptWord, "words")
+        self._update_entities(receipt_words, ReceiptWord, "receipt_words")
 
     @handle_dynamodb_errors("delete_receipt_word")
-    def delete_receipt_word(self, word: ReceiptWord) -> None:
+    def delete_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Deletes a single ReceiptWord by IDs."""
-        if word is None:
-            raise EntityValidationError("word cannot be None")
-        if not isinstance(word, ReceiptWord):
+        if receipt_word is None:
+            raise EntityValidationError("receipt_word cannot be None")
+        if not isinstance(receipt_word, ReceiptWord):
             raise EntityValidationError(
-                "word must be an instance of ReceiptWord"
+                "receipt_word must be an instance of ReceiptWord"
             )
-        self._delete_entity(word)
+        self._delete_entity(receipt_word)
 
     @handle_dynamodb_errors("delete_receipt_words")
-    def delete_receipt_words(self, words: list[ReceiptWord]) -> None:
+    def delete_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
         """Deletes multiple ReceiptWords in batch."""
-        if words is None:
-            raise EntityValidationError("words cannot be None")
-        if not isinstance(words, list):
-            raise EntityValidationError("words must be a list")
-        for i, word in enumerate(words):
-            if not isinstance(word, ReceiptWord):
+        if receipt_words is None:
+            raise EntityValidationError("receipt_words cannot be None")
+        if not isinstance(receipt_words, list):
+            raise EntityValidationError("receipt_words must be a list")
+        for i, receipt_word in enumerate(receipt_words):
+            if not isinstance(receipt_word, ReceiptWord):
                 raise EntityValidationError(
-                    f"words[{i}] must be an instance of ReceiptWord, "
-                    f"got {type(word).__name__}"
+                    f"receipt_words[{i}] must be an instance of ReceiptWord, "
+                    f"got {type(receipt_word).__name__}"
                 )
-        self._delete_entities(words)
+        self._delete_entities(receipt_words)
 
     @handle_dynamodb_errors("delete_receipt_words_from_line")
     def delete_receipt_words_from_line(
@@ -171,10 +166,10 @@ class _ReceiptWord(
     ):
         """Deletes all ReceiptWords from a given line within a
         receipt/image."""
-        words = self.list_receipt_words_from_line(
+        receipt_words = self.list_receipt_words_from_line(
             receipt_id, image_id, line_id
         )
-        self.delete_receipt_words(words)
+        self.delete_receipt_words(receipt_words)
 
     @handle_dynamodb_errors("get_receipt_word")
     def get_receipt_word(
