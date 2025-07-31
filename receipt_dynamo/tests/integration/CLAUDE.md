@@ -57,6 +57,7 @@ from receipt_dynamo.entities.[entity_module] import [Entity]
 ### 1. Basic CRUD Operations
 
 #### Add Entity Success
+
 ```python
 def test_add_entity_success(
     self,
@@ -71,6 +72,7 @@ def test_add_entity_success(
 ```
 
 #### Add Duplicate Entity
+
 ```python
 def test_add_duplicate_entity_raises_error(
     self,
@@ -90,6 +92,7 @@ def test_add_duplicate_entity_raises_error(
 ```
 
 #### Get Entity Not Found
+
 ```python
 def test_get_entity_not_found_returns_none(
     self, dynamodb_table: Literal["MyMockedTable"]
@@ -101,6 +104,7 @@ def test_get_entity_not_found_returns_none(
 ```
 
 #### Update Entity Not Found
+
 ```python
 def test_update_entity_not_found_raises_error(
     self,
@@ -116,6 +120,7 @@ def test_update_entity_not_found_raises_error(
 ### 2. Batch Operations
 
 #### Successful Batch Add
+
 ```python
 def test_add_entities_success(
     self,
@@ -125,13 +130,14 @@ def test_add_entities_success(
     """Test successful batch addition of entities."""
     client = DynamoClient(dynamodb_table)
     client.add_entities(example_entities)
-    
+
     for entity in example_entities:
         result = client.get_entity(entity.id)
         assert result == entity
 ```
 
 #### Large Batch Operations
+
 ```python
 def test_add_large_batch_entities_success(
     self, dynamodb_table: Literal["MyMockedTable"]
@@ -145,9 +151,9 @@ def test_add_large_batch_entities_success(
         )
         for i in range(100)
     ]
-    
+
     client.add_entities(large_batch)
-    
+
     # Verify a sample of the added entities
     for i in [0, 25, 50, 75, 99]:
         result = client.get_entity(f"ENTITY_{i:03d}")
@@ -157,6 +163,7 @@ def test_add_large_batch_entities_success(
 ### 3. Validation Tests
 
 #### None Parameter Validation
+
 ```python
 def test_add_entity_none_raises_error(
     self, dynamodb_table: Literal["MyMockedTable"]
@@ -170,6 +177,7 @@ def test_add_entity_none_raises_error(
 ```
 
 #### Wrong Type Validation
+
 ```python
 def test_add_entity_wrong_type_raises_error(
     self, dynamodb_table: Literal["MyMockedTable"]
@@ -205,7 +213,7 @@ Use parametrized tests for comprehensive error coverage:
 )
 class TestEntityErrorHandling:
     """Test error handling for Entity operations."""
-    
+
     def test_add_entity_dynamodb_error(
         self,
         dynamodb_table: Literal["MyMockedTable"],
@@ -228,6 +236,7 @@ class TestEntityErrorHandling:
 ### 5. List/Query Operations
 
 #### Basic List with Pagination
+
 ```python
 def test_list_entities_pagination(
     self,
@@ -237,19 +246,19 @@ def test_list_entities_pagination(
     """Test pagination through entities."""
     client = DynamoClient(dynamodb_table)
     client.add_entities(example_entities)
-    
+
     # Get first page
     first_results, first_key = client.list_entities(limit=2)
     assert len(first_results) == 2
     assert first_key is not None
-    
+
     # Get second page
     second_results, second_key = client.list_entities(
         limit=2, last_evaluated_key=first_key
     )
     assert len(second_results) == 1
     assert second_key is None
-    
+
     # Verify no overlap
     first_ids = {entity.id for entity in first_results}
     second_ids = {entity.id for entity in second_results}
@@ -259,6 +268,7 @@ def test_list_entities_pagination(
 ## Fixture Guidelines
 
 ### Basic Entity Fixture
+
 ```python
 @pytest.fixture
 def example_entity() -> Entity:
@@ -272,6 +282,7 @@ def example_entity() -> Entity:
 ```
 
 ### Entity with TTL
+
 ```python
 @pytest.fixture
 def example_entity_with_ttl() -> Entity:
@@ -285,6 +296,7 @@ def example_entity_with_ttl() -> Entity:
 ```
 
 ### List of Entities
+
 ```python
 @pytest.fixture
 def example_entities() -> List[Entity]:
@@ -300,25 +312,31 @@ def example_entities() -> List[Entity]:
 ## Common Pitfalls to Avoid
 
 ### 1. Wrong Exception Types
+
 ❌ **WRONG**:
+
 ```python
 with pytest.raises(ValueError, match="Exists"):
     client.add_batch_summary(sample_batch_summary)
 ```
 
 ✅ **CORRECT**:
+
 ```python
 with pytest.raises(EntityAlreadyExistsError, match="already exists"):
     client.add_batch_summary(sample_batch_summary)
 ```
 
 ### 2. Missing Type Annotations
+
 ❌ **WRONG**:
+
 ```python
 def test_add_entity(dynamodb_table, example_entity):
 ```
 
 ✅ **CORRECT**:
+
 ```python
 def test_add_entity(
     self,
@@ -328,32 +346,40 @@ def test_add_entity(
 ```
 
 ### 3. Incorrect Error Messages
+
 ❌ **WRONG**:
+
 ```python
 with pytest.raises(EntityValidationError, match="item must be a list of LabelCountCache objects.f"):
 ```
 
 ✅ **CORRECT**:
+
 ```python
 with pytest.raises(EntityValidationError, match="items must be a list of LabelCountCache objects"):
 ```
 
 ### 4. Not Testing Edge Cases
+
 Always include tests for:
+
 - Unicode characters in text fields
-- Special characters (@#$%_)
+- Special characters (@#$%\_)
 - Zero/maximum values for numeric fields
 - Empty lists for batch operations
 
 ## Parallel Work Instructions
 
 ### 1. Claiming a Test File
+
 Before starting work on a test file:
+
 1. Check recent commits to avoid conflicts
 2. Create a branch: `fix/test__[entity_name]`
 3. Update this section with your progress
 
 ### 2. Testing Locally
+
 ```bash
 # Run specific test file
 cd receipt_dynamo
@@ -367,6 +393,7 @@ pytest tests/integration/test__entity.py::test_add_entity_success -v
 ```
 
 ### 3. Commit Message Format
+
 ```
 fix: update test__[entity].py to use correct exception types
 
@@ -380,42 +407,41 @@ fix: update test__[entity].py to use correct exception types
 
 Track which files have been updated to avoid duplicate work:
 
-| File | Status | Notes |
-|------|--------|-------|
-| test__label_count_cache.py | ✅ Complete | Perfect test patterns |
-| test__receipt.py | ✅ Complete | Parameterized |
-| test__image.py | ✅ Complete | Perfect test patterns |
-| test__word.py | ✅ Complete | Perfect test patterns |
-| test__letter.py | ✅ Complete | Perfect test patterns |
-| test__line.py | ✅ Complete | Updated to match test__receipt_line.py patterns |
-| test__receipt_line.py | ✅ Complete | Comprehensive parameterized tests |
-| test__receipt_word.py | ✅ Complete | Following perfect test patterns |
-| test__receipt_letter.py | ✅ Complete | Fixed all validation patterns, 4 tests fail due to design choice |
-| test__batch_summary.py | ❌ Needs update | Wrong exception types |
-| test__cluster.py.skip | ⏭️ Skipped | - |
-| test__export_and_import.py | ❓ Unknown | - |
-| test__instance.py | ❓ Unknown | - |
-| test__job.py | ❓ Unknown | - |
-| test__job_checkpoint.py | ❓ Unknown | - |
-| test__job_dependency.py | ❓ Unknown | - |
-| test__job_log.py | ❓ Unknown | - |
-| test__job_metric.py | ❓ Unknown | - |
-| test__job_resource.py | ❓ Unknown | - |
-| test__ocr_job.py | ❓ Unknown | - |
-| test__places_cache.py | ❓ Unknown | - |
-| test__pulumi.py | ❓ Unknown | - |
-| test__queue.py | ❓ Unknown | - |
-| test__receipt_chatgpt_validation.py | ❓ Unknown | - |
-| test__receipt_field.py | ❓ Unknown | - |
-| test__receipt_label_analysis.py | ❓ Unknown | - |
-| test__receipt_line_item_analysis.py | ❓ Unknown | - |
-| test__receipt_section.py | ❓ Unknown | - |
-| test__receipt_structure_analysis.py | ❓ Unknown | - |
-| test__receipt_validation_category.py | ❓ Unknown | - |
-| test__receipt_validation_result.py | ❓ Unknown | - |
-| test__receipt_validation_summary.py | ❓ Unknown | - |
-| test__receipt_word_label.py | ❓ Unknown | - |
-| test_dynamo_client.py | ❓ Unknown | - |
+| File                                   | Status          | Notes                                                            |
+| -------------------------------------- | --------------- | ---------------------------------------------------------------- |
+| test\_\_label_count_cache.py           | ✅ Complete     | Perfect test patterns                                            |
+| test\_\_receipt.py                     | ✅ Complete     | Parameterized                                                    |
+| test\_\_image.py                       | ✅ Complete     | Perfect test patterns                                            |
+| test\_\_word.py                        | ✅ Complete     | Perfect test patterns                                            |
+| test\_\_letter.py                      | ✅ Complete     | Perfect test patterns                                            |
+| test\_\_line.py                        | ✅ Complete     | Updated to match test\_\_receipt_line.py patterns                |
+| test\_\_receipt_line.py                | ✅ Complete     | Comprehensive parameterized tests                                |
+| test\_\_receipt_word.py                | ✅ Complete     | Following perfect test patterns                                  |
+| test\_\_receipt_letter.py              | ✅ Complete     | Fixed all validation patterns, 4 tests fail due to design choice |
+| test\_\_pulumi.py                      | ✅ Complete     | -                                                                |
+| test\_\_export_and_import.py           | ✅ Complete     | -                                                                |
+| test_dynamo_client.py                  | ✅ Complete     | -                                                                |
+| test\_\_batch_summary.py               | ❌ Needs update | Wrong exception types                                            |
+| test\_\_instance.py                    | ❓ Unknown      | -                                                                |
+| test\_\_job.py                         | ❓ Unknown      | -                                                                |
+| test\_\_job_checkpoint.py              | ❓ Unknown      | -                                                                |
+| test\_\_job_dependency.py              | ❓ Unknown      | -                                                                |
+| test\_\_job_log.py                     | ❓ Unknown      | -                                                                |
+| test\_\_job_metric.py                  | ❓ Unknown      | -                                                                |
+| test\_\_job_resource.py                | ❓ Unknown      | -                                                                |
+| test\_\_ocr_job.py                     | ❓ Unknown      | -                                                                |
+| test\_\_places_cache.py                | ❓ Unknown      | -                                                                |
+| test\_\_queue.py                       | ❓ Unknown      | -                                                                |
+| test\_\_receipt_chatgpt_validation.py  | ❓ Unknown      | -                                                                |
+| test\_\_receipt_field.py               | ❓ Unknown      | -                                                                |
+| test\_\_receipt_label_analysis.py      | ❓ Unknown      | -                                                                |
+| test\_\_receipt_line_item_analysis.py  | ❓ Unknown      | -                                                                |
+| test\_\_receipt_section.py             | ❓ Unknown      | -                                                                |
+| test\_\_receipt_structure_analysis.py  | ❓ Unknown      | -                                                                |
+| test\_\_receipt_validation_category.py | ❓ Unknown      | -                                                                |
+| test\_\_receipt_validation_result.py   | ❓ Unknown      | -                                                                |
+| test\_\_receipt_validation_summary.py  | ❓ Unknown      | -                                                                |
+| test\_\_receipt_word_label.py          | ✅ Complete     | -                                                                |
 
 ## References
 
