@@ -53,7 +53,7 @@ def _another_receipt_word_label() -> ReceiptWordLabel:
     """Provides a second valid ReceiptWordLabel for testing."""
     return ReceiptWordLabel(
         receipt_id=2,
-        image_id="4a63915c-22f5-5f11-a3d9-c684eb4b9ef4",
+        image_id="4a63915c-22f5-4f11-a3d9-c684eb4b9ef4",
         line_id=20,
         word_id=10,
         label="PRICE",
@@ -121,7 +121,7 @@ UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "Cannot update receipt_word_labels: one or more receipt_word_labels not found",
+        "Cannot update receiptwordlabels: one or more receiptwordlabels not found",
     ),
 ] + ERROR_SCENARIOS
 
@@ -466,16 +466,24 @@ def test_update_receipt_word_labels_batch(
     # Update both with new reasoning
     updated_labels = [
         ReceiptWordLabel(
-            **{
-                **sample_receipt_word_label.to_dict(),
-                "reasoning": "Batch updated reasoning 1",
-            }
+            receipt_id=sample_receipt_word_label.receipt_id,
+            image_id=sample_receipt_word_label.image_id,
+            line_id=sample_receipt_word_label.line_id,
+            word_id=sample_receipt_word_label.word_id,
+            label=sample_receipt_word_label.label,
+            reasoning="Batch updated reasoning 1",
+            timestamp_added=sample_receipt_word_label.timestamp_added,
+            validation_status=sample_receipt_word_label.validation_status,
         ),
         ReceiptWordLabel(
-            **{
-                **another_receipt_word_label.to_dict(),
-                "reasoning": "Batch updated reasoning 2",
-            }
+            receipt_id=another_receipt_word_label.receipt_id,
+            image_id=another_receipt_word_label.image_id,
+            line_id=another_receipt_word_label.line_id,
+            word_id=another_receipt_word_label.word_id,
+            label=another_receipt_word_label.label,
+            reasoning="Batch updated reasoning 2",
+            timestamp_added=another_receipt_word_label.timestamp_added,
+            validation_status=another_receipt_word_label.validation_status,
         ),
     ]
     
@@ -637,7 +645,7 @@ def test_list_receipt_word_labels_success(
         client.add_receipt_word_label(label)
     
     # List them
-    retrieved = client.list_receipt_word_labels(limit=10)
+    retrieved, _ = client.list_receipt_word_labels(limit=10)
     
     assert len(retrieved) >= 6  # May have more from other tests
 
@@ -740,14 +748,18 @@ def test_list_receipt_word_labels_with_validation_status(
         client.add_receipt_word_label(invalid_label)
     
     # List labels with specific validation status
-    valid_only = client.list_receipt_word_labels_with_status(
-        image_id, ValidationStatus.VALID
+    valid_only, _ = client.list_receipt_word_labels_with_status(
+        ValidationStatus.VALID
     )
-    invalid_only = client.list_receipt_word_labels_with_status(
-        image_id, ValidationStatus.INVALID
+    invalid_only, _ = client.list_receipt_word_labels_with_status(
+        ValidationStatus.INVALID
     )
     
-    assert len(valid_only) == 3
-    assert len(invalid_only) == 3
-    assert all(l.validation_status == ValidationStatus.VALID for l in valid_only)
-    assert all(l.validation_status == ValidationStatus.INVALID for l in invalid_only)
+    # Filter by image_id since list_receipt_word_labels_with_status returns all labels
+    valid_for_image = [l for l in valid_only if l.image_id == image_id]
+    invalid_for_image = [l for l in invalid_only if l.image_id == image_id]
+    
+    assert len(valid_for_image) == 3
+    assert len(invalid_for_image) == 3
+    assert all(l.validation_status == ValidationStatus.VALID for l in valid_for_image)
+    assert all(l.validation_status == ValidationStatus.INVALID for l in invalid_for_image)
