@@ -421,8 +421,8 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_pulumi.py                      | ✅ Complete     | -                                                                |
 | test\_\_export_and_import.py           | ✅ Complete     | -                                                                |
 | test_dynamo_client.py                  | ✅ Complete     | -                                                                |
-| test\_\_receipt_word_label.py          | ✅ Complete     | -                                                                |
-| test\_\_batch_summary.py               | ❌ Needs update | Wrong exception types                                            |
+| test\_\_receipt_word_label.py          | ✅ Complete     | All 52 tests passing                                             |
+| test\_\_batch_summary.py               | ❌ Needs update | Wrong exception types (expects ValueError instead of EntityAlreadyExistsError) |
 | test\_\_instance.py                    | ❓ Unknown      | -                                                                |
 | test\_\_job.py                         | ❓ Unknown      | -                                                                |
 | test\_\_job_checkpoint.py              | ❓ Unknown      | -                                                                |
@@ -430,7 +430,8 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_job_log.py                     | ❓ Unknown      | -                                                                |
 | test\_\_job_metric.py                  | ❓ Unknown      | -                                                                |
 | test\_\_job_resource.py                | ❓ Unknown      | -                                                                |
-| test\_\_ocr_job.py                     | ❓ Unknown      | -                                                                |
+| test\_\_ocr_job.py                     | ✅ Complete     | All 48 tests passing                                             |
+| test\_\_receipt_metadata.py            | ✅ Complete     | All 55 tests passing                                             |
 | test\_\_places_cache.py                | ✅ Complete     | All 19 tests passing - fixed error message patterns and validation |
 | test\_\_queue.py                       | ❓ Unknown      | -                                                                |
 | test\_\_receipt_chatgpt_validation.py  | ❓ Unknown      | -                                                                |
