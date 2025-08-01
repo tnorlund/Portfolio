@@ -71,7 +71,7 @@ def test_addPlacesCache_duplicate_raises(
         (None, "item cannot be None"),
         (
             "not-a-places-cache-item",
-            "item must be an instance of the PlacesCache class.",
+            "item must be an instance of PlacesCache",
         ),
     ],
 )
@@ -106,7 +106,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "ValidationException",
             "Invalid parameters",
-            "One or more parameters given were invalid",
+            "Validation error",
         ),
         (
             "AccessDeniedException",
@@ -116,7 +116,7 @@ def test_addPlacesCache_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add places cache to DynamoDB",
+            "DynamoDB error during add_places_cache",
         ),
     ],
 )
@@ -184,7 +184,7 @@ def test_updatePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="not found during update_places_cache"):
         dynamo.update_places_cache(sample_places_cache)
 
 
@@ -218,7 +218,7 @@ def test_deletePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="not found during delete_places_cache"):
         dynamo.delete_places_cache(sample_places_cache)
 
 

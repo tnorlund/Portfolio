@@ -59,7 +59,12 @@ class _PlacesCache(
                 already exists
             EntityValidationError: If item parameters are invalid
         """
-        self._validate_entity(item, PlacesCache, "item")
+        if item is None:
+            raise EntityValidationError("item cannot be None")
+        if not isinstance(item, PlacesCache):
+            raise EntityValidationError(
+                "item must be an instance of PlacesCache"
+            )
         self._add_entity(item, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("update_places_cache")
@@ -74,7 +79,12 @@ class _PlacesCache(
             EntityNotFoundError: If the item does not exist in the table
             EntityValidationError: If item parameters are invalid
         """
-        self._validate_entity(item, PlacesCache, "item")
+        if item is None:
+            raise EntityValidationError("item cannot be None")
+        if not isinstance(item, PlacesCache):
+            raise EntityValidationError(
+                "item must be an instance of PlacesCache"
+            )
         self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("increment_query_count")
