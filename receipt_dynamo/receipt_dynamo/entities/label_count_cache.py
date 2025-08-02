@@ -118,6 +118,13 @@ def item_to_label_count_cache(
         ttl = int(item["TimeToLive"]["N"])
     elif "time_to_live" in item:
         ttl = int(item["time_to_live"]["N"])
+    
+    # When loading from DynamoDB, expired TTLs should be allowed
+    # DynamoDB doesn't immediately delete expired items
+    # Set expired TTLs to None to avoid validation errors
+    if ttl is not None and ttl < int(time.time()):
+        ttl = None
+    
     return LabelCountCache(
         label=label,
         valid_count=valid_count,
