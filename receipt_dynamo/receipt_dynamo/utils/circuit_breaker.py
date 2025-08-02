@@ -18,8 +18,6 @@ class CircuitBreakerState(Enum):
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and blocking calls."""
 
-    pass
-
 
 T = TypeVar("T")
 

@@ -11,7 +11,15 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
+
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -71,7 +79,7 @@ def test_addReceiptField_duplicate_raises(
     client.add_receipt_field(sample_receipt_field)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_field(sample_receipt_field)
 
 
@@ -79,7 +87,7 @@ def test_addReceiptField_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -130,12 +138,12 @@ def test_addReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_field",
+            "Could not add receipt field to DynamoDB",
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in add_receipt_field",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -246,14 +254,14 @@ def test_addReceiptFields_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -291,8 +299,8 @@ def test_addReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in add_receipt_fields",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -302,7 +310,7 @@ def test_addReceiptFields_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_fields",
+            "Could not add receipt field to DynamoDB",
         ),
     ],
 )
@@ -429,7 +437,7 @@ def test_updateReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.update_receipt_field(sample_receipt_field)
 
 
@@ -437,7 +445,7 @@ def test_updateReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -482,8 +490,8 @@ def test_updateReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in update_receipt_field",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -493,7 +501,7 @@ def test_updateReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in update_receipt_field",
+            "Could not update receipt field in DynamoDB",
         ),
     ],
 )
@@ -614,7 +622,7 @@ def test_updateReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="One or more entities do not exist or conditions failed",
+        match="One or more items do not exist",
     ):
         client.update_receipt_fields(fields)
 
@@ -623,14 +631,14 @@ def test_updateReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -659,8 +667,8 @@ def test_updateReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "Entity does not exist: list",
-            ValueError,
+            "One or more items do not exist",
+            EntityNotFoundError,
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -676,20 +684,20 @@ def test_updateReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in update_receipt_fields",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for update_receipt_fields",
+            "Access denied",
             DynamoDBAccessError,
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in update_receipt_fields",
+            "Could not update receipt field in DynamoDB",
             DynamoDBError,
         ),
     ],
@@ -796,7 +804,7 @@ def test_deleteReceiptField_success(
     client.delete_receipt_field(sample_receipt_field)
 
     # Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
@@ -813,7 +821,7 @@ def test_deleteReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.delete_receipt_field(sample_receipt_field)
 
 
@@ -821,7 +829,7 @@ def test_deleteReceiptField_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptField parameter is required and cannot be None."),
+        (None, "receipt_field cannot be None"),
         (
             "not-a-receipt-field",
             "receiptField must be an instance of the ReceiptField class.",
@@ -866,8 +874,8 @@ def test_deleteReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in delete_receipt_field",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
@@ -877,7 +885,7 @@ def test_deleteReceiptField_invalid_parameters(
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in delete_receipt_field",
+            "Could not delete receipt field from DynamoDB",
         ),
     ],
 )
@@ -956,7 +964,7 @@ def test_deleteReceiptFields_success(
 
     # Assert
     for field in fields:
-        with pytest.raises(ValueError, match="does not exist"):
+        with pytest.raises(EntityNotFoundError, match="does not exist"):
             client.get_receipt_field(
                 field.field_type,
                 field.image_id,
@@ -975,7 +983,7 @@ def test_deleteReceiptFields_nonexistent_raises(
     # Act & Assert
     with pytest.raises(
         ValueError,
-        match="One or more entities do not exist or conditions failed",
+        match="One or more items do not exist",
     ):
         client.delete_receipt_fields([sample_receipt_field])
 
@@ -984,14 +992,14 @@ def test_deleteReceiptFields_nonexistent_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "ReceiptFields parameter is required and cannot be None."),
+        (None, "receipt_fields cannot be None"),
         (
             "not-a-list",
-            "ReceiptFields must be provided as a list.",
+            "receipt_fields must be a list of ReceiptField instances.",
         ),
         (
             [1, 2, 3],
-            "All items in the receiptFields list must be instances of the ReceiptField class.",
+            "All receipt_fields must be instances of the ReceiptField class.",
         ),
     ],
 )
@@ -1020,7 +1028,7 @@ def test_deleteReceiptFields_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "One or more items do not exist",
-            "Entity does not exist: list",
+            "One or more items do not exist",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -1034,18 +1042,18 @@ def test_deleteReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
-            "Validation error in delete_receipt_fields",
+            "One or more parameters given were invalid",
+            "One or more parameters given were invalid",
         ),
         (
             "AccessDeniedException",
             "Access denied",
-            "Access denied for delete_receipt_fields",
+            "Access denied",
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in delete_receipt_fields",
+            "Could not delete receipt field from DynamoDB",
         ),
     ],
 )
@@ -1166,7 +1174,7 @@ def test_getReceiptField_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         client.get_receipt_field(
             sample_receipt_field.field_type,
             sample_receipt_field.image_id,
@@ -1180,15 +1188,15 @@ def test_getReceiptField_nonexistent_raises(
     [
         (
             (None, "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1),
-            "Field type is required and cannot be None.",
+            "field_type cannot be None",
         ),
         (
             ("BUSINESS_NAME", None, 1),
-            "Image ID is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             ("BUSINESS_NAME", "3f52804b-2fad-4e00-92c8-b593da3a8ed3", None),
-            "Receipt ID is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             ("", "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1),
@@ -1234,7 +1242,7 @@ def test_getReceiptField_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "Validation error",
         ),
         (
@@ -1470,7 +1478,7 @@ def test_listReceiptFields_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
         ),
         (
@@ -1796,7 +1804,7 @@ def test_getReceiptFieldsByImage_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),
@@ -2164,7 +2172,7 @@ def test_getReceiptFieldsByReceipt_invalid_parameters(
         ),
         (
             "ValidationException",
-            "One or more parameters were invalid",
+            "One or more parameters given were invalid",
             "One or more parameters given were invalid",
             DynamoDBValidationError,
         ),

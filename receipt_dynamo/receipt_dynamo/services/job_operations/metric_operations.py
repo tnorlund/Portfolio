@@ -1,10 +1,10 @@
 """Job metric operations."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from receipt_dynamo import JobMetric, item_to_job_metric
 from receipt_dynamo.data._job_metric import _JobMetric
+from receipt_dynamo.entities.job_metric import JobMetric
 
 
 class JobMetricOperations(_JobMetric):

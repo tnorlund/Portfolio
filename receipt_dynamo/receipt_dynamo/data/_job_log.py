@@ -3,29 +3,24 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
 
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
 
-
-class _JobLog(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _JobLog(FlattenedStandardMixin):
     """
     Provides methods for accessing job log data in DynamoDB.
 
@@ -58,7 +53,9 @@ class _JobLog(
         self._validate_entity(job_log, JobLog, "job_log")
         self._add_entity(
             job_log,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_job_logs")
@@ -69,59 +66,33 @@ class _JobLog(
             job_logs (List[JobLog]): The job logs to add.
 
         Raises:
-            ValueError: If job_logs is None, not a list, or contains non-JobLog items.
+            ValueError: If job_logs is None, not a list, or contains
+                non-JobLog items.
             ClientError: If a DynamoDB error occurs.
         """
         if job_logs is None:
-            raise ValueError("job_logs cannot be None")
+            raise EntityValidationError("job_logs cannot be None")
         if not isinstance(job_logs, list):
-            raise ValueError(f"job_logs must be a list, got {type(job_logs)}")
+            raise EntityValidationError(
+                f"job_logs must be a list, got {type(job_logs)}"
+            )
         if not all(isinstance(log, JobLog) for log in job_logs):
-            raise ValueError("All items in job_logs must be JobLog instances")
+            raise EntityValidationError(
+                "All items in job_logs must be JobLog instances"
+            )
 
         if not job_logs:
             return  # Nothing to do
 
-        # DynamoDB batch write has a limit of 25 items
-        batch_size = 25
-        for i in range(0, len(job_logs), batch_size):
-            batch = job_logs[i : i + batch_size]
-
-            request_items = {
-                self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=log.to_item())
-                    )
-                    for log in batch
-                ]
-            }
-
-            response = self._client.batch_write_item(
-                RequestItems=request_items
+        # Convert to WriteRequestTypeDef format and use mixin method
+        request_items = [
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=log.to_item())
             )
+            for log in job_logs
+        ]
 
-            # Handle unprocessed items with exponential backoff
-            unprocessed_items = response.get("UnprocessedItems", {})
-            retry_count = 0
-            max_retries = 3
-
-            while unprocessed_items and retry_count < max_retries:
-                retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
-                unprocessed_items = response.get("UnprocessedItems", {})
-
-            if unprocessed_items:
-                raise ClientError(
-                    {
-                        "Error": {
-                            "Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",
-                        }
-                    },
-                    "BatchWriteItem",
-                )
+        self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("get_job_log")
     def get_job_log(self, job_id: str, timestamp: str) -> JobLog:
@@ -135,29 +106,29 @@ class _JobLog(
             JobLog: The job log from the DynamoDB table.
 
         Raises:
-            ValueError: If job_id or timestamp is None, or the job log is not found.
+            ValueError: If job_id or timestamp is None, or the job log is
+                not found.
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
         if timestamp is None:
-            raise ValueError("timestamp cannot be None")
+            raise EntityValidationError("timestamp cannot be None")
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{job_id}"},
-                "SK": {"S": f"LOG#{timestamp}"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{job_id}",
+            sort_key=f"LOG#{timestamp}",
+            entity_class=JobLog,
+            converter_func=item_to_job_log,
         )
 
-        item = response.get("Item")
-        if not item:
-            raise ValueError(
-                f"Job log with job_id {job_id} and timestamp {timestamp} not found"
+        if result is None:
+            raise EntityNotFoundError(
+                f"Job log with job_id {job_id} and timestamp {timestamp} "
+                f"not found"
             )
 
-        return item_to_job_log(item)
+        return result
 
     @handle_dynamodb_errors("list_job_logs")
     def list_job_logs(
@@ -171,48 +142,34 @@ class _JobLog(
         Args:
             job_id (str): The ID of the job.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list of job logs and the last evaluated key.
+            Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list
+                of job logs and the last evaluated key.
 
         Raises:
             ValueError: If job_id is None.
             ClientError: If a DynamoDB error occurs.
         """
         if job_id is None:
-            raise ValueError("job_id cannot be None")
+            raise EntityValidationError("job_id cannot be None")
 
-        # Prepare KeyConditionExpression
-        key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
-        expression_attribute_values = {
-            ":pk": {"S": f"JOB#{job_id}"},
-            ":sk_prefix": {"S": "LOG#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_logs = [
-            item_to_job_log(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_logs, last_evaluated_key
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "PK = :pk AND begins_with(SK, :sk_prefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{job_id}"},
+                ":sk_prefix": {"S": "LOG#"},
+            },
+            converter_func=item_to_job_log,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     @handle_dynamodb_errors("delete_job_log")
     def delete_job_log(self, job_log: JobLog):
@@ -226,27 +183,15 @@ class _JobLog(
             ClientError: If a DynamoDB error occurs.
         """
         if job_log is None:
-            raise ValueError("job_log cannot be None")
+            raise EntityValidationError("job_log cannot be None")
         if not isinstance(job_log, JobLog):
-            raise ValueError(
+            raise EntityValidationError(
                 f"job_log must be a JobLog instance, got {type(job_log)}"
             )
 
-        try:
-            self._client.delete_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"JOB#{job_log.job_id}"},
-                    "SK": {"S": f"LOG#{job_log.timestamp}"},
-                },
-                ConditionExpression="attribute_exists(PK) AND attribute_exists(SK)",
-            )
-        except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
-                raise ValueError(
-                    f"Job log for job {job_log.job_id} with timestamp {job_log.timestamp} not found"
-                )
-            raise
+        self._delete_entity(
+            job_log,
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
+        )

@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class JobLog:
     """
     Represents a log entry for a job stored in DynamoDB.
@@ -22,58 +24,44 @@ class JobLog:
         exception (str, optional): Exception details if applicable.
     """
 
-    def __init__(
-        self,
-        job_id: str,
-        timestamp: datetime,
-        log_level: str,
-        message: str,
-        source: Optional[str] = None,
-        exception: Optional[str] = None,
-    ):
-        """Initializes a new JobLog object for DynamoDB.
+    job_id: str
+    timestamp: str
+    log_level: str
+    message: str
+    source: Optional[str] = None
+    exception: Optional[str] = None
 
-        Args:
-            job_id (str): UUID identifying the job this log belongs to.
-            timestamp (datetime): The timestamp when the log was created.
-            log_level (str): The log level (INFO, WARNING, ERROR, DEBUG).
-            message (str): The log message.
-            source (str, optional): The source of the log. Defaults to None.
-            exception (str, optional): Exception details. Defaults to None.
+    def __post_init__(self):
+        """Validates fields after dataclass initialization.
 
         Raises:
-            ValueError: If any parameter is of invalid type or has invalid value.
+            ValueError: If any parameter is of invalid type or has invalid
+                value.
         """
-        assert_valid_uuid(job_id)
-        self.job_id = job_id
+        assert_valid_uuid(self.job_id)
 
-        self.timestamp: str
-        if isinstance(timestamp, datetime):
-            self.timestamp = timestamp.isoformat()
-        elif isinstance(timestamp, str):
-            self.timestamp = timestamp
-        else:
+        # Handle timestamp conversion
+        if isinstance(self.timestamp, datetime):
+            self.timestamp = self.timestamp.isoformat()
+        elif not isinstance(self.timestamp, str):
             raise ValueError("timestamp must be a datetime object or a string")
 
         valid_log_levels = ["INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL"]
         if (
-            not isinstance(log_level, str)
-            or log_level.upper() not in valid_log_levels
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in valid_log_levels
         ):
             raise ValueError(f"log_level must be one of {valid_log_levels}")
-        self.log_level = log_level.upper()
+        self.log_level = self.log_level.upper()
 
-        if not isinstance(message, str) or not message:
+        if not isinstance(self.message, str) or not self.message:
             raise ValueError("message must be a non-empty string")
-        self.message = message
 
-        if source is not None and not isinstance(source, str):
+        if self.source is not None and not isinstance(self.source, str):
             raise ValueError("source must be a string")
-        self.source = source
 
-        if exception is not None and not isinstance(exception, str):
+        if self.exception is not None and not isinstance(self.exception, str):
             raise ValueError("exception must be a string")
-        self.exception = exception
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -102,7 +90,8 @@ class JobLog:
         """Converts the JobLog object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobLog object as a DynamoDB item.
+            dict: A dictionary representing the JobLog object as a DynamoDB
+                item.
         """
         item = {
             **self.key,
@@ -141,7 +130,8 @@ class JobLog:
         """Returns an iterator over the JobLog object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobLog object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobLog object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "timestamp", self.timestamp
@@ -150,28 +140,6 @@ class JobLog:
         yield "source", self.source
         yield "exception", self.exception
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two JobLog objects are equal.
-
-        Args:
-            other (JobLog): The other JobLog object to compare.
-
-        Returns:
-            bool: True if the JobLog objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of JobLog, False is returned.
-        """
-        if not isinstance(other, JobLog):
-            return False
-        return (
-            self.job_id == other.job_id
-            and self.timestamp == other.timestamp
-            and self.log_level == other.log_level
-            and self.message == other.message
-            and self.source == other.source
-            and self.exception == other.exception
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobLog object.
@@ -214,7 +182,8 @@ def item_to_job_log(item: Dict[str, Any]) -> JobLog:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:
@@ -241,4 +210,4 @@ def item_to_job_log(item: Dict[str, Any]) -> JobLog:
             exception=exception,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobLog: {e}")
+        raise ValueError(f"Error converting item to JobLog: {e}") from e

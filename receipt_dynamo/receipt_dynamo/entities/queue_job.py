@@ -1,14 +1,17 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class QueueJob:
     """
     Represents an association between a queue and a job in DynamoDB.
 
-    This class encapsulates the relationship between a queue and a job, including
+    This class encapsulates the relationship between a queue and a job,
+    including
     attributes such as enqueued timestamp, priority, and position in the queue.
     It is designed to support operations such as generating DynamoDB keys and
     converting queue-job associations to DynamoDB-compatible items.
@@ -17,42 +20,36 @@ class QueueJob:
         queue_name (str): The name of the queue.
         job_id (str): UUID identifying the job.
         enqueued_at (str): The timestamp when the job was added to the queue.
-        priority (str): The priority level of the job in this queue (low, medium, high, critical).
-        position (int): The position of the job in the queue (lower numbers are processed first).
+        priority (str): The priority level of the job in this queue (low,
+            medium, high, critical).
+        position (int): The position of the job in the queue (lower numbers
+            are processed first).
     """
 
-    def __init__(
-        self,
-        queue_name: str,
-        job_id: str,
-        enqueued_at: datetime | str,
-        priority: str = "medium",
-        position: int = 0,
-    ):
-        """Initializes a new QueueJob object for DynamoDB.
+    queue_name: str
+    job_id: str
+    enqueued_at: datetime | str
+    priority: str = "medium"
+    position: int = 0
 
-        Args:
-            queue_name (str): The name of the queue.
-            job_id (str): UUID identifying the job.
-            enqueued_at (datetime or str): The timestamp when the job was added to the queue.
-            priority (str, optional): The priority level of the job. Defaults to "medium".
-            position (int, optional): The position in the queue. Defaults to 0.
+    def __post_init__(self):
+        """Validate and process the dataclass fields after initialization.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
-        if not isinstance(queue_name, str) or not queue_name:
+        if not isinstance(self.queue_name, str) or not self.queue_name:
             raise ValueError("queue_name must be a non-empty string")
-        self.queue_name = queue_name
 
-        assert_valid_uuid(job_id)
-        self.job_id = job_id
+        assert_valid_uuid(self.job_id)
 
-        self.enqueued_at: str
-        if isinstance(enqueued_at, datetime):
-            self.enqueued_at = enqueued_at.isoformat()
-        elif isinstance(enqueued_at, str):
-            self.enqueued_at = enqueued_at
+        # Convert datetime to string if needed
+        if isinstance(self.enqueued_at, datetime):
+            self.enqueued_at = self.enqueued_at.isoformat()
+        elif isinstance(self.enqueued_at, str):
+            # Keep as string
+            pass
         else:
             raise ValueError(
                 "enqueued_at must be a datetime object or a string"
@@ -60,15 +57,14 @@ class QueueJob:
 
         valid_priorities = ["low", "medium", "high", "critical"]
         if (
-            not isinstance(priority, str)
-            or priority.lower() not in valid_priorities
+            not isinstance(self.priority, str)
+            or self.priority.lower() not in valid_priorities
         ):
             raise ValueError(f"priority must be one of {valid_priorities}")
-        self.priority = priority.lower()
+        self.priority = self.priority.lower()
 
-        if not isinstance(position, int) or position < 0:
+        if not isinstance(self.position, int) or self.position < 0:
             raise ValueError("position must be a non-negative integer")
-        self.position: int = position
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -97,7 +93,8 @@ class QueueJob:
         """Converts the QueueJob object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the QueueJob object as a DynamoDB item.
+            dict: A dictionary representing the QueueJob object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -129,7 +126,8 @@ class QueueJob:
         """Returns an iterator over the QueueJob object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over
+                attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
         yield "job_id", self.job_id
@@ -137,24 +135,6 @@ class QueueJob:
         yield "priority", self.priority
         yield "position", self.position
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two QueueJob objects are equal.
-
-        Args:
-            other (QueueJob): The other QueueJob object to compare.
-
-        Returns:
-            bool: True if the QueueJob objects are equal, False otherwise.
-        """
-        if not isinstance(other, QueueJob):
-            return False
-        return (
-            self.queue_name == other.queue_name
-            and self.job_id == other.job_id
-            and self.enqueued_at == other.enqueued_at
-            and self.priority == other.priority
-            and self.position == other.position
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the QueueJob object.
@@ -190,7 +170,8 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:
@@ -213,4 +194,4 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
             position=position,
         )
     except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to QueueJob: {e}")
+        raise ValueError(f"Error converting item to QueueJob: {e}") from e

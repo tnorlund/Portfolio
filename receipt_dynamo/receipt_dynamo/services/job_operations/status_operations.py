@@ -3,14 +3,10 @@
 from datetime import datetime
 from typing import List, Optional
 
-from receipt_dynamo import (
-    JobLog,
-    JobStatus,
-    item_to_job_log,
-    item_to_job_status,
-)
 from receipt_dynamo.data._job_log import _JobLog
 from receipt_dynamo.data._job_status import _JobStatus
+from receipt_dynamo.entities.job_log import JobLog
+from receipt_dynamo.entities.job_status import JobStatus
 
 
 class JobStatusOperations(_JobStatus, _JobLog):

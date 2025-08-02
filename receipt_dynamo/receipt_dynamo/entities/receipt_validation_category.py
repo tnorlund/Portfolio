@@ -1,74 +1,69 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class ReceiptValidationCategory:
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptValidationCategory(SerializationMixin):
     """
     DynamoDB entity representing a specific validation category for a receipt.
     Each category contains its own status, reasoning, and summary of results.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        field_name: str,
-        field_category: str,
-        status: str,
-        reasoning: str,
-        result_summary: Dict[str, int],
-        validation_timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        if not isinstance(receipt_id, int):
+    receipt_id: int
+    image_id: str
+    field_name: str
+    field_category: str
+    status: str
+    reasoning: str
+    result_summary: Dict[str, int]
+    validation_timestamp: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(field_name, str):
+        if not isinstance(self.field_name, str):
             raise ValueError("field_name must be a string")
-        if not field_name:
+        if not self.field_name:
             raise ValueError("field_name must not be empty")
-        self.field_name = field_name
 
-        if not isinstance(field_category, str):
+        if not isinstance(self.field_category, str):
             raise ValueError("field_category must be a string")
-        if not field_category:
+        if not self.field_category:
             raise ValueError("field_category must not be empty")
-        self.field_category = field_category
 
-        if not isinstance(status, str):
+        if not isinstance(self.status, str):
             raise ValueError("status must be a string")
-        if not status:
+        if not self.status:
             raise ValueError("status must not be empty")
-        self.status = status
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        if not reasoning:
+        if not self.reasoning:
             raise ValueError("reasoning must not be empty")
-        self.reasoning = reasoning
 
-        if not isinstance(result_summary, dict):
+        if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
-        self.result_summary = result_summary
 
-        if not isinstance(validation_timestamp, str):
+        if self.validation_timestamp is not None and not isinstance(self.validation_timestamp, str):
             raise ValueError("validation_timestamp must be a string")
-        self.validation_timestamp = (
-            validation_timestamp or datetime.now().isoformat()
-        )
+        if self.validation_timestamp is None:
+            self.validation_timestamp = datetime.now().isoformat()
 
-        if not isinstance(metadata, dict):
+        if self.metadata is not None and not isinstance(self.metadata, dict):
             raise ValueError("metadata must be a dictionary")
-        self.metadata = metadata or {}
+        if self.metadata is None:
+            self.metadata = {}
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -76,7 +71,10 @@ class ReceiptValidationCategory:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
 
@@ -86,7 +84,10 @@ class ReceiptValidationCategory:
         return {
             "GSI1PK": {"S": f"VALIDATION_STATUS#{self.status}"},
             "GSI1SK": {
-                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}"
+                "S": (
+                    f"VALIDATION#{self.validation_timestamp}#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
 
@@ -99,26 +100,6 @@ class ReceiptValidationCategory:
                 "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
         }
-
-    def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
-        """Convert a Python value to a DynamoDB typed value."""
-        if value is None:
-            return {"NULL": True}
-        elif isinstance(value, str):
-            return {"S": value}
-        elif isinstance(value, (int, float)):
-            return {"N": str(value)}
-        elif isinstance(value, bool):
-            return {"BOOL": value}
-        elif isinstance(value, dict):
-            return {
-                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
-            }
-        elif isinstance(value, list):
-            return {"L": [self._python_to_dynamo(item) for item in value]}
-        else:
-            # Convert any other type to string
-            return {"S": str(value)}
 
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
@@ -157,10 +138,12 @@ class ReceiptValidationCategory:
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
         # Extract complex structures with recursive conversion
-        result_summary = cls._dynamo_to_python(
+        result_summary = SerializationMixin._dynamo_to_python(
             item.get("result_summary", {"M": {}})
         )
-        metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
+        metadata = SerializationMixin._dynamo_to_python(
+            item.get("metadata", {"M": {}})
+        )
 
         # Create the ReceiptValidationCategory
         return cls(
@@ -175,46 +158,6 @@ class ReceiptValidationCategory:
             metadata=metadata,
         )
 
-    @staticmethod
-    def _dynamo_to_python(dynamo_value: Dict[str, Any]) -> Any:
-        """Convert a DynamoDB typed value to a Python value."""
-        if "NULL" in dynamo_value:
-            return None
-        elif "S" in dynamo_value:
-            return dynamo_value["S"]
-        elif "N" in dynamo_value:
-            # Try to convert to int if possible, otherwise float
-            try:
-                return int(dynamo_value["N"])
-            except ValueError:
-                return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
-            return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
-            return {
-                k: ReceiptValidationCategory._dynamo_to_python(v)
-                for k, v in dynamo_value["M"].items()
-            }
-        elif "L" in dynamo_value:
-            return [
-                ReceiptValidationCategory._dynamo_to_python(item)
-                for item in dynamo_value["L"]
-            ]
-        else:
-            # Handle any other type
-            for key, value in dynamo_value.items():
-                return value
-            return None
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ReceiptValidationCategory):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.field_name == other.field_name
-            and self.status == other.status
-        )
 
     def __repr__(self) -> str:
         return (
@@ -234,30 +177,31 @@ def dynamo_to_python(dynamo_value):
             like S, N, BOOL, M, L, etc.
 
     Returns:
-        The equivalent Python native value (str, int, float, bool, dict, list, None)
+        The equivalent Python native value (str, int, float, bool, dict,
+        list, None)
     """
     if not dynamo_value or not isinstance(dynamo_value, dict):
         return dynamo_value
 
     if "NULL" in dynamo_value:
         return None
-    elif "S" in dynamo_value:
+    if "S" in dynamo_value:
         return dynamo_value["S"]
-    elif "N" in dynamo_value:
+    if "N" in dynamo_value:
         # Try to convert to int if possible, otherwise float
         try:
             return int(dynamo_value["N"])
         except ValueError:
             return float(dynamo_value["N"])
-    elif "BOOL" in dynamo_value:
+    if "BOOL" in dynamo_value:
         return dynamo_value["BOOL"]
-    elif "M" in dynamo_value:
+    if "M" in dynamo_value:
         return {k: dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
-    elif "L" in dynamo_value:
+    if "L" in dynamo_value:
         return [dynamo_to_python(item) for item in dynamo_value["L"]]
-    elif "SS" in dynamo_value:  # String Set
+    if "SS" in dynamo_value:  # String Set
         return set(dynamo_value["SS"])
-    elif "NS" in dynamo_value:  # Number Set
+    if "NS" in dynamo_value:  # Number Set
         # Try to convert to int if possible, otherwise float
         result = set()
         for num_str in dynamo_value["NS"]:
@@ -266,13 +210,12 @@ def dynamo_to_python(dynamo_value):
             except ValueError:
                 result.add(float(num_str))
         return result
-    elif "BS" in dynamo_value:  # Binary Set
+    if "BS" in dynamo_value:  # Binary Set
         return set(dynamo_value["BS"])
-    else:
-        # Handle any other type by returning the first value
-        for key, value in dynamo_value.items():
-            return value
-        return None
+    # Handle any other type by returning the first value
+    for key, value in dynamo_value.items():
+        return value
+    return None
 
 
 def item_to_receipt_validation_category(
@@ -352,7 +295,8 @@ def item_to_receipt_validation_category(
     if "field_category" in item:
         field_category = item["field_category"]["S"]
     else:
-        # Try to extract from SK if it follows a pattern like CATEGORY#<field_name>#<category>
+        # Try to extract from SK if it follows a pattern like
+        # CATEGORY#<field_name>#<category>
         field_category = None
         for i, part in enumerate(sk_parts):
             if part == "CATEGORY" and i + 2 < len(sk_parts):

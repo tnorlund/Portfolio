@@ -1,14 +1,17 @@
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptLabelAnalysis:
     """Represents a Receipt Label Analysis item in DynamoDB.
 
-    This class handles storage and retrieval of receipt label analysis data, which contains
-    information about labeled words in a receipt, including what type of field each word represents
-    (e.g., business_name, address, total, etc.).
+    This class handles storage and retrieval of receipt label analysis data.
+    It contains information about labeled words in a receipt, including what
+    type of field each word represents (e.g., business_name, address, total,
+    etc.).
 
     Instead of using confidence scores, this class relies on detailed textual
     reasoning to explain labeling decisions.
@@ -16,71 +19,54 @@ class ReceiptLabelAnalysis:
     Attributes:
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
-        labels (List[Dict]): List of label dictionaries containing label information.
+        labels (List[Dict]): List of label dictionaries containing label
+            information.
         timestamp_added (datetime): When this analysis was created.
-        version (str): Version of the analysis (for tracking changes over time).
+        version (str): Version of the analysis (for tracking changes over
+            time).
         overall_reasoning (str): Explanation of the overall labeling decisions.
-        metadata (Dict): Additional metadata including processing metrics and history.
+        metadata (Dict): Additional metadata including processing metrics and
+            history.
     """
 
-    def __init__(
-        self,
-        image_id: str,
-        receipt_id: int,
-        labels: List[Dict[str, Any]],
-        timestamp_added: datetime,
-        version: str = "1.0",
-        overall_reasoning: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        """Initializes a new ReceiptLabelAnalysis object for DynamoDB.
+    image_id: str
+    receipt_id: int
+    labels: List[Dict[str, Any]]
+    timestamp_added: datetime | str
+    version: str = "1.0"
+    overall_reasoning: str = ""
+    metadata: Optional[Dict[str, Any]] = None
 
-        Args:
-            image_id (str): UUID identifying the associated image.
-            receipt_id (int): Number identifying the receipt.
-            labels (List[Dict]): List of label dictionaries containing label information.
-                Each dict should have: label_type, line_id, word_id, text, reasoning, and
-                optionally a bounding_box.
-            timestamp_added (datetime): When this analysis was created.
-            version (str, optional): Version of the analysis. Defaults to "1.0".
-            overall_reasoning (str, optional): Explanation of the overall labeling decisions.
-            metadata (Dict, optional): Additional metadata. If not provided, a default
-                metadata structure will be created.
+    def __post_init__(self):
+        """Initializes and validates the ReceiptLabelAnalysis object.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
-        if not isinstance(image_id, str):
+        if not isinstance(self.image_id, str):
             raise ValueError("image_id must be a string")
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if not isinstance(labels, list):
+        if not isinstance(self.labels, list):
             raise ValueError("labels must be a list")
 
-        if not isinstance(version, str):
+        if not isinstance(self.version, str):
             raise ValueError("version must be a string")
-        if not isinstance(overall_reasoning, str):
+        if not isinstance(self.overall_reasoning, str):
             raise ValueError("overall_reasoning must be a string")
 
-        self.image_id = image_id
-        self.receipt_id = receipt_id
-        self.labels = labels
-        self.timestamp_added: str
-
-        if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
-        elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif isinstance(self.timestamp_added, str):
+            pass  # Already a string, no conversion needed
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
             )
 
-        self.version: str = version
-        self.overall_reasoning = overall_reasoning
-
         # Initialize default metadata if not provided
-        if metadata is None:
+        if self.metadata is None:
             self.metadata = {
                 "processing_metrics": {
                     "processing_time_ms": 0,
@@ -101,8 +87,6 @@ class ReceiptLabelAnalysis:
                     "configuration": {},
                 },
             }
-        else:
-            self.metadata = metadata
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -144,7 +128,8 @@ class ReceiptLabelAnalysis:
         """Converts the ReceiptLabelAnalysis object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptLabelAnalysis object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptLabelAnalysis object as
+                a DynamoDB item.
         """
         return {
             **self.key,
@@ -182,7 +167,8 @@ class ReceiptLabelAnalysis:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
-            bounding_box (Dict): Dictionary containing top_left, top_right, bottom_left, bottom_right points.
+            bounding_box (Dict): Dictionary containing top_left,
+                top_right, bottom_left and bottom_right points.
 
         Returns:
             Dict: DynamoDB formatted bounding box.
@@ -220,10 +206,11 @@ class ReceiptLabelAnalysis:
         )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
-        """Returns an iterator over the ReceiptLabelAnalysis object's attributes.
+        """Return an iterator over the object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing an attribute name and its value.
+            Tuple[str, Any]: A tuple containing an attribute name and its
+                value.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -233,27 +220,6 @@ class ReceiptLabelAnalysis:
         yield "overall_reasoning", self.overall_reasoning
         yield "metadata", self.metadata
 
-    def __eq__(self, other: object) -> bool:
-        """Checks if two ReceiptLabelAnalysis objects are equal.
-
-        Args:
-            other: Another object to compare with.
-
-        Returns:
-            bool: True if the objects are equal, False otherwise.
-        """
-        if not isinstance(other, ReceiptLabelAnalysis):
-            return False
-
-        return (
-            self.image_id == other.image_id
-            and self.receipt_id == other.receipt_id
-            and self.labels == other.labels
-            and self.timestamp_added == other.timestamp_added
-            and self.version == other.version
-            and self.overall_reasoning == other.overall_reasoning
-            and self.metadata == other.metadata
-        )
 
     def __hash__(self) -> int:
         """Returns a hash of the ReceiptLabelAnalysis object.
