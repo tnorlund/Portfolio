@@ -164,7 +164,7 @@ jobs:
             pytest tests -n auto --timeout=30 -m "unit and not slow" --tb=short -q -o addopts=""
           else
             # receipt_dynamo uses directory-based test organization
-            pytest tests/unit -n auto --timeout=30 -m "not slow and not unused_in_production" --tb=short -q -o addopts=""
+            pytest tests/unit -n auto --timeout=30 -m "not slow" --tb=short -q -o addopts=""
           fi
 
   # TypeScript tests on GitHub-hosted
