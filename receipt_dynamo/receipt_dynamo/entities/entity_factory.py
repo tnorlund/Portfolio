@@ -242,10 +242,17 @@ class EntityFactory(SerializationMixin):
             return None
 
         extracted_data = item["extracted_data"]["M"]
-        return {
-            "type": cast(str, extracted_data["type"]["S"]),
-            "value": cast(str, extracted_data["value"]["S"]),
-        }
+        result: Dict[str, Any] = {}
+        
+        # Extract type if present
+        if "type" in extracted_data and "S" in extracted_data["type"]:
+            result["type"] = cast(str, extracted_data["type"]["S"])
+        
+        # Extract value if present
+        if "value" in extracted_data and "S" in extracted_data["value"]:
+            result["value"] = cast(str, extracted_data["value"]["S"])
+        
+        return result if result else None
 
     @staticmethod
     def extract_embedding_status(item: Dict[str, Any]) -> str:
