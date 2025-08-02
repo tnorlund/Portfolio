@@ -3,39 +3,58 @@ from math import sqrt
 from typing import Any, Dict
 
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.geometry_base import GeometryMixin
+from receipt_dynamo.entities.entity_mixins import (
+    GeometryHashMixin,
+    GeometryMixin,
+    GeometryReprMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+)
 from receipt_dynamo.entities.util import (
-    _format_float,
-    _repr_str,
-    assert_valid_bounding_box,
-    assert_valid_point,
     assert_valid_uuid,
 )
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class Line(GeometryMixin, DynamoDBEntity):
+class Line(
+    GeometryHashMixin,
+    GeometryReprMixin,
+    GeometryValidationUtilsMixin,
+    SerializationMixin,
+    GeometryMixin,
+    GeometrySerializationMixin,
+    GeometryValidationMixin,
+    DynamoDBEntity,
+):
     """
     Represents a line and its associated metadata stored in a DynamoDB table.
 
-    This class encapsulates line-related information such as its unique identifier,
-    text content, geometric properties, rotation angles, and detection confidence.
-    It is designed to support operations such as generating DynamoDB keys and applying
-    geometric transformations including translation, scaling, rotation, shear, and affine warping.
+    This class encapsulates line-related information such as its unique
+    identifier, text content, geometric properties, rotation angles, and
+    detection confidence. It is designed to support operations such as
+    generating DynamoDB keys and applying geometric transformations including
+    translation, scaling, rotation, shear, and affine warping.
 
     Attributes:
         image_id (str): UUID identifying the image to which the line belongs.
         line_id (int): Identifier for the line.
         text (str): The text content of the line.
-        bounding_box (dict): The bounding box of the line with keys 'x', 'y', 'width', and 'height'.
-        top_right (dict): The top-right corner coordinates with keys 'x' and 'y'.
+        bounding_box (dict): The bounding box of the line with keys 'x', 'y',
+            'width', and 'height'.
+        top_right (dict): The top-right corner coordinates with keys 'x' and
+            'y'.
         top_left (dict): The top-left corner coordinates with keys 'x' and 'y'.
-        bottom_right (dict): The bottom-right corner coordinates with keys 'x' and 'y'.
-        bottom_left (dict): The bottom-left corner coordinates with keys 'x' and 'y'.
+        bottom_right (dict): The bottom-right corner coordinates with keys
+            'x' and 'y'.
+        bottom_left (dict): The bottom-left corner coordinates with keys 'x'
+            and 'y'.
         angle_degrees (float): The angle of the line in degrees.
         angle_radians (float): The angle of the line in radians.
         confidence (float): The confidence level of the line (between 0 and 1).
-        histogram (dict): A histogram representing character frequencies in the text.
+        histogram (dict): A histogram representing character frequencies in
+            the text.
         num_chars (int): The number of characters in the line.
     """
 
@@ -63,24 +82,11 @@ class Line(GeometryMixin, DynamoDBEntity):
         if not isinstance(self.text, str):
             raise ValueError("text must be a string")
 
-        assert_valid_bounding_box(self.bounding_box)
+        # Use validation utils mixin for common validation
+        self._validate_common_geometry_entity_fields()
 
-        assert_valid_point(self.top_right)
-
-        assert_valid_point(self.top_left)
-
-        assert_valid_point(self.bottom_right)
-
-        assert_valid_point(self.bottom_left)
-
-        if not isinstance(self.angle_degrees, (float, int)):
-            raise ValueError("angle_degrees must be a float or int")
-        self.angle_degrees = float(self.angle_degrees)
-
-        if not isinstance(self.angle_radians, (float, int)):
-            raise ValueError("angle_radians must be a float or int")
-        self.angle_radians = float(self.angle_radians)
-
+        # Note: confidence validation in mixin allows <= 0.0, but Line
+        # entities require > 0.0
         if isinstance(self.confidence, int):
             self.confidence = float(self.confidence)
         if not isinstance(self.confidence, float) or not (
@@ -118,51 +124,29 @@ class Line(GeometryMixin, DynamoDBEntity):
         Returns:
             dict: A dictionary representing the Line object as a DynamoDB item.
         """
-        return {
-            **self.key,
-            **self.gsi1_key,
-            "TYPE": {"S": "LINE"},
-            "text": {"S": self.text},
-            "bounding_box": {
-                "M": {
-                    "x": {"N": _format_float(self.bounding_box["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bounding_box["y"], 20, 22)},
-                    "width": {
-                        "N": _format_float(self.bounding_box["width"], 20, 22)
-                    },
-                    "height": {
-                        "N": _format_float(self.bounding_box["height"], 20, 22)
-                    },
-                }
+        # Use mixin for common geometry fields
+        custom_fields = self._get_geometry_fields()
+
+        # Add GSI1 key directly to custom fields since it's a property
+        custom_fields.update(self.gsi1_key)
+
+        return self.build_dynamodb_item(
+            entity_type="LINE",
+            custom_fields=custom_fields,
+            exclude_fields={
+                "image_id",
+                "line_id",
+                "text",
+                "bounding_box",
+                "top_right",
+                "top_left",
+                "bottom_right",
+                "bottom_left",
+                "angle_degrees",
+                "angle_radians",
+                "confidence",
             },
-            "top_right": {
-                "M": {
-                    "x": {"N": _format_float(self.top_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_right["y"], 20, 22)},
-                }
-            },
-            "top_left": {
-                "M": {
-                    "x": {"N": _format_float(self.top_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.top_left["y"], 20, 22)},
-                }
-            },
-            "bottom_right": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_right["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_right["y"], 20, 22)},
-                }
-            },
-            "bottom_left": {
-                "M": {
-                    "x": {"N": _format_float(self.bottom_left["x"], 20, 22)},
-                    "y": {"N": _format_float(self.bottom_left["y"], 20, 22)},
-                }
-            },
-            "angle_degrees": {"N": _format_float(self.angle_degrees, 18, 20)},
-            "angle_radians": {"N": _format_float(self.angle_radians, 18, 20)},
-            "confidence": {"N": _format_float(self.confidence, 2, 2)},
-        }
+        )
 
     def calculate_diagonal_length(self) -> float:
         """Calculates the length of the diagonal of the line.
@@ -175,59 +159,58 @@ class Line(GeometryMixin, DynamoDBEntity):
             + (self.top_right["y"] - self.bottom_left["y"]) ** 2
         )
 
-    def __repr__(self) -> str:
-        """Returns a string representation of the Line object.
-
-        Returns:
-            str: A string representation of the Line object.
-        """
-        return (
-            f"Line("
-            f"image_id={_repr_str(self.image_id)}, "
-            f"line_id={self.line_id}, "
-            f"text={_repr_str(self.text)}, "
-            f"bounding_box={self.bounding_box}, "
-            f"top_right={self.top_right}, "
-            f"top_left={self.top_left}, "
-            f"bottom_right={self.bottom_right}, "
-            f"bottom_left={self.bottom_left}, "
-            f"angle_degrees={self.angle_degrees}, "
-            f"angle_radians={self.angle_radians}, "
-            f"confidence={self.confidence}"
-            f")"
+    def _get_geometry_hash_fields(self) -> tuple:
+        """Override to include entity-specific ID fields in hash computation."""
+        geometry_fields = (
+            self.text,
+            tuple(self.bounding_box.items()),
+            tuple(self.top_right.items()),
+            tuple(self.top_left.items()),
+            tuple(self.bottom_right.items()),
+            tuple(self.bottom_left.items()),
+            self.angle_degrees,
+            self.angle_radians,
+            self.confidence,
+        )
+        return geometry_fields + (
+            self.image_id,
+            self.line_id,
         )
 
     def __hash__(self) -> int:
         """Returns the hash value of the Line object."""
-        return hash(
-            (
-                self.image_id,
-                self.line_id,
-                self.text,
-                tuple(self.bounding_box.items()),
-                tuple(self.top_right.items()),
-                tuple(self.top_left.items()),
-                tuple(self.bottom_right.items()),
-                tuple(self.bottom_left.items()),
-                self.angle_degrees,
-                self.angle_radians,
-                self.confidence,
-            )
+        return hash(self._get_geometry_hash_fields())
+
+    def __repr__(self) -> str:
+        """Returns a string representation of the Line object."""
+        geometry_fields = self._get_geometry_repr_fields()
+        return (
+            f"Line("
+            f"image_id='{self.image_id}', "
+            f"line_id={self.line_id}, "
+            f"{geometry_fields}"
+            f")"
         )
 
 
 def item_to_line(item: Dict[str, Any]) -> Line:
-    """Converts a DynamoDB item to a Line object.
+    """Convert a DynamoDB item to a Line object using type-safe EntityFactory.
 
     Args:
-        item (dict): The DynamoDB item to convert.
+        item: The DynamoDB item dictionary to convert.
 
     Returns:
-        Line: The Line object represented by the DynamoDB item.
+        A Line object with all fields properly extracted and validated.
 
     Raises:
-        ValueError: When the item format is invalid.
+        ValueError: If required fields are missing or have invalid format.
     """
+    from receipt_dynamo.entities.entity_factory import (
+        EntityFactory,
+        create_geometry_extractors,
+        create_image_receipt_pk_parser,
+    )
+
     required_keys = {
         "PK",
         "SK",
@@ -241,37 +224,37 @@ def item_to_line(item: Dict[str, Any]) -> Line:
         "angle_radians",
         "confidence",
     }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
+
+    # Custom SK parser for LINE#{line_id:05d} pattern
+    def parse_line_sk(sk: str) -> Dict[str, Any]:
+        """Parse the SK to extract line_id."""
+        parts = sk.split("#")
+        if len(parts) < 2 or parts[0] != "LINE":
+            raise ValueError(f"Invalid SK format for Line: {sk}")
+
+        return {"line_id": int(parts[1])}
+
+    # Type-safe extractors for all fields
+    custom_extractors = {
+        "text": EntityFactory.extract_text_field,
+        **create_geometry_extractors(),  # Handles all geometry fields
+    }
+
+    # Use EntityFactory to create the entity with full type safety
     try:
-        return Line(
-            image_id=item["PK"]["S"][6:],
-            line_id=int(item["SK"]["S"][6:]),
-            text=item["text"]["S"],
-            bounding_box={
-                key: float(value["N"])
-                for key, value in item["bounding_box"]["M"].items()
+        return EntityFactory.create_entity(
+            entity_class=Line,
+            item=item,
+            required_keys=required_keys,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": parse_line_sk,
             },
-            top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
-            },
-            top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
-            },
-            bottom_right={
-                key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()
-            },
-            bottom_left={
-                key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()
-            },
-            angle_degrees=float(item["angle_degrees"]["N"]),
-            angle_radians=float(item["angle_radians"]["N"]),
-            confidence=float(item["confidence"]["N"]),
+            custom_extractors=custom_extractors,
         )
-    except KeyError as e:
+    except ValueError as e:
+        # Check if it's a missing keys error and re-raise as-is
+        if str(e).startswith("Item is missing required keys:"):
+            raise
+        # Otherwise, wrap the error
         raise ValueError(f"Error converting item to Line: {e}") from e

@@ -17,7 +17,8 @@ class InstanceService:
     """
     Service layer for instance-related operations.
 
-    This class encapsulates all interactions with DynamoDB for instance entities
+    This class encapsulates all interactions with DynamoDB for instance
+    entities
     and provides a clean API for client applications.
     """
 
@@ -175,7 +176,8 @@ class InstanceService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of Instance objects and the last evaluated key
+            A tuple containing a list of Instance objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_instances(limit, last_evaluated_key)
 
@@ -194,7 +196,8 @@ class InstanceService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of Instance objects and the last evaluated key
+            A tuple containing a list of Instance objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_instances_by_status(
             status, limit, last_evaluated_key
@@ -215,7 +218,8 @@ class InstanceService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of Instance objects and the last evaluated key
+            A tuple containing a list of Instance objects and the last
+            evaluated key
         """
         # TODO: list_instances_by_type is not implemented in data layer
         # return self.dynamo_client.list_instances_by_type(
@@ -382,7 +386,8 @@ class InstanceService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of InstanceJob objects and the last evaluated key
+            A tuple containing a list of InstanceJob objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_instance_jobs(
             instance_id, limit, last_evaluated_key
@@ -405,7 +410,8 @@ class InstanceService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of InstanceJob objects and the last evaluated key
+            A tuple containing a list of InstanceJob objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_instances_for_job(
             job_id, limit, last_evaluated_key

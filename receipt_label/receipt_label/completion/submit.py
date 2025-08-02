@@ -260,7 +260,7 @@ def format_batch_completion_file(
     labels: list[ReceiptWordLabel],
     first_pass_labels: list[ReceiptWordLabel],
     second_pass_labels: list[ReceiptWordLabel],
-    metadata: ReceiptMetadata,  # pylint: disable=too-many-positional-arguments
+    metadata: ReceiptMetadata,  # pylint: disable=too-many-arguments
 ) -> Path:
     """Format the batch completion file name."""
     filepath = Path(

@@ -4,9 +4,14 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    DeleteRequestTypeDef,
     SingleEntityCRUDMixin,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
@@ -14,22 +19,12 @@ from receipt_dynamo.entities.job_dependency import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         QueryInputTypeDef,
-        WriteRequestTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
 
 
 class _JobDependency(
-    DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     BatchOperationsMixin,
 ):
@@ -41,7 +36,8 @@ class _JobDependency(
     -------
     add_job_dependency(job_dependency: JobDependency)
         Adds a job dependency to the database.
-    get_job_dependency(dependent_job_id: str, dependency_job_id: str) -> JobDependency
+    get_job_dependency(dependent_job_id: str, dependency_job_id: str) ->
+        JobDependency
         Gets a job dependency from the database.
     list_job_dependencies(dependent_job_id: str) -> List[JobDependency]
         Lists all dependencies for a specific job.
@@ -59,13 +55,16 @@ class _JobDependency(
             job_dependency (JobDependency): The job dependency to add.
 
         Raises:
-            ValueError: If job_dependency is None or not a JobDependency instance.
+            ValueError: If job_dependency is None or not a JobDependency
+                instance.
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
         self._add_entity(
             job_dependency,
-            condition_expression="attribute_not_exists(PK) AND attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_job_dependency")
@@ -82,29 +81,29 @@ class _JobDependency(
             JobDependency: The job dependency from the DynamoDB table.
 
         Raises:
-            ValueError: If any parameter is None, or if the dependency is not found.
+            ValueError: If any parameter is None, or if the dependency is not
+                found.
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise EntityValidationError("dependency_job_id cannot be None")
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"JOB#{dependent_job_id}"},
-                "SK": {"S": f"DEPENDS_ON#{dependency_job_id}"},
-            },
+        result = self._get_entity(
+            primary_key=f"JOB#{dependent_job_id}",
+            sort_key=f"DEPENDS_ON#{dependency_job_id}",
+            entity_class=JobDependency,
+            converter_func=item_to_job_dependency,
         )
 
-        item = response.get("Item")
-        if not item:
-            raise ValueError(
-                f"Dependency between {dependent_job_id} and {dependency_job_id} not found"
+        if result is None:
+            raise EntityNotFoundError(
+                f"Dependency between {dependent_job_id} and "
+                f"{dependency_job_id} not found"
             )
 
-        return item_to_job_dependency(item)
+        return result
 
     @handle_dynamodb_errors("list_dependencies")
     def list_dependencies(
@@ -118,49 +117,34 @@ class _JobDependency(
         Args:
             dependent_job_id (str): The ID of the job to list dependencies for.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
-                of job dependencies and the last evaluated key.
+            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+                list of job dependencies and the last evaluated key.
 
         Raises:
             ValueError: If dependent_job_id is None.
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
 
-        # Prepare KeyConditionExpression
-        key_condition_expression = "PK = :pk AND begins_with(SK, :sk_prefix)"
-        expression_attribute_values = {
-            ":pk": {"S": f"JOB#{dependent_job_id}"},
-            ":sk_prefix": {"S": "DEPENDS_ON#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_dependencies = [
-            item_to_job_dependency(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_dependencies, last_evaluated_key
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "PK = :pk AND begins_with(SK, :sk_prefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"JOB#{dependent_job_id}"},
+                ":sk_prefix": {"S": "DEPENDS_ON#"},
+            },
+            converter_func=item_to_job_dependency,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     @handle_dynamodb_errors("list_dependents")
     def list_dependents(
@@ -174,53 +158,36 @@ class _JobDependency(
         Args:
             dependency_job_id (str): The ID of the job that others depend on.
             limit (int, optional): The maximum number of items to return.
-            last_evaluated_key (Dict, optional): The key to start pagination from.
+            last_evaluated_key (Dict, optional): The key to start pagination
+                from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the list
-                of job dependencies and the last evaluated key.
+            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+                list of job dependencies and the last evaluated key.
 
         Raises:
             ValueError: If dependency_job_id is None.
             ClientError: If a DynamoDB error occurs.
         """
         if dependency_job_id is None:
-            raise ValueError("dependency_job_id cannot be None")
+            raise EntityValidationError("dependency_job_id cannot be None")
 
-        # Prepare index query parameters
-        index_name = "GSI2"
-        key_condition_expression = (
-            "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression=(
+                "GSI2PK = :pk AND begins_with(GSI2SK, :sk_prefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "DEPENDENCY"},
+                ":sk_prefix": {
+                    "S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"
+                },
+            },
+            converter_func=item_to_job_dependency,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-        expression_attribute_values = {
-            ":pk": {"S": "DEPENDENCY"},
-            ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
-        }
-
-        # Prepare query parameters
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": index_name,
-            "KeyConditionExpression": key_condition_expression,
-            "ExpressionAttributeValues": expression_attribute_values,
-        }
-
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-
-        # Execute query
-        response = self._client.query(**query_params)
-
-        # Process results
-        job_dependencies = [
-            item_to_job_dependency(item) for item in response.get("Items", [])
-        ]
-        last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return job_dependencies, last_evaluated_key
 
     @handle_dynamodb_errors("delete_job_dependency")
     def delete_job_dependency(self, job_dependency: JobDependency):
@@ -230,7 +197,8 @@ class _JobDependency(
             job_dependency (JobDependency): The job dependency to delete.
 
         Raises:
-            ValueError: If job_dependency is None or not a JobDependency instance.
+            ValueError: If job_dependency is None or not a JobDependency
+                instance.
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
@@ -241,14 +209,15 @@ class _JobDependency(
         """Deletes all dependencies for a specific job.
 
         Args:
-            dependent_job_id (str): The ID of the job to delete dependencies for.
+            dependent_job_id (str): The ID of the job to delete dependencies
+                for.
 
         Raises:
             ValueError: If dependent_job_id is None.
             ClientError: If a DynamoDB error occurs.
         """
         if dependent_job_id is None:
-            raise ValueError("dependent_job_id cannot be None")
+            raise EntityValidationError("dependent_job_id cannot be None")
 
         # First, get all dependencies for the job
         dependencies, _ = self.list_dependencies(dependent_job_id)
@@ -278,29 +247,7 @@ class _JobDependency(
                 ]
             }
 
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            # Handle unprocessed items with exponential backoff
-            unprocessed_items = response.get("UnprocessedItems", {})
-            retry_count = 0
-            max_retries = 3
-
-            while unprocessed_items and retry_count < max_retries:
-                retry_count += 1
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed_items
-                )
-                unprocessed_items = response.get("UnprocessedItems", {})
-
-            if unprocessed_items:
-                raise ClientError(
-                    {
-                        "Error": {
-                            "Code": "ProvisionedThroughputExceededException",
-                            "Message": f"Could not process all items after {max_retries} retries",
-                        }
-                    },
-                    "BatchWriteItem",
-                )
+            # Use the batch write retry method from the mixin
+            # Convert request_items to the expected format
+            write_requests = request_items[self.table_name]
+            self._batch_write_with_retry(write_requests)

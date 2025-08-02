@@ -1,15 +1,15 @@
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, Generator, List, Tuple
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
     normalize_enum,
+    validate_positive_int,
 )
 
 # Validation thresholds
@@ -21,35 +21,42 @@ MIN_ADDRESS_TOKENS = 3  # Minimum meaningful tokens for valid address
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class ReceiptMetadata:
+class ReceiptMetadata(SerializationMixin):
     """
-    Represents validated metadata for a receipt, specifically merchant-related information
-    derived from Google Places API and optionally validated by GPT.
+    Represents validated metadata for a receipt, specifically merchant-related
+    information derived from Google Places API and optionally validated by GPT.
 
     This entity is used to:
     - Anchor a receipt to a verified merchant (name, address, phone)
     - Support merchant-specific labeling strategies
     - Enable clustering and quality control across receipts
 
-    Each ReceiptMetadata record is stored in DynamoDB using the image_id and receipt_id,
-    and indexed by merchant name via GSIs.
+    Each ReceiptMetadata record is stored in DynamoDB using the image_id and
+    receipt_id, and indexed by merchant name via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
         receipt_id (int): Identifier of the receipt within the image.
         place_id (str): Google Places API ID of the matched business.
-        merchant_name (str): Canonical name of the business (e.g., "Starbucks").
-        merchant_category (str): Optional business type/category (e.g., "Coffee Shop").
+        merchant_name (str): Canonical name of the business
+            (e.g., "Starbucks").
+        merchant_category (str): Optional business type/category
+            (e.g., "Coffee Shop").
         address (str): Normalized address returned from Google.
         phone_number (str): Formatted phone number.
-        matched_fields (list[str]): List of fields that matched (e.g., ["name", "phone"]).
+        matched_fields (list[str]): List of fields that matched
+            (e.g., ["name", "phone"]).
         validated_by (str): Source of validation (e.g., "GPT+GooglePlaces").
         timestamp (datetime): ISO timestamp when this record was created.
         reasoning (str): GPT or system-generated justification for the match.
-        canonical_place_id (str): Canonical place ID from the most representative business in the cluster.
-        canonical_merchant_name (str): Canonical merchant name from the most representative business in the cluster.
-        canonical_address (str): Normalized canonical address from the most representative business in the cluster.
-        canonical_phone_number (str): Canonical phone number from the most representative business in the cluster.
+        canonical_place_id (str): Canonical place ID from the most
+            representative business in the cluster.
+        canonical_merchant_name (str): Canonical merchant name from the most
+            representative business in the cluster.
+        canonical_address (str): Normalized canonical address from the most
+            representative business in the cluster.
+        canonical_phone_number (str): Canonical phone number from the most
+            representative business in the cluster.
     """
 
     image_id: str
@@ -71,10 +78,7 @@ class ReceiptMetadata:
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
 
         assert_valid_uuid(self.image_id)
 
@@ -140,9 +144,11 @@ class ReceiptMetadata:
 
     def _get_high_quality_matched_fields(self) -> List[str]:
         """
-        Validates the quality of matched fields and returns only high-quality matches.
+        Validates the quality of matched fields and returns only
+        high-quality matches.
 
-        This method filters out potentially false positive field matches by checking:
+        This method filters out potentially false positive field matches by
+        checking:
         - Name fields are not empty and have meaningful content
         - Phone fields have sufficient digits
         - Address fields have sufficient components
@@ -154,14 +160,16 @@ class ReceiptMetadata:
 
         for field in self.matched_fields:
             if field == "name":
-                # Name must be non-empty and more than just whitespace/punctuation
+                # Name must be non-empty and more than just
+                # whitespace/punctuation
                 if (
                     self.merchant_name
                     and len(self.merchant_name.strip()) > MIN_NAME_LENGTH
                 ):
                     high_quality_fields.append(field)
             elif field == "phone":
-                # Phone must have at least 7 digits (tolerate missing area code)
+                # Phone must have at least 7 digits (tolerate missing area
+                # code)
                 phone_digits = "".join(
                     c for c in self.phone_number if c.isdigit()
                 )
@@ -190,7 +198,8 @@ class ReceiptMetadata:
                         and token_clean.isalpha()
                     ):
                         meaningful_tokens += 1
-                    # 4. It's a short token (likely abbreviation) but not the only token
+                    # 4. It's a short token (likely abbreviation) but not the
+                    #    only token
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
 
@@ -223,15 +232,18 @@ class ReceiptMetadata:
 
     def gsi1_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI1: used to index all receipts associated with a given merchant.
+        Returns the key for GSI1: used to index all receipts associated with a
+        given merchant.
 
-        Uses canonical_merchant_name if available (preferred), otherwise falls back to merchant_name.
-        The merchant name is normalized by uppercasing and replacing spaces with underscores.
+        Uses ``canonical_merchant_name`` if available (preferred), otherwise
+        falls back to ``merchant_name``. The merchant name is normalized by
+        uppercasing and replacing spaces with underscores.
 
-        This enables efficient querying of all receipts for a canonical merchant, regardless of
-        the original merchant name variations.
+        This enables efficient querying of all receipts for a canonical
+        merchant, regardless of the original merchant name variations.
         """
-        # Prioritize canonical_merchant_name if it exists, otherwise use merchant_name
+        # Prioritize canonical_merchant_name if it exists, otherwise use
+        # merchant_name
         merchant_name_to_use = (
             self.canonical_merchant_name
             if self.canonical_merchant_name
@@ -244,17 +256,21 @@ class ReceiptMetadata:
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
+                )
             },
         }
 
     def gsi2_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI2: used to query records by place_id.
-        This index supports the incremental consolidation process by enabling efficient
-        lookup of records with the same place_id.
+        Returns the key for GSI2: used to query records by ``place_id``. This
+        index supports the incremental consolidation process by enabling
+        efficient lookup of records with the same ``place_id``.
 
-        Only includes non-empty place_ids to avoid cluttering the index.
+        Only includes non-empty ``place_id`` values to avoid cluttering the
+        index.
         """
         if not self.place_id:
             return {}
@@ -262,14 +278,18 @@ class ReceiptMetadata:
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#METADATA"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
+                )
             },
         }
 
     def gsi3_key(self) -> Dict[str, Any]:
         """
-        Returns the key for GSI3: used to sort ReceiptMetadata entries by validation status.
-        Supports filtering low/high-confidence merchant matches across receipts.
+        Returns the key for GSI3: used to sort ``ReceiptMetadata`` entries by
+        validation status. Supports filtering low/high-confidence merchant
+        matches across receipts.
         """
         return {
             "GSI3PK": {"S": f"MERCHANT_VALIDATION"},
@@ -278,8 +298,9 @@ class ReceiptMetadata:
 
     def to_item(self) -> Dict[str, Any]:
         """
-        Serializes the ReceiptMetadata object into a DynamoDB-compatible item.
-        Includes primary key and GSI keys, as well as all merchant-related metadata.
+        Serializes the ``ReceiptMetadata`` object into a DynamoDB-compatible
+        item. Includes primary key and GSI keys, as well as all
+        merchant-related metadata.
         """
         item = {
             **self.key,
@@ -345,9 +366,11 @@ class ReceiptMetadata:
             f"reasoning={_repr_str(self.reasoning)}, "
             f"validation_status={_repr_str(self.validation_status)}, "
             f"canonical_place_id={_repr_str(self.canonical_place_id)}, "
-            f"canonical_merchant_name={_repr_str(self.canonical_merchant_name)}, "
+            f"canonical_merchant_name="
+            f"{_repr_str(self.canonical_merchant_name)}, "
             f"canonical_address={_repr_str(self.canonical_address)}, "
-            f"canonical_phone_number={_repr_str(self.canonical_phone_number)}"
+            f"canonical_phone_number="
+            f"{_repr_str(self.canonical_phone_number)}"
             f")"
         )
 
@@ -356,7 +379,8 @@ class ReceiptMetadata:
         Returns an iterator over the ReceiptMetadata object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its value.
+            Tuple[str, Any]:
+                A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -405,6 +429,13 @@ class ReceiptMetadata:
 
 
 def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
+    """Create ReceiptMetadata from DynamoDB item using EntityFactory."""
+    from receipt_dynamo.entities.entity_factory import (
+        EntityFactory,
+        create_image_receipt_pk_parser,
+        create_image_receipt_sk_parser,
+    )
+
     required_keys = {
         "PK",
         "SK",
@@ -414,83 +445,42 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         "timestamp",
     }
 
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
-        )
-    try:
-        # Parse primary key components
-        pk_parts = item["PK"]["S"].split("#")
-        if len(pk_parts) != 2 or pk_parts[0] != "IMAGE":
-            raise ValueError(f"Invalid PK format: {item['PK']['S']}")
-        image_id = pk_parts[1]
+    # Type-safe extractors
+    custom_extractors = {
+        "place_id": EntityFactory.extract_string_field("place_id"),
+        "merchant_name": EntityFactory.extract_string_field("merchant_name"),
+        "matched_fields": EntityFactory.extract_string_list_field(
+            "matched_fields"
+        ),
+        "timestamp": EntityFactory.extract_datetime_field("timestamp"),
+        "merchant_category": EntityFactory.extract_string_field(
+            "merchant_category", ""
+        ),
+        "address": EntityFactory.extract_string_field("address", ""),
+        "phone_number": EntityFactory.extract_string_field("phone_number", ""),
+        "validated_by": EntityFactory.extract_string_field("validated_by", ""),
+        "reasoning": EntityFactory.extract_string_field("reasoning", ""),
+        "canonical_place_id": EntityFactory.extract_string_field(
+            "canonical_place_id", ""
+        ),
+        "canonical_merchant_name": EntityFactory.extract_string_field(
+            "canonical_merchant_name", ""
+        ),
+        "canonical_address": EntityFactory.extract_string_field(
+            "canonical_address", ""
+        ),
+        "canonical_phone_number": EntityFactory.extract_string_field(
+            "canonical_phone_number", ""
+        ),
+    }
 
-        # Parse sort key components
-        sk_parts = item["SK"]["S"].split("#")
-        if (
-            len(sk_parts) != 3
-            or sk_parts[0] != "RECEIPT"
-            or sk_parts[2] != "METADATA"
-        ):
-            raise ValueError(f"Invalid SK format: {item['SK']['S']}")
-
-        try:
-            receipt_id = int(sk_parts[1])
-        except ValueError:
-            raise ValueError(f"Invalid receipt_id in SK: {sk_parts[1]}")
-
-        # Extract required fields
-        place_id = item["place_id"]["S"]
-        merchant_name = item["merchant_name"]["S"]
-
-        # Extract optional fields with defaults
-        matched_fields = item.get("matched_fields", {}).get("SS", [])
-        merchant_category = item.get("merchant_category", {}).get("S") or ""
-        address = item.get("address", {}).get("S") or ""
-        phone_number = item.get("phone_number", {}).get("S") or ""
-        validated_by = item.get("validated_by", {}).get("S") or ""
-        reasoning = item.get("reasoning", {}).get("S") or ""
-        canonical_place_id = item.get("canonical_place_id", {}).get("S") or ""
-        canonical_merchant_name = (
-            item.get("canonical_merchant_name", {}).get("S") or ""
-        )
-        canonical_address = item.get("canonical_address", {}).get("S") or ""
-        canonical_phone_number = (
-            item.get("canonical_phone_number", {}).get("S") or ""
-        )
-
-        # Parse timestamp
-        timestamp_str = item["timestamp"]["S"]
-        try:
-            timestamp = datetime.fromisoformat(timestamp_str)
-        except ValueError:
-            raise ValueError(f"Invalid timestamp format: {timestamp_str}")
-
-        return ReceiptMetadata(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            place_id=place_id,
-            merchant_name=merchant_name,
-            matched_fields=matched_fields,
-            timestamp=timestamp,
-            merchant_category=merchant_category,
-            address=address,
-            phone_number=phone_number,
-            validated_by=validated_by,
-            reasoning=reasoning,
-            canonical_place_id=canonical_place_id,
-            canonical_merchant_name=canonical_merchant_name,
-            canonical_address=canonical_address,
-            canonical_phone_number=canonical_phone_number,
-        )
-    except KeyError as e:
-        raise ValueError(f"Missing required field in item: {e}")
-    except IndexError as e:
-        raise ValueError(f"Error parsing key components: {e}")
-    except ValueError:
-        # Re-raise ValueError as is
-        raise
-    except Exception as e:
-        raise ValueError(f"Unexpected error parsing receipt metadata: {e}")
+    return EntityFactory.create_entity(
+        entity_class=ReceiptMetadata,
+        item=item,
+        required_keys=required_keys,
+        key_parsers={
+            "PK": create_image_receipt_pk_parser(),
+            "SK": create_image_receipt_sk_parser(),
+        },
+        custom_extractors=custom_extractors,
+    )

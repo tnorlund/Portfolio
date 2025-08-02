@@ -1,36 +1,36 @@
 """Receipt Label Analysis data access using base operations framework.
 
-This refactored version reduces code from ~944 lines to ~300 lines (68% reduction)
-while maintaining full backward compatibility and all functionality.
+This refactored version reduces code from ~944 lines to ~300 lines
+(68% reduction) while maintaining full backward compatibility and all
+functionality.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    QueryByParentMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
 )
 from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
         QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
+    from receipt_dynamo.data.base_operations import (
         PutRequestTypeDef,
+        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 
@@ -38,21 +38,19 @@ else:
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
-        raise ValueError(
+        raise EntityValidationError(
             f"LastEvaluatedKey must contain keys: {required_keys}"
         )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise ValueError(
+            raise EntityValidationError(
                 f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
             )
 
 
 class _ReceiptLabelAnalysis(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    QueryByParentMixin,
 ):
     """
     A class used to access receipt label analyses in DynamoDB.
@@ -127,7 +125,7 @@ class _ReceiptLabelAnalysis(
         self._validate_entity(
             receipt_label_analysis,
             ReceiptLabelAnalysis,
-            "ReceiptLabelAnalysis",
+            "receipt_label_analysis",
         )
         self._update_entity(receipt_label_analysis)
 
@@ -145,24 +143,11 @@ class _ReceiptLabelAnalysis(
             ValueError: When a receipt label analysis with the same ID does not
                 exist
         """
-        self._validate_entity_list(
+        self._update_entities(
             receipt_label_analyses,
             ReceiptLabelAnalysis,
             "receipt_label_analyses",
         )
-
-        # Use transactional writes for updates to ensure items exist
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": analysis.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
-                }
-            }
-            for analysis in receipt_label_analyses
-        ]
-        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_label_analysis")
     def delete_receipt_label_analysis(
@@ -181,7 +166,7 @@ class _ReceiptLabelAnalysis(
         self._validate_entity(
             receipt_label_analysis,
             ReceiptLabelAnalysis,
-            "ReceiptLabelAnalysis",
+            "receipt_label_analysis",
         )
         self._delete_entity(receipt_label_analysis)
 
@@ -211,7 +196,9 @@ class _ReceiptLabelAnalysis(
                 "Delete": {
                     "TableName": self.table_name,
                     "Key": analysis.key,
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
                 }
             }
             for analysis in receipt_label_analyses
@@ -235,76 +222,46 @@ class _ReceiptLabelAnalysis(
         Raises:
             ValueError: When the receipt label analysis does not exist
         """
-        # Check for None values first
-        if image_id is None:
-            raise ValueError("Image ID is required and cannot be None.")
-        if receipt_id is None:
-            raise ValueError("Receipt ID is required and cannot be None.")
+        # Use CommonValidationMixin for standardized validation
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
 
-        # Then check types
-        if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
-        if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
         if version is not None and not isinstance(version, str):
-            raise ValueError(
-                f"version must be a string or None, got {type(version).__name__}"
+            raise EntityValidationError(
+                "version must be a string or None, got "
+                f"{type(version).__name__}"
             )
-
-        # Check for positive integers
-        if receipt_id <= 0:
-            raise ValueError("Receipt ID must be a positive integer.")
-
-        assert_valid_uuid(image_id)
 
         if version:
             # Get specific version
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}"
-                    },
-                },
+            result = self._get_entity(
+                primary_key=f"IMAGE#{image_id}",
+                sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS#{version}",
+                entity_class=ReceiptLabelAnalysis,
+                converter_func=item_to_receipt_label_analysis,
             )
-            item = response.get("Item")
-            if not item:
-                raise ValueError(
+            if result is None:
+                raise EntityNotFoundError(
                     f"No ReceiptLabelAnalysis found for receipt {receipt_id}, "
                     f"image {image_id}, and version {version}"
                 )
-            return item_to_receipt_label_analysis(item)
-        else:
-            # Query for any version and return first
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
-                "ExpressionAttributeNames": {
-                    "#pk": "PK",
-                    "#sk": "SK",
-                },
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {
-                        "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
-                    },
-                },
-                "Limit": 1,
-            }
+            return result
+        # Query for any version and return first
+        # Use the QueryByParentMixin for standardized parent-child queries
+        results, _ = self._query_by_parent(
+            parent_key_prefix=f"IMAGE#{image_id}",
+            child_key_prefix=f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS",
+            converter_func=item_to_receipt_label_analysis,
+            limit=1,
+        )
 
-            response = self._client.query(**query_params)
-            items = response.get("Items", [])
+        if not results:
+            raise EntityNotFoundError(
+                f"Receipt Label Analysis for Image ID {image_id} and "
+                f"Receipt ID {receipt_id} does not exist"
+            )
 
-            if not items:
-                raise ValueError(
-                    f"Receipt Label Analysis for Image ID {image_id} and "
-                    f"Receipt ID {receipt_id} does not exist"
-                )
-
-            return item_to_receipt_label_analysis(items[0])
+        return results[0]
 
     @handle_dynamodb_errors("list_receipt_label_analyses")
     def list_receipt_label_analyses(
@@ -316,62 +273,21 @@ class _ReceiptLabelAnalysis(
 
         Args:
             limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+            last_evaluated_key (
+                Optional[Dict[str, Any]]
+            ): The key to start from
 
         Returns:
             Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: The
                 receipt label analyses and the last evaluated key
         """
-        if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
-        if limit is not None and limit <= 0:
-            raise ValueError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise ValueError("LastEvaluatedKey must be a dictionary")
-            validate_last_evaluated_key(last_evaluated_key)
-
-        label_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
-                ":val": {"S": "RECEIPT_LABEL_ANALYSIS"}
-            },
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        label_analyses.extend(
-            [
-                item_to_receipt_label_analysis(item)
-                for item in response["Items"]
-            ]
+        # Use the QueryByTypeMixin for standardized GSITYPE queries
+        return self._query_by_type(
+            entity_type="RECEIPT_LABEL_ANALYSIS",
+            converter_func=item_to_receipt_label_analysis,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all analyses
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                label_analyses.extend(
-                    [
-                        item_to_receipt_label_analysis(item)
-                        for item in response["Items"]
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return label_analyses, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_label_analyses_for_image")
     def list_receipt_label_analyses_for_image(
@@ -383,50 +299,38 @@ class _ReceiptLabelAnalysis(
             image_id (str): The image ID
 
         Returns:
-            List[ReceiptLabelAnalysis]: The receipt label analyses for the image
+
+            List[ReceiptLabelAnalysis]:
+                The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
-        assert_valid_uuid(image_id)
+            raise EntityValidationError("image_id must be a string")
+        self._validate_image_id(image_id)
 
-        label_analyses = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
-            "ExpressionAttributeNames": {
+        # WARNING: This query is potentially inefficient as it queries ALL
+        # receipts for an image and then filters for analysis labels. Consider
+        # using a GSI or accepting this limitation if the number of receipts
+        # per image is small.
+        # Cannot use QueryByParentMixin here due to the need for filtering.
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": "RECEIPT#"},
+                ":analysis_type": {"S": "#ANALYSIS#LABELS"},
             },
-            "FilterExpression": "contains(#sk, :analysis_type)",
-        }
-        query_params["ExpressionAttributeValues"][":analysis_type"] = {
-            "S": "#ANALYSIS#LABELS"
-        }
-
-        response = self._client.query(**query_params)
-        label_analyses.extend(
-            [
-                item_to_receipt_label_analysis(item)
-                for item in response["Items"]
-            ]
+            converter_func=item_to_receipt_label_analysis,
+            filter_expression="contains(#sk, :analysis_type)",
         )
 
-        # Continue querying if there are more results
-        while "LastEvaluatedKey" in response:
-            query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-            response = self._client.query(**query_params)
-            label_analyses.extend(
-                [
-                    item_to_receipt_label_analysis(item)
-                    for item in response["Items"]
-                ]
-            )
-
-        return label_analyses
+        return results
 
     @handle_dynamodb_errors("get_receipt_label_analyses_by_image")
     def get_receipt_label_analyses_by_image(
@@ -435,7 +339,8 @@ class _ReceiptLabelAnalysis(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
-        """Gets receipt label analyses for a given image with pagination support
+        """Gets receipt label analyses for a given image with pagination
+        support
 
         Args:
             image_id (str): The image ID
@@ -447,24 +352,28 @@ class _ReceiptLabelAnalysis(
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
-        assert_valid_uuid(image_id)
+            raise EntityValidationError("image_id must be a string")
+        self._validate_image_id(image_id)
 
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("Limit must be an integer")
+                raise EntityValidationError("Limit must be an integer")
             if limit <= 0:
-                raise ValueError("Limit must be greater than 0")
+                raise EntityValidationError("Limit must be greater than 0")
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -523,7 +432,8 @@ class _ReceiptLabelAnalysis(
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
-        """Gets receipt label analyses for a given image and receipt with pagination support
+        """Gets receipt label analyses for a given image and receipt with
+        pagination support
 
         Args:
             image_id (str): The image ID
@@ -536,29 +446,37 @@ class _ReceiptLabelAnalysis(
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
-        assert_valid_uuid(image_id)
+            raise EntityValidationError("image_id must be a string")
+        self._validate_image_id(image_id)
 
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if receipt_id <= 0:
-            raise ValueError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
 
         if limit is not None:
             if not isinstance(limit, int):
-                raise ValueError("Limit must be an integer")
+                raise EntityValidationError("Limit must be an integer")
             if limit <= 0:
-                raise ValueError("Limit must be greater than 0")
+                raise EntityValidationError("Limit must be greater than 0")
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise ValueError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",

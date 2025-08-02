@@ -1,40 +1,28 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Word, item_to_word
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
+from receipt_dynamo.entities import item_to_word
+from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.word import Word
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
+    from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
     )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
 
-class _Word(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _Word(FlattenedStandardMixin):
     """
     A class used to represent a Word in the database.
 
@@ -56,7 +44,9 @@ class _Word(
         Gets a word from the database.
     get_words(keys: list[dict]) -> list[Word]
         Gets multiple words from the database.
-    list_words(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Word], Optional[Dict[str, Any]]]
+    list_words(
+        limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
+    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]
         Lists all words from the database.
     list_words_from_line(image_id: str, line_id: int) -> list[Word]
         Lists all words from a specific line.
@@ -86,15 +76,7 @@ class _Word(
             ValueError: When validation fails or words cannot be added
         """
         self._validate_entity_list(words, Word, "words")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=word.to_item())
-            )
-            for word in words
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._add_entities_batch(words, Word, "words")
 
     @handle_dynamodb_errors("update_word")
     def update_word(self, word: Word):
@@ -128,20 +110,7 @@ class _Word(
         ValueError: When given a bad parameter or words don't exist.
         Exception: For underlying DynamoDB errors.
         """
-        self._validate_entity_list(words, Word, "words")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": word.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for word in words
-        ]
-
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(words, Word, "words")
 
     @handle_dynamodb_errors("delete_word")
     def delete_word(self, image_id: str, line_id: int, word_id: int):
@@ -152,28 +121,30 @@ class _Word(
             line_id (int): The ID of the line the word belongs to
             word_id (int): The ID of the word to delete
         """
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        # Create a temporary Word object for deletion
+        temp_word = Word(
+            image_id=image_id,
+            line_id=line_id,
+            word_id=word_id,
+            text="",  # Required field, but not used for deletion
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.01,
         )
+        self._delete_entity(temp_word)
 
     @handle_dynamodb_errors("delete_words")
     def delete_words(self, words: List[Word]):
         """Deletes a list of words from the database"""
         self._validate_entity_list(words, Word, "words")
-
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=word.key)
-            )
-            for word in words
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(words)
 
     @handle_dynamodb_errors("delete_words_from_line")
     def delete_words_from_line(self, image_id: str, line_id: int):
@@ -199,18 +170,24 @@ class _Word(
             Word: The word object
 
         Raises:
-            ValueError: When the word is not found
+            EntityNotFoundError: When the word is not found
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}"},
-            },
+        assert_valid_uuid(image_id)
+
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"LINE#{line_id:05d}#WORD#{word_id:05d}",
+            entity_class=Word,
+            converter_func=item_to_word,
         )
-        if "Item" not in response:
-            raise ValueError(f"Word with ID {word_id} not found")
-        return item_to_word(response["Item"])
+
+        if result is None:
+            raise EntityNotFoundError(
+                f"Word with image_id={image_id}, line_id={line_id}, "
+                f"word_id={word_id} not found"
+            )
+
+        return result
 
     @handle_dynamodb_errors("get_words")
     def get_words(self, keys: List[Dict]) -> List[Word]:
@@ -218,13 +195,13 @@ class _Word(
         # Check the validity of the keys
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("Keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("LINE#"):
-                raise ValueError("SK must start with 'LINE#'")
+                raise EntityValidationError("SK must start with 'LINE#'")
             if not key["SK"]["S"].split("#")[-2] == "WORD":
-                raise ValueError("SK must contain 'WORD'")
+                raise EntityValidationError("SK must contain 'WORD'")
         results = []
 
         # Split keys into chunks of up to 100
@@ -272,36 +249,12 @@ class _Word(
         Returns:
             Tuple of words list and last evaluated key for pagination
         """
-        words = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "WORD"}},
-        }
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        words.extend([item_to_word(item) for item in response["Items"]])
-
-        if limit is None:
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                words.extend(
-                    [item_to_word(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return words, last_evaluated_key
+        return self._query_by_type(
+            entity_type="WORD",
+            converter_func=item_to_word,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     @handle_dynamodb_errors("list_words_from_line")
     def list_words_from_line(self, image_id: str, line_id: int) -> List[Word]:
@@ -314,31 +267,21 @@ class _Word(
         Returns:
             List of Word objects from the specified line
         """
-        words = []
-        response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression=(
+        # For words, we need to query by a composite parent (IMAGE + LINE)
+        # Since QueryByParentMixin expects a single parent, we'll use the
+        # original query
+        words, _ = self._query_entities(
+            index_name=None,  # Main table query
+            key_condition_expression=(
                 "PK = :pkVal AND begins_with(SK, :skPrefix)"
             ),
-            ExpressionAttributeValues={
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},
                 ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
             },
+            converter_func=item_to_word,
+            limit=None,
+            last_evaluated_key=None,
         )
-        words.extend([item_to_word(item) for item in response["Items"]])
-
-        while "LastEvaluatedKey" in response:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression=(
-                    "PK = :pkVal AND begins_with(SK, :skPrefix)"
-                ),
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#"},
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            words.extend([item_to_word(item) for item in response["Items"]])
-
         return words

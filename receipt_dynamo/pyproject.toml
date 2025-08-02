@@ -58,15 +58,26 @@ packages = ["receipt_dynamo"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=receipt_dynamo"
+addopts = "-v"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "unit: mark test as a unit test",
     "integration: mark test as an integration test",
+    "end_to_end: mark test as an end-to-end test that requires AWS credentials",
+    "unused_in_production: marks tests for entities not used in production infrastructure",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::ResourceWarning",
+    "ignore:.*urllib3.*:DeprecationWarning",
 ]
 
 [tool.coverage.run]
 source = ["receipt_dynamo"]
 omit = ["tests/*"]
+parallel = true
+concurrency = ["multiprocessing"]
+data_file = ".coverage"
 
 [tool.coverage.report]
 exclude_lines = [
@@ -118,6 +129,13 @@ good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
 [tool.pylint.design]
 max-args = 10
 max-locals = 20
+
+[tool.pylint.similarities]
+min-similarity-lines = 8
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+ignore-signatures = true
 
 [tool.isort]
 profile = "black"
