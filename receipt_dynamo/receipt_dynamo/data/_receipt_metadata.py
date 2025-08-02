@@ -1,63 +1,39 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
-    handle_dynamodb_errors,
-)
-from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        DeleteTypeDef,
-        KeysAndAttributesTypeDef,
-        PutRequestTypeDef,
-        PutTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
     DeleteTypeDef,
+    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
     QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
+    EntityNotFoundError,
+    EntityValidationError,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
+
+if TYPE_CHECKING:
+    pass
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
 class _ReceiptMetadata(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptMetadata" entities in DynamoDB.
-    This class is typically used within a DynamoClient to access and manage
-    receipt metadata records.
+    A class providing methods to interact with "ReceiptMetadata" entities in
+    DynamoDB. This class is typically used within a DynamoClient to access and
+    manage receipt metadata records.
 
     Attributes
     ----------
@@ -71,7 +47,8 @@ class _ReceiptMetadata(
     add_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Adds a single ReceiptMetadata item to the database, ensuring unique ID.
     add_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
-        Adds multiple ReceiptMetadata items to the database in chunks of up to 25 items.
+        Adds multiple ReceiptMetadata items to the database in chunks of up to
+        25 items.
     update_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Updates an existing ReceiptMetadata item in the database.
     update_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
@@ -82,17 +59,25 @@ class _ReceiptMetadata(
         Deletes multiple ReceiptMetadata items using transactions.
     get_receipt_metadata(image_id: str, receipt_id: int) -> ReceiptMetadata:
         Retrieves a single ReceiptMetadata item by image and receipt IDs.
-    get_receipt_metadatas_by_indices(indices: list[tuple[str, int]]) -> list[ReceiptMetadata]:
+    get_receipt_metadatas_by_indices(
+        indices: list[tuple[str, int]]
+    ) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items by their indices.
     get_receipt_metadatas(keys: list[dict]) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items using batch get.
     list_receipt_metadatas(...) -> Tuple[List[ReceiptMetadata], dict | None]:
         Lists ReceiptMetadata records with optional pagination.
-    get_receipt_metadatas_by_merchant(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    get_receipt_metadatas_by_merchant(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by merchant name.
-    list_receipt_metadatas_with_place_id(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    list_receipt_metadatas_with_place_id(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records that have a specific place_id.
-    get_receipt_metadatas_by_confidence(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    get_receipt_metadatas_by_confidence(
+        ...
+    ) -> Tuple[List[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by confidence score.
     """
 
@@ -109,14 +94,17 @@ class _ReceiptMetadata(
         Raises
         ------
         ValueError
-            If receipt_metadata is None, not a ReceiptMetadata, or if the record already exists.
+            If receipt_metadata is None, not a ReceiptMetadata, or if the
+            record already exists.
         """
         self._validate_entity(
             receipt_metadata, ReceiptMetadata, "receipt_metadata"
         )
         self._add_entity(
             receipt_metadata,
-            condition_expression="attribute_not_exists(PK) and attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) and attribute_not_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("add_receipt_metadatas")
@@ -134,7 +122,8 @@ class _ReceiptMetadata(
         Raises
         ------
         ValueError
-            If receipt_metadatas is invalid or if an error occurs during batch write.
+            If receipt_metadatas is invalid or if an error occurs during batch
+            write.
         """
         self._validate_entity_list(
             receipt_metadatas, ReceiptMetadata, "receipt_metadatas"
@@ -170,7 +159,9 @@ class _ReceiptMetadata(
         )
         self._update_entity(
             receipt_metadata,
-            condition_expression="attribute_exists(PK) and attribute_exists(SK)",
+            condition_expression=(
+                "attribute_exists(PK) and attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_metadatas")
@@ -178,7 +169,8 @@ class _ReceiptMetadata(
         self, receipt_metadatas: List[ReceiptMetadata]
     ) -> None:
         """
-        Updates multiple ReceiptMetadata records in DynamoDB using transactions.
+        Updates multiple ReceiptMetadata records in DynamoDB using
+        transactions.
 
         Parameters
         ----------
@@ -199,7 +191,9 @@ class _ReceiptMetadata(
                 Put=PutTypeDef(
                     TableName=self.table_name,
                     Item=item.to_item(),
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) and attribute_exists(SK)"
+                    ),
                 )
             )
             for item in receipt_metadatas
@@ -254,13 +248,16 @@ class _ReceiptMetadata(
                 Delete=DeleteTypeDef(
                     TableName=self.table_name,
                     Key=item.key,
-                    ConditionExpression="attribute_exists(PK) and attribute_exists(SK)",
+                    ConditionExpression=(
+                        "attribute_exists(PK) and attribute_exists(SK)"
+                    ),
                 )
             )
             for item in receipt_metadatas
         ]
         self._transact_write_with_chunking(transact_items)
 
+    @handle_dynamodb_errors("get_receipt_metadata")
     def get_receipt_metadata(
         self, image_id: str, receipt_id: int
     ) -> ReceiptMetadata:
@@ -284,45 +281,25 @@ class _ReceiptMetadata(
         ValueError
             If parameters are invalid or if the record does not exist.
         """
-        if image_id is None:
-            raise ValueError("image_id cannot be None")
-        if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")
-        assert_valid_uuid(image_id)
-        if receipt_id is None:
-            raise ValueError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#METADATA"},
-                },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#METADATA",
+            entity_class=ReceiptMetadata,
+            converter_func=item_to_receipt_metadata,
+        )
+
+        if result is None:
+            raise EntityNotFoundError(
+                f"ReceiptMetadata with image_id={image_id}, "
+                f"receipt_id={receipt_id} does not exist"
             )
-            item = response.get("Item")
-            if item is None:
-                raise ValueError("receipt_metadata does not exist")
-            return item_to_receipt_metadata(item)
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
 
+        return result
+
+    @handle_dynamodb_errors("get_receipt_metadatas_by_indices")
     def get_receipt_metadatas_by_indices(
         self, indices: list[tuple[str, int]]
     ) -> list[ReceiptMetadata]:
@@ -345,20 +322,20 @@ class _ReceiptMetadata(
             If indices is invalid.
         """
         if indices is None:
-            raise ValueError("indices cannot be None")
+            raise EntityValidationError("indices cannot be None")
         if not isinstance(indices, list):
-            raise ValueError("indices must be a list")
+            raise EntityValidationError("indices must be a list")
         if not all(isinstance(index, tuple) for index in indices):
-            raise ValueError("indices must be a list of tuples")
+            raise EntityValidationError("indices must be a list of tuples")
         if not all(
             isinstance(index[0], str) and isinstance(index[1], int)
             for index in indices
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
             )
         if not all(index[1] > 0 for index in indices):
-            raise ValueError("receipt_id must be positive")
+            raise EntityValidationError("receipt_id must be positive")
 
         keys = [
             {
@@ -369,6 +346,7 @@ class _ReceiptMetadata(
         ]
         return self.get_receipt_metadatas(keys)
 
+    @handle_dynamodb_errors("get_receipt_metadatas")
     def get_receipt_metadatas(self, keys: list[dict]) -> list[ReceiptMetadata]:
         """
         Retrieves a list of ReceiptMetadata records from DynamoDB using keys.
@@ -389,20 +367,20 @@ class _ReceiptMetadata(
             If keys is invalid.
         """
         if keys is None:
-            raise ValueError("keys cannot be None")
+            raise EntityValidationError("keys cannot be None")
         if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
+            raise EntityValidationError("keys must be a list")
         if not all(isinstance(key, dict) for key in keys):
-            raise ValueError("keys must be a list of dictionaries")
+            raise EntityValidationError("keys must be a list of dictionaries")
         for key in keys:
             if not {"PK", "SK"}.issubset(key.keys()):
-                raise ValueError("keys must contain 'PK' and 'SK'")
+                raise EntityValidationError("keys must contain 'PK' and 'SK'")
             if not key["PK"]["S"].startswith("IMAGE#"):
-                raise ValueError("PK must start with 'IMAGE#'")
+                raise EntityValidationError("PK must start with 'IMAGE#'")
             if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise ValueError("SK must start with 'RECEIPT#'")
+                raise EntityValidationError("SK must start with 'RECEIPT#'")
             if not key["SK"]["S"].split("#")[-1] == "METADATA":
-                raise ValueError("SK must contain 'METADATA'")
+                raise EntityValidationError("SK must contain 'METADATA'")
 
         results = []
         for i in range(0, len(keys), CHUNK_SIZE):
@@ -422,6 +400,7 @@ class _ReceiptMetadata(
                 unprocessed = response.get("UnprocessedKeys", {})
         return [item_to_receipt_metadata(result) for result in results]
 
+    @handle_dynamodb_errors("list_receipt_metadatas")
     def list_receipt_metadatas(
         self,
         limit: Optional[int] = None,
@@ -440,7 +419,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -448,53 +428,25 @@ class _ReceiptMetadata(
             If parameters are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("limit must be positive")
+            raise EntityValidationError("limit must be positive")
 
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary")
-
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {
-                    ":val": {"S": "RECEIPT_METADATA"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
             )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
 
+        return self._query_by_type(
+            entity_type="RECEIPT_METADATA",
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
+    @handle_dynamodb_errors("get_receipt_metadatas_by_merchant")
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
@@ -516,7 +468,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -524,48 +477,23 @@ class _ReceiptMetadata(
             If merchant_name is invalid.
         """
         if merchant_name is None:
-            raise ValueError("merchant_name cannot be None")
+            raise EntityValidationError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
-            raise ValueError("merchant_name must be a string")
+            raise EntityValidationError("merchant_name must be a string")
         normalized_merchant_name = merchant_name.upper().replace(" ", "_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI1",
-                "KeyConditionExpression": "#pk = :pk",
-                "ExpressionAttributeNames": {"#pk": "GSI1PK"},
-                "ExpressionAttributeValues": {":pk": {"S": gsi1_pk}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#pk = :pk",
+            expression_attribute_names={"#pk": "GSI1PK"},
+            expression_attribute_values={":pk": {"S": gsi1_pk}},
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
-
+    @handle_dynamodb_errors("list_receipt_metadatas_with_place_id")
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
@@ -589,7 +517,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -597,55 +526,31 @@ class _ReceiptMetadata(
             If place_id is invalid.
         """
         if not place_id:
-            raise ValueError("place_id cannot be empty")
+            raise EntityValidationError("place_id cannot be empty")
         if not isinstance(place_id, str):
-            raise ValueError("place_id must be a string")
+            raise EntityValidationError("place_id must be a string")
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
-            raise ValueError("limit must be positive")
+            raise EntityValidationError("limit must be positive")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary")
-
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": "GSI2PK = :pk",
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"PLACE#{place_id}"}
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
             )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    "receipt_metadata contains invalid attributes or values"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error listing receipt metadata: {e}") from e
 
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={":pk": {"S": f"PLACE#{place_id}"}},
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
+    @handle_dynamodb_errors("get_receipt_metadatas_by_confidence")
     def get_receipt_metadatas_by_confidence(
         self,
         confidence: float,
@@ -670,7 +575,8 @@ class _ReceiptMetadata(
         Returns
         -------
         Tuple[List[ReceiptMetadata], dict | None]
-            A tuple containing the list of ReceiptMetadata records and the last evaluated key.
+            A tuple containing the list of ReceiptMetadata records and the last
+            evaluated key.
 
         Raises
         ------
@@ -678,13 +584,13 @@ class _ReceiptMetadata(
             If confidence is invalid.
         """
         if confidence is None:
-            raise ValueError("confidence cannot be None")
+            raise EntityValidationError("confidence cannot be None")
         if not isinstance(confidence, float):
-            raise ValueError("confidence must be a float")
+            raise EntityValidationError("confidence must be a float")
         if confidence < 0 or confidence > 1:
-            raise ValueError("confidence must be between 0 and 1")
+            raise EntityValidationError("confidence must be between 0 and 1")
         if above is not None and not isinstance(above, bool):
-            raise ValueError("above must be a boolean")
+            raise EntityValidationError("above must be a boolean")
 
         formatted_score = f"CONFIDENCE#{confidence:.4f}"
 
@@ -693,40 +599,15 @@ class _ReceiptMetadata(
         else:
             key_expr = "GSI2PK = :pk AND GSI2SK <= :sk"
 
-        metadatas: List[ReceiptMetadata] = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSI2",
-                "KeyConditionExpression": key_expr,
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": "MERCHANT_VALIDATION"},
-                    ":sk": {"S": formatted_score},
-                },
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
-
-            response = self._client.query(**query_params)
-            metadatas.extend(
-                item_to_receipt_metadata(item)
-                for item in response.get("Items", [])
-            )
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            return metadatas, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "ValidationException":
-                raise ValueError(
-                    f"receipt_metadata contains invalid attributes or values: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise ValueError("internal server error") from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise ValueError("provisioned throughput exceeded") from e
-            elif error_code == "ResourceNotFoundException":
-                raise ValueError("table not found") from e
-            else:
-                raise ValueError(f"Error getting receipt metadata: {e}") from e
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression=key_expr,
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "MERCHANT_VALIDATION"},
+                ":sk": {"S": formatted_score},
+            },
+            converter_func=item_to_receipt_metadata,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

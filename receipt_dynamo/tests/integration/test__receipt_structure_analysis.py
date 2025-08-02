@@ -17,6 +17,12 @@ from receipt_dynamo import (
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_structure_analysis import ReceiptSection
 
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
+
 
 @pytest.fixture
 def sample_receipt_structure_analysis():
@@ -109,12 +115,12 @@ def test_addReceiptStructureAnalysis_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_structure_analysis",
+            "Table not found",
         ),
         (
             "UnknownError",
             "Unknown error",
-            "Unknown error in add_receipt_structure_analysis",
+            "Could not add receipt structure analysis to DynamoDB",
         ),
     ],
 )
@@ -202,7 +208,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation add_receipt_structure_analyses",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -223,7 +229,7 @@ def test_addReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in add_receipt_structure_analyses",
+            "Could not add receipt structure analyses to DynamoDB",
         ),
     ],
 )
@@ -376,7 +382,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Table not found for operation update_receipt_structure_analyses",
+            "Table not found",
             None,
         ),
         (
@@ -412,7 +418,7 @@ def test_updateReceiptStructureAnalyses_success(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Unknown error in update_receipt_structure_analyses",
+            "Could not update receipt structure analyses in DynamoDB",
             None,
         ),
     ],

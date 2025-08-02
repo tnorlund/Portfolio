@@ -1,21 +1,25 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class JobStatus:
     """
     Represents a status update for a job stored in a DynamoDB table.
 
-    This class encapsulates job status information such as the current status,
-    progress, message, and update timestamp. It is designed to support operations
+    This class encapsulates job status information such as the current
+    status, progress, message, and update timestamp. It is designed to support
+    operations
     such as generating DynamoDB keys and converting job status data to a
     DynamoDB-compatible item.
 
     Attributes:
         job_id (str): UUID identifying the job.
-        status (str): The status of the job (pending, running, succeeded, failed, cancelled).
+        status (str): The status of the job (pending, running, succeeded,
+            failed, cancelled).
         updated_at (datetime): The timestamp when the status was updated.
         progress (float): The progress of the job as a percentage (0-100).
         message (str): A message describing the status update.
@@ -23,32 +27,22 @@ class JobStatus:
         instance_id (str): The ID of the instance that updated the status.
     """
 
-    def __init__(
-        self,
-        job_id: str,
-        status: str,
-        updated_at: datetime,
-        progress: Optional[float] = None,
-        message: Optional[str] = None,
-        updated_by: Optional[str] = None,
-        instance_id: Optional[str] = None,
-    ):
-        """Initializes a new JobStatus object for DynamoDB.
+    job_id: str
+    status: str
+    updated_at: str
+    progress: Optional[float] = None
+    message: Optional[str] = None
+    updated_by: Optional[str] = None
+    instance_id: Optional[str] = None
 
-        Args:
-            job_id (str): UUID identifying the job.
-            status (str): The status of the job.
-            updated_at (datetime): The timestamp when the status was updated.
-            progress (float, optional): The progress of the job as a percentage (0-100).
-            message (str, optional): A message describing the status update.
-            updated_by (str, optional): The user or system that updated the status.
-            instance_id (str, optional): The ID of the instance that updated the status.
+    def __post_init__(self):
+        """Validates fields after dataclass initialization.
 
         Raises:
-            ValueError: If any parameter is of an invalid type or has an invalid value.
+            ValueError: If any parameter is of an invalid type or has an
+                invalid value.
         """
-        assert_valid_uuid(job_id)
-        self.job_id = job_id
+        assert_valid_uuid(self.job_id)
 
         valid_statuses = [
             "pending",
@@ -58,43 +52,35 @@ class JobStatus:
             "cancelled",
             "interrupted",
         ]
-        if not isinstance(status, str) or status.lower() not in valid_statuses:
+        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
-        self.status: str = status.lower()
+        self.status = self.status.lower()
 
-        self.updated_at: str
-        if isinstance(updated_at, datetime):
-            self.updated_at = updated_at.isoformat()
-        elif isinstance(updated_at, str):
-            self.updated_at = updated_at
-        else:
+        # Handle updated_at conversion
+        if isinstance(self.updated_at, datetime):
+            self.updated_at = self.updated_at.isoformat()
+        elif not isinstance(self.updated_at, str):
             raise ValueError(
                 "updated_at must be a datetime object or a string"
             )
 
-        self.progress: Optional[float]
-        if progress is not None:
+        if self.progress is not None:
             if (
-                not isinstance(progress, (int, float))
-                or progress < 0
-                or progress > 100
+                not isinstance(self.progress, (int, float))
+                or self.progress < 0
+                or self.progress > 100
             ):
                 raise ValueError("progress must be a number between 0 and 100")
-            self.progress = float(progress)
-        else:
-            self.progress = None
+            self.progress = float(self.progress)
 
-        if message is not None and not isinstance(message, str):
+        if self.message is not None and not isinstance(self.message, str):
             raise ValueError("message must be a string")
-        self.message: Optional[str] = message
 
-        if updated_by is not None and not isinstance(updated_by, str):
+        if self.updated_by is not None and not isinstance(self.updated_by, str):
             raise ValueError("updated_by must be a string")
-        self.updated_by: Optional[str] = updated_by
 
-        if instance_id is not None and not isinstance(instance_id, str):
+        if self.instance_id is not None and not isinstance(self.instance_id, str):
             raise ValueError("instance_id must be a string")
-        self.instance_id: Optional[str] = instance_id
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -123,7 +109,8 @@ class JobStatus:
         """Converts the JobStatus object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the JobStatus object as a DynamoDB item.
+            dict: A dictionary representing the JobStatus object as a
+                DynamoDB item.
         """
         item = {
             **self.key,
@@ -169,7 +156,8 @@ class JobStatus:
         """Returns an iterator over the JobStatus object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the JobStatus object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                JobStatus object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
         yield "status", self.status
@@ -179,29 +167,6 @@ class JobStatus:
         yield "updated_by", self.updated_by
         yield "instance_id", self.instance_id
 
-    def __eq__(self, other) -> bool:
-        """Determines whether two JobStatus objects are equal.
-
-        Args:
-            other (JobStatus): The other JobStatus object to compare.
-
-        Returns:
-            bool: True if the JobStatus objects are equal, False otherwise.
-
-        Note:
-            If other is not an instance of JobStatus, False is returned.
-        """
-        if not isinstance(other, JobStatus):
-            return False
-        return (
-            self.job_id == other.job_id
-            and self.status == other.status
-            and self.updated_at == other.updated_at
-            and self.progress == other.progress
-            and self.message == other.message
-            and self.updated_by == other.updated_by
-            and self.instance_id == other.instance_id
-        )
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobStatus object.
@@ -245,7 +210,8 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:
@@ -274,4 +240,4 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
             instance_id=instance_id,
         )
     except KeyError as e:
-        raise ValueError(f"Error converting item to JobStatus: {e}")
+        raise ValueError(f"Error converting item to JobStatus: {e}") from e

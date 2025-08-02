@@ -5,7 +5,7 @@ Retry mechanism with exponential backoff for handling transient failures.
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -77,7 +77,9 @@ def retry_with_backoff(
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except exceptions as e:
+                except (
+                    exceptions
+                ) as e:  # pylint: disable=broad-exception-caught
                     last_exception = e
 
                     # Don't sleep after the last attempt

@@ -1,7 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, Tuple
 
-from receipt_dynamo.constants import BatchStatus, PassNumber, ValidationStatus
+from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
@@ -10,75 +11,67 @@ from receipt_dynamo.entities.util import (
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class CompletionBatchResult:
     """
     A completion batch result is a result of a completion batch.
     """
+    batch_id: str
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    original_label: str
+    gpt_suggested_label: str | None
+    status: str | BatchStatus
+    validated_at: datetime
 
-    def __init__(
-        self,
-        batch_id: str,
-        image_id: str,
-        receipt_id: int,
-        line_id: int,
-        word_id: int,
-        original_label: str,
-        gpt_suggested_label: str | None,
-        status: str | BatchStatus,
-        validated_at: datetime,
-    ):
-        assert_valid_uuid(batch_id)
-        self.batch_id = batch_id
+    def __post_init__(self):
+        assert_valid_uuid(self.batch_id)
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        assert_type("receipt_id", receipt_id, int, ValueError)
-        self.receipt_id = receipt_id
+        assert_type("receipt_id", self.receipt_id, int, ValueError)
 
-        assert_type("line_id", line_id, int, ValueError)
-        self.line_id = line_id
+        assert_type("line_id", self.line_id, int, ValueError)
 
-        assert_type("word_id", word_id, int, ValueError)
-        self.word_id = word_id
+        assert_type("word_id", self.word_id, int, ValueError)
 
-        assert_type("original_label", original_label, str, ValueError)
-        self.original_label = original_label
+        assert_type("original_label", self.original_label, str, ValueError)
 
-        if not isinstance(gpt_suggested_label, str | None):
+        if not isinstance(self.gpt_suggested_label, str | None):
             raise ValueError(
                 format_type_error(
                     "gpt_suggested_label",
-                    gpt_suggested_label,
+                    self.gpt_suggested_label,
                     (str, type(None)),
                 )
             )
-        self.gpt_suggested_label = gpt_suggested_label
 
-        if not isinstance(status, str | BatchStatus):
+        if not isinstance(self.status, str | BatchStatus):
             raise ValueError(
-                format_type_error("status", status, (str, BatchStatus))
+                format_type_error("status", self.status, (str, BatchStatus))
             )
-        if isinstance(status, str) and status not in [
+        if isinstance(self.status, str) and self.status not in [
             s.value for s in BatchStatus
         ]:
             raise ValueError(
                 "status must be one of: "
                 + ", ".join(s.value for s in BatchStatus)
             )
-        if isinstance(status, BatchStatus):
-            status_str = status.value
+        if isinstance(self.status, BatchStatus):
+            status_str = self.status.value
         else:
-            status_str = status
+            status_str = self.status
         self.status = status_str
 
-        assert_type("validated_at", validated_at, datetime, ValueError)
-        self.validated_at = validated_at
+        assert_type("validated_at", self.validated_at, datetime, ValueError)
 
     @property
     def key(self) -> Dict[str, Any]:
         """
-        The key for the completion batch result is a composite key that consists of the batch id and the receipt id, line id, and word id.
+        The key for the completion batch result is a composite key that
+        consists of the batch id and the receipt id, line id, and word id.
 
         PK: BATCH#<batch_id>
         SK: RESULT#RECEIPT#<receipt_id>#LINE#<line_id>#WORD#<word_id>
@@ -89,7 +82,10 @@ class CompletionBatchResult:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
             "SK": {
-                "S": f"RESULT#RECEIPT#{self.receipt_id}#LINE#{self.line_id}#WORD#{self.word_id}#LABEL#{self.original_label}"
+                "S": (
+                    f"RESULT#RECEIPT#{self.receipt_id}#LINE#{self.line_id}#"
+                    f"WORD#{self.word_id}#LABEL#{self.original_label}"
+                )
             },
         }
 
@@ -168,23 +164,7 @@ class CompletionBatchResult:
         yield "status", self.status
         yield "validated_at", self.validated_at
 
-    def __eq__(self, other) -> bool:
-        """
-        Determines whether two completion batch result objects are equal.
-        """
-        if not isinstance(other, CompletionBatchResult):
-            return False
-        return (
-            self.batch_id == other.batch_id
-            and self.image_id == other.image_id
-            and self.receipt_id == other.receipt_id
-            and self.line_id == other.line_id
-            and self.word_id == other.word_id
-            and self.original_label == other.original_label
-            and self.gpt_suggested_label == other.gpt_suggested_label
-            and self.status == other.status
-            and self.validated_at == other.validated_at
-        )
+    # __eq__ is automatically generated by dataclass(eq=True)
 
     def __hash__(self) -> int:
         return hash(
