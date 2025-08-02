@@ -1,36 +1,33 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptValidationSummary,
-    item_to_receipt_validation_summary,
-)
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DynamoDBBaseOperations,
+    PutRequestTypeDef,
+    QueryByTypeMixin,
     SingleEntityCRUDMixin,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    QueryInputTypeDef,
-    WriteRequestTypeDef,
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
+from receipt_dynamo.entities import item_to_receipt_validation_summary
+from receipt_dynamo.entities.receipt_validation_summary import (
+    ReceiptValidationSummary,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
+if TYPE_CHECKING:
+    pass
+
 
 class _ReceiptValidationSummary(
-    DynamoDBBaseOperations, SingleEntityCRUDMixin, BatchOperationsMixin
+    DynamoDBBaseOperations,
+    SingleEntityCRUDMixin,
+    BatchOperationsMixin,
+    QueryByTypeMixin,
 ):
     """
     A class used to access receipt validation summaries in DynamoDB.
@@ -154,16 +151,7 @@ class _ReceiptValidationSummary(
         """
         self._validate_entity(summary, ReceiptValidationSummary, "summary")
 
-        # Need to use direct delete since summaries don't have key() method
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{summary.image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{summary.receipt_id:05d}#ANALYSIS#VALIDATION"
-                },
-            },
-        )
+        self._delete_entity(summary, condition_expression=None)
 
     @handle_dynamodb_errors("get_receipt_validation_summary")
     def get_receipt_validation_summary(
@@ -184,35 +172,34 @@ class _ReceiptValidationSummary(
                 from DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+            raise EntityValidationError(
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
 
         try:
             assert_valid_uuid(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION"},
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION",
+            entity_class=ReceiptValidationSummary,
+            converter_func=item_to_receipt_validation_summary,
         )
 
-        item = response.get("Item")
-        if not item:
-            raise ValueError(
+        if result is None:
+            raise EntityNotFoundError(
                 f"ReceiptValidationSummary for receipt {receipt_id} and "
                 f"image {image_id} does not exist"
             )
 
-        return item_to_receipt_validation_summary(item)
+        return result
 
     @handle_dynamodb_errors("list_receipt_validation_summaries")
     def list_receipt_validation_summaries(
@@ -239,54 +226,20 @@ class _ReceiptValidationSummary(
                 from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
-                ":val": {"S": "RECEIPT_VALIDATION_SUMMARY"}
-            },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        summaries = []
-        response = self._client.query(**query_params)
-        summaries.extend(
-            [
-                item_to_receipt_validation_summary(item)
-                for item in response.get("Items", [])
-            ]
+        return self._query_by_type(
+            entity_type="RECEIPT_VALIDATION_SUMMARY",
+            converter_func=item_to_receipt_validation_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all summaries
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [
-                        item_to_receipt_validation_summary(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return summaries, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_summaries_by_status")
     def list_receipt_validation_summaries_by_status(
@@ -315,55 +268,26 @@ class _ReceiptValidationSummary(
                 from DynamoDB.
         """
         if not isinstance(status, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"status must be a string, got {type(status).__name__}"
             )
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI2",
-            "KeyConditionExpression": "#gsi2pk = :pk",
-            "ExpressionAttributeNames": {"#gsi2pk": "GSI2PK"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="#gsi2pk = :pk",
+            expression_attribute_names={"#gsi2pk": "GSI2PK"},
+            expression_attribute_values={
                 ":pk": {"S": f"VALIDATION_SUMMARY_STATUS#{status}"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        summaries = []
-        response = self._client.query(**query_params)
-        summaries.extend(
-            [
-                item_to_receipt_validation_summary(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_summary,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all summaries
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                summaries.extend(
-                    [
-                        item_to_receipt_validation_summary(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return summaries, last_evaluated_key

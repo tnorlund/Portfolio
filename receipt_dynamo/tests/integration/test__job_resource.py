@@ -6,8 +6,15 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._job_resource import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_resource import JobResource
+
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 
 @pytest.fixture
@@ -108,7 +115,7 @@ def test_addJobResource_raises_value_error(job_resource_dynamo):
     """Test that addJobResource raises ValueError when job_resource is None"""
     with pytest.raises(
         ValueError,
-        match="JobResource parameter is required and cannot be None.",
+        match="job_resource cannot be None",
     ):
         job_resource_dynamo.add_job_resource(None)
 
@@ -142,7 +149,7 @@ def test_addJobResource_raises_conditional_check_failed(
 
     # Try to add it again
     with pytest.raises(
-        ValueError,
+        EntityAlreadyExistsError,
         match=f"JobResource with resource ID "
         f"{sample_job_resource.resource_id} for job "
         f"{sample_job_resource.job_id} already exists",
@@ -210,9 +217,7 @@ def test_getJobResource_success(
 @pytest.mark.integration
 def test_getJobResource_raises_value_error_job_id_none(job_resource_dynamo):
     """Test that getJobResource raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_resource_dynamo.get_job_resource(None, "resource-123")
 
 
@@ -286,9 +291,7 @@ def test_updateJobResourceStatus_raises_value_error_job_id_none(
     """
     Test that updateJobResourceStatus raises ValueError when job_id is None
     """
-    with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_resource_dynamo.update_job_resource_status(
             None, "resource-123", "released"
         )

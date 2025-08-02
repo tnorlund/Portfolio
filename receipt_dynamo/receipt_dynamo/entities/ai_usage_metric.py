@@ -9,13 +9,14 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from .base import DynamoDBEntity
-from .util import _repr_str, assert_type
+from .entity_mixins import SerializationMixin
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class AIUsageMetric(DynamoDBEntity):
+class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     """
-    Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google Places).
+    Tracks usage and costs for AI service calls (OpenAI, Anthropic, Google
+    Places).
 
     Uses:
     - PK: "AI_USAGE#{service}#{model}"
@@ -104,11 +105,11 @@ class AIUsageMetric(DynamoDBEntity):
         # Priority: job_id > user_id > batch_id > environment
         if self.job_id:
             return f"JOB#{self.job_id}"
-        elif self.user_id:
+        if self.user_id:
             return f"USER#{self.user_id}"
-        elif self.batch_id:
+        if self.batch_id:
             return f"BATCH#{self.batch_id}"
-        elif self.environment:
+        if self.environment:
             return f"ENV#{self.environment}"
         return None
 
@@ -118,6 +119,11 @@ class AIUsageMetric(DynamoDBEntity):
         if self.job_id or self.user_id or self.batch_id or self.environment:
             return f"AI_USAGE#{self.timestamp.isoformat()}"
         return None
+
+    @property
+    def key(self) -> Dict[str, Any]:
+        """Returns the primary key for DynamoDB."""
+        return {"PK": {"S": self.pk}, "SK": {"S": self.sk}}
 
     @property
     def item_type(self) -> str:
@@ -134,149 +140,145 @@ class AIUsageMetric(DynamoDBEntity):
             if self.cost_usd is not None
             else "unknown cost"
         )
-        return f"<AIUsageMetric {self.service}/{self.model} {self.operation} {tokens_str} {cost_str}>"
+        return (
+            f"<AIUsageMetric {self.service}/{self.model} {self.operation} "
+            f"{tokens_str} {cost_str}>"
+        )
 
-    def to_dynamodb_item(self) -> Dict:
-        """Convert to DynamoDB item format."""
-        item = {
-            "PK": {"S": self.pk},
-            "SK": {"S": self.sk},
+    def to_item(self) -> Dict[str, Any]:
+        """Convert to DynamoDB item format using SerializationMixin."""
+        # Build GSI keys
+        gsi_keys = {
             "GSI1PK": {"S": self.gsi1pk},
             "GSI1SK": {"S": self.gsi1sk},
             "GSI2PK": {"S": self.gsi2pk},
             "GSI2SK": {"S": self.gsi2sk},
-            "TYPE": {"S": self.item_type},
-            "service": {"S": self.service},
-            "model": {"S": self.model},
-            "operation": {"S": self.operation},
-            "timestamp": {"S": self.timestamp.isoformat()},
-            "requestId": {"S": self.request_id},
-            "apiCalls": {"N": str(self.api_calls)},
-            "date": {"S": self.date},
-            "month": {"S": self.month},
-            "hour": {"S": self.hour},
         }
 
-        # Optional fields
+        # Add GSI3 keys if available
         if self.gsi3pk and self.gsi3sk:
-            item["GSI3PK"] = {"S": self.gsi3pk}
-            item["GSI3SK"] = {"S": self.gsi3sk}
+            gsi_keys["GSI3PK"] = {"S": self.gsi3pk}
+            gsi_keys["GSI3SK"] = {"S": self.gsi3sk}
 
+        # Custom field mappings for DynamoDB naming conventions
+        custom_fields = {**gsi_keys}
+        
+        # Add required fields
+        custom_fields["request_id"] = self._serialize_value(self.request_id)
+        custom_fields["api_calls"] = self._serialize_value(self.api_calls)
+        
+        # Add optional fields only if they have values
         if self.input_tokens is not None:
-            item["inputTokens"] = {"N": str(self.input_tokens)}
+            custom_fields["input_tokens"] = self._serialize_value(self.input_tokens)
         if self.output_tokens is not None:
-            item["outputTokens"] = {"N": str(self.output_tokens)}
+            custom_fields["output_tokens"] = self._serialize_value(self.output_tokens)
         if self.total_tokens is not None:
-            item["totalTokens"] = {"N": str(self.total_tokens)}
+            custom_fields["total_tokens"] = self._serialize_value(self.total_tokens)
         if self.cost_usd is not None:
-            item["costUSD"] = {"N": str(Decimal(str(self.cost_usd)))}
+            custom_fields["cost_usd"] = self._serialize_value(
+                self.cost_usd, serialize_decimal=True
+            )
         if self.latency_ms is not None:
-            item["latencyMs"] = {"N": str(self.latency_ms)}
-
-        if self.user_id:
-            item["userId"] = {"S": self.user_id}
-        if self.job_id:
-            item["jobId"] = {"S": self.job_id}
-        if self.batch_id:
-            item["batchId"] = {"S": self.batch_id}
+            custom_fields["latency_ms"] = self._serialize_value(self.latency_ms)
+        if self.user_id is not None:
+            custom_fields["user_id"] = self._serialize_value(self.user_id)
+        if self.job_id is not None:
+            custom_fields["job_id"] = self._serialize_value(self.job_id)
+        if self.batch_id is not None:
+            custom_fields["batch_id"] = self._serialize_value(self.batch_id)
         if self.github_pr is not None:
-            item["githubPR"] = {"N": str(self.github_pr)}
-        if self.environment:
-            item["environment"] = {"S": self.environment}
-        if self.error:
-            item["error"] = {"S": self.error}
+            custom_fields["github_pr"] = self._serialize_value(self.github_pr)
+        if self.environment is not None:
+            custom_fields["environment"] = self._serialize_value(self.environment)
+        if self.error is not None:
+            custom_fields["error"] = self._serialize_value(self.error)
         if self.metadata:
-            item["metadata"] = self._to_dynamodb_value(self.metadata)
+            custom_fields["metadata"] = self._serialize_value(self.metadata)
 
-        return item
+        # Exclude computed fields and internal properties from auto-serialization
+        exclude_fields = {
+            "pk",
+            "sk",
+            "gsi1pk",
+            "gsi1sk",
+            "gsi2pk",
+            "gsi2sk",
+            "gsi3pk",
+            "gsi3sk",
+            "item_type",
+            "request_id",
+            "api_calls",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cost_usd",
+            "latency_ms",
+            "user_id",
+            "job_id",
+            "batch_id",
+            "github_pr",
+            "environment",
+            "error",
+            "metadata",
+        }
 
-    def _to_dynamodb_value(self, value):
-        """Convert a Python value to DynamoDB format."""
-        if value is None:
-            return {"NULL": True}
-        elif isinstance(value, bool):
-            return {"BOOL": value}
-        elif isinstance(value, int) or isinstance(value, float):
-            return {"N": str(value)}
-        elif isinstance(value, str):
-            return {"S": value}
-        elif isinstance(value, dict):
-            return {
-                "M": {k: self._to_dynamodb_value(v) for k, v in value.items()}
-            }
-        elif isinstance(value, list):
-            return {"L": [self._to_dynamodb_value(v) for v in value]}
-        else:
-            return {"S": str(value)}
+        return self.build_dynamodb_item(
+            entity_type=self.item_type,
+            custom_fields=custom_fields,
+            exclude_fields=exclude_fields,
+        )
 
-    @classmethod
-    def _from_dynamodb_value(cls, value):
-        """Convert a DynamoDB value to Python format."""
-        if "NULL" in value:
-            return None
-        elif "BOOL" in value:
-            return value["BOOL"]
-        elif "N" in value:
-            num_str = value["N"]
-            if "." in num_str:
-                return float(num_str)
-            else:
-                return int(num_str)
-        elif "S" in value:
-            return value["S"]
-        elif "M" in value:
-            return {
-                k: cls._from_dynamodb_value(v) for k, v in value["M"].items()
-            }
-        elif "L" in value:
-            return [cls._from_dynamodb_value(v) for v in value["L"]]
-        else:
-            raise ValueError(f"Unknown DynamoDB value type: {value}")
+    def to_dynamodb_item(self) -> Dict[str, Any]:
+        """Compatibility method for tests expecting to_dynamodb_item."""
+        return self.to_item()
 
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
-        """Create instance from DynamoDB item."""
-        return cls(
-            service=item["service"]["S"],
-            model=item["model"]["S"],
-            operation=item["operation"]["S"],
-            timestamp=datetime.fromisoformat(item["timestamp"]["S"]),
-            request_id=item["requestId"]["S"],
-            input_tokens=(
-                int(item["inputTokens"]["N"])
-                if "inputTokens" in item
-                else None
+        """Create instance from DynamoDB item using type-safe EntityFactory."""
+        from receipt_dynamo.entities.entity_factory import EntityFactory
+
+        # Type-safe extractors for all fields
+        custom_extractors = {
+            "service": EntityFactory.extract_string_field("service"),
+            "model": EntityFactory.extract_string_field("model"),
+            "operation": EntityFactory.extract_string_field("operation"),
+            "timestamp": EntityFactory.extract_datetime_field("timestamp"),
+            "request_id": EntityFactory.extract_string_field("request_id"),
+            "input_tokens": EntityFactory.extract_int_field("input_tokens"),
+            "output_tokens": EntityFactory.extract_int_field("output_tokens"),
+            "total_tokens": EntityFactory.extract_int_field("total_tokens"),
+            "api_calls": EntityFactory.extract_int_field(
+                "api_calls", default=1
             ),
-            output_tokens=(
-                int(item["outputTokens"]["N"])
-                if "outputTokens" in item
-                else None
+            "cost_usd": EntityFactory.extract_float_field("cost_usd"),
+            "latency_ms": EntityFactory.extract_int_field("latency_ms"),
+            "user_id": EntityFactory.extract_string_field("user_id"),
+            "job_id": EntityFactory.extract_string_field("job_id"),
+            "batch_id": EntityFactory.extract_string_field("batch_id"),
+            "github_pr": EntityFactory.extract_int_field("github_pr"),
+            "environment": EntityFactory.extract_string_field("environment"),
+            "error": EntityFactory.extract_string_field("error"),
+            "metadata": lambda item: cls.safe_deserialize_field(
+                item, "metadata", default={}, field_type=dict
             ),
-            total_tokens=(
-                int(item["totalTokens"]["N"])
-                if "totalTokens" in item
-                else None
-            ),
-            api_calls=int(item["apiCalls"]["N"]),
-            cost_usd=(
-                float(item["costUSD"]["N"]) if "costUSD" in item else None
-            ),
-            latency_ms=(
-                int(item["latencyMs"]["N"]) if "latencyMs" in item else None
-            ),
-            user_id=item.get("userId", {}).get("S"),
-            job_id=item.get("jobId", {}).get("S"),
-            batch_id=item.get("batchId", {}).get("S"),
-            github_pr=(
-                int(item["githubPR"]["N"]) if "githubPR" in item else None
-            ),
-            environment=item.get("environment", {}).get("S"),
-            error=item.get("error", {}).get("S"),
-            metadata=(
-                cls._from_dynamodb_value(item["metadata"])
-                if "metadata" in item
-                else {}
-            ),
+        }
+
+        required_keys = {
+            "service",
+            "model",
+            "operation",
+            "timestamp",
+        }
+
+        # No field mappings needed - using snake_case consistently
+        field_mappings = {}
+        
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=required_keys,
+            field_mappings=field_mappings,
+            custom_extractors=custom_extractors,
         )
 
     @classmethod

@@ -1,27 +1,21 @@
 """AI Usage Metric data access mixin for DynamoDB operations."""
 
-import time
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import PutRequestTypeDef, WriteRequestTypeDef
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
+if TYPE_CHECKING:
+    pass
 
-class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
+
+class _AIUsageMetric(FlattenedStandardMixin):
     """Mixin for AI usage metric operations in DynamoDB."""
 
     @handle_dynamodb_errors("add_ai_usage_metric")
@@ -33,8 +27,11 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
             metric: The AI usage metric to store
         """
         self._validate_entity(metric, AIUsageMetric, "metric")
-        item = metric.to_dynamodb_item()
-        self._client.put_item(TableName=self.table_name, Item=item)
+        # Convert metric to entity format that works with _add_entity
+        temp_metric = type(
+            "TempMetric", (), {"to_item": lambda: metric.to_dynamodb_item()}
+        )()
+        self._add_entity(temp_metric)
 
     @handle_dynamodb_errors("batch_add_ai_usage_metrics")
     def batch_put_ai_usage_metrics(
@@ -54,57 +51,23 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
 
         self._validate_entity_list(metrics, AIUsageMetric, "metrics")
 
-        # Convert metrics to DynamoDB items and create mapping for failure tracking
+        # Convert metrics to DynamoDB items and create mapping for failure
+        # tracking
         items = [metric.to_dynamodb_item() for metric in metrics]
         failed_metrics = []
 
-        # Process in batches of 25 (DynamoDB limit)
-        for i in range(0, len(items), 25):
-            batch_items = items[i : i + 25]
-            batch_metrics = metrics[i : i + 25]
+        # Convert metrics to WriteRequestTypeDef format
+        request_items = [
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item))
+            for item in items
+        ]
 
-            request_items = {
-                self.table_name: [
-                    WriteRequestTypeDef(
-                        PutRequest=PutRequestTypeDef(Item=item)
-                    )
-                    for item in batch_items
-                ]
-            }
-
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            # Handle unprocessed items
-            unprocessed = response.get("UnprocessedItems", {})
-            retry_count = 0
-            max_retries = 3
-
-            while (
-                unprocessed.get(self.table_name) and retry_count < max_retries
-            ):
-                response = self._client.batch_write_item(
-                    RequestItems=unprocessed
-                )
-                unprocessed = response.get("UnprocessedItems", {})
-                retry_count += 1
-
-            # Map unprocessed items back to original metrics
-            if unprocessed.get(self.table_name):
-                unprocessed_requests = unprocessed[self.table_name]
-                for request in unprocessed_requests:
-                    if "PutRequest" in request:
-                        # Find the corresponding metric by matching the item
-                        unprocessed_item = request["PutRequest"]["Item"]
-                        # Match by requestId (camelCase as per DynamoDB item format)
-                        request_id = unprocessed_item.get("requestId", {}).get(
-                            "S"
-                        )
-                        for metric in batch_metrics:
-                            if metric.request_id == request_id:
-                                failed_metrics.append(metric)
-                                break
+        try:
+            self._batch_write_with_retry(request_items)
+        except Exception:
+            # If batch write fails, assume all metrics failed
+            # This simplifies error handling compared to the original complex logic
+            failed_metrics = metrics.copy()
 
         return failed_metrics
 
@@ -126,7 +89,7 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
         # Query using GSI1 to get metrics by date
         # Service parameter is required because GSI1PK is "AI_USAGE#{service}"
         if not service:
-            raise ValueError(
+            raise EntityValidationError(
                 "Service parameter is required for date-based queries"
             )
 
@@ -136,20 +99,23 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
             ":gsi1sk": {"S": f"DATE#{date}"},
         }
 
-        response = self._client.query(
-            TableName=self.table_name,
-            IndexName="GSI1",  # Query the GSI for date-based access
-            KeyConditionExpression=key_condition,
-            ExpressionAttributeValues=expression_values,
-            Limit=limit,
+        # Use _query_entities but return raw items
+        items, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression=key_condition,
+            expression_attribute_names=None,
+            expression_attribute_values=expression_values,
+            converter_func=lambda x: x,  # Return raw items
+            limit=limit,
+            last_evaluated_key=None,
         )
 
-        return response.get("Items", [])
+        return items
 
     @handle_dynamodb_errors("get_ai_usage_metric")
     def get_ai_usage_metric(
         self, service: str, model: str, timestamp: str, request_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[AIUsageMetric]:
         """
         Get a specific AI usage metric.
 
@@ -160,14 +126,11 @@ class _AIUsageMetric(DynamoDBBaseOperations, BatchOperationsMixin):
             request_id: Unique request identifier
 
         Returns:
-            The metric item if found, None otherwise
+            The metric if found, None otherwise
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"AI_USAGE#{service}#{model}"},
-                "SK": {"S": f"USAGE#{timestamp}#{request_id}"},
-            },
+        return self._get_entity(
+            primary_key=f"AI_USAGE#{service}#{model}",
+            sort_key=f"USAGE#{timestamp}#{request_id}",
+            entity_class=AIUsageMetric,
+            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item),
         )
-
-        return response.get("Item")

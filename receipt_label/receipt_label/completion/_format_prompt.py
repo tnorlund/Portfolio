@@ -273,7 +273,7 @@ def _format_first_pass_prompt(
     return "\n".join(prompt_lines)
 
 
-def _format_prompt(  # pylint: disable=too-many-positional-arguments
+def _format_prompt(  # pylint: disable=too-many-arguments
     first_pass_labels: list[ReceiptWordLabel],
     second_pass_labels: list[ReceiptWordLabel],
     words: list[ReceiptWord],

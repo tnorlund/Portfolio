@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass, fields
 from typing import Any, Dict, Iterable
 
 
-@dataclass(eq=True, unsafe_hash=True)
+@dataclass(eq=True, unsafe_hash=False)
 class DynamoDBEntity:
     """Base dataclass for DynamoDB entities."""
 

@@ -1,5 +1,6 @@
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Literal, Optional, Tuple
 
@@ -8,12 +9,14 @@ from receipt_dynamo.entities.util import normalize_address
 SEARCH_TYPES = Literal["ADDRESS", "PHONE", "URL"]
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class PlacesCache:
     """
     Represents a cached Google Places API response stored in DynamoDB.
 
-    This class caches responses from the Google Places API to minimize API calls and costs.
-    The cache is keyed by the type of search (address, phone, URL) and the search value.
+    This class caches responses from the Google Places API to minimize API
+    calls and costs. The cache is keyed by the type of search (address, phone,
+    URL) and the search value.
 
     Attributes:
         search_type (str): Type of search performed (ADDRESS, PHONE, URL)
@@ -22,7 +25,8 @@ class PlacesCache:
         places_response (Dict): The response from the Google Places API
         last_updated (str): ISO format timestamp of last update
         query_count (int): Number of times this cache entry has been accessed
-        normalized_value (str): Normalized version of the search value (for addresses)
+        normalized_value (str): Normalized version of the search value (for
+            addresses)
         value_hash (str): Hash of the original search value (for addresses)
     """
 
@@ -31,83 +35,60 @@ class PlacesCache:
     _MAX_PHONE_LENGTH = 30  # International format with extra padding
     _MAX_URL_LENGTH = 100  # Standard URLs with some padding
 
-    def __init__(
-        self,
-        search_type: SEARCH_TYPES,
-        search_value: str,
-        place_id: str,
-        places_response: Dict[str, Any],
-        last_updated: str,
-        query_count: int = 0,
-        normalized_value: Optional[str] = None,
-        value_hash: Optional[str] = None,
-        time_to_live: Optional[int] = None,
-    ):
-        """
-        Initialize a new PlacesCache entry.
+    search_type: SEARCH_TYPES
+    search_value: str
+    place_id: str
+    places_response: Dict[str, Any]
+    last_updated: str
+    query_count: int = 0
+    normalized_value: Optional[str] = None
+    value_hash: Optional[str] = None
+    time_to_live: Optional[int] = None
 
-        Args:
-            search_type (str): Type of search performed (ADDRESS, PHONE, URL)
-            search_value (str): The value used for the search
-            place_id (str): The Google Places place_id
-            places_response (Dict): The response from the Google Places API
-            last_updated (str): ISO format timestamp of last update
-            query_count (int, optional): Times this cache entry was accessed. Defaults to 0.
-            normalized_value (str, optional): Normalized version of the search value. Defaults to None.
-            value_hash (str, optional): Hash of the original search value. Defaults to None.
-            time_to_live (int, optional): Time to live for the cache entry. Defaults to None.
+    def __post_init__(self):
+        """
+        Validate and process the dataclass fields after initialization.
+
         Raises:
             ValueError: If any of the parameters are invalid
         """
         # Validate search_type
-        if search_type not in ["ADDRESS", "PHONE", "URL"]:
+        if self.search_type not in ["ADDRESS", "PHONE", "URL"]:
             raise ValueError(
                 f"search_type must be one of: ADDRESS, PHONE, URL"
             )
-        self.search_type = search_type
 
         # Validate search_value
-        if not search_value or not isinstance(search_value, str):
+        if not self.search_value or not isinstance(self.search_value, str):
             raise ValueError("search_value cannot be empty")
-        self.search_value = search_value
 
         # Validate place_id
-        if not place_id or not isinstance(place_id, str):
+        if not self.place_id or not isinstance(self.place_id, str):
             raise ValueError("place_id cannot be empty")
-        self.place_id = place_id
 
         # Validate places_response
-        if not isinstance(places_response, dict):
+        if not isinstance(self.places_response, dict):
             raise ValueError("places_response must be a dictionary")
-        self.places_response = places_response
 
         # Validate last_updated
         try:
-            datetime.fromisoformat(last_updated)
-        except (ValueError, TypeError):
+            datetime.fromisoformat(self.last_updated)
+        except (ValueError, TypeError) as e:
             raise ValueError(
                 "last_updated must be a valid ISO format timestamp"
-            )
-        self.last_updated = last_updated
+            ) from e
 
         # Validate query_count
-        if not isinstance(query_count, int) or query_count < 0:
+        if not isinstance(self.query_count, int) or self.query_count < 0:
             raise ValueError("query_count must be non-negative")
-        self.query_count: int = query_count
 
-        # Store normalized value and hash if provided
-        self.normalized_value: Optional[str] = normalized_value
-        self.value_hash = value_hash
-        self.time_to_live: Optional[int]
-        if time_to_live is not None:
-            if not isinstance(time_to_live, int) or time_to_live < 0:
+        # Validate time_to_live
+        if self.time_to_live is not None:
+            if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
                 raise ValueError("time_to_live must be non-negative")
             now = int(time.time())
-            if time_to_live < now:
+            if self.time_to_live < now:
                 raise ValueError("time_to_live must be in the future")
-            self.time_to_live = time_to_live
-        else:
-            self.time_to_live = None
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.
@@ -137,16 +118,15 @@ class PlacesCache:
 
             # Return padded original value with hash
             return f"{value_hash}_{value:_>{self._MAX_ADDRESS_LENGTH}}"
-        elif self.search_type == "PHONE":
+        if self.search_type == "PHONE":
             # Keep only digits and basic formatting characters
             value = "".join(c for c in value if c.isdigit() or c in "()+-")
             return f"{value:_>{self._MAX_PHONE_LENGTH}}"
-        elif self.search_type == "URL":
+        if self.search_type == "URL":
             # Replace spaces with underscores and lowercase
             value = value.lower().replace(" ", "_")
             return f"{value:_>{self._MAX_URL_LENGTH}}"
-        else:
-            raise ValueError(f"Invalid search type: {self.search_type}")
+        raise ValueError(f"Invalid search type: {self.search_type}")
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -178,8 +158,10 @@ class PlacesCache:
         """
         Convert to a DynamoDB item format.
         Includes all necessary attributes for the base table and GSIs:
-        - Base table: PK (PLACES#<search_type>), SK (VALUE#<padded_search_value>)
-        - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id lookups
+        - Base table: PK (PLACES#<search_type>), SK
+            (VALUE#<padded_search_value>)
+        - GSI1: GSI1PK (PLACE_ID), GSI1SK (PLACE_ID#<place_id>) - For place_id
+            lookups
 
         Returns:
             Dict: The DynamoDB item representation with all required attributes
@@ -209,36 +191,14 @@ class PlacesCache:
 
         return item
 
-    def __eq__(self, other: object) -> bool:
-        """
-        Compare two PlacesCache entries for equality.
-
-        Args:
-            other: The object to compare with
-
-        Returns:
-            bool: True if equal, False otherwise
-        """
-        if not isinstance(other, PlacesCache):
-            return False
-        return (
-            self.search_type == other.search_type
-            and self.search_value == other.search_value
-            and self.place_id == other.place_id
-            and self.places_response == other.places_response
-            and self.last_updated == other.last_updated
-            and self.query_count == other.query_count
-            and self.normalized_value == other.normalized_value
-            and self.value_hash == other.value_hash
-            and self.time_to_live == other.time_to_live
-        )
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """
         Returns an iterator over the PlacesCache object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the PlacesCache object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                PlacesCache object's attribute name/value pairs.
         """
         yield "search_type", self.search_type
         yield "search_value", self.search_value
@@ -330,7 +290,8 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
                     c for c in search_value if c.isdigit() or c in "()+-"
                 )
             elif search_type == "URL":
-                # For URLs, strip padding and keep underscores (they're part of the URL)
+                # For URLs, strip padding and keep underscores (they're part
+                # of the URL)
                 search_value = padded_value.lstrip("_")
             else:
                 raise ValueError(f"Invalid search type: {search_type}")
@@ -371,4 +332,6 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
             time_to_live=time_to_live,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(f"Error converting item to PlacesCache: {str(e)}")
+        raise ValueError(
+            f"Error converting item to PlacesCache: {str(e)}"
+        ) from e

@@ -1,62 +1,60 @@
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
-    assert_valid_uuid,
-    format_type_error,
     normalize_enum,
 )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class LabelMetadata:
-    def __init__(
-        self,
-        label: str,
-        status: str,
-        aliases: List[str],
-        description: str,
-        schema_version: int,
-        last_updated: datetime,
-        label_target: Optional[str] = None,
-        receipt_refs: Optional[list[tuple[str, int]]] = None,
-    ):
-        assert_type("label", label, str, ValueError)
-        self.label = label
+    label: str
+    status: str
+    aliases: List[str]
+    description: str
+    schema_version: int
+    last_updated: datetime
+    label_target: Optional[str] = None
+    receipt_refs: Optional[list[tuple[str, int]]] = None
 
-        self.status = normalize_enum(status, LabelStatus)
+    def __post_init__(self) -> None:
+        # Convert datetime to str if needed for last_updated
+        if isinstance(self.last_updated, datetime):
+            # Keep as datetime - no conversion needed for this field
+            pass
+        
+        assert_type("label", self.label, str, ValueError)
 
-        assert_type("aliases", aliases, list, ValueError)
-        self.aliases = aliases
+        self.status = normalize_enum(self.status, LabelStatus)
 
-        assert_type("description", description, str, ValueError)
-        self.description = description
+        assert_type("aliases", self.aliases, list, ValueError)
 
-        assert_type("schema_version", schema_version, int, ValueError)
-        self.schema_version = schema_version
+        assert_type("description", self.description, str, ValueError)
 
-        assert_type("last_updated", last_updated, datetime, ValueError)
-        self.last_updated = last_updated
+        assert_type("schema_version", self.schema_version, int, ValueError)
 
-        if label_target is not None:
-            assert_type("label_target", label_target, str, ValueError)
-        self.label_target = label_target
+        assert_type("last_updated", self.last_updated, datetime, ValueError)
 
-        if receipt_refs is not None:
-            assert_type("receipt_refs", receipt_refs, list, ValueError)
+        if self.label_target is not None:
+            assert_type("label_target", self.label_target, str, ValueError)
+
+        if self.receipt_refs is not None:
+            assert_type("receipt_refs", self.receipt_refs, list, ValueError)
             if not all(
                 isinstance(ref, tuple)
                 and len(ref) == 2
                 and isinstance(ref[0], str)
                 and isinstance(ref[1], int)
-                for ref in receipt_refs
+                for ref in self.receipt_refs
             ):
                 raise ValueError(
-                    "receipt_refs must be a list of (image_id: str, receipt_id: int) tuples"
+                    "receipt_refs must be a list of (image_id: str, "
+                    "receipt_id: int) tuples"
                 )
-        self.receipt_refs = receipt_refs
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -137,7 +135,8 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
 
     try:
@@ -171,4 +170,4 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
             receipt_refs=receipt_refs,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to LabelMetadata: {e}")
+        raise ValueError(f"Error converting item to LabelMetadata: {e}") from e

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
@@ -27,19 +27,27 @@ class ReceiptAnalysis:
     """
     Aggregates all types of analyses performed on a receipt.
 
-    This class combines the different types of analyses that can be performed on a receipt
-    into a single data structure, making it easier to retrieve all analyses at once.
+    This class combines the different types of analyses that can be performed
+    on a receipt into a single data structure, making it easier to retrieve
+    all analyses at once.
 
     Attributes:
         image_id (str): UUID identifying the image containing the receipt
         receipt_id (int): ID of the receipt being analyzed
-        label_analysis (Optional[ReceiptLabelAnalysis]): Analysis of labels/fields in the receipt
-        structure_analysis (Optional[ReceiptStructureAnalysis]): Analysis of the structural layout
-        line_item_analysis (Optional[ReceiptLineItemAnalysis]): Analysis of line items (products, prices)
-        validation_summary (Optional[ReceiptValidationSummary]): Validation results and issues
-        validation_categories (List[ReceiptValidationCategory]): Detailed validation by category
-        validation_results (List[ReceiptValidationResult]): Individual validation results
-        chatgpt_validations (List[ReceiptChatGPTValidation]): ChatGPT validation results
+        label_analysis (Optional[ReceiptLabelAnalysis]): Analysis of
+            labels/fields in the receipt
+        structure_analysis (Optional[ReceiptStructureAnalysis]): Analysis of
+            the structural layout
+        line_item_analysis (Optional[ReceiptLineItemAnalysis]): Analysis of
+            line items (products, prices)
+        validation_summary (Optional[ReceiptValidationSummary]): Validation
+            results and issues
+        validation_categories (List[ReceiptValidationCategory]): Detailed
+            validation by category
+        validation_results (List[ReceiptValidationResult]): Individual
+            validation results
+        chatgpt_validations (List[ReceiptChatGPTValidation]): ChatGPT
+            validation results
     """
 
     image_id: str

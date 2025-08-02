@@ -25,11 +25,16 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         output_dir (str): Directory where JSON file should be exported
 
     Raises:
-        ValueError: If table_name is not provided and the environment variable DYNAMO_DB_TABLE is not set
+        ValueError: If table_name is not provided and the environment variable
+            DYNAMO_DB_TABLE is not set
         Exception: If there are errors accessing DynamoDB
 
     Example:
-        >>> export_image("ReceiptsTable", "550e8400-e29b-41d4-a716-446655440000", "./export")
+        >>> export_image(
+        ...     "ReceiptsTable",
+        ...     "550e8400-e29b-41d4-a716-446655440000",
+        ...     "./export"
+        ... )
     """
 
     # Initialize DynamoDB client
@@ -79,5 +84,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         ],
     }
 
-    with open(os.path.join(output_dir, f"{image_id}.json"), "w") as f:
+    with open(
+        os.path.join(output_dir, f"{image_id}.json"), "w", encoding="utf-8"
+    ) as f:
         json.dump(results, f, indent=4, default=datetime_handler)

@@ -1,38 +1,21 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from receipt_dynamo import Line, item_to_line
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        QueryInputTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities import item_to_line
+from receipt_dynamo.entities.line import Line
 
 
 class _Line(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to represent a Line in the database.
@@ -53,7 +36,8 @@ class _Line(
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Line], Optional[Dict]]
+    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict]
+        = None) -> Tuple[list[Line], Optional[Dict]]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -116,20 +100,7 @@ class _Line(
         Raises:
             ValueError: When validation fails or lines don't exist
         """
-        self._validate_entity_list(lines, Line, "lines")
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": line.to_item(),
-                    "ConditionExpression": "attribute_exists(PK)",
-                }
-            }
-            for line in lines
-        ]
-
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(lines, Line, "lines")
 
     @handle_dynamodb_errors("delete_line")
     def delete_line(self, image_id: str, line_id: int):
@@ -139,13 +110,26 @@ class _Line(
             image_id (str): The UUID of the image the line belongs to
             line_id (int): The ID of the line to delete
         """
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}"},
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Validate UUID
+        self._validate_image_id(image_id)
+
+        # Create a temporary Line object with just the keys for deletion
+        temp_line = Line(
+            image_id=image_id,
+            line_id=line_id,
+            text="",  # Empty text is allowed
+            # Required geometry fields
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.5,
+        )
+        self._delete_entity(
+            temp_line, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_lines")
@@ -189,18 +173,23 @@ class _Line(
             Line: The line object
 
         Raises:
-            ValueError: When the line is not found
+            EntityNotFoundError: When the line is not found
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"LINE#{line_id:05d}"},
-            },
+        self._validate_image_id(image_id)
+
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=f"LINE#{line_id:05d}",
+            entity_class=Line,
+            converter_func=item_to_line,
         )
-        if "Item" not in response:
-            raise ValueError(f"Line with ID {line_id} not found")
-        return item_to_line(response["Item"])
+
+        if result is None:
+            raise EntityNotFoundError(
+                f"Line with image_id={image_id}, line_id={line_id} not found"
+            )
+
+        return result
 
     @handle_dynamodb_errors("list_lines")
     def list_lines(
@@ -217,42 +206,12 @@ class _Line(
         Returns:
             Tuple of lines list and last evaluated key for pagination
         """
-        lines = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "LINE"}},
-            "ScanIndexForward": True,  # Sorts the results in ascending order by PK
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        lines.extend([item_to_line(item) for item in response["Items"]])
-
-        if limit is None:
-            # If no limit is provided, paginate until all items are retrieved
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                lines.extend(
-                    [item_to_line(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            # If a limit is provided, capture the LastEvaluatedKey (if any)
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return lines, last_evaluated_key
+        return self._query_by_type(
+            entity_type="LINE",
+            converter_func=item_to_line,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     @handle_dynamodb_errors("list_lines_from_image")
     def list_lines_from_image(self, image_id: str) -> List[Line]:
@@ -264,31 +223,18 @@ class _Line(
         Returns:
             List of Line objects from the specified image
         """
-        lines = []
-        response = self._client.query(
-            TableName=self.table_name,
-            IndexName="GSI1",
-            KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
-            ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
-            ExpressionAttributeValues={
+        lines, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression=(
+                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
+            ),
+            expression_attribute_names={"#pk": "GSI1PK", "#sk": "GSI1SK"},
+            expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
                 ":sk_val": {"S": "LINE#"},
             },
+            converter_func=item_to_line,
+            limit=None,
+            last_evaluated_key=None,
         )
-        lines.extend([item_to_line(item) for item in response["Items"]])
-
-        while "LastEvaluatedKey" in response:
-            response = self._client.query(
-                TableName=self.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression="#pk = :pk_val AND begins_with(#sk, :sk_val)",
-                ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
-                ExpressionAttributeValues={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_val": {"S": "LINE#"},
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            lines.extend([item_to_line(item) for item in response["Items"]])
-
         return lines

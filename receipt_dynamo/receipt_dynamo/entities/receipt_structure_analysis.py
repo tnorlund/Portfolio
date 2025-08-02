@@ -1,51 +1,46 @@
 """
-The Receipt Structure Analysis entity for a receipt represents the structural analysis of receipt.
+The Receipt Structure Analysis entity for a receipt represents the structural
+analysis of receipt.
 This is used for storing and retrieving data from DynamoDB.
 """
 
 import decimal
-import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class SpatialPattern:
     """
     Represents a spatial pattern found in receipt sections.
 
-    Spatial patterns describe how elements are physically arranged in a receipt,
-    such as being aligned, grouped, or separated by whitespace.
+    Spatial patterns describe how elements are physically arranged in a
+    receipt, such as being aligned, grouped, or separated by whitespace.
     """
 
-    def __init__(
-        self,
-        pattern_type: str,
-        description: str,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
+    pattern_type: str
+    description: str
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
         """
         Initialize a SpatialPattern.
-
-        Args:
-            pattern_type: The type of pattern (e.g., "alignment", "grouping", "spacing")
-            description: Description of the pattern
-            metadata: Additional metadata for the pattern
 
         Raises:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        assert_type("pattern_type", pattern_type, str)
-        assert_type("description", description, str)
-        if metadata is not None:
-            assert_type("metadata", metadata, dict)
+        assert_type("pattern_type", self.pattern_type, str)
+        assert_type("description", self.description, str)
+        if self.metadata is not None:
+            assert_type("metadata", self.metadata, dict)
 
-        self.pattern_type = pattern_type
-        self.description = description
-        self.metadata = metadata or {}
+        if self.metadata is None:
+            self.metadata = {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the SpatialPattern to a dictionary."""
@@ -80,21 +75,16 @@ class SpatialPattern:
             metadata=data.get("metadata", {}),
         )
 
-    def __eq__(self, other: object) -> bool:
-        """Check if two SpatialPattern objects are equal."""
-        if not isinstance(other, SpatialPattern):
-            return False
-        return (
-            self.pattern_type == other.pattern_type
-            and self.description == other.description
-            and self.metadata == other.metadata
-        )
 
     def __repr__(self) -> str:
         """Return a string representation of the SpatialPattern."""
-        return f"SpatialPattern(pattern_type={self.pattern_type!r}, description={self.description!r})"
+        return (
+            f"SpatialPattern(pattern_type={self.pattern_type!r}, "
+            f"description={self.description!r})"
+        )
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ContentPattern:
     """
     Represents a content pattern found in receipt sections.
@@ -103,37 +93,30 @@ class ContentPattern:
     such as containing dates, prices, or specific keywords.
     """
 
-    def __init__(
-        self,
-        pattern_type: str,
-        description: str,
-        examples: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
+    pattern_type: str
+    description: str
+    examples: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
         """
         Initialize a ContentPattern.
-
-        Args:
-            pattern_type: The type of pattern (e.g., "keywords", "formatting", "semantic")
-            description: Description of the pattern
-            examples: Example texts that demonstrate the pattern
-            metadata: Additional metadata for the pattern
 
         Raises:
             TypeError: If the input types are not as expected
             ValueError: If required values are missing or invalid
         """
-        assert_type("pattern_type", pattern_type, str)
-        assert_type("description", description, str)
-        if examples is not None:
-            assert_type("examples", examples, list)
-        if metadata is not None:
-            assert_type("metadata", metadata, dict)
+        assert_type("pattern_type", self.pattern_type, str)
+        assert_type("description", self.description, str)
+        if self.examples is not None:
+            assert_type("examples", self.examples, list)
+        if self.metadata is not None:
+            assert_type("metadata", self.metadata, dict)
 
-        self.pattern_type = pattern_type
-        self.description = description
-        self.examples = examples or []
-        self.metadata = metadata or {}
+        if self.examples is None:
+            self.examples = []
+        if self.metadata is None:
+            self.metadata = {}
 
         # Validate that all examples are strings
         for i, example in enumerate(self.examples):
@@ -181,20 +164,14 @@ class ContentPattern:
             metadata=data.get("metadata", {}),
         )
 
-    def __eq__(self, other: object) -> bool:
-        """Check if two ContentPattern objects are equal."""
-        if not isinstance(other, ContentPattern):
-            return False
-        return (
-            self.pattern_type == other.pattern_type
-            and self.description == other.description
-            and self.examples == other.examples
-            and self.metadata == other.metadata
-        )
 
     def __repr__(self) -> str:
         """Return a string representation of the ContentPattern."""
-        return f"ContentPattern(pattern_type={self.pattern_type!r}, description={self.description!r}, examples={len(self.examples)})"
+        return (
+            f"ContentPattern(pattern_type={self.pattern_type!r}, "
+            f"description={self.description!r}, "
+            f"examples={len(self.examples)})"
+        )
 
 
 class ReceiptSection:
@@ -352,7 +329,8 @@ class ReceiptSection:
         """
         assert_type("data", data, dict)
 
-        # Convert content patterns from dict to ContentPattern objects if needed
+        # Convert content patterns from dict to ContentPattern objects if
+        # needed
         content_patterns = []
         for pattern in data.get("content_patterns", []):
             if isinstance(pattern, dict):
@@ -373,7 +351,8 @@ class ReceiptSection:
                     )
                 )
 
-        # Convert spatial patterns from dict to SpatialPattern objects if needed
+        # Convert spatial patterns from dict to SpatialPattern objects if
+        # needed
         spatial_patterns = []
         for pattern in data.get("spatial_patterns", []):
             if isinstance(pattern, dict):
@@ -402,8 +381,10 @@ class ReceiptSection:
             else:
                 try:
                     line_ids.append(int(line_id))
-                except (ValueError, TypeError):
-                    raise TypeError(format_type_error("line_id", line_id, int))
+                except (ValueError, TypeError) as e:
+                    raise TypeError(
+                        format_type_error("line_id", line_id, int)
+                    ) from e
 
         # Handle start_line and end_line
         start_line = data.get("start_line")
@@ -506,10 +487,10 @@ class ReceiptStructureAnalysis:
             )
         try:
             receipt_id = int(receipt_id)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
             raise ValueError(
                 f"receipt_id must be convertible to int, got {receipt_id}"
-            )
+            ) from e
 
         assert_type("image_id", image_id, str)
         assert_type("sections", sections, list)
@@ -596,7 +577,8 @@ class ReceiptStructureAnalysis:
     @property
     def discovered_sections(self) -> List[ReceiptSection]:
         """
-        Backward compatibility property for code that still uses discovered_sections.
+        Backward compatibility property for code that still uses
+        discovered_sections.
 
         Returns:
             List[ReceiptSection]: The sections in this analysis
@@ -614,7 +596,10 @@ class ReceiptStructureAnalysis:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#{self.version}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#STRUCTURE#"
+                    f"{self.version}"
+                )
             },
         }
 
@@ -845,7 +830,8 @@ class ReceiptStructureAnalysis:
         # Add section summaries
         for i, section in enumerate(self.sections):
             section_summary = [
-                f"Section {i+1}: {section.name} ({len(section.line_ids)} lines)"
+                f"Section {i+1}: {section.name} "
+                f"({len(section.line_ids)} lines)"
             ]
 
             if section.reasoning:
@@ -1083,7 +1069,7 @@ def item_to_receipt_structure_analysis(
             else:
                 # If this is a plain dictionary (legacy format)
                 sections.append(ReceiptSection.from_dict(section_dict))
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError):
             # Log the error and continue with other sections
             # TODO: Use proper logging instead of print
             continue

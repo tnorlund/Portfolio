@@ -1,6 +1,10 @@
+# pylint: disable=redefined-outer-name
+# pylint: disable=unused-argument
+# pylint: disable=too-many-lines
+"""Tests for ReceiptValidationResult entity."""
+
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Dict, Optional
 
 import pytest
 
@@ -20,7 +24,9 @@ def example_validation_result():
         result_index=0,
         type="error",
         message="Total amount does not match sum of items",
-        reasoning="The total ($45.99) does not equal the sum of line items ($42.99)",
+        reasoning=(
+            "The total ($45.99) does not equal the sum of line items ($42.99)"
+        ),
         field="price",
         expected_value="42.99",
         actual_value="45.99",
@@ -366,7 +372,8 @@ def test_validation_result_init_invalid_actual_value():
 def test_validation_result_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
     with pytest.raises(
-        ValueError, match="validation_timestamp must be a datetime or string"
+        ValueError,
+        match="validation_timestamp must be a datetime, string, or None",
     ):
         ReceiptValidationResult(
             receipt_id=1,
@@ -405,7 +412,10 @@ def test_key(example_validation_result):
     assert example_validation_result.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {
-            "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#total_amount#RESULT#0"
+            "S": (
+                "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#"
+                "total_amount#RESULT#0"
+            )
         },
     }
 
@@ -416,7 +426,10 @@ def test_gsi1_key(example_validation_result):
     assert example_validation_result.gsi1_key == {
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
         "GSI1SK": {
-            "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#total_amount#RESULT"
+            "S": (
+                "VALIDATION#2023-05-15T10:30:00#CATEGORY#"
+                "total_amount#RESULT"
+            )
         },
     }
 
@@ -427,7 +440,10 @@ def test_gsi3_key(example_validation_result):
     assert example_validation_result.gsi3_key == {
         "GSI3PK": {"S": "RESULT_TYPE#error"},
         "GSI3SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#CATEGORY#total_amount"
+            "S": (
+                "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#"
+                "CATEGORY#total_amount"
+            )
         },
     }
 
@@ -440,22 +456,34 @@ def test_to_item(example_validation_result):
     # Check that the basic keys are present
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {
-        "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#total_amount#RESULT#0"
+        "S": (
+            "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#"
+            "total_amount#RESULT#0"
+        )
     }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {
-        "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#total_amount#RESULT"
+        "S": (
+            "VALIDATION#2023-05-15T10:30:00#CATEGORY#"
+            "total_amount#RESULT"
+        )
     }
     assert item["GSI3PK"] == {"S": "RESULT_TYPE#error"}
     assert item["GSI3SK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#CATEGORY#total_amount"
+        "S": (
+            "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#"
+            "CATEGORY#total_amount"
+        )
     }
 
     # Check that the required fields are present
     assert item["type"] == {"S": "error"}
     assert item["message"] == {"S": "Total amount does not match sum of items"}
     assert item["reasoning"] == {
-        "S": "The total ($45.99) does not equal the sum of line items ($42.99)"
+        "S": (
+            "The total ($45.99) does not equal the sum of "
+            "line items ($42.99)"
+        )
     }
     assert item["validation_timestamp"] == {"S": "2023-05-15T10:30:00"}
 
@@ -569,7 +597,7 @@ def test_repr(example_validation_result):
 
 
 @pytest.mark.unit
-def test_itemToReceiptValidationResult(example_validation_result):
+def test_item_to_receipt_validation_result(example_validation_result):
     """Test the item_to_receipt_validation_result function"""
     # Convert to item using to_item
     item = example_validation_result.to_item()

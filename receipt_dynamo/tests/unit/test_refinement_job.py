@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 from datetime import datetime
 
 import pytest
@@ -219,7 +220,8 @@ def test_ocr_job_hash(example_ocr_job):
 
 @pytest.mark.unit
 def test_item_to_ocr_job_unexpected_error():
-    # updated_at is present but has None in ["S"], which will raise TypeError in fromisoformat
+    # updated_at is present but has None in ["S"], which will raise TypeError
+    # in fromisoformat
     bad_item = {
         "PK": {"S": "IMAGE#uuid"},
         "SK": {"S": "OCR_JOB#uuid"},

@@ -5,6 +5,7 @@ import pytest
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import SectionType
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 
 
@@ -22,7 +23,13 @@ def sample_receipt_section():
     )
 
 
-@pytest.mark.integration
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
+
+
 def test_add_receipt_section(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_section: ReceiptSection,
@@ -49,7 +56,7 @@ def test_add_receipt_section_duplicate_raises(
 ):
     client = DynamoClient(dynamodb_table)
     client.add_receipt_section(sample_receipt_section)
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_section(sample_receipt_section)
 
 

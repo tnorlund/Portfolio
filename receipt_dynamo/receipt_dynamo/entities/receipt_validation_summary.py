@@ -1,94 +1,72 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_summary.py
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class ReceiptValidationSummary:
     """
     DynamoDB entity representing the overall validation summary for a receipt.
     This is the parent item for all validation data for a receipt.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        overall_status: str,
-        overall_reasoning: str,
-        field_summary: Dict[str, Dict[str, Any]],
-        validation_timestamp: Optional[str] = None,
-        version: str = "1.0.0",
-        metadata: Optional[Dict[str, Any]] = None,
-        timestamp_added: Optional[datetime] = None,
-        timestamp_updated: Optional[datetime] = None,
-    ):
+    receipt_id: int
+    image_id: str
+    overall_status: str
+    overall_reasoning: str
+    field_summary: Dict[str, Dict[str, Any]]
+    validation_timestamp: Optional[str] = None
+    version: str = "1.0.0"
+    metadata: Optional[Dict[str, Any]] = None
+    timestamp_added: Optional[datetime] = None
+    timestamp_updated: Optional[datetime] = None
+
+    def __post_init__(self):
         """
         Initialize a ReceiptValidationSummary.
-
-        Args:
-            receipt_id: The ID of the receipt
-            image_id: The ID of the image
-            overall_status: The overall validation status
-            overall_reasoning: The overall reasoning for the validation
-            field_summary: Dictionary mapping field names to validation results
-            validation_timestamp: When the validation was performed (ISO format)
-            version: The version of the validation
-            metadata: Additional metadata including:
-                     - processing_metrics: Metrics related to the processing
-                     - source_info: Information about the source of the validation
-                     - processing_history: History of processing events
-            timestamp_added: When the summary was first created
-            timestamp_updated: When the summary was last updated
 
         Raises:
             ValueError: If any parameter is invalid
         """
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(overall_status, str):
+        if not isinstance(self.overall_status, str):
             raise ValueError("overall_status must be a string")
-        self.overall_status = overall_status
 
-        if not isinstance(overall_reasoning, str):
+        if not isinstance(self.overall_reasoning, str):
             raise ValueError("overall_reasoning must be a string")
-        self.overall_reasoning = overall_reasoning
 
         # Store field_summary as an instance attribute
-        if not isinstance(field_summary, dict):
+        if not isinstance(self.field_summary, dict):
             raise ValueError("field_summary must be a dictionary")
-        self.field_summary = field_summary
 
-        if not isinstance(validation_timestamp, str):
+        if self.validation_timestamp is not None and not isinstance(self.validation_timestamp, str):
             raise ValueError("validation_timestamp must be a string")
-        self.validation_timestamp = validation_timestamp
 
-        if not isinstance(version, str):
+        if not isinstance(self.version, str):
             raise ValueError("version must be a string")
-        self.version = version
 
         # Initialize metadata with default structure if not provided
-        self.metadata: Dict[str, Any]
-        if metadata is None:
+        if self.metadata is None:
             self.metadata = {
                 "processing_metrics": {},
                 "source_info": {},
                 "processing_history": [],
             }
         else:
-            if not isinstance(metadata, dict):
+            if not isinstance(self.metadata, dict):
                 raise ValueError("metadata must be a dictionary")
 
             # Ensure metadata has the expected structure
-            self.metadata = metadata.copy()
+            self.metadata = self.metadata.copy()
             if "processing_metrics" not in self.metadata:
                 self.metadata["processing_metrics"] = {}
             if "source_info" not in self.metadata:
@@ -96,21 +74,19 @@ class ReceiptValidationSummary:
             if "processing_history" not in self.metadata:
                 self.metadata["processing_history"] = []
 
-        self.timestamp_added: str
-        if isinstance(timestamp_added, datetime):
-            self.timestamp_added = timestamp_added.isoformat()
-        elif isinstance(timestamp_added, str):
-            self.timestamp_added = timestamp_added
-        else:
-            raise ValueError("timestamp_added must be a datetime or string")
+        if isinstance(self.timestamp_added, datetime):
+            self.timestamp_added = self.timestamp_added.isoformat()
+        elif isinstance(self.timestamp_added, str):
+            pass  # Already a string
+        elif self.timestamp_added is not None:
+            raise ValueError("timestamp_added must be a datetime, string, or None")
 
-        self.timestamp_updated: Optional[str]
-        if timestamp_updated is None:
-            self.timestamp_updated = None
-        elif isinstance(timestamp_updated, datetime):
-            self.timestamp_updated = timestamp_updated.isoformat()
-        elif isinstance(timestamp_updated, str):
-            self.timestamp_updated = timestamp_updated
+        if self.timestamp_updated is None:
+            pass  # Leave as None
+        elif isinstance(self.timestamp_updated, datetime):
+            self.timestamp_updated = self.timestamp_updated.isoformat()
+        elif isinstance(self.timestamp_updated, str):
+            pass  # Already a string
         else:
             raise ValueError(
                 "timestamp_updated must be a datetime, string, or None"
@@ -309,18 +285,6 @@ class ReceiptValidationSummary:
             timestamp_updated=timestamp_updated,
         )
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ReceiptValidationSummary):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.overall_status == other.overall_status
-            and self.overall_reasoning == other.overall_reasoning
-            and self.validation_timestamp == other.validation_timestamp
-            and self.field_summary == other.field_summary
-            and self.metadata == other.metadata
-        )
 
     def __repr__(self) -> str:
         return (
@@ -348,7 +312,8 @@ class ReceiptValidationSummary:
 
         Args:
             event_type (str): The type of event.
-            details (Dict, optional): Additional details about the event. Defaults to None.
+            details (Dict, optional): Additional details about the event.
+                Defaults to None.
         """
         if "processing_history" not in self.metadata:
             self.metadata["processing_history"] = []
@@ -374,10 +339,12 @@ def item_to_receipt_validation_summary(
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptValidationSummary: The ReceiptValidationSummary object represented by the DynamoDB item.
+        ReceiptValidationSummary: The ReceiptValidationSummary object
+            represented by the DynamoDB item.
 
     Raises:
-        ValueError: When the item format is invalid or required keys are missing.
+        ValueError: When the item format is invalid or required keys are
+            missing.
     """
     required_keys = {
         "PK",

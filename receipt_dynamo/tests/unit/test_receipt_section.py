@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 from copy import deepcopy
 from datetime import datetime
 
@@ -52,7 +53,7 @@ def test_receipt_section_init_with_string_section_type():
 
 @pytest.mark.unit
 def test_receipt_section_init_with_string_created_at():
-    """Test that a ReceiptSection can be created with an ISO format string for created_at."""
+    """Test that a ReceiptSection can be created with an ISO format string."""
     section = ReceiptSection(
         receipt_id=1,
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -65,7 +66,7 @@ def test_receipt_section_init_with_string_created_at():
 
 @pytest.mark.unit
 def test_receipt_section_init_invalid_receipt_id():
-    """Test that ReceiptSection raises an error for invalid receipt_id values."""
+    """Test that ReceiptSection raises an error for invalid receipt_id."""
     with pytest.raises(ValueError, match="receipt_id must be an integer"):
         ReceiptSection(
             receipt_id="1",
@@ -109,7 +110,7 @@ def test_receipt_section_init_invalid_uuid():
 
 @pytest.mark.unit
 def test_receipt_section_init_invalid_section_type():
-    """Test that ReceiptSection raises an error for invalid section_type values."""
+    """Test that ReceiptSection raises an error for invalid section_type."""
     with pytest.raises(ValueError):
         ReceiptSection(
             receipt_id=1,
@@ -164,7 +165,7 @@ def test_receipt_section_init_invalid_line_ids():
 
 @pytest.mark.unit
 def test_receipt_section_init_invalid_created_at():
-    """Test that ReceiptSection raises an error for invalid created_at values."""
+    """Test that ReceiptSection raises an error for invalid created_at."""
     with pytest.raises(ValueError):
         ReceiptSection(
             receipt_id=1,
@@ -203,7 +204,7 @@ def test_receipt_section_to_item(example_receipt_section):
 
 @pytest.mark.unit
 def test_receipt_section_eq(example_receipt_section):
-    """Test that two ReceiptSection objects with the same attributes are equal."""
+    """Test that two ReceiptSection objects with same attributes are equal."""
     section1 = example_receipt_section
     section2 = deepcopy(example_receipt_section)
     assert section1 == section2
@@ -244,7 +245,7 @@ def test_receipt_section_iter(example_receipt_section):
 
 @pytest.mark.unit
 def test_item_to_receipt_section(example_receipt_section):
-    """Test that item_to_receipt_section correctly converts a DynamoDB item to a ReceiptSection."""
+    """Test that item_to_receipt_section correctly converts a DynamoDB item."""
     item = example_receipt_section.to_item()
     section = item_to_receipt_section(item)
     assert section == example_receipt_section

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Generator, List
+from typing import Generator, List
 
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter

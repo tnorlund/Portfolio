@@ -6,7 +6,7 @@ related to queues and provides a clean API for client applications to use.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.queue_job import QueueJob
@@ -61,7 +61,8 @@ class QueueService:
             ValueError: When a queue with the same ID already exists
         """
         queue = Queue(
-            queue_name=queue_id,  # Using queue_id as queue_name since Queue expects queue_name
+            queue_name=queue_id,  # Using queue_id as queue_name since Queue
+            # expects queue_name
             description=description or "",
             created_at=datetime.now(),
             # TODO: Add max_concurrent_jobs and priority as needed
@@ -122,7 +123,8 @@ class QueueService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of Queue objects and the last evaluated key
+            A tuple containing a list of Queue objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_queues(limit, last_evaluated_key)
 
@@ -141,7 +143,8 @@ class QueueService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of Queue objects and the last evaluated key
+            A tuple containing a list of Queue objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_queues(limit, last_evaluated_key)
 
@@ -159,7 +162,8 @@ class QueueService:
         Args:
             queue_id: The ID of the queue
             job_id: The ID of the job
-            priority: Priority value for the job (higher values = higher priority)
+            priority: Priority value for the job (higher values = higher
+                priority)
             metadata: Additional metadata for the queue job
 
         Returns:
@@ -169,7 +173,8 @@ class QueueService:
             ValueError: When the job is already in the queue
         """
         queue_job = QueueJob(
-            queue_name=queue_id,  # Using queue_id as queue_name since QueueJob expects queue_name
+            queue_name=queue_id,  # Using queue_id as queue_name since
+            # QueueJob expects queue_name
             job_id=job_id,
             enqueued_at=datetime.now(),
             priority=str(priority),
@@ -240,7 +245,8 @@ class QueueService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of QueueJob objects and the last evaluated key
+            A tuple containing a list of QueueJob objects and the last
+            evaluated key
         """
         return self.dynamo_client.list_jobs_in_queue(
             queue_id, limit, last_evaluated_key
@@ -261,7 +267,8 @@ class QueueService:
             last_evaluated_key: The key to continue from (for pagination)
 
         Returns:
-            A tuple containing a list of QueueJob objects and the last evaluated key
+            A tuple containing a list of QueueJob objects and the last
+            evaluated key
         """
         return self.dynamo_client.find_queues_for_job(
             job_id, limit, last_evaluated_key

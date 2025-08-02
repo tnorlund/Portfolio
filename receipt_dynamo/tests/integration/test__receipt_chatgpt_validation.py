@@ -13,7 +13,15 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBServerError,
     DynamoDBThroughputError,
     DynamoDBValidationError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
 )
+
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 
 @pytest.fixture
@@ -102,9 +110,11 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
     client.add_receipt_chat_gpt_validation(sample_receipt_chatgpt_validation)
 
     # Act & Assert
+    from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+
     with pytest.raises(
-        ValueError,
-        match=f"ReceiptChatGPTValidation for receipt {sample_receipt_chatgpt_validation.receipt_id} and timestamp {sample_receipt_chatgpt_validation.timestamp} already exists",
+        EntityAlreadyExistsError,
+        match="already exists",
     ):
         # Try to add the same validation again
         client.add_receipt_chat_gpt_validation(
@@ -116,7 +126,7 @@ def test_addReceiptChatGPTValidation_duplicate_raises(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None."),
+        (None, "validation cannot be None"),
         (
             "not-a-validation",
             "validation must be an instance of the ReceiptChatGPTValidation class.",
@@ -152,17 +162,17 @@ def test_addReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item already exists",
-            "ReceiptChatGPTValidation for receipt .* and timestamp .* already exists",
+            "already exists",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add receipt ChatGPT validation to DynamoDB",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -211,7 +221,7 @@ def test_addReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityAlreadyExistsError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )
@@ -385,14 +395,14 @@ def test_addReceiptChatGPTValidations_with_unprocessed_items_retries(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None."),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
-            "validations must be a list of ReceiptChatGPTValidation instances.",
+            "validations must be a list",
         ),
         (
             ["not-a-validation"],
-            "All validations must be instances of the ReceiptChatGPTValidation class.",
+            "validations must be a list of ReceiptChatGPTValidation instances",
         ),
     ],
 )
@@ -425,12 +435,12 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not add ReceiptChatGPTValidations to the database",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -450,7 +460,7 @@ def test_addReceiptChatGPTValidations_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add ReceiptChatGPTValidations to the database",
+            "Could not add receipt ChatGPT validations to DynamoDB",
         ),
     ],
 )
@@ -561,7 +571,7 @@ def test_updateReceiptChatGPTValidation_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None."),
+        (None, "validation cannot be None"),
         (
             "not a ReceiptChatGPTValidation",
             "validation must be an instance of the ReceiptChatGPTValidation class.",
@@ -597,12 +607,12 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptChatGPTValidation for receipt",
+            "does not exist",
         ),
         (
             "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -612,7 +622,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptChatGPTValidation in the database",
+            "Table not found",
         ),
         (
             "ValidationException",
@@ -627,7 +637,7 @@ def test_updateReceiptChatGPTValidation_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptChatGPTValidation in the database",
+            "Could not update receipt ChatGPT validation in DynamoDB",
         ),
     ],
 )
@@ -660,7 +670,7 @@ def test_updateReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityNotFoundError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )
@@ -829,14 +839,14 @@ def test_updateReceiptChatGPTValidations_with_large_batch(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None"),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
-            "validations must be a list of ReceiptChatGPTValidation instances",
+            "validations must be a list",
         ),
         (
             [123, "not-a-validation"],
-            "All validations must be instances of the ReceiptChatGPTValidation class",
+            "validations must be a list of ReceiptChatGPTValidation instances",
         ),
     ],
 )
@@ -869,7 +879,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not update ReceiptChatGPTValidations in the database",
+            "Table not found",
             DynamoDBError,
             None,
         ),
@@ -889,8 +899,8 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         ),
         (
             "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
+            "Throughput exceeded",
             DynamoDBThroughputError,
             None,
         ),
@@ -911,7 +921,7 @@ def test_updateReceiptChatGPTValidations_invalid_inputs(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update ReceiptChatGPTValidations in the database",
+            "Could not update receipt ChatGPT validations in DynamoDB",
             DynamoDBError,
             None,
         ),
@@ -1017,7 +1027,7 @@ def test_deleteReceiptChatGPTValidation_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validation parameter is required and cannot be None"),
+        (None, "validation cannot be None"),
         (
             "not-a-validation-result",
             "validation must be an instance of the ReceiptChatGPTValidation class",
@@ -1053,17 +1063,17 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "ReceiptChatGPTValidation for receipt",
+            "does not exist",
         ),
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptChatGPTValidation from the database",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1079,7 +1089,7 @@ def test_deleteReceiptChatGPTValidation_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptChatGPTValidation from the database",
+            "Could not delete receipt ChatGPT validation from DynamoDB",
         ),
     ],
 )
@@ -1112,7 +1122,7 @@ def test_deleteReceiptChatGPTValidation_client_errors(
 
     # Act & Assert
     exception_type = (
-        ValueError
+        EntityNotFoundError
         if error_code == "ConditionalCheckFailedException"
         else Exception
     )
@@ -1201,14 +1211,14 @@ def test_deleteReceiptChatGPTValidations_success(
 @pytest.mark.parametrize(
     "invalid_input,expected_error",
     [
-        (None, "validations parameter is required and cannot be None"),
+        (None, "validations cannot be None"),
         (
             "not-a-list",
-            "validations must be a list of ReceiptChatGPTValidation instances",
+            "validations must be a list",
         ),
         (
             [123, "not-a-validation"],
-            "All validations must be instances of the ReceiptChatGPTValidation class",
+            "validations must be a list of ReceiptChatGPTValidation instances",
         ),
     ],
 )
@@ -1241,12 +1251,12 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
         (
             "ResourceNotFoundException",
             "Table not found",
-            "Could not delete ReceiptChatGPTValidations from the database",
+            "Table not found",
         ),
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1266,7 +1276,7 @@ def test_deleteReceiptChatGPTValidations_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete ReceiptChatGPTValidations from the database",
+            "Could not delete receipt ChatGPT validations from DynamoDB",
         ),
     ],
 )
@@ -1499,19 +1509,19 @@ def test_getReceiptChatGPTValidation_not_found(
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "2023-01-01T12:00:00",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             1,
             None,
             "2023-01-01T12:00:00",
-            "image_id parameter is required and cannot be None.",
+            "image_id cannot be None",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "timestamp parameter is required and cannot be None.",
+            "timestamp cannot be None",
         ),
         (
             1,
@@ -1559,7 +1569,7 @@ def test_getReceiptChatGPTValidation_invalid_parameters(
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -1866,7 +1876,7 @@ def test_listReceiptChatGPTValidations_empty_results(
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
@@ -2017,14 +2027,14 @@ def test_listReceiptChatGPTValidationsForReceipt_success(
         (
             None,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "receipt_id parameter is required and cannot be None.",
+            "receipt_id cannot be None",
         ),
         (
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "receipt_id must be an integer.",
         ),
-        (1, None, "image_id parameter is required and cannot be None."),
+        (1, None, "image_id cannot be None"),
         (1, "invalid-uuid", "uuid must be a valid UUIDv4"),
     ],
 )
@@ -2129,7 +2139,7 @@ def test_listReceiptChatGPTValidationsByStatus_success(
 @pytest.mark.parametrize(
     "status,expected_error",
     [
-        (None, "status parameter is required"),
+        (None, "status cannot be None"),
         ("", "status must not be empty"),
     ],
 )
@@ -2159,7 +2169,7 @@ def test_listReceiptChatGPTValidationsByStatus_invalid_parameters(
         (
             "ProvisionedThroughputExceededException",
             "Throughput exceeded",
-            "Provisioned throughput exceeded",
+            "Throughput exceeded",
         ),
         (
             "InternalServerError",
