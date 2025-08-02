@@ -88,12 +88,13 @@ jobs:
           which python3
 
       - name: Cache pip packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          path: |
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
+          key: ${{ runner.os }}-pip-v2-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-pip-v2-
 
       - name: Install minimal dependencies
         run: |
@@ -166,16 +167,14 @@ jobs:
           python3 --version
           which python3
 
-      - name: Cache pip packages only (not virtual environments)
-        uses: actions/cache@v4  # Use latest cache action
+      - name: Cache pip packages only
+        uses: actions/cache@v4
         with:
           path: |
             ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-            **/__pycache__
-          key: ${{ runner.os }}-pip-cache-py312-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+          key: ${{ runner.os }}-pip-cache-py312-v2-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-cache-py312-
-            ${{ runner.os }}-pip-cache-
+            ${{ runner.os }}-pip-cache-py312-v2-
 
       - name: Cache pytest results and coverage
         uses: actions/cache@v4
