@@ -87,15 +87,6 @@ jobs:
           python3 --version
           which python3
 
-      - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-          key: ${{ runner.os }}-pip-v2-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-v2-
-
       - name: Install minimal dependencies
         run: |
           python3 -m pip install black isort
@@ -171,10 +162,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-          key: ${{ runner.os }}-pip-cache-py312-v2-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/http' || '~/.cache/pip/http' }}
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/wheels' || '~/.cache/pip/wheels' }}
+          key: ${{ runner.os }}-pip-cache-py312-v3-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-cache-py312-v2-
+            ${{ runner.os }}-pip-cache-py312-v3-
 
       - name: Cache pytest results and coverage
         uses: actions/cache@v4
