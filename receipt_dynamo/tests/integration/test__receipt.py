@@ -25,6 +25,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -708,7 +709,7 @@ def test_add_receipt_conditional_check_failed(
     mocker: MockerFixture,
 ) -> None:
     """
-    Tests that add_receipt raises EntityValidationError when receipt
+    Tests that add_receipt raises EntityAlreadyExistsError when receipt
     already exists.
     """
     client = DynamoClient(dynamodb_table)
@@ -727,7 +728,7 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityValidationError, match="receipt already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -878,13 +879,13 @@ def test_add_receipt_duplicate_raises(
     sample_receipt: Receipt,
 ) -> None:
     """
-    Tests that add_receipt raises EntityValidationError when the receipt
+    Tests that add_receipt raises EntityAlreadyExistsError when the receipt
     already exists.
     """
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(EntityValidationError, match="receipt already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
         client.add_receipt(sample_receipt)
 
 

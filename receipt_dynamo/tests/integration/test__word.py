@@ -17,6 +17,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -132,13 +133,13 @@ class TestWordBasicOperations:
     def test_add_word_duplicate_raises_error(
         self, dynamodb_client: DynamoClient, example_word: Word
     ) -> None:
-        """Test that adding a duplicate word raises EntityValidationError."""
+        """Test that adding a duplicate word raises EntityAlreadyExistsError."""
         # Arrange
         dynamodb_client.add_word(example_word)
 
         # Act & Assert
         with pytest.raises(
-            EntityValidationError, match="word already exists"
+            EntityAlreadyExistsError, match="word already exists"
         ):
             dynamodb_client.add_word(example_word)
 
@@ -797,7 +798,7 @@ class TestWordSpecialCases:
         dynamodb_client.add_word(example_word)
 
         # Try to add again (should fail)
-        with pytest.raises(EntityValidationError):
+        with pytest.raises(EntityAlreadyExistsError):
             dynamodb_client.add_word(example_word)
 
         # Update should succeed
