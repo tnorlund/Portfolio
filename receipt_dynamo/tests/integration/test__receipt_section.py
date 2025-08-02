@@ -23,7 +23,13 @@ def sample_receipt_section():
     )
 
 
-@pytest.mark.integration
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
+
+
 def test_add_receipt_section(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_section: ReceiptSection,

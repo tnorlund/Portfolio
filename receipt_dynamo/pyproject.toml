@@ -64,6 +64,7 @@ markers = [
     "unit: mark test as a unit test",
     "integration: mark test as an integration test",
     "end_to_end: mark test as an end-to-end test that requires AWS credentials",
+    "unused_in_production: marks tests for entities not used in production infrastructure",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

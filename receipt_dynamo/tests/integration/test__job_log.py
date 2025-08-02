@@ -11,6 +11,12 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.job_log import JobLog
 
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
+
 
 @pytest.fixture
 def job_log_dynamo(dynamodb_table):

@@ -14,6 +14,12 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityAlreadyExistsError,
 )
 
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
+
 
 @pytest.fixture
 def sample_receipt_validation_category():
