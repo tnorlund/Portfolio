@@ -1,39 +1,29 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from receipt_dynamo import (
-    ReceiptValidationCategory,
-    item_to_receipt_validation_category,
-)
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
+    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
+from receipt_dynamo.entities import item_to_receipt_validation_category
+from receipt_dynamo.entities.receipt_validation_category import (
+    ReceiptValidationCategory,
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
-from receipt_dynamo.entities.util import assert_valid_uuid
+    pass
 
 
 class _ReceiptValidationCategory(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
     A class used to access receipt validation categories in DynamoDB.
@@ -168,22 +158,9 @@ class _ReceiptValidationCategory(
             ValueError: If the categories are None or not a list.
             Exception: If the categories cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(
+        self._update_entities(
             categories, ReceiptValidationCategory, "categories"
         )
-
-        transact_items = [
-            {
-                "Put": {
-                    "TableName": self.table_name,
-                    "Item": category.to_item(),
-                    "ConditionExpression": "attribute_exists(PK) AND attribute_exists(SK)",
-                }
-            }
-            for category in categories
-        ]
-
-        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_validation_category")
     def delete_receipt_validation_category(
@@ -250,41 +227,41 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+            raise EntityValidationError(
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if not isinstance(field_name, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"field_name must be a string, got {type(field_name).__name__}"
             )
 
         try:
-            assert_valid_uuid(image_id)
+            self._validate_image_id(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{field_name}"
-                },
-            },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY"
+                f"#{field_name}"
+            ),
+            entity_class=ReceiptValidationCategory,
+            converter_func=item_to_receipt_validation_category,
         )
 
-        item = response.get("Item")
-        if not item:
-            raise ValueError(
+        if result is None:
+            raise EntityNotFoundError(
                 f"ReceiptValidationCategory for receipt {receipt_id}, "
                 f"image {image_id}, and field {field_name} does not exist"
             )
 
-        return item_to_receipt_validation_category(item)
+        return result
 
     @handle_dynamodb_errors("list_receipt_validation_categories")
     def list_receipt_validation_categories(
@@ -311,54 +288,20 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {
-                ":val": {"S": "RECEIPT_VALIDATION_CATEGORY"}
-            },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        categories = []
-        response = self._client.query(**query_params)
-        categories.extend(
-            [
-                item_to_receipt_validation_category(item)
-                for item in response.get("Items", [])
-            ]
+        return self._query_by_type(
+            entity_type="RECEIPT_VALIDATION_CATEGORY",
+            converter_func=item_to_receipt_validation_category,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all categories
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                categories.extend(
-                    [
-                        item_to_receipt_validation_category(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return categories, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_categories_by_status")
     def list_receipt_validation_categories_by_status(
@@ -387,58 +330,29 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(status, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"status must be a string, got {type(status).__name__}"
             )
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSI1",
-            "KeyConditionExpression": "#gsi1pk = :pk",
-            "ExpressionAttributeNames": {"#gsi1pk": "GSI1PK"},
-            "ExpressionAttributeValues": {
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#gsi1pk = :pk",
+            expression_attribute_names={"#gsi1pk": "GSI1PK"},
+            expression_attribute_values={
                 ":pk": {"S": f"VALIDATION_STATUS#{status}"}
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        categories = []
-        response = self._client.query(**query_params)
-        categories.extend(
-            [
-                item_to_receipt_validation_category(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_category,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all categories
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                categories.extend(
-                    [
-                        item_to_receipt_validation_category(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return categories, last_evaluated_key
 
     @handle_dynamodb_errors("list_receipt_validation_categories_for_receipt")
     def list_receipt_validation_categories_for_receipt(
@@ -469,69 +383,47 @@ class _ReceiptValidationCategory(
                 from DynamoDB.
         """
         if not isinstance(receipt_id, int):
-            raise ValueError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+            raise EntityValidationError(
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
-            raise ValueError(
+            raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None")
+            raise EntityValidationError("limit must be an integer or None")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError("last_evaluated_key must be a dictionary or None")
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None"
+            )
 
         try:
-            assert_valid_uuid(image_id)
+            self._validate_image_id(image_id)
         except ValueError as e:
-            raise ValueError(f"Invalid image_id format: {e}") from e
+            raise EntityValidationError(f"Invalid image_id format: {e}") from e
 
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "KeyConditionExpression": "#pk = :pk AND begins_with(#sk, :sk_prefix)",
-            "ExpressionAttributeNames": {
+        return self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
+            expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
-            "ExpressionAttributeValues": {
+            expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        "CATEGORY#"
+                    )
                 },
             },
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        categories = []
-        response = self._client.query(**query_params)
-        categories.extend(
-            [
-                item_to_receipt_validation_category(item)
-                for item in response.get("Items", [])
-            ]
+            converter_func=item_to_receipt_validation_category,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
         )
-
-        if limit is None:
-            # Paginate through all categories
-            while "LastEvaluatedKey" in response:
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                categories.extend(
-                    [
-                        item_to_receipt_validation_category(item)
-                        for item in response.get("Items", [])
-                    ]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey")
-
-        return categories, last_evaluated_key

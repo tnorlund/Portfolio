@@ -1,58 +1,30 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_letter.py
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
-from botocore.exceptions import ClientError
-
-from receipt_dynamo import ReceiptLetter, item_to_receipt_letter
-from receipt_dynamo.data._base import DynamoClientProtocol
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
+    EntityNotFoundError,
+    EntityValidationError,
     OperationError,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities import item_to_receipt_letter
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import (
-        DeleteRequestTypeDef,
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        TransactWriteItemTypeDef,
-        WriteRequestTypeDef,
-    )
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    PutTypeDef,
-    QueryInputTypeDef,
-    TransactWriteItemTypeDef,
-    WriteRequestTypeDef,
-)
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
+    pass
 
 
 class _ReceiptLetter(
     DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
+    FlattenedStandardMixin,
 ):
     """
-    A class providing methods to interact with "ReceiptLetter" entities in DynamoDB.
+    A class providing methods to interact with "ReceiptLetter" entities in
+    DynamoDB.
     This class is typically used within a DynamoClient to access and manage
     receipt letter records.
 
@@ -65,17 +37,17 @@ class _ReceiptLetter(
 
     Methods
     -------
-    add_receipt_letter(letter: ReceiptLetter):
+    add_receipt_letter(receipt_letter: ReceiptLetter):
         Adds a ReceiptLetter to DynamoDB.
-    add_receipt_letters(letters: list[ReceiptLetter]):
+    add_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Adds multiple ReceiptLetters to DynamoDB in batches.
-    update_receipt_letter(letter: ReceiptLetter):
+    update_receipt_letter(receipt_letter: ReceiptLetter):
         Updates an existing ReceiptLetter in the database.
-    update_receipt_letters(letters: list[ReceiptLetter]):
+    update_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Updates multiple ReceiptLetters in the database.
-    delete_receipt_letter(letter: ReceiptLetter):
+    delete_receipt_letter(receipt_id, image_id, line_id, word_id, letter_id):
         Deletes a single ReceiptLetter by IDs.
-    delete_receipt_letters(letters: list[ReceiptLetter]):
+    delete_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Deletes multiple ReceiptLetters in batch.
     get_receipt_letter(...) -> ReceiptLetter:
         Retrieves a single ReceiptLetter by IDs.
@@ -86,136 +58,193 @@ class _ReceiptLetter(
     """
 
     @handle_dynamodb_errors("add_receipt_letter")
-    def add_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def add_receipt_letter(self, receipt_letter: ReceiptLetter) -> None:
         """
         Adds a ReceiptLetter to DynamoDB.
 
         Parameters
         ----------
-        letter : ReceiptLetter
+        receipt_letter : ReceiptLetter
             The ReceiptLetter to add.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or already exists.
+            If the receipt_letter is invalid or already exists.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
-        self._add_entity(letter)
+        if receipt_letter is None:
+            raise EntityValidationError("receipt_letter cannot be None")
+        if not isinstance(receipt_letter, ReceiptLetter):
+            raise EntityValidationError(
+                "receipt_letter must be an instance of ReceiptLetter"
+            )
+        self._add_entity(receipt_letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
-    def add_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def add_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Adds multiple ReceiptLetters to DynamoDB in batches.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to add.
 
         Raises
         ------
         ValueError
-            If the letters are invalid.
+            If the receipt_letters are invalid.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=lt.to_item())
-            )
-            for lt in letters
-        ]
-        self._batch_write_with_retry(request_items)
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
+                )
+        if not receipt_letters:  # Empty list check
+            raise OperationError("Parameter validation failed")
+        self._add_entities(receipt_letters, ReceiptLetter, "receipt_letters")
 
     @handle_dynamodb_errors("update_receipt_letter")
-    def update_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def update_receipt_letter(self, receipt_letter: ReceiptLetter) -> None:
         """
         Updates an existing ReceiptLetter in the database.
 
         Parameters
         ----------
-        letter : ReceiptLetter
+        receipt_letter : ReceiptLetter
             The ReceiptLetter to update.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or does not exist.
+            If the receipt_letter is invalid or does not exist.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
-        self._update_entity(letter)
+        if receipt_letter is None:
+            raise EntityValidationError("receipt_letter cannot be None")
+        if not isinstance(receipt_letter, ReceiptLetter):
+            raise EntityValidationError(
+                "receipt_letter must be an instance of ReceiptLetter"
+            )
+        self._update_entity(receipt_letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
-    def update_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def update_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Updates multiple ReceiptLetters in the database.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to update.
 
         Raises
         ------
         ValueError
-            If the letters are invalid or do not exist.
+            If the receipt_letters are invalid or do not exist.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
-
-        transact_items = [
-            TransactWriteItemTypeDef(
-                Put=PutTypeDef(
-                    TableName=self.table_name,
-                    Item=lt.to_item(),
-                    ConditionExpression="attribute_exists(PK)",
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
                 )
-            )
-            for lt in letters
-        ]
-        self._transact_write_with_chunking(transact_items)
+        self._update_entities(receipt_letters, ReceiptLetter, "receipt_letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
-    def delete_receipt_letter(self, letter: ReceiptLetter) -> None:
+    def delete_receipt_letter(
+        self,
+        receipt_id: int,
+        image_id: str,
+        line_id: int,
+        word_id: int,
+        letter_id: int,
+    ) -> None:
         """
         Deletes a single ReceiptLetter.
 
         Parameters
         ----------
-        letter : ReceiptLetter
-            The ReceiptLetter to delete.
+        receipt_id : int
+            The receipt ID.
+        image_id : str
+            The image ID.
+        line_id : int
+            The line ID.
+        word_id : int
+            The word ID.
+        letter_id : int
+            The letter ID.
 
         Raises
         ------
         ValueError
-            If the letter is invalid or does not exist.
+            If parameters are invalid or letter does not exist.
         """
-        self._validate_entity(letter, ReceiptLetter, "letter")
-        self._delete_entity(letter)
+        self._validate_receipt_id(receipt_id)
+        self._validate_image_id(image_id)
+        if line_id is None:
+            raise EntityValidationError("line_id cannot be None")
+        if not isinstance(line_id, int):
+            raise EntityValidationError("line_id must be an integer.")
+        if word_id is None:
+            raise EntityValidationError("word_id cannot be None")
+        if not isinstance(word_id, int):
+            raise EntityValidationError("word_id must be an integer.")
+        if letter_id is None:
+            raise EntityValidationError("letter_id cannot be None")
+        if not isinstance(letter_id, int):
+            raise EntityValidationError("letter_id must be an integer.")
+
+        # Direct key-based deletion is more efficient
+        key = {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {
+                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+            },
+        }
+        self._client.delete_item(
+            TableName=self.table_name,
+            Key=key,
+            ConditionExpression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("delete_receipt_letters")
-    def delete_receipt_letters(self, letters: list[ReceiptLetter]) -> None:
+    def delete_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Deletes multiple ReceiptLetters in batch.
 
         Parameters
         ----------
-        letters : list[ReceiptLetter]
+        receipt_letters : list[ReceiptLetter]
             The ReceiptLetters to delete.
 
         Raises
         ------
         ValueError
-            If the letters are invalid.
+            If the receipt_letters are invalid.
         """
-        self._validate_entity_list(letters, ReceiptLetter, "letters")
+        if receipt_letters is None:
+            raise EntityValidationError("receipt_letters cannot be None")
+        if not isinstance(receipt_letters, list):
+            raise EntityValidationError("receipt_letters must be a list")
+        for i, receipt_letter in enumerate(receipt_letters):
+            if not isinstance(receipt_letter, ReceiptLetter):
+                raise EntityValidationError(
+                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
+                    f"got {type(receipt_letter).__name__}"
+                )
+        self._delete_entities(receipt_letters)
 
-        request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=lt.key))
-            for lt in letters
-        ]
-        self._batch_write_with_retry(request_items)
-
+    @handle_dynamodb_errors("get_receipt_letter")
     def get_receipt_letter(
         self,
         receipt_id: int,
@@ -250,69 +279,54 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid or letter not found.
         """
+        # Validate all parameters
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
-        assert_valid_uuid(image_id)
+            raise EntityValidationError("image_id cannot be None")
+        self._validate_image_id(image_id)
         if line_id is None:
-            raise ValueError(
-                "line_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         if word_id is None:
-            raise ValueError(
-                "word_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer")
+        if word_id <= 0:
+            raise EntityValidationError("word_id must be a positive integer")
         if letter_id is None:
-            raise ValueError(
-                "letter_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("letter_id cannot be None")
         if not isinstance(letter_id, int):
-            raise ValueError("letter_id must be an integer.")
+            raise EntityValidationError("letter_id must be an integer")
+        if letter_id <= 0:
+            raise EntityValidationError("letter_id must be a positive integer")
 
-        try:
-            response = self._client.get_item(
-                TableName=self.table_name,
-                Key={
-                    "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                    },
-                },
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=(
+                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#"
+                f"WORD#{word_id:05d}#LETTER#"
+                f"{letter_id:05d}"
+            ),
+            entity_class=ReceiptLetter,
+            converter_func=item_to_receipt_letter,
+        )
+
+        if result is None:
+            raise EntityNotFoundError(
+                f"ReceiptLetter with ID {letter_id} not found"
             )
-            if "Item" in response:
-                return item_to_receipt_letter(response["Item"])
-            else:
-                raise ValueError(
-                    f"ReceiptLetter with ID {letter_id} not found"
-                )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "ValidationException":
-                raise OperationError(f"Validation error: {e}") from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
-            else:
-                raise OperationError(
-                    f"Error getting receipt letter: {e}"
-                ) from e
 
+        return result
+
+    @handle_dynamodb_errors("list_receipt_letters")
     def list_receipt_letters(
         self,
         limit: Optional[int] = None,
@@ -339,72 +353,24 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         if limit is not None and not isinstance(limit, int):
-            raise ValueError("limit must be an integer or None.")
+            raise EntityValidationError("limit must be an integer or None.")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Parameter validation failed")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):
-            raise ValueError(
+            raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
 
-        receipt_letters = []
-        try:
-            query_params: QueryInputTypeDef = {
-                "TableName": self.table_name,
-                "IndexName": "GSITYPE",
-                "KeyConditionExpression": "#t = :val",
-                "ExpressionAttributeNames": {"#t": "TYPE"},
-                "ExpressionAttributeValues": {":val": {"S": "RECEIPT_LETTER"}},
-            }
-            if last_evaluated_key is not None:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            if limit is not None:
-                query_params["Limit"] = limit
+        return self._query_by_type(
+            entity_type="RECEIPT_LETTER",
+            converter_func=item_to_receipt_letter,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
-            response = self._client.query(**query_params)
-            receipt_letters.extend(
-                [item_to_receipt_letter(item) for item in response["Items"]]
-            )
-
-            if limit is None:
-                # Paginate through all the receipt letters.
-                while "LastEvaluatedKey" in response:
-                    query_params["ExclusiveStartKey"] = response[
-                        "LastEvaluatedKey"
-                    ]
-                    response = self._client.query(**query_params)
-                    receipt_letters.extend(
-                        [
-                            item_to_receipt_letter(item)
-                            for item in response["Items"]
-                        ]
-                    )
-                last_evaluated_key = None
-            else:
-                last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-            return receipt_letters, last_evaluated_key
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt letters from DynamoDB: {e}"
-                ) from e
-            elif error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "ValidationException":
-                raise ValueError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            else:
-                raise OperationError(
-                    f"Error listing receipt letters: {e}"
-                ) from e
-
+    @handle_dynamodb_errors("list_receipt_letters_from_word")
     def list_receipt_letters_from_word(
         self, receipt_id: int, image_id: str, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
@@ -432,91 +398,50 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid.
         """
+        # Validate parameters
         if receipt_id is None:
-            raise ValueError(
-                "receipt_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise ValueError("receipt_id must be an integer.")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if image_id is None:
-            raise ValueError(
-                "image_id parameter is required and cannot be None."
-            )
-        assert_valid_uuid(image_id)
+            raise EntityValidationError("image_id cannot be None")
+        self._validate_image_id(image_id)
         if line_id is None:
-            raise ValueError(
-                "line_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
-            raise ValueError("line_id must be an integer.")
+            raise EntityValidationError("line_id must be an integer")
+        if line_id <= 0:
+            raise EntityValidationError("line_id must be a positive integer")
         if word_id is None:
-            raise ValueError(
-                "word_id parameter is required and cannot be None."
-            )
+            raise EntityValidationError("word_id cannot be None")
         if not isinstance(word_id, int):
-            raise ValueError("word_id must be an integer.")
+            raise EntityValidationError("word_id must be an integer")
+        if word_id <= 0:
+            raise EntityValidationError("word_id must be a positive integer")
 
-        receipt_letters = []
-        try:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}"
-                            f"#LINE#{line_id:05d}"
-                            f"#WORD#{word_id:05d}"
-                            "#LETTER#"
-                        )
-                    },
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pkVal": {"S": f"IMAGE#{image_id}"},
+                ":skPrefix": {
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}"
+                        f"#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}"
+                        "#LETTER#"
+                    )
                 },
-            )
-            receipt_letters.extend(
-                [item_to_receipt_letter(item) for item in response["Items"]]
-            )
-
-            while "LastEvaluatedKey" in response:
-                response = self._client.query(
-                    TableName=self.table_name,
-                    KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                    ExpressionAttributeValues={
-                        ":pkVal": {"S": f"IMAGE#{image_id}"},
-                        ":skPrefix": {
-                            "S": (
-                                f"RECEIPT#{receipt_id:05d}"
-                                f"#LINE#{line_id:05d}"
-                                f"#WORD#{word_id:05d}"
-                                "#LETTER#"
-                            )
-                        },
-                    },
-                    ExclusiveStartKey=response["LastEvaluatedKey"],
-                )
-                receipt_letters.extend(
-                    [
-                        item_to_receipt_letter(item)
-                        for item in response["Items"]
-                    ]
-                )
-            return receipt_letters
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                )
-            elif error_code == "ValidationException":
-                raise DynamoDBValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                )
-            elif error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}")
-            elif error_code == "AccessDeniedException":
-                raise DynamoDBAccessError(f"Access denied: {e}")
-            else:
-                raise DynamoDBError(
-                    f"Could not list ReceiptLetters from the database: {e}"
-                ) from e
+            },
+            converter_func=item_to_receipt_letter,
+        )
+        return results

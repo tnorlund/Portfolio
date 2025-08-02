@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 from datetime import datetime
 
 import pytest
@@ -335,7 +336,9 @@ def test_instance_job_eq():
 
 
 @pytest.mark.unit
-def test_itemToInstanceJob(example_instance_job, example_instance_job_minimal):
+def test_item_to_instance_job(
+    example_instance_job, example_instance_job_minimal
+):
     """Test the item_to_instance_job() function."""
     # Test with full instance job
     item = example_instance_job.to_item()

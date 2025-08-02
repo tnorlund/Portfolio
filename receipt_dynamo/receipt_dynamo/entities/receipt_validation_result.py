@@ -1,98 +1,90 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_result.py
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class ReceiptValidationResult:
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptValidationResult(SerializationMixin):
     """
     DynamoDB entity representing an individual validation result.
-    Each result represents a specific validation check with its type, message, and reasoning.
+    Each result represents a specific validation check with its type, message,
+    and reasoning.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        field_name: str,
-        result_index: int,
-        type: str,
-        message: str,
-        reasoning: str,
-        field: Optional[str] = None,
-        expected_value: Optional[str] = None,
-        actual_value: Optional[str] = None,
-        validation_timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        if not isinstance(receipt_id, int):
+    receipt_id: int
+    image_id: str
+    field_name: str
+    result_index: int
+    type: str
+    message: str
+    reasoning: str
+    field: Optional[str] = None
+    expected_value: Optional[str] = None
+    actual_value: Optional[str] = None
+    validation_timestamp: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(field_name, str):
+        if not isinstance(self.field_name, str):
             raise ValueError("field_name must be a string")
-        if not field_name:
+        if not self.field_name:
             raise ValueError("field_name must not be empty")
-        self.field_name = field_name
 
-        if not isinstance(result_index, int):
+        if not isinstance(self.result_index, int):
             raise ValueError("result_index must be an integer")
-        if result_index < 0:
+        if self.result_index < 0:
             raise ValueError("result_index must be positive")
-        self.result_index: int = result_index
 
-        if not isinstance(type, str):
+        if not isinstance(self.type, str):
             raise ValueError("type must be a string")
-        if not type:
+        if not self.type:
             raise ValueError("type must not be empty")
-        self.type = type
 
-        if not isinstance(message, str):
+        if not isinstance(self.message, str):
             raise ValueError("message must be a string")
-        if not message:
+        if not self.message:
             raise ValueError("message must not be empty")
-        self.message = message
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        if not reasoning:
+        if not self.reasoning:
             raise ValueError("reasoning must not be empty")
-        self.reasoning = reasoning
 
-        if field is not None and not isinstance(field, str):
+        if self.field is not None and not isinstance(self.field, str):
             raise ValueError("field must be a string or None")
-        self.field = field
 
-        if expected_value is not None and not isinstance(expected_value, str):
+        if self.expected_value is not None and not isinstance(self.expected_value, str):
             raise ValueError("expected_value must be a string or None")
-        self.expected_value = expected_value
 
-        if actual_value is not None and not isinstance(actual_value, str):
+        if self.actual_value is not None and not isinstance(self.actual_value, str):
             raise ValueError("actual_value must be a string or None")
-        self.actual_value = actual_value
 
-        if isinstance(validation_timestamp, datetime):
-            self.validation_timestamp: Optional[str] = (
-                validation_timestamp.isoformat()
-            )
-        elif isinstance(validation_timestamp, str):
-            self.validation_timestamp = validation_timestamp
-        elif validation_timestamp is None:
-            self.validation_timestamp = None
+        if isinstance(self.validation_timestamp, datetime):
+            self.validation_timestamp = self.validation_timestamp.isoformat()
+        elif isinstance(self.validation_timestamp, str):
+            pass  # Already a string
+        elif self.validation_timestamp is None:
+            pass  # Leave as None
         else:
             raise ValueError(
-                "validation_timestamp must be a datetime or string"
+                "validation_timestamp must be a datetime, string, or None"
             )
 
-        if metadata is not None and not isinstance(metadata, dict):
+        if self.metadata is not None and not isinstance(self.metadata, dict):
             raise ValueError("metadata must be a dictionary or None")
-        self.metadata = metadata or {}
+        if self.metadata is None:
+            self.metadata = {}
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -100,7 +92,10 @@ class ReceiptValidationResult:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION#"
+                    f"CATEGORY#{self.field_name}#RESULT#{self.result_index}"
+                )
             },
         }
 
@@ -110,7 +105,10 @@ class ReceiptValidationResult:
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {
-                "S": f"VALIDATION#{self.validation_timestamp}#CATEGORY#{self.field_name}#RESULT"
+                "S": (
+                    f"VALIDATION#{self.validation_timestamp}#"
+                    f"CATEGORY#{self.field_name}#RESULT"
+                )
             },
         }
 
@@ -120,29 +118,12 @@ class ReceiptValidationResult:
         return {
             "GSI3PK": {"S": f"RESULT_TYPE#{self.type}"},
             "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#CATEGORY#{self.field_name}"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#"
+                    f"CATEGORY#{self.field_name}"
+                )
             },
         }
-
-    def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
-        """Convert a Python value to a DynamoDB typed value."""
-        if value is None:
-            return {"NULL": True}
-        elif isinstance(value, str):
-            return {"S": value}
-        elif isinstance(value, (int, float)):
-            return {"N": str(value)}
-        elif isinstance(value, bool):
-            return {"BOOL": value}
-        elif isinstance(value, dict):
-            return {
-                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
-            }
-        elif isinstance(value, list):
-            return {"L": [self._python_to_dynamo(item) for item in value]}
-        else:
-            # Convert any other type to string
-            return {"S": str(value)}
 
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
@@ -207,7 +188,9 @@ class ReceiptValidationResult:
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
         # Extract metadata with recursive conversion
-        metadata = cls._dynamo_to_python(item.get("metadata", {"M": {}}))
+        metadata = SerializationMixin._dynamo_to_python(
+            item.get("metadata", {"M": {}})
+        )
 
         # Create the ReceiptValidationResult
         return cls(
@@ -225,47 +208,6 @@ class ReceiptValidationResult:
             metadata=metadata,
         )
 
-    @staticmethod
-    def _dynamo_to_python(dynamo_value: Dict[str, Any]) -> Any:
-        """Convert a DynamoDB typed value to a Python value."""
-        if "NULL" in dynamo_value:
-            return None
-        elif "S" in dynamo_value:
-            return dynamo_value["S"]
-        elif "N" in dynamo_value:
-            # Try to convert to int if possible, otherwise float
-            try:
-                return int(dynamo_value["N"])
-            except ValueError:
-                return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
-            return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
-            return {
-                k: ReceiptValidationResult._dynamo_to_python(v)
-                for k, v in dynamo_value["M"].items()
-            }
-        elif "L" in dynamo_value:
-            return [
-                ReceiptValidationResult._dynamo_to_python(item)
-                for item in dynamo_value["L"]
-            ]
-        else:
-            # Handle any other type
-            for key, value in dynamo_value.items():
-                return value
-            return None
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ReceiptValidationResult):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.field_name == other.field_name
-            and self.result_index == other.result_index
-            and self.type == other.type
-        )
 
     def __repr__(self) -> str:
         return (

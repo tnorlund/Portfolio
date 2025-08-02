@@ -1,4 +1,8 @@
 # infra/lambda_layer/python/test/unit/test_image.py
+"""Unit tests for the Image entity."""
+# pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
+# pylint: disable=too-many-locals,unused-argument,line-too-long
+
 import pytest
 
 from receipt_dynamo import Image, item_to_image
@@ -625,7 +629,7 @@ def test_image_eq():
 
 
 @pytest.mark.unit
-def test_itemToImage(
+def test_item_to_image(
     example_image,
     example_image_no_sha,
     example_image_no_cdn_bucket,

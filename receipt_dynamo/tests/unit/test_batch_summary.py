@@ -1,3 +1,5 @@
+# pylint: disable=redefined-outer-name,unused-variable
+"""Unit tests for BatchSummary entity."""
 from datetime import datetime
 
 import pytest
@@ -221,6 +223,4 @@ def test_batch_summary_iter(example_batch_summary):
     assert keys["batch_id"] == example_batch_summary.batch_id
     assert keys["receipt_refs"] == example_batch_summary.receipt_refs
     # Test end to end serialization and deserialization
-    example_batch_summary_item = BatchSummary(
-        **example_batch_summary.to_dict()
-    )
+    _ = BatchSummary(**example_batch_summary.to_dict())

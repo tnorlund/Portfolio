@@ -5,11 +5,16 @@ from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    validate_positive_dimensions,
+)
 
 
-@dataclass(eq=True, unsafe_hash=True)
-class Image(DynamoDBEntity):
+@dataclass(eq=True, unsafe_hash=False)
+class Image(DynamoDBEntity, CDNFieldsMixin):
     """
     Represents an image and its associated metadata stored in a DynamoDB table.
 
@@ -61,16 +66,14 @@ class Image(DynamoDBEntity):
     cdn_medium_avif_s3_key: Optional[str] = None
     image_type: ImageType | str = ImageType.SCAN
 
+    # CDN field lists for CDNFieldsMixin
+    CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
+    CDN_SIZE_FIELDS = ["thumbnail", "small", "medium"]
+
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
-        if (
-            not isinstance(self.width, int)
-            or not isinstance(self.height, int)
-            or self.width <= 0
-            or self.height <= 0
-        ):
-            raise ValueError("width and height must be positive integers")
+        validate_positive_dimensions(self.width, self.height)
 
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
@@ -91,62 +94,8 @@ class Image(DynamoDBEntity):
         if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
             raise ValueError("cdn_s3_bucket must be a string")
 
-        if self.cdn_s3_key and not isinstance(self.cdn_s3_key, str):
-            raise ValueError("cdn_s3_key must be a string")
-
-        if self.cdn_webp_s3_key and not isinstance(self.cdn_webp_s3_key, str):
-            raise ValueError("cdn_webp_s3_key must be a string")
-
-        if self.cdn_avif_s3_key and not isinstance(self.cdn_avif_s3_key, str):
-            raise ValueError("cdn_avif_s3_key must be a string")
-
-        # Validate thumbnail fields
-        if self.cdn_thumbnail_s3_key and not isinstance(
-            self.cdn_thumbnail_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_s3_key must be a string")
-
-        if self.cdn_thumbnail_webp_s3_key and not isinstance(
-            self.cdn_thumbnail_webp_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_webp_s3_key must be a string")
-
-        if self.cdn_thumbnail_avif_s3_key and not isinstance(
-            self.cdn_thumbnail_avif_s3_key, str
-        ):
-            raise ValueError("cdn_thumbnail_avif_s3_key must be a string")
-
-        # Validate small fields
-        if self.cdn_small_s3_key and not isinstance(
-            self.cdn_small_s3_key, str
-        ):
-            raise ValueError("cdn_small_s3_key must be a string")
-
-        if self.cdn_small_webp_s3_key and not isinstance(
-            self.cdn_small_webp_s3_key, str
-        ):
-            raise ValueError("cdn_small_webp_s3_key must be a string")
-
-        if self.cdn_small_avif_s3_key and not isinstance(
-            self.cdn_small_avif_s3_key, str
-        ):
-            raise ValueError("cdn_small_avif_s3_key must be a string")
-
-        # Validate medium fields
-        if self.cdn_medium_s3_key and not isinstance(
-            self.cdn_medium_s3_key, str
-        ):
-            raise ValueError("cdn_medium_s3_key must be a string")
-
-        if self.cdn_medium_webp_s3_key and not isinstance(
-            self.cdn_medium_webp_s3_key, str
-        ):
-            raise ValueError("cdn_medium_webp_s3_key must be a string")
-
-        if self.cdn_medium_avif_s3_key and not isinstance(
-            self.cdn_medium_avif_s3_key, str
-        ):
-            raise ValueError("cdn_medium_avif_s3_key must be a string")
+        # Use CDNFieldsMixin to validate all CDN fields
+        self.validate_cdn_fields()
 
         if isinstance(self.image_type, ImageType):
             self.image_type = self.image_type.value
@@ -229,67 +178,7 @@ class Image(DynamoDBEntity):
                 if self.cdn_s3_bucket
                 else {"NULL": True}
             ),
-            "cdn_s3_key": (
-                {"S": self.cdn_s3_key} if self.cdn_s3_key else {"NULL": True}
-            ),
-            "cdn_webp_s3_key": (
-                {"S": self.cdn_webp_s3_key}
-                if self.cdn_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_avif_s3_key": (
-                {"S": self.cdn_avif_s3_key}
-                if self.cdn_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Thumbnail versions
-            "cdn_thumbnail_s3_key": (
-                {"S": self.cdn_thumbnail_s3_key}
-                if self.cdn_thumbnail_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_thumbnail_webp_s3_key": (
-                {"S": self.cdn_thumbnail_webp_s3_key}
-                if self.cdn_thumbnail_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_thumbnail_avif_s3_key": (
-                {"S": self.cdn_thumbnail_avif_s3_key}
-                if self.cdn_thumbnail_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Small versions
-            "cdn_small_s3_key": (
-                {"S": self.cdn_small_s3_key}
-                if self.cdn_small_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_small_webp_s3_key": (
-                {"S": self.cdn_small_webp_s3_key}
-                if self.cdn_small_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_small_avif_s3_key": (
-                {"S": self.cdn_small_avif_s3_key}
-                if self.cdn_small_avif_s3_key
-                else {"NULL": True}
-            ),
-            # Medium versions
-            "cdn_medium_s3_key": (
-                {"S": self.cdn_medium_s3_key}
-                if self.cdn_medium_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_medium_webp_s3_key": (
-                {"S": self.cdn_medium_webp_s3_key}
-                if self.cdn_medium_webp_s3_key
-                else {"NULL": True}
-            ),
-            "cdn_medium_avif_s3_key": (
-                {"S": self.cdn_medium_avif_s3_key}
-                if self.cdn_medium_avif_s3_key
-                else {"NULL": True}
-            ),
+            **self.cdn_fields_to_dynamodb_item(),
             "image_type": {"S": self.image_type},
         }
 
@@ -308,14 +197,18 @@ class Image(DynamoDBEntity):
             f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
             f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
             f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
-            f"cdn_thumbnail_webp_s3_key={_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
-            f"cdn_thumbnail_avif_s3_key={_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
+            f"cdn_thumbnail_webp_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
+            f"cdn_thumbnail_avif_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
             f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
             f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
             f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
             f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
-            f"cdn_medium_webp_s3_key={_repr_str(self.cdn_medium_webp_s3_key)}, "
-            f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}, "
+            f"cdn_medium_webp_s3_key="
+            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
+            f"cdn_medium_avif_s3_key="
+            f"{_repr_str(self.cdn_medium_avif_s3_key)}, "
             f"image_type={_repr_str(self.image_type)}"
             ")"
         )
@@ -323,13 +216,10 @@ class Image(DynamoDBEntity):
 
 def item_to_image(item: Dict[str, Any]) -> Image:
     """Converts a DynamoDB item to an Image object.
-
     Args:
         item (dict): The DynamoDB item to convert.
-
     Returns:
         Image: The Image object represented by the DynamoDB item.
-
     Raises:
         ValueError: When the item format is invalid.
     """
@@ -351,32 +241,8 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             f"Invalid item format\nmissing keys: {missing_keys}\n"
             f"additional keys: {additional_keys}"
         )
+
     try:
-        sha256 = item.get("sha256", {}).get("S")
-        cdn_s3_bucket = item.get("cdn_s3_bucket", {}).get("S")
-        cdn_s3_key = item.get("cdn_s3_key", {}).get("S")
-        cdn_webp_s3_key = item.get("cdn_webp_s3_key", {}).get("S")
-        cdn_avif_s3_key = item.get("cdn_avif_s3_key", {}).get("S")
-        # Get thumbnail fields
-        cdn_thumbnail_s3_key = item.get("cdn_thumbnail_s3_key", {}).get("S")
-        cdn_thumbnail_webp_s3_key = item.get(
-            "cdn_thumbnail_webp_s3_key", {}
-        ).get("S")
-        cdn_thumbnail_avif_s3_key = item.get(
-            "cdn_thumbnail_avif_s3_key", {}
-        ).get("S")
-        # Get small fields
-        cdn_small_s3_key = item.get("cdn_small_s3_key", {}).get("S")
-        cdn_small_webp_s3_key = item.get("cdn_small_webp_s3_key", {}).get("S")
-        cdn_small_avif_s3_key = item.get("cdn_small_avif_s3_key", {}).get("S")
-        # Get medium fields
-        cdn_medium_s3_key = item.get("cdn_medium_s3_key", {}).get("S")
-        cdn_medium_webp_s3_key = item.get("cdn_medium_webp_s3_key", {}).get(
-            "S"
-        )
-        cdn_medium_avif_s3_key = item.get("cdn_medium_avif_s3_key", {}).get(
-            "S"
-        )
         image_type = item.get("image_type", {}).get("S")
         return Image(
             image_id=item["PK"]["S"].split("#")[1],
@@ -387,37 +253,31 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             ),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
-            sha256=sha256 if sha256 else None,
-            cdn_s3_bucket=cdn_s3_bucket if cdn_s3_bucket else None,
-            cdn_s3_key=cdn_s3_key if cdn_s3_key else None,
-            cdn_webp_s3_key=cdn_webp_s3_key if cdn_webp_s3_key else None,
-            cdn_avif_s3_key=cdn_avif_s3_key if cdn_avif_s3_key else None,
-            cdn_thumbnail_s3_key=(
-                cdn_thumbnail_s3_key if cdn_thumbnail_s3_key else None
+            sha256=item.get("sha256", {}).get("S"),
+            cdn_s3_bucket=item.get("cdn_s3_bucket", {}).get("S"),
+            cdn_s3_key=item.get("cdn_s3_key", {}).get("S"),
+            cdn_webp_s3_key=item.get("cdn_webp_s3_key", {}).get("S"),
+            cdn_avif_s3_key=item.get("cdn_avif_s3_key", {}).get("S"),
+            cdn_thumbnail_s3_key=item.get("cdn_thumbnail_s3_key", {}).get("S"),
+            cdn_thumbnail_webp_s3_key=item.get(
+                "cdn_thumbnail_webp_s3_key", {}
+            ).get("S"),
+            cdn_thumbnail_avif_s3_key=item.get(
+                "cdn_thumbnail_avif_s3_key", {}
+            ).get("S"),
+            cdn_small_s3_key=item.get("cdn_small_s3_key", {}).get("S"),
+            cdn_small_webp_s3_key=item.get("cdn_small_webp_s3_key", {}).get(
+                "S"
             ),
-            cdn_thumbnail_webp_s3_key=(
-                cdn_thumbnail_webp_s3_key
-                if cdn_thumbnail_webp_s3_key
-                else None
+            cdn_small_avif_s3_key=item.get("cdn_small_avif_s3_key", {}).get(
+                "S"
             ),
-            cdn_thumbnail_avif_s3_key=(
-                cdn_thumbnail_avif_s3_key
-                if cdn_thumbnail_avif_s3_key
-                else None
+            cdn_medium_s3_key=item.get("cdn_medium_s3_key", {}).get("S"),
+            cdn_medium_webp_s3_key=item.get("cdn_medium_webp_s3_key", {}).get(
+                "S"
             ),
-            cdn_small_s3_key=cdn_small_s3_key if cdn_small_s3_key else None,
-            cdn_small_webp_s3_key=(
-                cdn_small_webp_s3_key if cdn_small_webp_s3_key else None
-            ),
-            cdn_small_avif_s3_key=(
-                cdn_small_avif_s3_key if cdn_small_avif_s3_key else None
-            ),
-            cdn_medium_s3_key=cdn_medium_s3_key if cdn_medium_s3_key else None,
-            cdn_medium_webp_s3_key=(
-                cdn_medium_webp_s3_key if cdn_medium_webp_s3_key else None
-            ),
-            cdn_medium_avif_s3_key=(
-                cdn_medium_avif_s3_key if cdn_medium_avif_s3_key else None
+            cdn_medium_avif_s3_key=item.get("cdn_medium_avif_s3_key", {}).get(
+                "S"
             ),
             image_type=image_type if image_type else ImageType.SCAN.value,
         )

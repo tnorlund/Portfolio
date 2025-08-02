@@ -1,3 +1,8 @@
+"""Unit tests for the Letter entity."""
+# pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
+# pylint: disable=too-many-locals,unused-argument,line-too-long,too-many-lines
+# pylint: disable=comparison-with-itself,consider-using-dict-items
+
 import math
 
 import pytest
@@ -7,6 +12,7 @@ from receipt_dynamo import Letter, item_to_letter
 
 @pytest.fixture
 def example_letter():
+    """A pytest fixture for a sample Letter object."""
     return Letter(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
         line_id=1,
@@ -399,7 +405,7 @@ def test_letter_init_invalid_confidence(bad_confidence):
 def test_letter_init_invalid_angles():
     """Constructor fails when angle_degrees and angle_radians are not valid."""
     with pytest.raises(
-        ValueError, match="angle_degrees must be a float or int"
+        ValueError, match="angle_degrees must be float or int, got"
     ):
         Letter(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -417,7 +423,7 @@ def test_letter_init_invalid_angles():
             confidence=0.5,
         )
     with pytest.raises(
-        ValueError, match="angle_radians must be a float or int"
+        ValueError, match="angle_radians must be float or int, got"
     ):
         Letter(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

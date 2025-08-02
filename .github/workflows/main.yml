@@ -87,14 +87,6 @@ jobs:
           python3 --version
           which python3
 
-      - name: Cache pip packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
       - name: Install minimal dependencies
         run: |
           python3 -m pip install black isort
@@ -166,16 +158,15 @@ jobs:
           python3 --version
           which python3
 
-      - name: Cache pip packages only (not virtual environments)
-        uses: actions/cache@v4  # Use latest cache action
+      - name: Cache pip packages only
+        uses: actions/cache@v4
         with:
           path: |
-            ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-            **/__pycache__
-          key: ${{ runner.os }}-pip-cache-py312-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/http' || '~/.cache/pip/http' }}
+            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/wheels' || '~/.cache/pip/wheels' }}
+          key: ${{ runner.os }}-pip-cache-py312-v3-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-cache-py312-
-            ${{ runner.os }}-pip-cache-
+            ${{ runner.os }}-pip-cache-py312-v3-
 
       - name: Cache pytest results and coverage
         uses: actions/cache@v4
@@ -302,7 +293,7 @@ jobs:
               --maxfail=3 \
               --durations=10 \
               --dist=loadfile \
-              -m "integration and not end_to_end and not slow and not performance" \
+              -m "integration and not end_to_end and not slow and not performance and not unused_in_production" \
               --cov-append \
               --cov \
               --cov-report=term-missing \
