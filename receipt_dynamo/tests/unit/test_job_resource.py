@@ -1,7 +1,9 @@
+# pylint: disable=redefined-outer-name
+"""Unit tests for JobResource entity."""
 import pytest
 
 from receipt_dynamo import JobResource, item_to_job_resource
-from receipt_dynamo.entities.job_resource import _parse_dynamodb_map
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
 
 @pytest.fixture
@@ -565,7 +567,9 @@ def test_job_resource_eq():
 
 
 @pytest.mark.unit
-def test_itemToJobResource(example_job_resource, example_job_resource_minimal):
+def test_item_to_job_resource(
+    example_job_resource, example_job_resource_minimal
+):
     """Test the item_to_job_resource() function."""
     # Test with full job resource
     item = example_job_resource.to_item()
@@ -630,7 +634,7 @@ def test_parse_dynamodb_map():
     }
 
     # Convert to Python values and test
-    result = _parse_dynamodb_map(dynamodb_map)
+    result = parse_dynamodb_map(dynamodb_map)
     assert result["string"] == "value"
     assert result["number"] == 42
     assert result["decimal"] == 3.14

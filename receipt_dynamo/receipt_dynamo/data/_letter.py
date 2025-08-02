@@ -1,33 +1,28 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from receipt_dynamo import Letter, item_to_letter
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    EntityValidationError,
+)
+from receipt_dynamo.entities import item_to_letter
+from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.letter import Letter
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data._base import QueryInputTypeDef
-
-# These are used at runtime, not just for type checking
-from receipt_dynamo.data._base import (
-    DeleteRequestTypeDef,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
-)
+    from receipt_dynamo.data.base_operations import (
+        BatchGetItemInputTypeDef,
+    )
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 # So let's chunk the items in groups of 25
 CHUNK_SIZE = 25
 
 
-class _Letter(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _Letter(FlattenedStandardMixin):
     """
     A class used to represent a Letter in the database.
 
@@ -39,15 +34,22 @@ class _Letter(
         Adds multiple letters to the database.
     update_letter(letter: Letter)
         Updates a letter in the database.
+    update_letters(letters: list[Letter])
+        Updates multiple letters in the database.
     delete_letter(image_id: str, line_id: int, word_id: int, letter_id: int)
         Deletes a letter from the database.
     delete_letters(letters: list[Letter])
         Deletes multiple letters from the database.
-    get_letter(image_id: str, line_id: int, word_id: int, letter_id: int) -> Letter
+    get_letter(image_id: str, line_id: int, word_id: int, letter_id: int)
+        -> Letter
         Gets a letter from the database.
-    list_letters(limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict]]
+    get_letters(keys: list[dict]) -> list[Letter]
+        Gets multiple letters from the database.
+    list_letters(limit: Optional[int] = None, last_evaluated_key:
+        Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict[str, Any]]]
         Lists all letters from the database.
-    list_letters_from_word(image_id: str, line_id: int, word_id: int) -> list[Letter]
+    list_letters_from_word(image_id: str, line_id: int, word_id: int)
+        -> list[Letter]
         Lists all letters from a specific word.
     """
 
@@ -75,15 +77,7 @@ class _Letter(
             ValueError: When validation fails or letters cannot be added
         """
         self._validate_entity_list(letters, Letter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=letter.to_item())
-            )
-            for letter in letters
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._add_entities_batch(letters, Letter, "letters")
 
     @handle_dynamodb_errors("update_letter")
     def update_letter(self, letter: Letter):
@@ -98,6 +92,27 @@ class _Letter(
         self._validate_entity(letter, Letter, "letter")
         self._update_entity(letter)
 
+    @handle_dynamodb_errors("update_letters")
+    def update_letters(self, letters: List[Letter]):
+        """
+        Updates multiple Letter items in the database.
+
+        This method validates that the provided parameter is a list of Letter
+        instances. It uses DynamoDB's transact_write_items operation, which can
+        handle up to 25 items per transaction.
+
+        Parameters
+        ----------
+        letters : list[Letter]
+            The list of Letter objects to update.
+
+        Raises
+        ------
+        ValueError: When given a bad parameter or letters don't exist.
+        Exception: For underlying DynamoDB errors.
+        """
+        self._update_entities(letters, Letter, "letters")
+
     @handle_dynamodb_errors("delete_letter")
     def delete_letter(
         self, image_id: str, line_id: int, word_id: int, letter_id: int
@@ -110,16 +125,26 @@ class _Letter(
             word_id (int): The ID of the word the letter belongs to
             letter_id (int): The ID of the letter to delete
         """
-        self._client.delete_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                },
-            },
-            ConditionExpression="attribute_exists(PK)",
+        # Validate UUID
+        assert_valid_uuid(image_id)
+        # Create a temporary Letter object with just the keys for deletion
+        temp_letter = Letter(
+            image_id=image_id,
+            line_id=line_id,
+            word_id=word_id,
+            letter_id=letter_id,
+            text="X",  # Single character required
+            # Required geometry fields
+            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
+            top_right={"x": 0, "y": 0},
+            top_left={"x": 0, "y": 0},
+            bottom_right={"x": 0, "y": 0},
+            bottom_left={"x": 0, "y": 0},
+            angle_degrees=0.0,
+            angle_radians=0.0,
+            confidence=0.5,
         )
+        self._delete_entity(temp_letter)
 
     @handle_dynamodb_errors("delete_letters")
     def delete_letters(self, letters: List[Letter]):
@@ -128,16 +153,7 @@ class _Letter(
         Args:
             letters (list[Letter]): The letters to delete
         """
-        self._validate_entity_list(letters, Letter, "letters")
-
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=letter.key)
-            )
-            for letter in letters
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(letters)
 
     @handle_dynamodb_errors("delete_letters_from_word")
     def delete_letters_from_word(
@@ -170,27 +186,78 @@ class _Letter(
             Letter: The letter object
 
         Raises:
-            ValueError: When the letter is not found
+            EntityNotFoundError: When the letter is not found
         """
-        response = self._client.get_item(
-            TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
-                },
-            },
+        assert_valid_uuid(image_id)
+
+        result = self._get_entity(
+            primary_key=f"IMAGE#{image_id}",
+            sort_key=(
+                f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+            ),
+            entity_class=Letter,
+            converter_func=item_to_letter,
         )
-        if "Item" not in response:
-            raise ValueError(f"Letter with ID {letter_id} not found")
-        return item_to_letter(response["Item"])
+
+        if result is None:
+            raise EntityNotFoundError(
+                f"Letter with image_id={image_id}, line_id={line_id}, "
+                f"word_id={word_id}, letter_id={letter_id} not found"
+            )
+
+        return result
+
+    @handle_dynamodb_errors("get_letters")
+    def get_letters(self, keys: List[Dict]) -> List[Letter]:
+        """Get a list of letters using a list of keys"""
+        # Check the validity of the keys
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("IMAGE#"):
+                raise EntityValidationError("PK must start with 'IMAGE#'")
+            if not key["SK"]["S"].startswith("LINE#"):
+                raise EntityValidationError("SK must start with 'LINE#'")
+            if not key["SK"]["S"].split("#")[-2] == "LETTER":
+                raise EntityValidationError("SK must contain 'LETTER'")
+        results = []
+
+        # Split keys into chunks of up to 25
+        for i in range(0, len(keys), CHUNK_SIZE):
+            chunk = keys[i : i + CHUNK_SIZE]
+
+            # Prepare parameters for BatchGetItem
+            request: BatchGetItemInputTypeDef = {
+                "RequestItems": {self.table_name: {"Keys": chunk}}
+            }
+
+            # Perform BatchGet
+            response = self._client.batch_get_item(**request)
+
+            # Combine all found items
+            batch_items = response["Responses"].get(self.table_name, [])
+            results.extend(batch_items)
+
+            # Retry unprocessed keys if any
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name, {}).get(
+                "Keys"
+            ):  # type: ignore[call-overload]
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
+                batch_items = response["Responses"].get(self.table_name, [])
+                results.extend(batch_items)
+                unprocessed = response.get("UnprocessedKeys", {})
+
+        return [item_to_letter(result) for result in results]
 
     @handle_dynamodb_errors("list_letters")
     def list_letters(
         self,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Letter], Optional[Dict]]:
+    ) -> Tuple[List[Letter], Optional[Dict[str, Any]]]:
         """Lists all letters in the database
 
         Args:
@@ -200,40 +267,12 @@ class _Letter(
         Returns:
             Tuple of letters list and last evaluated key for pagination
         """
-        letters = []
-        query_params: QueryInputTypeDef = {
-            "TableName": self.table_name,
-            "IndexName": "GSITYPE",
-            "KeyConditionExpression": "#t = :val",
-            "ExpressionAttributeNames": {"#t": "TYPE"},
-            "ExpressionAttributeValues": {":val": {"S": "LETTER"}},
-            "ScanIndexForward": True,
-        }
-
-        if last_evaluated_key is not None:
-            query_params["ExclusiveStartKey"] = last_evaluated_key
-        if limit is not None:
-            query_params["Limit"] = limit
-
-        response = self._client.query(**query_params)
-        letters.extend([item_to_letter(item) for item in response["Items"]])
-
-        if limit is None:
-            while (
-                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
-            ):
-                query_params["ExclusiveStartKey"] = response[
-                    "LastEvaluatedKey"
-                ]
-                response = self._client.query(**query_params)
-                letters.extend(
-                    [item_to_letter(item) for item in response["Items"]]
-                )
-            last_evaluated_key = None
-        else:
-            last_evaluated_key = response.get("LastEvaluatedKey", None)
-
-        return letters, last_evaluated_key
+        return self._query_by_type(
+            entity_type="LETTER",
+            converter_func=item_to_letter,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
 
     @handle_dynamodb_errors("list_letters_from_word")
     def list_letters_from_word(
@@ -249,33 +288,23 @@ class _Letter(
         Returns:
             List of Letter objects from the specified word
         """
-        letters = []
-        response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-            ExpressionAttributeValues={
+        # For letters, we need to query by a composite parent (IMAGE + LINE + WORD)
+        # Since QueryByParentMixin expects a single parent, we'll use the
+        # original query
+        letters, _ = self._query_entities(
+            index_name=None,  # Main table query
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
+            expression_attribute_names=None,
+            expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},
                 ":skPrefix": {
                     "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
                 },
             },
+            converter_func=item_to_letter,
+            limit=None,
+            last_evaluated_key=None,
         )
-        letters.extend([item_to_letter(item) for item in response["Items"]])
-
-        while "LastEvaluatedKey" in response:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pkVal AND begins_with(SK, :skPrefix)",
-                ExpressionAttributeValues={
-                    ":pkVal": {"S": f"IMAGE#{image_id}"},
-                    ":skPrefix": {
-                        "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
-                    },
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            letters.extend(
-                [item_to_letter(item) for item in response["Items"]]
-            )
-
         return letters

@@ -1,55 +1,47 @@
-import json
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class LabelCountCache:
     """Represents cached label validation counts stored in DynamoDB."""
+    
+    label: str
+    valid_count: int
+    invalid_count: int
+    pending_count: int
+    needs_review_count: int
+    none_count: int
+    last_updated: str
+    time_to_live: Optional[int] = None
 
-    def __init__(
-        self,
-        label: str,
-        valid_count: int,
-        invalid_count: int,
-        pending_count: int,
-        needs_review_count: int,
-        none_count: int,
-        last_updated: str,
-        time_to_live: Optional[int] = None,
-    ) -> None:
-        if not isinstance(label, str) or not label:
+    def __post_init__(self) -> None:
+        if not isinstance(self.label, str) or not self.label:
             raise ValueError("label must be a non-empty string")
-        if not isinstance(valid_count, int) or valid_count < 0:
+        if not isinstance(self.valid_count, int) or self.valid_count < 0:
             raise ValueError("valid_count must be a non-negative integer")
-        if not isinstance(invalid_count, int) or invalid_count < 0:
+        if not isinstance(self.invalid_count, int) or self.invalid_count < 0:
             raise ValueError("invalid_count must be a non-negative integer")
-        if not isinstance(pending_count, int) or pending_count < 0:
+        if not isinstance(self.pending_count, int) or self.pending_count < 0:
             raise ValueError("pending_count must be a non-negative integer")
-        if not isinstance(needs_review_count, int) or needs_review_count < 0:
+        if not isinstance(self.needs_review_count, int) or self.needs_review_count < 0:
             raise ValueError(
                 "needs_review_count must be a non-negative integer"
             )
-        if not isinstance(none_count, int) or none_count < 0:
+        if not isinstance(self.none_count, int) or self.none_count < 0:
             raise ValueError("none_count must be a non-negative integer")
         try:
-            datetime.fromisoformat(last_updated)
+            datetime.fromisoformat(self.last_updated)
         except (TypeError, ValueError) as exc:
             raise ValueError("last_updated must be ISO formatted") from exc
-        if time_to_live is not None:
-            if not isinstance(time_to_live, int) or time_to_live < 0:
+        if self.time_to_live is not None:
+            if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
                 raise ValueError("time_to_live must be non-negative integer")
             now = int(time.time())
-            if time_to_live < now:
+            if self.time_to_live < now:
                 raise ValueError("time_to_live must be in the future")
-        self.label: str = label
-        self.valid_count = valid_count
-        self.invalid_count = invalid_count
-        self.pending_count = pending_count
-        self.needs_review_count = needs_review_count
-        self.none_count = none_count
-        self.last_updated = last_updated
-        self.time_to_live = time_to_live
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -96,19 +88,6 @@ class LabelCountCache:
             base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, LabelCountCache):
-            return False
-        return (
-            self.label == other.label
-            and self.valid_count == other.valid_count
-            and self.invalid_count == other.invalid_count
-            and self.pending_count == other.pending_count
-            and self.needs_review_count == other.needs_review_count
-            and self.none_count == other.none_count
-            and self.last_updated == other.last_updated
-            and self.time_to_live == other.time_to_live
-        )
 
 
 def item_to_label_count_cache(
@@ -139,6 +118,13 @@ def item_to_label_count_cache(
         ttl = int(item["TimeToLive"]["N"])
     elif "time_to_live" in item:
         ttl = int(item["time_to_live"]["N"])
+    
+    # When loading from DynamoDB, expired TTLs should be allowed
+    # DynamoDB doesn't immediately delete expired items
+    # Set expired TTLs to None to avoid validation errors
+    if ttl is not None and ttl < int(time.time()):
+        ttl = None
+    
     return LabelCountCache(
         label=label,
         valid_count=valid_count,
