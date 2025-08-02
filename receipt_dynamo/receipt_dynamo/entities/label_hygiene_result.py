@@ -1,65 +1,61 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
+@dataclass(eq=True, unsafe_hash=False)
 class LabelHygieneResult:
-    def __init__(
-        self,
-        hygiene_id: str,
-        alias: str,
-        canonical_label: str,
-        reasoning: str,
-        gpt_agreed: bool,
-        source_batch_id: Optional[str],
-        example_ids: list[str],
-        timestamp: datetime,
-        image_id: str,  # Added image_id parameter
-        receipt_id: int,  # Added receipt_id parameter
-    ):
-        assert_valid_uuid(hygiene_id)
-        self.hygiene_id = hygiene_id
+    hygiene_id: str
+    alias: str
+    canonical_label: str
+    reasoning: str
+    gpt_agreed: bool
+    source_batch_id: Optional[str]
+    example_ids: list[str]
+    timestamp: datetime
+    image_id: str
+    receipt_id: int
 
-        if not isinstance(alias, str):
+    def __post_init__(self) -> None:
+        # Convert datetime to str if needed for timestamp
+        if isinstance(self.timestamp, datetime):
+            # Keep as datetime - no conversion needed for this field
+            pass
+        
+        assert_valid_uuid(self.hygiene_id)
+
+        if not isinstance(self.alias, str):
             raise ValueError("alias must be a string")
-        self.alias = alias
 
-        if not isinstance(canonical_label, str):
+        if not isinstance(self.canonical_label, str):
             raise ValueError("canonical_label must be a string")
-        self.canonical_label = canonical_label
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning = reasoning
 
-        if not isinstance(gpt_agreed, bool):
+        if not isinstance(self.gpt_agreed, bool):
             raise ValueError("gpt_agreed must be a boolean")
-        self.gpt_agreed = gpt_agreed
 
-        if source_batch_id is not None and not isinstance(
-            source_batch_id, str
+        if self.source_batch_id is not None and not isinstance(
+            self.source_batch_id, str
         ):
             raise ValueError("source_batch_id must be a string or None")
-        self.source_batch_id = source_batch_id
 
-        if not isinstance(example_ids, list):
+        if not isinstance(self.example_ids, list):
             raise ValueError("example_ids must be a list")
-        self.example_ids = example_ids
 
-        if not isinstance(image_id, str):
-            raise ValueError("image_id must be a string")  # Validate image_id
-        self.image_id = image_id  # Store image_id
+        if not isinstance(self.image_id, str):
+            raise ValueError("image_id must be a string")
 
-        if not isinstance(receipt_id, int):
+        if not isinstance(self.receipt_id, int):
             raise ValueError(
                 "receipt_id must be an integer"
-            )  # Validate receipt_id
-        self.receipt_id: int = receipt_id  # Store receipt_id
+            )
 
-        if not isinstance(timestamp, datetime):
+        if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime object")
-        self.timestamp: datetime = timestamp
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -111,7 +107,7 @@ class LabelHygieneResult:
             f"gpt_agreed={_repr_str(self.gpt_agreed)}, "
             f"source_batch_id={_repr_str(self.source_batch_id)}, "
             f"example_ids={_repr_str(self.example_ids)}, "
-            f"image_id={_repr_str(self.image_id)}, "  # Include image_id in repr
+            f"image_id={_repr_str(self.image_id)}, "  # Include image_id
             f"receipt_id={self.receipt_id}, "  # Include receipt_id in repr
             f"timestamp={_repr_str(self.timestamp)}"
             ")"
@@ -132,23 +128,6 @@ class LabelHygieneResult:
         yield "receipt_id", self.receipt_id  # Include receipt_id in iteration
         yield "timestamp", self.timestamp
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, LabelHygieneResult):
-            return False
-        return (
-            self.hygiene_id == other.hygiene_id
-            and self.alias == other.alias
-            and self.canonical_label == other.canonical_label
-            and self.reasoning == other.reasoning
-            and self.gpt_agreed == other.gpt_agreed
-            and self.source_batch_id == other.source_batch_id
-            and self.example_ids == other.example_ids
-            and self.image_id
-            == other.image_id  # Include image_id in equality check
-            and self.receipt_id
-            == other.receipt_id  # Include receipt_id in equality check
-            and self.timestamp == other.timestamp
-        )
 
     def __hash__(self) -> int:
         return hash(
@@ -189,7 +168,8 @@ def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            f"Invalid item format\nmissing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         hygiene_id = item["PK"]["S"].split("#")[1]

@@ -4,11 +4,10 @@ from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.util import (
-    _format_float,
     _repr_str,
-    assert_valid_point,
     assert_valid_uuid,
     normalize_enum,
+    validate_positive_int,
 )
 
 
@@ -17,10 +16,11 @@ class ReceiptWordLabel:
     """
     Represents a label for a word in a receipt line in DynamoDB.
 
-    This class encapsulates the label data for a word in a receipt line, including
-    the label type, reasoning for the label assignment, and timestamp. It provides methods for generating
-    primary and secondary (GSI) keys for DynamoDB operations, converting the label to a
-    DynamoDB item, and iterating over its attributes.
+    This class encapsulates the label data for a word in a receipt line,
+    including the label type, reasoning for the label assignment, and
+    timestamp. It provides methods for generating primary and secondary
+    (GSI) keys for DynamoDB operations, converting the label to a DynamoDB
+    item, and iterating over its attributes.
 
     Attributes:
         image_id (str): UUID identifying the associated image.
@@ -29,7 +29,8 @@ class ReceiptWordLabel:
         word_id (int): Number identifying the word.
         label (str): The label assigned to the word.
         reasoning (str): Explanation for why this label was assigned.
-        timestamp_added (str): ISO formatted timestamp when the label was added.
+        timestamp_added (str): ISO formatted timestamp when the label was
+            added.
     """
 
     image_id: str
@@ -47,20 +48,9 @@ class ReceiptWordLabel:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
 
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
-        if not isinstance(self.line_id, int):
-            raise ValueError("line_id must be an integer")
-        if self.line_id <= 0:
-            raise ValueError("line_id must be positive")
-
-        if not isinstance(self.word_id, int):
-            raise ValueError("word_id must be an integer")
-        if self.word_id <= 0:
-            raise ValueError("word_id must be positive")
+        validate_positive_int("receipt_id", self.receipt_id)
+        validate_positive_int("line_id", self.line_id)
+        validate_positive_int("word_id", self.word_id)
 
         if not isinstance(self.label, str):
             raise ValueError("label must be a string")
@@ -82,10 +72,10 @@ class ReceiptWordLabel:
             # Validate it's a valid ISO format by trying to parse it
             try:
                 datetime.fromisoformat(self.timestamp_added)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "timestamp_added string must be in ISO format"
-                )
+                ) from e
         else:
             raise ValueError(
                 "timestamp_added must be a datetime object or a string"
@@ -117,7 +107,10 @@ class ReceiptWordLabel:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LABEL#{self.label}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
+                    f"#WORD#{self.word_id:05d}#LABEL#{self.label}"
+                )
             },
         }
 
@@ -136,7 +129,10 @@ class ReceiptWordLabel:
         return {
             "GSI1PK": {"S": spaced_label_upper},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                )
             },
         }
 
@@ -150,7 +146,10 @@ class ReceiptWordLabel:
         return {
             "GSI2PK": {"S": "RECEIPT"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                )
             },
         }
 
@@ -164,7 +163,11 @@ class ReceiptWordLabel:
         return {
             "GSI3PK": {"S": f"VALIDATION_STATUS#{self.validation_status}"},
             "GSI3SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#LABEL#{self.label}"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+                    f"#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+                    f"#LABEL#{self.label}"
+                )
             },
         }
 
@@ -172,7 +175,8 @@ class ReceiptWordLabel:
         """Converts the ReceiptWordLabel object to a DynamoDB item.
 
         Returns:
-            dict: A dictionary representing the ReceiptWordLabel object as a DynamoDB item.
+            dict: A dictionary representing the ReceiptWordLabel object as a
+                DynamoDB item.
         """
         return {
             **self.key,
@@ -200,10 +204,12 @@ class ReceiptWordLabel:
         }
 
     def to_receipt_word_key(self) -> Dict[str, Any]:
-        """Generates the key for the ReceiptWord table associated with this label.
+        """Generates the key for the ReceiptWord table associated with this
+        label.
 
         Returns:
-            dict: A dictionary representing the key for the ReceiptWord in DynamoDB.
+            dict: A dictionary representing the key for the ReceiptWord in
+                DynamoDB.
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -232,7 +238,8 @@ class ReceiptWordLabel:
             f"reasoning={_repr_str(self.reasoning)}, "
             f"timestamp_added={_repr_str(self.timestamp_added)}, "
             f"validation_status={_repr_str(self.validation_status)}, "
-            f"label_consolidated_from={_repr_str(self.label_consolidated_from)}, "
+            f"label_consolidated_from="
+            f"{_repr_str(self.label_consolidated_from)}, "
             f"label_proposed_by={_repr_str(self.label_proposed_by)}"
             ")"
         )
@@ -241,7 +248,8 @@ class ReceiptWordLabel:
         """Returns an iterator over the ReceiptWordLabel object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the ReceiptWordLabel object's attribute name/value pairs.
+            Generator[Tuple[str, Any], None, None]: An iterator over the
+                ReceiptWordLabel object's attribute name/value pairs.
         """
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -258,13 +266,16 @@ class ReceiptWordLabel:
         """Determines whether two ReceiptWordLabel objects are equal.
 
         Args:
-            other (ReceiptWordLabel): The other ReceiptWordLabel object to compare.
+            other (ReceiptWordLabel): The other ReceiptWordLabel object to
+                compare.
 
         Returns:
-            bool: True if the ReceiptWordLabel objects are equal, False otherwise.
+            bool: True if the ReceiptWordLabel objects are equal, False
+                otherwise.
 
         Note:
-            If other is not an instance of ReceiptWordLabel, NotImplemented is returned.
+            If other is not an instance of ReceiptWordLabel, NotImplemented is
+                returned.
         """
         if not isinstance(other, ReceiptWordLabel):
             return NotImplemented
@@ -325,7 +336,9 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
         missing_keys = required_keys - item.keys()
         additional_keys = item.keys() - required_keys
         raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\nadditional keys: {additional_keys}"
+            "Invalid item format\n"
+            f"missing keys: {missing_keys}\n"
+            f"additional keys: {additional_keys}"
         )
     try:
         sk_parts = item["SK"]["S"].split("#")
@@ -374,4 +387,6 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
             label_proposed_by=label_proposed_by,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptWordLabel: {e}")
+        raise ValueError(
+            f"Error converting item to ReceiptWordLabel: {e}"
+        ) from e

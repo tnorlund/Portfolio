@@ -1,4 +1,11 @@
-import concurrent.futures
+"""
+Lambda handler for retrieving label validation counts.
+
+This module provides an API endpoint to get validation counts for core receipt
+labels. It uses caching to improve performance and falls back to real-time
+queries when cache misses occur.
+"""
+
 import json
 import logging
 import os
@@ -49,6 +56,7 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_label_counts(core_label):
+    """Fetch real-time validation counts for a specific label."""
     receipt_word_labels, last_evaluated_key = (
         dynamo_client.get_receipt_word_labels_by_label(
             label=core_label,
@@ -84,16 +92,13 @@ def get_cached_label_counts():
         logger.info("Fetching cached label counts from DynamoDB")
         cached_entries, _ = dynamo_client.list_label_count_caches()
         logger.info(
-            f"Retrieved {len(cached_entries)} cached entries from DynamoDB"
+            "Retrieved %d cached entries from DynamoDB", len(cached_entries)
         )
 
         # Convert to dictionary for quick lookup
         cached_by_label = {entry.label: entry for entry in cached_entries}
 
         # Process each core label
-        import time
-        from datetime import datetime
-
         current_time = int(time.time())
 
         for label in CORE_LABELS:
@@ -112,9 +117,20 @@ def get_cached_label_counts():
                 ttl_status = "No TTL"
                 if cached_entry.time_to_live:
                     if cached_entry.time_to_live > current_time:
-                        ttl_status = f"Valid (expires in {(cached_entry.time_to_live - current_time) / 60:.1f} min)"
+                        minutes_until_expiry = (
+                            cached_entry.time_to_live - current_time
+                        ) / 60
+                        ttl_status = (
+                            f"Valid (expires in "
+                            f"{minutes_until_expiry:.1f} min)"
+                        )
                     else:
-                        ttl_status = f"EXPIRED ({(current_time - cached_entry.time_to_live) / 60:.1f} min ago)"
+                        minutes_since_expiry = (
+                            current_time - cached_entry.time_to_live
+                        ) / 60
+                        ttl_status = (
+                            f"EXPIRED ({minutes_since_expiry:.1f} min ago)"
+                        )
 
                 cached_counts[label] = {
                     "VALID": cached_entry.valid_count,
@@ -125,17 +141,22 @@ def get_cached_label_counts():
                 }
                 missing_labels.remove(label)
                 logger.info(
-                    f"Cache hit for label: {label} (age: {age_minutes:.1f} min, TTL: {ttl_status})"
+                    "Cache hit for label: %s (age: %.1f min, TTL: %s)",
+                    label,
+                    age_minutes,
+                    ttl_status,
                 )
             else:
-                logger.info(f"Cache miss for label: {label}")
+                logger.info("Cache miss for label: %s", label)
 
         logger.info(
-            f"Cache performance: {len(cached_counts)} hits, {len(missing_labels)} misses"
+            "Cache performance: %d hits, %d misses",
+            len(cached_counts),
+            len(missing_labels),
         )
 
-    except Exception as e:
-        logger.error(f"Error listing cached label counts: {e}")
+    except (AttributeError, ValueError, KeyError, TypeError) as exc:
+        logger.error("Error listing cached label counts: %s", exc)
         # Fall back to treating all labels as missing
         missing_labels = list(CORE_LABELS)
         cached_counts = {}
@@ -144,6 +165,7 @@ def get_cached_label_counts():
 
 
 def handler(event, _):
+    """AWS Lambda handler for label validation count API."""
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -154,7 +176,9 @@ def handler(event, _):
         # If we have missing labels, fetch them in real-time
         if missing_labels:
             logger.info(
-                f"Fetching real-time counts for {len(missing_labels)} labels: {missing_labels}"
+                "Fetching real-time counts for %d labels: %s",
+                len(missing_labels),
+                missing_labels,
             )
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {
@@ -176,7 +200,6 @@ def handler(event, _):
             "body": json.dumps(core_label_counts),
         }
 
-    elif http_method == "POST":
+    if http_method == "POST":
         return {"statusCode": 405, "body": "Method not allowed"}
-    else:
-        return {"statusCode": 405, "body": f"Method {http_method} not allowed"}
+    return {"statusCode": 405, "body": f"Method {http_method} not allowed"}

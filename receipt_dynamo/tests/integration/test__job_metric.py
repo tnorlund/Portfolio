@@ -6,8 +6,18 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.data._job_metric import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_metric import JobMetric
+
+# This entity is not used in production infrastructure
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 
 @pytest.fixture
@@ -121,9 +131,7 @@ def test_addJobMetric_success(
 @pytest.mark.integration
 def test_addJobMetric_raises_value_error(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is None"""
-    with pytest.raises(
-        ValueError, match="JobMetric parameter is required and cannot be None."
-    ):
+    with pytest.raises(ValueError, match="job_metric cannot be None"):
         job_metric_dynamo.add_job_metric(None)
 
 
@@ -155,10 +163,8 @@ def test_addJobMetric_raises_conditional_check_failed(
 
     # Try to add it again
     with pytest.raises(
-        ValueError,
-        match=f"JobMetric with name {sample_job_metric.metric_name} and "
-        f"timestamp {sample_job_metric.timestamp} for job "
-        f"{sample_job_metric.job_id} already exists",
+        EntityAlreadyExistsError,
+        match="already exists",
     ):
         job_metric_dynamo.add_job_metric(sample_job_metric)
 
@@ -182,9 +188,7 @@ def test_addJobMetric_raises_resource_not_found(
         ),
     )
 
-    with pytest.raises(
-        Exception, match="Could not add job metric to DynamoDB"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         job_metric_dynamo.add_job_metric(sample_job_metric)
     mock_put.assert_called_once()
 
@@ -225,9 +229,7 @@ def test_getJobMetric_success(
 @pytest.mark.integration
 def test_getJobMetric_raises_value_error_job_id_none(job_metric_dynamo):
     """Test that getJobMetric raises ValueError when job_id is None"""
-    with pytest.raises(
-        ValueError, match="Job ID is required and cannot be None."
-    ):
+    with pytest.raises(ValueError, match="job_id cannot be None"):
         job_metric_dynamo.get_job_metric(None, "loss", "2021-01-01T12:30:45")
 
 
@@ -721,9 +723,7 @@ def test_listJobMetrics_raises_client_error(
     )
 
     # Call the method and verify it raises the expected exception
-    with pytest.raises(
-        Exception, match="Could not list job metrics from the database"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         job_metric_dynamo.list_job_metrics(sample_job.job_id)
     mock_query.assert_called_once()
 
@@ -749,8 +749,6 @@ def test_getMetricsByName_raises_client_error(job_metric_dynamo, mocker):
     )
 
     # Call the method and verify it raises the expected exception
-    with pytest.raises(
-        Exception, match="Could not query metrics by name from the database"
-    ):
+    with pytest.raises(Exception, match="Table not found"):
         job_metric_dynamo.get_metrics_by_name("loss")
     mock_query.assert_called_once()

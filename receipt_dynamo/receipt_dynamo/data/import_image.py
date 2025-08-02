@@ -30,7 +30,8 @@ def import_image(table_name: str, json_path: str) -> None:
         json_path (str): Path to the JSON file containing the data
 
     Raises:
-        ValueError: If table_name is not provided and the environment variable DYNAMO_DB_TABLE is not set
+        ValueError: If table_name is not provided and the environment
+            variable DYNAMO_DB_TABLE is not set
         FileNotFoundError: If the JSON file doesn't exist
         Exception: If there are errors accessing DynamoDB
 
@@ -45,7 +46,7 @@ def import_image(table_name: str, json_path: str) -> None:
     dynamo_client = DynamoClient(table_name)
 
     # Read the JSON file
-    with open(json_path, "r") as f:
+    with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Convert dictionaries back to entity objects
@@ -90,28 +91,39 @@ def import_image(table_name: str, json_path: str) -> None:
         dynamo_client.add_words(entities["words"])  # type: ignore[arg-type]
 
     if entities["letters"]:
-        dynamo_client.add_letters(entities["letters"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_letters(entities["letters"])
 
     if entities["receipts"]:
-        dynamo_client.add_receipts(entities["receipts"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipts(entities["receipts"])
 
     if entities["receipt_lines"]:
-        dynamo_client.add_receipt_lines(entities["receipt_lines"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_lines(entities["receipt_lines"])
 
     if entities["receipt_words"]:
-        dynamo_client.add_receipt_words(entities["receipt_words"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_words(entities["receipt_words"])
 
     if entities["receipt_letters"]:
-        dynamo_client.add_receipt_letters(entities["receipt_letters"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_letters(entities["receipt_letters"])
 
     if entities["receipt_word_labels"]:
-        dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])
 
     if entities["receipt_metadatas"]:
-        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])
 
     if entities["ocr_jobs"]:
-        dynamo_client.add_ocr_jobs(entities["ocr_jobs"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_ocr_jobs(entities["ocr_jobs"])
 
     if entities["ocr_routing_decisions"]:
-        dynamo_client.add_ocr_routing_decisions(entities["ocr_routing_decisions"])  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        dynamo_client.add_ocr_routing_decisions(
+            entities["ocr_routing_decisions"]
+        )

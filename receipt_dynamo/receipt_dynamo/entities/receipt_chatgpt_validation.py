@@ -1,69 +1,66 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_chatgpt_validation.py
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-class ReceiptChatGPTValidation:
+@dataclass(eq=True, unsafe_hash=False)
+class ReceiptChatGPTValidation(SerializationMixin):
     """
     DynamoDB entity representing a second-pass validation by ChatGPT.
-    This item contains ChatGPT's assessment of validation results and any corrections.
+    This item contains ChatGPT's assessment of validation results and any
+    corrections.
     """
 
-    def __init__(
-        self,
-        receipt_id: int,
-        image_id: str,
-        original_status: str,
-        revised_status: str,
-        reasoning: str,
-        corrections: List[Dict[str, Any]],
-        prompt: str,
-        response: str,
-        timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        if not isinstance(receipt_id, int):
+    receipt_id: int
+    image_id: str
+    original_status: str
+    revised_status: str
+    reasoning: str
+    corrections: List[Dict[str, Any]]
+    prompt: str
+    response: str
+    timestamp: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
-        if receipt_id <= 0:
+        if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
-        self.receipt_id: int = receipt_id
 
-        assert_valid_uuid(image_id)
-        self.image_id = image_id
+        assert_valid_uuid(self.image_id)
 
-        if not isinstance(original_status, str):
+        if not isinstance(self.original_status, str):
             raise ValueError("original_status must be a string")
-        self.original_status = original_status
 
-        if not isinstance(revised_status, str):
+        if not isinstance(self.revised_status, str):
             raise ValueError("revised_status must be a string")
-        self.revised_status = revised_status
 
-        if not isinstance(reasoning, str):
+        if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-        self.reasoning = reasoning
 
-        if not isinstance(corrections, list):
+        if not isinstance(self.corrections, list):
             raise ValueError("corrections must be a list")
-        self.corrections = corrections
 
-        if not isinstance(prompt, str):
+        if not isinstance(self.prompt, str):
             raise ValueError("prompt must be a string")
-        self.prompt = prompt
 
-        if not isinstance(response, str):
+        if not isinstance(self.response, str):
             raise ValueError("response must be a string")
-        self.response = response
 
-        if not isinstance(timestamp, str):
+        if self.timestamp is not None and not isinstance(self.timestamp, str):
             raise ValueError("timestamp must be a string")
-        self.timestamp = timestamp or datetime.now().isoformat()
+        if self.timestamp is None:
+            self.timestamp = datetime.now().isoformat()
 
-        if not isinstance(metadata, dict):
+        if self.metadata is not None and not isinstance(self.metadata, dict):
             raise ValueError("metadata must be a dictionary")
-        self.metadata = metadata or {}
+        if self.metadata is None:
+            self.metadata = {}
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -71,7 +68,10 @@ class ReceiptChatGPTValidation:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#CHATGPT#{self.timestamp}"
+                "S": (
+                    f"RECEIPT#{self.receipt_id}#ANALYSIS#VALIDATION#"
+                    f"CHATGPT#{self.timestamp}"
+                )
             },
         }
 
@@ -90,28 +90,6 @@ class ReceiptChatGPTValidation:
             "GSI3PK": {"S": f"VALIDATION_STATUS#{self.revised_status}"},
             "GSI3SK": {"S": f"CHATGPT#{self.timestamp}"},
         }
-
-    def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
-        """Convert a Python value to a DynamoDB typed value."""
-        if value is None:
-            return {"NULL": True}
-        elif isinstance(
-            value, bool
-        ):  # Check for bool before int since bool is a subclass of int
-            return {"BOOL": value}
-        elif isinstance(value, str):
-            return {"S": value}
-        elif isinstance(value, (int, float)):
-            return {"N": str(value)}
-        elif isinstance(value, dict):
-            return {
-                "M": {k: self._python_to_dynamo(v) for k, v in value.items()}
-            }
-        elif isinstance(value, list):
-            return {"L": [self._python_to_dynamo(item) for item in value]}
-        else:
-            # Convert any other type to string
-            return {"S": str(value)}
 
     def to_item(self) -> Dict[str, Any]:
         """Convert to a DynamoDB item."""
@@ -150,54 +128,19 @@ class ReceiptChatGPTValidation:
             original_status=item["original_status"]["S"],
             revised_status=item["revised_status"]["S"],
             reasoning=item["reasoning"]["S"],
-            corrections=cls._dynamo_to_python(item["corrections"]),
+            corrections=SerializationMixin._dynamo_to_python(
+                item["corrections"]
+            ),
             prompt=item["prompt"]["S"],
             response=item["response"]["S"],
             timestamp=timestamp,
             metadata=(
-                cls._dynamo_to_python(item["metadata"])
+                SerializationMixin._dynamo_to_python(item["metadata"])
                 if "metadata" in item
                 else {}
             ),
         )
 
-    @staticmethod
-    def _dynamo_to_python(dynamo_value: Dict[str, Any]) -> Any:
-        """Convert a DynamoDB typed value to a Python value."""
-        if "NULL" in dynamo_value:
-            return None
-        elif "S" in dynamo_value:
-            return dynamo_value["S"]
-        elif "N" in dynamo_value:
-            # Try to convert to int first, then float if that fails
-            try:
-                return int(dynamo_value["N"])
-            except ValueError:
-                return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
-            return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
-            return {
-                k: ReceiptChatGPTValidation._dynamo_to_python(v)
-                for k, v in dynamo_value["M"].items()
-            }
-        elif "L" in dynamo_value:
-            return [
-                ReceiptChatGPTValidation._dynamo_to_python(item)
-                for item in dynamo_value["L"]
-            ]
-        else:
-            # Return empty dict for unsupported types
-            return {}
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ReceiptChatGPTValidation):
-            return False
-        return (
-            self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
-            and self.timestamp == other.timestamp
-        )
 
     def __repr__(self) -> str:
         return (
