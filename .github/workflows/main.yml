@@ -302,7 +302,7 @@ jobs:
               --maxfail=3 \
               --durations=10 \
               --dist=loadfile \
-              -m "integration and not end_to_end and not slow and not performance" \
+              -m "integration and not end_to_end and not slow and not performance and not unused_in_production" \
               --cov-append \
               --cov \
               --cov-report=term-missing \

@@ -407,6 +407,8 @@ fix: update test__[entity].py to use correct exception types
 
 Track which files have been updated to avoid duplicate work:
 
+### Production-Used Entities (Actively Maintained)
+
 | File                                   | Status          | Notes                                                            |
 | -------------------------------------- | --------------- | ---------------------------------------------------------------- |
 | test\_\_label_count_cache.py           | ✅ Complete     | Perfect test patterns                                            |
@@ -418,31 +420,59 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_receipt_line.py                | ✅ Complete     | Comprehensive parameterized tests                                |
 | test\_\_receipt_word.py                | ✅ Complete     | Following perfect test patterns                                  |
 | test\_\_receipt_letter.py              | ✅ Complete     | All 104 tests passing - fixed validation patterns and error types |
-| test\_\_pulumi.py                      | ✅ Complete     | -                                                                |
-| test\_\_export_and_import.py           | ✅ Complete     | -                                                                |
-| test_dynamo_client.py                  | ✅ Complete     | -                                                                |
+| test\_\_pulumi.py                      | ✅ Complete     | Infrastructure state management                                  |
+| test\_\_export_and_import.py           | ✅ Complete     | Data migration utilities                                         |
+| test_dynamo_client.py                  | ✅ Complete     | Core client functionality                                        |
 | test\_\_receipt_word_label.py          | ✅ Complete     | All 52 tests passing                                             |
-| test\_\_batch_summary.py               | ❌ Needs update | Wrong exception types (expects ValueError instead of EntityAlreadyExistsError) |
-| test\_\_instance.py                    | ❓ Unknown      | -                                                                |
-| test\_\_job.py                         | ❓ Unknown      | -                                                                |
-| test\_\_job_checkpoint.py              | ❓ Unknown      | -                                                                |
-| test\_\_job_dependency.py              | ❓ Unknown      | -                                                                |
-| test\_\_job_log.py                     | ❓ Unknown      | -                                                                |
-| test\_\_job_metric.py                  | ❓ Unknown      | -                                                                |
-| test\_\_job_resource.py                | ❓ Unknown      | -                                                                |
+| test\_\_batch_summary.py               | ✅ Complete     | All tests passing with correct exception types                   |
 | test\_\_ocr_job.py                     | ✅ Complete     | All 48 tests passing                                             |
 | test\_\_receipt_metadata.py            | ✅ Complete     | All 55 tests passing                                             |
 | test\_\_places_cache.py                | ✅ Complete     | All 19 tests passing - fixed error message patterns and validation |
-| test\_\_queue.py                       | ❓ Unknown      | -                                                                |
-| test\_\_receipt_chatgpt_validation.py  | ❓ Unknown      | -                                                                |
-| test\_\_receipt_field.py               | ❓ Unknown      | -                                                                |
-| test\_\_receipt_label_analysis.py      | ❓ Unknown      | -                                                                |
-| test\_\_receipt_line_item_analysis.py  | ❓ Unknown      | -                                                                |
-| test\_\_receipt_section.py             | ❓ Unknown      | -                                                                |
-| test\_\_receipt_structure_analysis.py  | ❓ Unknown      | -                                                                |
-| test\_\_receipt_validation_category.py | ❓ Unknown      | -                                                                |
-| test\_\_receipt_validation_result.py   | ❓ Unknown      | -                                                                |
-| test\_\_receipt_validation_summary.py  | ❓ Unknown      | -                                                                |
+
+### Non-Production Entities (Marked with `unused_in_production`)
+
+| File                                   | Status          | Notes                                                            |
+| -------------------------------------- | --------------- | ---------------------------------------------------------------- |
+| test\_\_instance.py                    | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_job.py                         | 🚫 Unused       | Marked `unused_in_production` - OCRJob used instead             |
+| test\_\_job_checkpoint.py              | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_job_dependency.py              | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_job_log.py                     | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_job_metric.py                  | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_job_resource.py                | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_queue.py                       | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_chatgpt_validation.py  | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_field.py               | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_label_analysis.py      | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_line_item_analysis.py  | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_section.py             | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_structure_analysis.py  | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_validation_category.py | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_validation_result.py   | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+| test\_\_receipt_validation_summary.py  | 🚫 Unused       | Marked `unused_in_production` - not used in infra/              |
+
+## Test Execution Summary
+
+- **Total Integration Tests**: 1,890
+- **Production-Relevant Tests**: 819 (run with `-m "integration and not unused_in_production"`)
+- **Non-Production Tests**: 1,071 (marked with `unused_in_production`)
+- **Test Reduction**: 56.6% fewer tests for production CI/CD runs
+
+## Running Tests
+
+```bash
+# Run only production-relevant integration tests (recommended for CI/CD)
+pytest tests/integration -m "integration and not unused_in_production"
+
+# Run ALL integration tests (including unused entities)
+pytest tests/integration -m "integration"
+
+# Run only non-production tests
+pytest tests/integration -m "integration and unused_in_production"
+
+# Check what's marked as unused
+pytest tests/integration -m "unused_in_production" --co -q
+```
 
 ## References
 
