@@ -10,8 +10,6 @@ from dynamo_db import dynamodb_table
 # Import the Lambda Layer from the lambda_layer module
 from lambda_layer import dynamo_layer
 from pulumi import AssetArchive, FileArchive
-from raw_bucket import raw_bucket
-from s3_website import site_bucket
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
@@ -39,61 +37,29 @@ lambda_role = aws.iam.Role(
     }""",
 )
 
+# Get environment configuration
+is_production = pulumi.get_stack() == "prod"
+
 lambda_policy = aws.iam.Policy(
     f"api_{ROUTE_NAME}_lambda_policy",
-    description="IAM policy for '/process' route Lambda to query DynamoDB",
-    policy=pulumi.Output.all(
-        dynamodb_table.arn,
-        raw_bucket.arn,
-        site_bucket.arn,
-    ).apply(
-        lambda arns: json.dumps(
+    description="IAM policy for label validation count Lambda to query DynamoDB",
+    policy=dynamodb_table.arn.apply(
+        lambda table_arn: json.dumps(
             {
                 "Version": "2012-10-17",
                 "Statement": [
                     {
-                        # ---------- DynamoDB Permissions ----------
                         "Effect": "Allow",
                         "Action": [
                             "dynamodb:Query",
-                            "dynamodb:DescribeTable",
-                            "dynamodb:PutItem",
-                            "dynamodb:BatchWriteItem",
+                            "dynamodb:DescribeTable"
                         ],
                         "Resource": [
-                            arns[0],  # dynamo_arn
-                            f"{arns[0]}/index/GSI1",
-                            f"{arns[0]}/index/GSITYPE",
+                            table_arn,
+                            f"{table_arn}/index/GSI1",
+                            f"{table_arn}/index/GSITYPE",
                         ],
-                    },
-                    {
-                        # ---------- S3 Permissions (Raw Bucket) ----------
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:GetObject",
-                            "s3:HeadObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [
-                            arns[1],  # raw_arn
-                            f"{arns[1]}/*",
-                        ],
-                    },
-                    {
-                        # ---------- S3 Permissions (CDN Bucket) ----------
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:PutObject",
-                            "s3:GetObject",
-                            "s3:HeadObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [
-                            arns[2],  # cdn_arn
-                            f"{arns[2]}/*",
-                        ],
-                    },
+                    }
                 ],
             }
         )
@@ -131,15 +97,28 @@ label_validation_count_lambda = aws.lambda_.Function(
             "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
         }
     },
-    memory_size=3072,
-    timeout=300,
+    memory_size=1536 if is_production else 512,
+    timeout=30,  # Queries should complete quickly
+    reserved_concurrent_executions=100 if is_production else None,
     tags={"environment": pulumi.get_stack()},
 )
 
 # CloudWatch log group for the Lambda function
 log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
-    retention_in_days=30,
+    name=f"/aws/lambda/{label_validation_count_lambda.name}",
+    retention_in_days=7 if is_production else 3,  # Reduce log storage costs
 )
 
-# Add a test for the Lambda Handler
+# Add provisioned concurrency for production (eliminates cold starts)
+if is_production:
+    provisioned_config = aws.lambda_.ProvisionedConcurrencyConfig(
+        f"api_{ROUTE_NAME}_provisioned_concurrency",
+        function_name=label_validation_count_lambda.name,
+        provisioned_concurrent_executions=2,  # Keep 2 warm instances
+        qualifier=label_validation_count_lambda.version
+    )
+
+# Export Lambda details
+pulumi.export(f"{ROUTE_NAME}_lambda_arn", label_validation_count_lambda.arn)
+pulumi.export(f"{ROUTE_NAME}_lambda_name", label_validation_count_lambda.name)
