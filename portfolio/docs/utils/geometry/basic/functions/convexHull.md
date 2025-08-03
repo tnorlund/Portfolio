@@ -8,7 +8,7 @@
 
 > **convexHull**(`points`): [`Point`](../interfaces/Point.md)[]
 
-Defined in: [utils/geometry/basic.ts:20](https://github.com/tnorlund/Portfolio/blob/a530f53528bd0259adbe17a071894e21dee392f0/portfolio/utils/geometry/basic.ts#L20)
+Defined in: [utils/geometry/basic.ts:20](https://github.com/tnorlund/Portfolio/blob/d90c328047f464fe109d76bd6c13eb6374345e92/portfolio/utils/geometry/basic.ts#L20)
 
 Compute the convex hull of a set of points using a monotone chain
 algorithm.
