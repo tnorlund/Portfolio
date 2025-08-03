@@ -571,6 +571,52 @@ class _ReceiptWordLabel(
 
         return results, last_key
 
+    @handle_dynamodb_errors("get_receipt_word_labels_by_label")
+    def get_receipt_word_labels_by_label(
+        self,
+        label: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        """Retrieve receipt word labels by label type using GSI1.
+
+        Args:
+            label (str): The label type to search for
+            limit (Optional[int]): The maximum number of labels to return
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+                the query from
+
+        Returns:
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: A tuple
+                containing:
+                - List of ReceiptWordLabel objects
+                - Last evaluated key for pagination (None if no more pages)
+
+        Raises:
+            EntityValidationError: If the label is invalid or if pagination
+                parameters are invalid
+        """
+        if not isinstance(label, str) or not label:
+            raise EntityValidationError("Label must be a non-empty string")
+        if limit is not None and not isinstance(limit, int):
+            raise EntityValidationError("Limit must be an integer")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("Limit must be greater than 0")
+
+        # Format label for GSI1PK - uppercase and pad to 40 chars
+        label_upper = label.upper()
+        padding = '_' * (40 - len('LABEL#') - len(label_upper))
+        gsi1_pk = f"LABEL#{label_upper}{padding}"
+
+        return self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="GSI1PK = :pk",
+            expression_attribute_values={":pk": {"S": gsi1_pk}},
+            converter_func=item_to_receipt_word_label,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
     @handle_dynamodb_errors("list_receipt_word_labels_with_status")
     def list_receipt_word_labels_with_status(
         self,
