@@ -1,3 +1,11 @@
+"""
+Lambda handler for updating label count cache.
+
+This module runs on a schedule to update cached validation counts for core
+receipt labels. It fetches real-time counts from DynamoDB and stores them
+in a cache with TTL for fast retrieval by the API endpoints.
+"""
+
 import logging
 import os
 import time
@@ -49,7 +57,7 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 def fetch_label_counts(core_label):
     """Fetch label counts for a specific core label."""
-    logger.info(f"Fetching counts for label: {core_label}")
+    logger.info("Fetching counts for label: %s", core_label)
 
     receipt_word_labels = []
     last_evaluated_key = None
@@ -76,7 +84,7 @@ def fetch_label_counts(core_label):
             for receipt_word_label in receipt_word_labels
         )
 
-    logger.info(f"Counts for {core_label}: {label_counts}")
+    logger.info("Counts for %s: %s", core_label, label_counts)
     return core_label, label_counts
 
 
@@ -97,18 +105,18 @@ def update_label_cache(label, counts, timestamp, ttl):
         # Try to update existing cache entry, if it doesn't exist, add new one
         try:
             dynamo_client.update_label_count_cache(cache_entry)
-            logger.info(f"Updated cache for label: {label}")
+            logger.info("Updated cache for label: %s", label)
         except EntityNotFoundError:
             # Cache entry doesn't exist, so add it
             dynamo_client.add_label_count_cache(cache_entry)
-            logger.info(f"Added new cache for label: {label}")
+            logger.info("Added new cache for label: %s", label)
 
     except Exception as e:
-        logger.error(f"Error updating cache for label {label}: {e}")
-        raise e
+        logger.error("Error updating cache for label %s: %s", label, e)
+        raise
 
 
-def handler(event, context):
+def handler(event, context):  # pylint: disable=unused-argument
     """Lambda handler function."""
     logger.info("Starting label count cache update")
 
@@ -131,9 +139,11 @@ def handler(event, context):
             try:
                 label, counts = future.result()
                 core_label_counts[label] = counts
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 label = futures[future]
-                logger.error(f"Error fetching counts for label {label}: {e}")
+                logger.error(
+                    "Error fetching counts for label %s: %s", label, e
+                )
                 # Continue with other labels even if one fails
 
     # Update cache entries
@@ -142,13 +152,15 @@ def handler(event, context):
         try:
             update_label_cache(label, counts, timestamp, ttl)
             cache_updates.append(label)
-        except Exception as e:
-            logger.error(f"Failed to update cache for label {label}: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Failed to update cache for label %s: %s", label, e)
 
     logger.info(
-        f"Successfully updated cache for {len(cache_updates)} labels out of {len(CORE_LABELS)} total"
+        "Successfully updated cache for %d labels out of %d total",
+        len(cache_updates),
+        len(CORE_LABELS)
     )
-    logger.info(f"Updated labels: {cache_updates}")
+    logger.info("Updated labels: %s", cache_updates)
 
     return {
         "statusCode": 200,
