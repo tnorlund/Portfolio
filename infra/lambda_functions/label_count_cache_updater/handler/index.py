@@ -98,7 +98,9 @@ def update_label_cache(label, counts, timestamp, ttl):
             dynamo_client.update_label_count_cache(cache_entry)
             logger.info(f"Updated cache for label: {label}")
         except ValueError as e:
-            if "does not exist" in str(e):
+            # Check for various "not found" error messages
+            error_msg = str(e).lower()
+            if "does not exist" in error_msg or "not found" in error_msg:
                 dynamo_client.add_label_count_cache(cache_entry)
                 logger.info(f"Added new cache for label: {label}")
             else:
