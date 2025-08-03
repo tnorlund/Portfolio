@@ -6,6 +6,7 @@ from datetime import datetime
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.label_count_cache import LabelCountCache
 
 logger = logging.getLogger()
@@ -97,14 +98,10 @@ def update_label_cache(label, counts, timestamp, ttl):
         try:
             dynamo_client.update_label_count_cache(cache_entry)
             logger.info(f"Updated cache for label: {label}")
-        except ValueError as e:
-            # Check for various "not found" error messages
-            error_msg = str(e).lower()
-            if "does not exist" in error_msg or "not found" in error_msg:
-                dynamo_client.add_label_count_cache(cache_entry)
-                logger.info(f"Added new cache for label: {label}")
-            else:
-                raise e
+        except EntityNotFoundError:
+            # Cache entry doesn't exist, so add it
+            dynamo_client.add_label_count_cache(cache_entry)
+            logger.info(f"Added new cache for label: {label}")
 
     except Exception as e:
         logger.error(f"Error updating cache for label {label}: {e}")
