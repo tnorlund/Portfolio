@@ -610,7 +610,8 @@ class _ReceiptWordLabel(
 
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression="GSI1PK = :pk",
+            key_condition_expression="#pk = :pk",
+            expression_attribute_names={"#pk": "GSI1PK"},
             expression_attribute_values={":pk": {"S": gsi1_pk}},
             converter_func=item_to_receipt_word_label,
             limit=limit,
