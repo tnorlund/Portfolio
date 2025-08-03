@@ -110,14 +110,16 @@ log_group = aws.cloudwatch.LogGroup(
     retention_in_days=7 if is_production else 3,  # Reduce log storage costs
 )
 
-# Add provisioned concurrency for production (eliminates cold starts)
-if is_production:
-    provisioned_config = aws.lambda_.ProvisionedConcurrencyConfig(
-        f"api_{ROUTE_NAME}_provisioned_concurrency",
-        function_name=label_validation_count_lambda.name,
-        provisioned_concurrent_executions=2,  # Keep 2 warm instances
-        qualifier=label_validation_count_lambda.version
-    )
+# Provisioned concurrency disabled to save costs
+# Cold starts are acceptable for this internal API endpoint
+# Uncomment below if you need guaranteed low latency
+# if is_production:
+#     provisioned_config = aws.lambda_.ProvisionedConcurrencyConfig(
+#         f"api_{ROUTE_NAME}_provisioned_concurrency",
+#         function_name=label_validation_count_lambda.name,
+#         provisioned_concurrent_executions=2,
+#         qualifier=label_validation_count_lambda.version
+#     )
 
 # Export Lambda details
 pulumi.export(f"{ROUTE_NAME}_lambda_arn", label_validation_count_lambda.arn)
