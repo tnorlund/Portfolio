@@ -106,7 +106,6 @@ label_validation_count_lambda = aws.lambda_.Function(
 # CloudWatch log group for the Lambda function
 log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
-    name=f"/aws/lambda/{label_validation_count_lambda.name}",
     retention_in_days=7 if is_production else 3,  # Reduce log storage costs
 )
 
