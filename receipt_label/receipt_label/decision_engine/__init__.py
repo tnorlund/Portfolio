@@ -32,6 +32,7 @@ from .integration import (
     DecisionEngineOrchestrator,
     process_receipt_with_decision_engine,
 )
+from .chroma_integration import ChromaDecisionHelper
 from .pinecone_integration import PineconeDecisionHelper
 from .types import (
     ConfidenceLevel,
@@ -58,8 +59,9 @@ __all__ = [
     "EssentialFieldsStatus",
     "PatternDetectionSummary",
     "MerchantReliabilityData",
-    # Pinecone integration
-    "PineconeDecisionHelper",
+    # Vector database integration
+    "ChromaDecisionHelper",
+    "PineconeDecisionHelper",  # Deprecated, use ChromaDecisionHelper
     # Integration layer
     "DecisionEngineOrchestrator",
     "DecisionEngineIntegrationResult",

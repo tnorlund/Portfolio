@@ -185,3 +185,149 @@ s3://vectorsBucket/
   entities/compaction_lock.py
   data/_compaction_lock.py
 ```
+
+🛠 Targeted changes
+
+Below are incremental edits—you don’t need to throw the file away.
+
+1. Add an explicit mode parameter
+
+```python
+class ChromaDBClient:
+    def __init__(
+        self,
+        persist_directory: Optional[str] = None,
+        collection_prefix: str = "receipts",
+        mode: str = "read",          # "read" | "delta" | "snapshot"
+    ):
+        ...
+        self.mode = mode.lower()
+```
+
+    •	Guard writes in read-only mode:
+
+```
+def _assert_writeable(self):
+    if self.mode == "read":
+        raise RuntimeError("This client is read-only (mode='read')")
+
+```
+
+Call \_assert_writeable() at the top of upsert_vectors() and delete().
+
+2. Flush to disk automatically
+
+```python
+def upsert_vectors(...):
+    self._assert_writeable()
+    ...
+    if self.use_persistent_client:
+        self.client.persist()
+```
+
+3. Provide a delta helper for producers
+
+```python
+def persist_and_upload_delta(
+    self,
+    bucket: str,
+    s3_prefix: str,
+    s3_client: Optional[boto3.client] = None,
+) -> str:
+    """
+    Flush the local DB to disk, upload to S3, and return the key prefix.
+    """
+    if self.mode != "delta":
+        raise RuntimeError("persist_and_upload_delta requires mode='delta'")
+
+    if s3_client is None:
+        s3_client = boto3.client("s3")
+
+    self.client.persist()
+    prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
+    for file_path in Path(self.persist_directory).rglob("*"):
+        rel = file_path.relative_to(self.persist_directory)
+        s3_client.upload_file(str(file_path), bucket, f"{prefix}{rel}")
+    return prefix   # caller will publish this on SQS
+```
+
+4. Duplicate-ID safe add (for the compactor)
+
+Inside upsert_vectors():
+
+```python
+try:
+    collection.upsert(...)
+except ValueError as e:
+    if "ids already exist" in str(e):
+        # overwrite = true behaviour
+        collection.delete(ids=ids)
+        collection.upsert(...)
+    else:
+        raise
+```
+
+5. Remove the module-level singleton for Lambdas that write
+
+Leave get_chroma_client() for readers, but in producer / compactor code instantiate directly so each invocation has its own client state.
+
+⸻
+
+Example usage paths
+
+```python
+# 🔍  Query Lambda (read-only snapshot mounted at /mnt/chroma)
+db = ChromaDBClient(persist_directory="/mnt/chroma", mode="read")
+result = db.query("words", query_texts=["chobani"], n_results=5)
+
+# ✏️  Producer Lambda (delta write on /tmp, then S3 upload)
+delta_dir = "/tmp/chroma_delta"
+db = ChromaDBClient(persist_directory=delta_dir, mode="delta")
+db.upsert_vectors("words", ids, documents=texts, metadatas=metas)
+s3_key = db.persist_and_upload_delta(bucket=VEC_BUCKET, s3_prefix="delta/")
+publish_to_sqs({"delta_key": s3_key})
+
+# 🔄  Compactor Lambda (read-write snapshot)
+db_snap = ChromaDBClient(persist_directory="/mnt/work/snapshot", mode="snapshot")
+db_snap.upsert_vectors("words", **delta_data)  # duplicate-safe add
+db_snap.client.persist()
+```
+
+⸻
+
+✂️ Minimal code diff (pseudo-patch)
+
+```diff
+-class ChromaDBClient:
+-    def __init__(..., use_persistent_client=True):
++class ChromaDBClient:
++    def __init__(..., mode="read"):
+         ...
+-        self.use_persistent_client = use_persistent_client
++        self.mode = mode.lower()
++        self.use_persistent_client = persist_directory is not None
+
++    def _assert_writeable(self):
++        if self.mode == "read":
++            raise RuntimeError("read-only client cannot mutate collections")
+
+     def upsert_vectors(...):
+-        collection = self.get_collection(collection_name)
++        self._assert_writeable()
++        collection = self.get_collection(collection_name)
+         ...
++        if self.use_persistent_client:
++            self.client.persist()
+
++    def persist_and_upload_delta(...):  # see full method above
++        ...
+
+     def delete(...):
++        self._assert_writeable()
+```
+
+⸻
+
+Bottom line
+
+Your existing client is a solid start. By adding a “mode” flag, automatic persist(), and a helper that ships a sealed delta to S3, you line it up perfectly with the compaction pipeline and eliminate the accidental-write risks. Implement those tweaks and the rest of the Pulumi work can stay exactly as in the plan.

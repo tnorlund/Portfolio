@@ -2,9 +2,8 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
-from pinecone.grpc import Vector
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptLine
 
@@ -206,7 +205,7 @@ def embed_receipt_lines_realtime(
     merchant_name: Optional[str] = None,
 ) -> List[Tuple[ReceiptLine, List[float]]]:
     """
-    Embed all lines from a receipt and store to Pinecone using batch-compatible structure.
+    Embed all lines from a receipt and store to ChromaDB using batch-compatible structure.
 
     Args:
         receipt_id: ID of the receipt to process
@@ -217,7 +216,7 @@ def embed_receipt_lines_realtime(
     """
     client_manager = get_client_manager()
     dynamo_client = client_manager.dynamo
-    pinecone_client = client_manager.pinecone
+    chroma_client = client_manager.chroma
 
     # Get receipt lines from DynamoDB
     lines = dynamo_client.list_receipt_lines_by_receipt(receipt_id)
@@ -229,8 +228,11 @@ def embed_receipt_lines_realtime(
     # Get embeddings with vertical context
     line_embeddings = embed_lines_realtime(lines, merchant_name)
 
-    # Prepare vectors for Pinecone using batch structure
-    vectors = []
+    # Prepare data for ChromaDB
+    ids = []
+    embeddings = []
+    metadatas = []
+    documents = []
     line_embedding_pairs = []
 
     # Create a mapping for quick lookup of embeddings by line
@@ -255,27 +257,27 @@ def embed_receipt_lines_realtime(
                 section="UNLABELED",  # Default section
             )
 
-            # Create Pinecone vector
-            vectors.append(
-                Vector(
-                    id=vector_id,
-                    values=embedding_map[line.line_id],
-                    metadata=metadata,
-                )
-            )
+            # Prepare data for ChromaDB
+            ids.append(vector_id)
+            embeddings.append(embedding_map[line.line_id])
+            metadatas.append(metadata)
+            documents.append(line.text)  # Store line text as document
 
             line_embedding_pairs.append((line, embedding_map[line.line_id]))
 
-    # Store to Pinecone using correct namespace
-    if vectors:
+    # Store to ChromaDB using correct collection
+    if ids:
         try:
-            index = pinecone_client.Index("receipt-embeddings")
-            index.upsert(
-                vectors=vectors, namespace="lines"
-            )  # Match batch namespace
+            chroma_client.upsert_vectors(
+                collection_name="lines",
+                ids=ids,
+                embeddings=embeddings,
+                documents=documents,
+                metadatas=metadatas
+            )
 
             logger.info(
-                f"Stored {len(vectors)} line embeddings to Pinecone for receipt {receipt_id}"
+                f"Stored {len(ids)} line embeddings to ChromaDB for receipt {receipt_id}"
             )
 
             # Update embedding status in DynamoDB
@@ -309,11 +311,11 @@ def embed_receipt_lines_realtime(
                     f"Error during DynamoDB batch update: {batch_error}"
                 )
                 raise RuntimeError(
-                    f"Embeddings stored to Pinecone but DynamoDB update failed: {batch_error}"
+                    f"Embeddings stored to ChromaDB but DynamoDB update failed: {batch_error}"
                 )
 
         except Exception as e:
-            logger.error(f"Error storing to Pinecone: {str(e)}")
+            logger.error(f"Error storing to ChromaDB: {str(e)}")
             raise
 
     return line_embedding_pairs
