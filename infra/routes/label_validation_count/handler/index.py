@@ -51,12 +51,21 @@ CORE_LABELS = [
     "GRAND_TOTAL",  # or TOTAL
 ]
 
-dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
-dynamo_client = DynamoClient(dynamodb_table_name)
+# Initialize outside handler for connection reuse across warm invocations
+_dynamo_client = None
+
+
+def get_dynamo_client():
+    """Get or create DynamoDB client with lazy initialization."""
+    global _dynamo_client
+    if _dynamo_client is None:
+        _dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+    return _dynamo_client
 
 
 def fetch_label_counts(core_label):
     """Fetch real-time validation counts for a specific label."""
+    dynamo_client = get_dynamo_client()
     receipt_word_labels, last_evaluated_key = (
         dynamo_client.get_receipt_word_labels_by_label(
             label=core_label,
@@ -90,6 +99,7 @@ def get_cached_label_counts():
     try:
         # Get all cached label counts in a single efficient query
         logger.info("Fetching cached label counts from DynamoDB")
+        dynamo_client = get_dynamo_client()
         cached_entries, _ = dynamo_client.list_label_count_caches()
         logger.info(
             "Retrieved %d cached entries from DynamoDB", len(cached_entries)
