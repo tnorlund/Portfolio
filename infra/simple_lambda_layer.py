@@ -335,7 +335,7 @@ class SimpleLambdaLayer(ComponentResource):
     def _create_and_run_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
     ):
-        """Create a temporary script file and execute it to avoid 'argument list too long' error."""
+        """Create a script file and return just the execution command."""
         import tempfile
         import os
         
@@ -345,15 +345,20 @@ class SimpleLambdaLayer(ComponentResource):
                 bucket, project_name, layer_name, package_path, package_hash
             )
             
-            # Create a temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                f.write(script_content)
-                script_path = f.name
+            # Create a persistent script file in /tmp with a unique name
+            script_name = f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
+            script_path = os.path.join("/tmp", script_name)
             
-            # Make it executable and run it with guaranteed cleanup
+            # Write the script file
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            
+            # Make it executable
             os.chmod(script_path, 0o755)
-            # Use curly braces to ensure cleanup happens even if script fails
-            return f"{{ bash {script_path}; rm -f {script_path}; }}"
+            
+            # Return just the command to execute the script
+            # The script itself handles all the logic
+            return f"/bin/bash {script_path}"
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create orchestration script: {e}") from e
 
