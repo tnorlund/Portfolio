@@ -1,13 +1,19 @@
 import uuid
 from datetime import datetime, timedelta
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities.job_log import JobLog
 
@@ -77,7 +83,7 @@ def test_addJobLog_success(job_log_dynamo, sample_job_log):
 @pytest.mark.integration
 def test_addJobLog_raises_value_error(job_log_dynamo):
     """Test that addJobLog raises ValueError when job_log is None."""
-    with pytest.raises(ValueError, match="job_log cannot be None"):
+    with pytest.raises(OperationError, match="job_log cannot be None"):
         job_log_dynamo.add_job_log(None)
 
 
@@ -88,7 +94,7 @@ def test_addJobLog_raises_value_error_job_not_instance(job_log_dynamo):
     instance.
     """
     with pytest.raises(
-        ValueError, match="job_log must be an instance of the JobLog class."
+        OperationError, match="job_log must be an instance of JobLog"
     ):
         job_log_dynamo.add_job_log("not a job log")
 
@@ -129,7 +135,7 @@ def test_addJobLog_raises_resource_not_found(
     )
 
     # Attempt to add the job log
-    with pytest.raises(DynamoDBError, match="Table not found"):
+    with pytest.raises(OperationError, match="DynamoDB resource not found during add_job_log"):
         job_log_dynamo.add_job_log(sample_job_log)
 
 
@@ -150,14 +156,14 @@ def test_addJobLogs_success(job_log_dynamo, multiple_job_logs):
 @pytest.mark.integration
 def test_addJobLogs_raises_value_error_logs_none(job_log_dynamo):
     """Test that addJobLogs raises ValueError when job_logs is None."""
-    with pytest.raises(ValueError, match="job_logs cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_logs cannot be None"):
         job_log_dynamo.add_job_logs(None)
 
 
 @pytest.mark.integration
 def test_addJobLogs_raises_value_error_logs_not_list(job_log_dynamo):
     """Test that addJobLogs raises ValueError when job_logs is not a list."""
-    with pytest.raises(ValueError, match="job_logs must be a list"):
+    with pytest.raises(EntityValidationError, match="job_logs must be a list"):
         job_log_dynamo.add_job_logs("not a list")
 
 
@@ -170,7 +176,7 @@ def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
     items.
     """
     with pytest.raises(
-        ValueError, match="All items in job_logs must be JobLog instances"
+        EntityValidationError, match="All items in job_logs must be JobLog instances"
     ):
         job_log_dynamo.add_job_logs([sample_job_log, "not a job log"])
 
@@ -198,7 +204,7 @@ def test_getJobLog_success(job_log_dynamo, sample_job_log):
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_job_id_none(job_log_dynamo):
     """Test that getJobLog raises ValueError when job_id is None."""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_log_dynamo.get_job_log(
             job_id=None, timestamp="2021-01-01T12:00:00"
         )
@@ -207,7 +213,7 @@ def test_getJobLog_raises_value_error_job_id_none(job_log_dynamo):
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
     """Test that getJobLog raises ValueError when timestamp is None."""
-    with pytest.raises(ValueError, match="timestamp cannot be None"):
+    with pytest.raises(EntityValidationError, match="timestamp cannot be None"):
         job_log_dynamo.get_job_log(job_id="some-job-id", timestamp=None)
 
 
@@ -289,7 +295,7 @@ def test_listJobLogs_with_limit(job_log_dynamo, multiple_job_logs):
 @pytest.mark.integration
 def test_listJobLogs_raises_value_error_job_id_none(job_log_dynamo):
     """Test that listJobLogs raises ValueError when job_id is None."""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_log_dynamo.list_job_logs(job_id=None)
 
 
@@ -318,7 +324,7 @@ def test_deleteJobLog_success(job_log_dynamo, sample_job_log):
 @pytest.mark.integration
 def test_deleteJobLog_raises_value_error_log_none(job_log_dynamo):
     """Test that deleteJobLog raises ValueError when job_log is None."""
-    with pytest.raises(ValueError, match="job_log cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_log cannot be None"):
         job_log_dynamo.delete_job_log(None)
 
 
@@ -329,7 +335,7 @@ def test_deleteJobLog_raises_value_error_log_not_instance(job_log_dynamo):
     instance.
     """
     with pytest.raises(
-        ValueError, match="job_log must be a JobLog instance, got"
+        EntityValidationError, match="job_log must be a JobLog instance, got"
     ):
         job_log_dynamo.delete_job_log("not a job log")
 
@@ -342,7 +348,7 @@ def test_deleteJobLog_raises_conditional_check_failed(
     Test that deleteJobLog raises EntityNotFoundError when the job log does not exist.
     """
     # Try to delete a job log that doesn't exist
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(EntityNotFoundError, match="joblog not found during delete_job_log"):
         job_log_dynamo.delete_job_log(sample_job_log)
 
 
@@ -372,5 +378,5 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
 
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())
-    with pytest.raises(DynamoDBError, match="Table not found"):
+    with pytest.raises(OperationError, match="DynamoDB resource not found during list_job_logs"):
         job_log_dynamo.list_job_logs(job_id=job_id)

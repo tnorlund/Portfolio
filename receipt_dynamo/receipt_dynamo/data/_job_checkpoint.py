@@ -314,14 +314,15 @@ class _JobCheckpoint(
         checkpoint = JobCheckpoint(
             job_id=job_id,
             timestamp=timestamp,
-            # Other fields are not needed for deletion
-            epoch=0,
+            s3_bucket="dummy",
+            s3_key="dummy",
+            size_bytes=0,
             step=0,
-            learning_rate=0.0,
-            train_loss=0.0,
-            val_loss=0.0,
-            is_best=False,
+            epoch=0,
+            model_state=True,
+            optimizer_state=True,
             metrics={},
+            is_best=False,
         )
         self._delete_entity(checkpoint)
 

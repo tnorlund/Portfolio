@@ -1,13 +1,23 @@
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job_checkpoint import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
 
@@ -123,11 +133,11 @@ def test_addJobCheckpoint_success(
 @pytest.mark.integration
 def test_addJobCheckpoint_raises_value_error(job_checkpoint_dynamo):
     """
-    Test that addJobCheckpoint raises ValueError when job_checkpoint is None
+    Test that addJobCheckpoint raises OperationError when job_checkpoint is None
     """
     with pytest.raises(
-        ValueError,
-        match="JobCheckpoint parameter is required and cannot be None",
+        OperationError,
+        match="job_checkpoint cannot be None",
     ):
         job_checkpoint_dynamo.add_job_checkpoint(None)
 
@@ -137,12 +147,12 @@ def test_addJobCheckpoint_raises_value_error_not_instance(
     job_checkpoint_dynamo,
 ):
     """
-    Test that addJobCheckpoint raises ValueError when job_checkpoint is not an
+    Test that addJobCheckpoint raises OperationError when job_checkpoint is not an
     instance of JobCheckpoint
     """
     with pytest.raises(
-        ValueError,
-        match="job_checkpoint must be an instance of the JobCheckpoint class.",
+        OperationError,
+        match="job_checkpoint must be an instance of JobCheckpoint",
     ):
         job_checkpoint_dynamo.add_job_checkpoint("not a job checkpoint")
 
@@ -162,9 +172,8 @@ def test_addJobCheckpoint_raises_conditional_check_failed(
     job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
     # Try to add it again
-    expected_msg = f"Entity already exists: JobCheckpoint with job_id={sample_job_checkpoint.job_id}"
     with pytest.raises(
-        EntityAlreadyExistsError, match=re.escape(expected_msg)
+        EntityAlreadyExistsError, match="job_checkpoint already exists"
     ):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
@@ -232,8 +241,8 @@ def test_getJobCheckpoint_success(
 def test_getJobCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
-    """Test that getJobCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    """Test that getJobCheckpoint raises EntityValidationError when job_id is None"""
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_checkpoint_dynamo.get_job_checkpoint(None, "timestamp")
 
 
@@ -241,10 +250,10 @@ def test_getJobCheckpoint_raises_value_error_job_id_none(
 def test_getJobCheckpoint_raises_value_error_timestamp_none(
     job_checkpoint_dynamo, sample_job
 ):
-    """Test that getJobCheckpoint raises ValueError when timestamp is None"""
+    """Test that getJobCheckpoint raises EntityValidationError when timestamp is None"""
     with pytest.raises(
-        ValueError,
-        match="Timestamp is required and must be a non-empty string.",
+        EntityValidationError,
+        match="Timestamp is required and must be a non-empty string",
     ):
         job_checkpoint_dynamo.get_job_checkpoint(sample_job.job_id, None)
 
@@ -254,11 +263,11 @@ def test_getJobCheckpoint_raises_value_error_not_found(
     job_checkpoint_dynamo, sample_job
 ):
     """
-    Test that getJobCheckpoint raises ValueError when the job checkpoint does
+    Test that getJobCheckpoint raises EntityNotFoundError when the job checkpoint does
     not exist
     """
     with pytest.raises(
-        ValueError, match="No job checkpoint found with job ID.*"
+        EntityNotFoundError, match="No job checkpoint found with job ID.*"
     ):
         job_checkpoint_dynamo.get_job_checkpoint(
             sample_job.job_id, "nonexistent-timestamp"
@@ -307,8 +316,8 @@ def test_updateBestCheckpoint_success(
 def test_updateBestCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
-    """Test that updateBestCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    """Test that updateBestCheckpoint raises EntityValidationError when job_id is None"""
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_checkpoint_dynamo.update_best_checkpoint(None, "timestamp")
 
 
@@ -317,11 +326,11 @@ def test_updateBestCheckpoint_raises_value_error_timestamp_none(
     job_checkpoint_dynamo, sample_job
 ):
     """
-    Test that updateBestCheckpoint raises ValueError when timestamp is None
+    Test that updateBestCheckpoint raises EntityValidationError when timestamp is None
     """
     with pytest.raises(
-        ValueError,
-        match="Timestamp is required and must be a non-empty string.",
+        EntityValidationError,
+        match="Timestamp is required and must be a non-empty string",
     ):
         job_checkpoint_dynamo.update_best_checkpoint(sample_job.job_id, None)
 
@@ -331,14 +340,12 @@ def test_updateBestCheckpoint_raises_value_error_not_found(
     job_checkpoint_dynamo, sample_job
 ):
     """
-    Test that updateBestCheckpoint raises ValueError when the job checkpoint
+    Test that updateBestCheckpoint raises EntityNotFoundError when the job checkpoint
     does not exist
     """
     with pytest.raises(
-        ValueError,
-        match=(
-            "Cannot update best checkpoint: No checkpoint found with job ID.*"
-        ),
+        EntityNotFoundError,
+        match="Cannot update best checkpoint: No checkpoint found with job ID.*",
     ):
         job_checkpoint_dynamo.update_best_checkpoint(
             sample_job.job_id, "nonexistent-timestamp"
@@ -514,8 +521,8 @@ def test_getBestCheckpoint_none_found(job_checkpoint_dynamo, sample_job):
 def test_getBestCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
-    """Test that getBestCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    """Test that getBestCheckpoint raises EntityValidationError when job_id is None"""
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_checkpoint_dynamo.get_best_checkpoint(None)
 
 
@@ -542,7 +549,7 @@ def test_deleteJobCheckpoint_success(
 
     # Verify the job checkpoint was deleted
     with pytest.raises(
-        ValueError, match="No job checkpoint found with job ID.*"
+        EntityNotFoundError, match="No job checkpoint found with job ID.*"
     ):
         job_checkpoint_dynamo.get_job_checkpoint(
             sample_job_checkpoint.job_id, sample_job_checkpoint.timestamp
@@ -553,8 +560,8 @@ def test_deleteJobCheckpoint_success(
 def test_deleteJobCheckpoint_raises_value_error_job_id_none(
     job_checkpoint_dynamo,
 ):
-    """Test that deleteJobCheckpoint raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    """Test that deleteJobCheckpoint raises EntityValidationError when job_id is None"""
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_checkpoint_dynamo.delete_job_checkpoint(None, "timestamp")
 
 
@@ -563,11 +570,11 @@ def test_deleteJobCheckpoint_raises_value_error_timestamp_none(
     job_checkpoint_dynamo, sample_job
 ):
     """
-    Test that deleteJobCheckpoint raises ValueError when timestamp is None
+    Test that deleteJobCheckpoint raises EntityValidationError when timestamp is None
     """
     with pytest.raises(
-        ValueError,
-        match="Timestamp is required and must be a non-empty string.",
+        EntityValidationError,
+        match="Timestamp is required and must be a non-empty string",
     ):
         job_checkpoint_dynamo.delete_job_checkpoint(sample_job.job_id, None)
 
@@ -641,21 +648,21 @@ def test_listAllJobCheckpoints_with_limit(
 @pytest.mark.integration
 def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     """
-    Test that validate_last_evaluated_key raises ValueError when keys are
+    Test that validate_last_evaluated_key raises EntityValidationError when keys are
     missing
     """
-    with pytest.raises(ValueError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
 @pytest.mark.integration
 def test_validate_last_evaluated_key_raises_value_error_invalid_format():
     """
-    Test that validate_last_evaluated_key raises ValueError when the format is
+    Test that validate_last_evaluated_key raises EntityValidationError when the format is
     invalid
     """
     with pytest.raises(
-        ValueError,
+        EntityValidationError,
         match="LastEvaluatedKey.* must be a dict containing a key 'S'",
     ):
         validate_last_evaluated_key({"PK": {"S": "value"}, "SK": "not a dict"})
@@ -685,7 +692,7 @@ def test_listJobCheckpoints_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list job checkpoints from the database"
+        OperationError, match="DynamoDB resource not found during list_job_checkpoints"
     ):
         job_checkpoint_dynamo.list_job_checkpoints(sample_job.job_id)
     mock_query.assert_called_once()
@@ -716,7 +723,7 @@ def test_listAllJobCheckpoints_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list all job checkpoints from the database"
+        OperationError, match="DynamoDB resource not found during list_all_job_checkpoints"
     ):
         job_checkpoint_dynamo.list_all_job_checkpoints()
     mock_query.assert_called_once()

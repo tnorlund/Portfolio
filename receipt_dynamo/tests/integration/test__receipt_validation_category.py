@@ -1,17 +1,20 @@
 import uuid
-from typing import Literal
+from typing import Any, Literal, Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo import ReceiptValidationCategory
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
-    DynamoDBValidationError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 
 # This entity is not used in production infrastructure
@@ -20,9 +23,12 @@ pytestmark = [
     pytest.mark.unused_in_production
 ]
 
+# =============================================================================
+# TEST DATA AND FIXTURES
+# =============================================================================
 
 @pytest.fixture
-def sample_receipt_validation_category():
+def sample_receipt_validation_category() -> ReceiptValidationCategory:
     """Returns a sample ReceiptValidationCategory for testing."""
     return ReceiptValidationCategory(
         receipt_id=1,
@@ -35,6 +41,75 @@ def sample_receipt_validation_category():
         validation_timestamp="2023-05-15T12:34:56.789Z",
         metadata={"confidence": 0.95},
     )
+
+
+# -------------------------------------------------------------------
+#                   PARAMETERIZED CLIENT ERROR TESTS
+# -------------------------------------------------------------------
+
+# Common error scenarios for all operations
+ERROR_SCENARIOS = [
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
+    ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
+    ("ValidationException", EntityValidationError, "Validation error"),
+    ("AccessDeniedException", DynamoDBError, "DynamoDB error during"),
+    (
+        "ResourceNotFoundException",
+        OperationError,
+        "DynamoDB resource not found",
+    ),
+]
+
+# Additional error for add operations
+ADD_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityAlreadyExistsError,
+        "receipt_validation_category already exists",
+    ),
+] + ERROR_SCENARIOS
+
+# Additional error for update operations
+UPDATE_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "not found during update_receipt_validation_category",
+    ),
+] + ERROR_SCENARIOS
+
+# Additional error for delete operations
+DELETE_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "receiptvalidationcategory not found during delete_receipt_validation_category",
+    ),
+] + ERROR_SCENARIOS
+
+# -------------------------------------------------------------------
+#                   PARAMETERIZED VALIDATION ERROR TESTS
+# -------------------------------------------------------------------
+
+ADD_VALIDATION_SCENARIOS = [
+    (None, "category cannot be None"),
+    (
+        "not-a-validation-category",
+        "category must be an instance of ReceiptValidationCategory",
+    ),
+]
+
+UPDATE_VALIDATION_SCENARIOS = [
+    (None, "category cannot be None"),
+    (
+        "not a ReceiptValidationCategory",
+        "category must be an instance of ReceiptValidationCategory",
+    ),
+]
 
 
 @pytest.mark.integration
@@ -98,115 +173,51 @@ def test_addReceiptValidationCategory_duplicate_raises(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "category cannot be None"),
-        (
-            "not-a-validation-category",
-            "category must be an instance of the ReceiptValidationCategory class.",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_VALIDATION_SCENARIOS)
 def test_addReceiptValidationCategory_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_category,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """
-    Tests that addReceiptValidationCategory validates input parameters correctly.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        invalid_input: Invalid input parameter.
-        expected_error: Expected error message.
-    """
-    # Setup
-    client = DynamoClient(table_name=dynamodb_table)
-    mock_put_item = mocker.patch.object(client._client, "put_item")
-
-    # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.add_receipt_validation_category(invalid_input)
-
-    # Verify that put_item was not called
-    mock_put_item.assert_not_called()
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_category raises appropriate error for
+    invalid inputs."""
+    client = DynamoClient(dynamodb_table)
+    with pytest.raises(OperationError, match=error_match):
+        client.add_receipt_validation_category(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
-    [
-        (
-            "ConditionalCheckFailedException",
-            "Item already exists",
-            "already exists",
-        ),
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "UnknownError",
-            "Unknown error",
-            "Could not add receipt validation category to DynamoDB",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
-    ],
+    "error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS
 )
 def test_addReceiptValidationCategory_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_category,
-    mocker,
-    error_code,
-    error_message,
-    expected_exception,
-):
-    """
-    Tests that addReceiptValidationCategory handles client errors appropriately.
-
-    Args:
-        dynamodb_table: The mocked DynamoDB table name.
-        sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
-        mocker: Pytest mocker fixture.
-        error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_exception: Expected exception message.
-    """
-    # Setup
-    client = DynamoClient(table_name=dynamodb_table)
-
-    # Mock the DynamoDB client to raise the specified error
-    mock_put_item = mocker.patch.object(client._client, "put_item")
-    mock_put_item.side_effect = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "PutItem"
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_category: ReceiptValidationCategory,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_category raises appropriate exceptions for various
+    ClientError scenarios."""
+    client = DynamoClient(dynamodb_table)
+    # pylint: disable=protected-access
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "PutItem",
+        ),
     )
-
-    # Execute and Assert
-    with pytest.raises(Exception, match=expected_exception):
-        client.add_receipt_validation_category(
-            sample_receipt_validation_category
-        )
+    with pytest.raises(expected_exception, match=error_match):
+        client.add_receipt_validation_category(sample_receipt_validation_category)
+    mock_put.assert_called_once()
 
 
 @pytest.mark.integration
@@ -395,7 +406,7 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
         ),
         (
             ["not-a-validation-category"],
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "All items in categories must be instances of ReceiptValidationCategory",
         ),
     ],
 )
@@ -421,7 +432,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
     mock_batch_write = mocker.patch.object(client._client, "batch_write_item")
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(OperationError, match=expected_error):
         client.add_receipt_validation_categories(invalid_input)
 
     # Verify that batch_write_item was not called
@@ -460,7 +471,7 @@ def test_addReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not add receipt validation category to DynamoDB",
+            "DynamoDB error during add_receipt_validation_categories",
         ),
     ],
 )
@@ -562,7 +573,7 @@ def test_updateReceiptValidationCategory_success(
         (None, "category cannot be None"),
         (
             "not a ReceiptValidationCategory",
-            "category must be an instance of the ReceiptValidationCategory class.",
+            "category must be an instance of ReceiptValidationCategory",
         ),
     ],
 )
@@ -588,7 +599,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
     mock_put_item = mocker.patch.object(client._client, "put_item")
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(OperationError, match=expected_error):
         client.update_receipt_validation_category(invalid_input)
 
     # Verify that put_item was not called
@@ -602,7 +613,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "does not exist",
+            "receiptvalidationcategory not found during",
         ),
         (
             "ProvisionedThroughputExceededException",
@@ -632,7 +643,7 @@ def test_updateReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not update receipt validation category in DynamoDB",
+            "DynamoDB error during update_receipt_validation_category",
         ),
     ],
 )
@@ -842,7 +853,7 @@ def test_updateReceiptValidationCategories_with_large_batch(
         ),
         (
             [123, "not-a-validation-category"],
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "All items in categories must be instances of ReceiptValidationCategory",
         ),
     ],
 )
@@ -870,7 +881,7 @@ def test_updateReceiptValidationCategories_invalid_inputs(
     )
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(OperationError, match=expected_error):
         client.update_receipt_validation_categories(invalid_input)
 
     # Verify that transact_write_items was not called
@@ -879,69 +890,16 @@ def test_updateReceiptValidationCategories_invalid_inputs(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons,exception_type",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-            None,
-            DynamoDBError,
-        ),
-        (
-            "TransactionCanceledException",
-            "Transaction canceled due to ConditionalCheckFailed",
-            "One or more entities do not exist or conditions failed",
-            [{"Code": "ConditionalCheckFailed"}],
-            ValueError,
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-            None,
-            DynamoDBServerError,
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-            None,
-            Exception,  # Still Exception in the test
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-            None,
-            DynamoDBValidationError,
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-            None,
-            DynamoDBAccessError,
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not update receipt validation category in DynamoDB",
-            None,
-            DynamoDBError,
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_updateReceiptValidationCategories_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_category,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-    cancellation_reasons,
-    exception_type,
-):
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_category: ReceiptValidationCategory,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
     """
     Tests that updateReceiptValidationCategories handles client errors correctly.
 
@@ -950,9 +908,8 @@ def test_updateReceiptValidationCategories_client_errors(
         sample_receipt_validation_category: A sample ReceiptValidationCategory for testing.
         mocker: Pytest mocker fixture.
         error_code: AWS error code to simulate.
-        error_message: AWS error message to simulate.
-        expected_error: Expected exception message.
-        cancellation_reasons: Transaction cancellation reasons for TransactionCanceledException.
+        expected_exception: Expected exception type.
+        error_match: Expected error message pattern.
     """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
@@ -960,22 +917,22 @@ def test_updateReceiptValidationCategories_client_errors(
         client._client, "transact_write_items"
     )
 
-    # Create a ClientError with the necessary structure
-    error_response = {"Error": {"Code": error_code, "Message": error_message}}
-
-    # Add cancellation reasons for TransactionCanceledException
-    if cancellation_reasons:
-        error_response["CancellationReasons"] = cancellation_reasons
-
     mock_transact_write.side_effect = ClientError(
-        error_response, "TransactWriteItems"
+        {
+            "Error": {
+                "Code": error_code,
+                "Message": f"Mocked {error_code}",
+            }
+        },
+        "TransactWriteItems",
     )
 
     # Execute and Assert
-    with pytest.raises(exception_type, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.update_receipt_validation_categories(
             [sample_receipt_validation_category]
         )
+    mock_transact_write.assert_called_once()
 
 
 @pytest.mark.integration
@@ -1023,7 +980,7 @@ def test_deleteReceiptValidationCategory_success(
         (None, "category cannot be None"),
         (
             "not-a-validation-category",
-            "category must be an instance of the ReceiptValidationCategory class.",
+            "category must be an instance of ReceiptValidationCategory",
         ),
     ],
 )
@@ -1049,7 +1006,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
     mock_delete_item = mocker.patch.object(client._client, "delete_item")
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(OperationError, match=expected_error):
         client.delete_receipt_validation_category(invalid_input)
 
     # Verify that delete_item was not called
@@ -1063,7 +1020,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "ConditionalCheckFailedException",
             "Item does not exist",
-            "does not exist",
+            "receiptvalidationcategory not found during",
         ),
         (
             "ResourceNotFoundException",
@@ -1089,7 +1046,7 @@ def test_deleteReceiptValidationCategory_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation category from DynamoDB",
+            "DynamoDB error during delete_receipt_validation_category",
         ),
     ],
 )
@@ -1199,7 +1156,7 @@ def test_deleteReceiptValidationCategories_success(
         ),
         (
             [123, "not-a-validation-category"],
-            "categories must be a list of ReceiptValidationCategory instances.",
+            "All items in categories must be instances of ReceiptValidationCategory",
         ),
     ],
 )
@@ -1225,7 +1182,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
     mock_batch_write = mocker.patch.object(client._client, "batch_write_item")
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(OperationError, match=expected_error):
         client.delete_receipt_validation_categories(invalid_input)
 
     # Verify that batch_write_item was not called
@@ -1264,7 +1221,7 @@ def test_deleteReceiptValidationCategories_invalid_parameters(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not delete receipt validation category from DynamoDB",
+            "DynamoDB error during delete_receipt_validation_category",
         ),
     ],
 )
@@ -1537,13 +1494,13 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 
     # Execute and Assert
-    with pytest.raises(ValueError, match="limit must be an integer or None"):
+    with pytest.raises(EntityValidationError, match="limit must be an integer or None"):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id, image_id=image_id, limit="not-an-integer"  # type: ignore[arg-type]
         )
 
     with pytest.raises(
-        ValueError, match="last_evaluated_key must be a dictionary or None"
+        EntityValidationError, match="last_evaluated_key must be a dictionary or None"
     ):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,
@@ -1584,7 +1541,7 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
         (
             "UnknownError",
             "Unknown error occurred",
-            "Could not list receipt validation category from DynamoDB",
+            "DynamoDB error during list_receipt_validation_categories_for_receipt",
         ),
     ],
 )

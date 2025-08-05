@@ -1,13 +1,20 @@
 from datetime import datetime
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._queue import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities import Job, Queue, QueueJob
 
@@ -89,14 +96,14 @@ def test_addQueue_success(queue_dynamo, sample_queue):
 @pytest.mark.integration
 def test_addQueue_raises_value_error(queue_dynamo):
     """Test that trying to add a None queue raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.add_queue(None)
 
 
 @pytest.mark.integration
 def test_addQueue_raises_value_error_queue_not_instance(queue_dynamo):
     """Test that trying to add a non-Queue instance raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.add_queue("not a queue")
 
 
@@ -137,7 +144,7 @@ def test_addQueue_raises_resource_not_found(
     monkeypatch.setattr(queue_dynamo._client, "put_item", mock_put_item)
 
     with pytest.raises(
-        Exception, match="Table not found for operation add_queue"
+        OperationError, match="DynamoDB resource not found during add_queue"
     ):
         queue_dynamo.add_queue(sample_queue)
 
@@ -259,14 +266,14 @@ def test_updateQueue_success(queue_dynamo, sample_queue):
 @pytest.mark.integration
 def test_updateQueue_raises_value_error_none(queue_dynamo):
     """Test that trying to update a None queue raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.update_queue(None)
 
 
 @pytest.mark.integration
 def test_updateQueue_raises_value_error_not_instance(queue_dynamo):
     """Test that trying to update a non-Queue instance raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.update_queue("not a queue")
 
 
@@ -275,7 +282,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to update a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(EntityNotFoundError, match="Queue .* not found"):
+    with pytest.raises(EntityNotFoundError, match="queue not found during update_queue"):
         queue_dynamo.update_queue(sample_queue)
 
 
@@ -298,14 +305,14 @@ def test_deleteQueue_success(queue_dynamo, sample_queue):
 @pytest.mark.integration
 def test_deleteQueue_raises_value_error_none(queue_dynamo):
     """Test that trying to delete a None queue raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.delete_queue(None)
 
 
 @pytest.mark.integration
 def test_deleteQueue_raises_value_error_not_instance(queue_dynamo):
     """Test that trying to delete a non-Queue instance raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.delete_queue("not a queue")
 
 
@@ -314,7 +321,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to delete a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(EntityNotFoundError, match="Queue .* not found"):
+    with pytest.raises(EntityNotFoundError, match="queue not found during delete_queue"):
         queue_dynamo.delete_queue(sample_queue)
 
 
@@ -340,7 +347,7 @@ def test_getQueue_raises_value_error_none(queue_dynamo):
     """
     Test that trying to get a queue with None queue_name raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.get_queue(None)
 
 
@@ -349,7 +356,7 @@ def test_getQueue_raises_value_error_empty(queue_dynamo):
     """
     Test that trying to get a queue with empty queue_name raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.get_queue("")
 
 
@@ -456,7 +463,7 @@ def test_listQueues_with_invalid_last_evaluated_key(queue_dynamo):
     Test that listing queues with an invalid last_evaluated_key raises
     a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.list_queues(last_evaluated_key={"wrong_key": "value"})
 
 
@@ -485,14 +492,14 @@ def test_addJobToQueue_success(
 @pytest.mark.integration
 def test_addJobToQueue_raises_value_error_none(queue_dynamo):
     """Test that trying to add a None queue_job raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.add_job_to_queue(None)
 
 
 @pytest.mark.integration
 def test_addJobToQueue_raises_value_error_not_instance(queue_dynamo):
     """Test that trying to add a non-QueueJob instance raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.add_job_to_queue("not a queue job")
 
 
@@ -537,7 +544,7 @@ def test_removeJobFromQueue_success(
 @pytest.mark.integration
 def test_removeJobFromQueue_raises_value_error_none(queue_dynamo):
     """Test that trying to remove a None queue_job raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.remove_job_from_queue(None)
 
 
@@ -546,7 +553,7 @@ def test_removeJobFromQueue_raises_value_error_not_instance(queue_dynamo):
     """
     Test that trying to remove a non-QueueJob instance raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(OperationError):
         queue_dynamo.remove_job_from_queue("not a queue job")
 
 
@@ -559,8 +566,8 @@ def test_removeJobFromQueue_queue_not_found(queue_dynamo, sample_queue_job):
     # Don't add the queue first
 
     with pytest.raises(
-        EntityNotFoundError,
-        match="Entity does not exist: QueueJob",
+        EntityValidationError,
+        match="Conditional check failed",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
 
@@ -579,8 +586,8 @@ def test_removeJobFromQueue_job_not_in_queue(
     # Don't add the job to the queue
 
     with pytest.raises(
-        EntityNotFoundError,
-        match="Entity does not exist: QueueJob",
+        EntityValidationError,
+        match="Conditional check failed",
     ):
         queue_dynamo.remove_job_from_queue(sample_queue_job)
 
@@ -653,7 +660,7 @@ def test_listJobsInQueue_raises_value_error_none_queue_name(queue_dynamo):
     """
     Test that trying to list jobs with None queue_name raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.list_jobs_in_queue(None)
 
 
@@ -662,7 +669,7 @@ def test_listJobsInQueue_raises_value_error_empty_queue_name(queue_dynamo):
     """
     Test that trying to list jobs with empty queue_name raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.list_jobs_in_queue("")
 
 
@@ -769,7 +776,7 @@ def test_findQueuesForJob_with_limit(queue_dynamo, sample_job):
 @pytest.mark.integration
 def test_findQueuesForJob_raises_value_error_none_job_id(queue_dynamo):
     """Test that trying to find queues with None job_id raises a ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.find_queues_for_job(None)
 
 
@@ -778,7 +785,7 @@ def test_findQueuesForJob_raises_value_error_empty_job_id(queue_dynamo):
     """
     Test that trying to find queues with empty job_id raises a ValueError.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(EntityValidationError):
         queue_dynamo.find_queues_for_job("")
 
 

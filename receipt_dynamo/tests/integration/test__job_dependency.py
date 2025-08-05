@@ -1,13 +1,19 @@
 import uuid
 from datetime import datetime, timedelta
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities.job_dependency import JobDependency
 
@@ -80,9 +86,9 @@ def test_addJobDependency_success(
 @pytest.mark.integration
 def test_addJobDependency_raises_value_error(job_dependency_dynamo):
     """
-    Test that addJobDependency raises ValueError when job_dependency is None.
+    Test that addJobDependency raises OperationError when job_dependency is None.
     """
-    with pytest.raises(ValueError, match="job_dependency cannot be None"):
+    with pytest.raises(OperationError, match="job_dependency cannot be None"):
         job_dependency_dynamo.add_job_dependency(None)
 
 
@@ -91,12 +97,12 @@ def test_addJobDependency_raises_value_error_job_not_instance(
     job_dependency_dynamo,
 ):
     """
-    Test that addJobDependency raises ValueError when job_dependency is not a
+    Test that addJobDependency raises OperationError when job_dependency is not a
     JobDependency instance.
     """
     with pytest.raises(
-        ValueError,
-        match="job_dependency must be an instance of the JobDependency class",
+        OperationError,
+        match="job_dependency must be an instance of JobDependency",
     ):
         job_dependency_dynamo.add_job_dependency("not a job dependency")
 
@@ -138,7 +144,7 @@ def test_addJobDependency_raises_resource_not_found(
 
     # Attempt to add the job dependency
     with pytest.raises(
-        DynamoDBError, match="Table not found for operation add_job_dependency"
+        OperationError, match="DynamoDB resource not found during add_job_dependency"
     ):
         job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
@@ -462,10 +468,10 @@ def test_deleteJobDependency_raises_value_error_dependency_none(
     job_dependency_dynamo,
 ):
     """
-    Test that deleteJobDependency raises ValueError when job_dependency is
+    Test that deleteJobDependency raises OperationError when job_dependency is
     None.
     """
-    with pytest.raises(ValueError, match="job_dependency cannot be None"):
+    with pytest.raises(OperationError, match="job_dependency cannot be None"):
         job_dependency_dynamo.delete_job_dependency(None)
 
 
@@ -478,8 +484,8 @@ def test_deleteJobDependency_raises_value_error_dependency_not_instance(
     a JobDependency instance.
     """
     with pytest.raises(
-        ValueError,
-        match="job_dependency must be an instance of the JobDependency class",
+        OperationError,
+        match="job_dependency must be an instance of JobDependency",
     ):
         job_dependency_dynamo.delete_job_dependency("not a job dependency")
 
@@ -494,7 +500,7 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     """
     # Try to delete a job dependency that doesn't exist
     with pytest.raises(
-        EntityNotFoundError, match="Entity does not exist: Job_Dependency"
+        EntityNotFoundError, match="jobdependency not found during delete_job_dependency"
     ):
         job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
