@@ -914,7 +914,7 @@ done
             # Use curly braces to ensure cleanup happens even if script fails
             return f"{{ bash {script_path}; rm -f {script_path}; }}"
         except (OSError, IOError) as e:
-            raise RuntimeError(f"Failed to create upload script: {e}")
+            raise RuntimeError(f"Failed to create upload script: {e}") from e
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate script to upload source package."""
