@@ -557,7 +557,7 @@ class LambdaLayer(ComponentResource):
         import os
         
         try:
-            # Generate the script content
+            # Generate the script content with embedded variables to avoid argument issues
             script_content = self._generate_upload_script(bucket, package_path, package_hash)
             
             # Create a persistent script file in /tmp with a unique name
@@ -571,15 +571,28 @@ class LambdaLayer(ComponentResource):
             # Make it executable
             os.chmod(script_path, 0o755)
             
-            # Return just the command to execute the script
-            # The script itself handles all the logic
+            # Return just the simple command to execute the script
+            # No arguments or environment variables in the command line
             return f"/bin/bash {script_path}"
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create upload script: {e}") from e
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
-        """Generate a bash script that uses tempfile for secure temporary directories."""
-        return f"""
+        """Generate a bash script with safely embedded paths."""
+        # Escape the paths to handle special characters
+        import shlex
+        safe_package_path = shlex.quote(package_path)
+        safe_bucket = shlex.quote(bucket)
+        
+        return f"""#!/bin/bash
+        set -e
+        
+        # Set variables within the script to avoid command line length issues
+        PACKAGE_PATH={safe_package_path}
+        BUCKET_NAME={safe_bucket}
+        LAYER_NAME="{self.name}"
+        PACKAGE_HASH="{package_hash}"
+        
         # Create a unique temporary directory
         TMP_DIR=$(mktemp -d)
 
@@ -587,34 +600,39 @@ class LambdaLayer(ComponentResource):
         trap 'rm -rf "$TMP_DIR"' EXIT
 
         # Create source directory and copy package files
+        echo "Copying package from $PACKAGE_PATH to temp directory..."
         mkdir -p "$TMP_DIR/source"
-        cp -r {package_path}/* "$TMP_DIR/source/"
+        cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
 
         # Create the zip file with the source directory
+        echo "Creating source.zip..."
         cd "$TMP_DIR"
-        zip -r "$TMP_DIR/source.zip" source
+        zip -qr source.zip source
         cd - >/dev/null
 
         # Define retries and delay between retries
         MAX_RETRIES=3
         RETRY_DELAY=5
 
+        echo "Uploading to s3://$BUCKET_NAME/$LAYER_NAME/source.zip..."
         attempt=0
         until [ "$attempt" -ge $MAX_RETRIES ]
         do
-            aws s3 cp "$TMP_DIR/source.zip" "s3://{bucket}/{self.name}/source.zip" && break
+            aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET_NAME/$LAYER_NAME/source.zip" && break
             attempt=$((attempt+1))
             echo "Attempt $attempt failed. Retrying in $RETRY_DELAY seconds..."
             sleep $RETRY_DELAY
         done
 
         if [ "$attempt" -ge $MAX_RETRIES ]; then
-            echo "Command failed after $MAX_RETRIES attempts"
+            echo "Failed to upload after $MAX_RETRIES attempts"
             exit 1
         fi
 
         # Upload the hash
-        echo {package_hash} | aws s3 cp - s3://{bucket}/{self.name}/hash.txt
+        echo "Uploading hash..."
+        echo "$PACKAGE_HASH" | aws s3 cp - "s3://$BUCKET_NAME/$LAYER_NAME/hash.txt"
+        echo "Upload complete!"
         """
 
     def _setup_step_functions(self, codebuild_project, build_bucket):
