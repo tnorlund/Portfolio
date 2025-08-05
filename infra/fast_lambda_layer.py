@@ -373,18 +373,17 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Create the upload script file first
+        script_path = self._create_upload_script_file(package_hash)
+        
         # Upload source command (runs on create and update, triggers on package_hash)
         upload_cmd = command.local.Command(
             f"{self.name}-upload-source",
             create=build_bucket.bucket.apply(
-                lambda b: self._create_and_run_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: f"{script_path} '{b}' '{package_path}' '{package_hash}' '{self.name}' '{self.force_rebuild}'"
             ),
             update=build_bucket.bucket.apply(
-                lambda b: self._create_and_run_upload_script(
-                    b, package_path, package_hash
-                )
+                lambda b: f"{script_path} '{b}' '{package_path}' '{package_hash}' '{self.name}' '{self.force_rebuild}'"
             ),
             triggers=[package_hash],
             opts=pulumi.ResourceOptions(
@@ -895,31 +894,69 @@ done
         # Pulumi no longer manages the LayerVersion resource; layer publication is handled by CodePipeline.
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
 
-    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
-        """Create a script file and return just the execution command."""
-        import tempfile
+    def _create_upload_script_file(self, package_hash):
+        """Create a reusable upload script that accepts parameters."""
         import os
         
-        try:
-            # Generate the script content
-            script_content = self._generate_upload_script(bucket, package_path, package_hash)
-            
-            # Create a persistent script file in /tmp with a unique name
-            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
-            script_path = os.path.join("/tmp", script_name)
-            
-            # Write the script file
+        # Create a script that accepts parameters
+        script_content = '''#!/bin/bash
+set -e
+
+# Accept parameters
+BUCKET="$1"
+PACKAGE_PATH="$2"
+HASH="$3"
+NAME="$4"
+FORCE_REBUILD="$5"
+
+echo "📦 Checking if source upload needed for layer '$NAME'..."
+echo "Package path: $PACKAGE_PATH"
+
+# Check if we need to upload
+STORED_HASH=$(aws s3 cp s3://$BUCKET/$NAME/hash.txt - 2>/dev/null || echo '')
+if [ "$STORED_HASH" = "$HASH" ] && [ "$FORCE_REBUILD" != "True" ]; then
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "✅ Source already up-to-date (hash: $HASH_SHORT...). Skipping upload."
+    exit 0
+fi
+
+if [ "$STORED_HASH" != "$HASH" ]; then
+    echo "📝 Source changes detected, uploading..."
+elif [ "$FORCE_REBUILD" = "True" ]; then
+    echo "🔨 Force rebuild enabled, re-uploading source..."
+fi
+
+# Upload source
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+echo "Creating source package structure..."
+mkdir -p "$TMP_DIR/source"
+cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+cd "$TMP_DIR"
+zip -r source.zip source
+cd - >/dev/null
+
+echo "Uploading to S3..."
+aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$NAME/source.zip"
+echo "$HASH" | aws s3 cp - "s3://$BUCKET/$NAME/hash.txt"
+
+echo "✅ Source uploaded successfully"
+'''
+        
+        # Create script file in /tmp
+        script_name = f"pulumi-lambda-upload-{package_hash[:8]}.sh"
+        script_path = os.path.join("/tmp", script_name)
+        
+        # Write script only if it doesn't exist
+        if not os.path.exists(script_path):
             with open(script_path, 'w') as f:
                 f.write(script_content)
-            
-            # Make it executable
             os.chmod(script_path, 0o755)
-            
-            # Return just the command to execute the script
-            # The script itself handles all the logic
-            return f"/bin/bash {script_path}"
-        except (OSError, IOError) as e:
-            raise RuntimeError(f"Failed to create upload script: {e}") from e
+        
+        return script_path
+
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate script to upload source package."""

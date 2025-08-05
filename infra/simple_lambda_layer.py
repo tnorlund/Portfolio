@@ -301,15 +301,16 @@ class SimpleLambdaLayer(ComponentResource):
         package_hash = self._calculate_package_hash()
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
+        # Create the orchestration script file first
+        script_path = self._create_orchestration_script_file(package_hash)
+        
         # Single orchestration command that does everything
         orchestration_command = command.local.Command(
             f"{self.name}-simple-orchestration",
             create=pulumi.Output.all(
                 build_bucket.bucket, codebuild_project.name, self.layer_name
             ).apply(
-                lambda args: self._create_and_run_orchestration_script(
-                    args[0], args[1], args[2], package_path, package_hash
-                )
+                lambda args: f"{script_path} '{args[0]}' '{args[1]}' '{args[2]}' '{package_path}' '{package_hash}' '{pulumi.get_stack()}' '{self.force_rebuild}'"
             ),
             opts=pulumi.ResourceOptions(
                 parent=self, depends_on=[codebuild_project]
@@ -332,35 +333,112 @@ class SimpleLambdaLayer(ComponentResource):
 
         self.arn = self.layer_version.arn
 
-    def _create_and_run_orchestration_script(
-        self, bucket, project_name, layer_name, package_path, package_hash
-    ):
-        """Create a script file and return just the execution command."""
-        import tempfile
+    def _create_orchestration_script_file(self, package_hash):
+        """Create a reusable orchestration script that accepts parameters."""
         import os
         
-        try:
-            # Generate the script content
-            script_content = self._generate_orchestration_script(
-                bucket, project_name, layer_name, package_path, package_hash
-            )
-            
-            # Create a persistent script file in /tmp with a unique name
-            script_name = f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
-            script_path = os.path.join("/tmp", script_name)
-            
-            # Write the script file
+        # Create the orchestration script file in /tmp
+        script_name = f"pulumi-orchestrate-{package_hash[:8]}.sh"
+        script_path = os.path.join("/tmp", script_name)
+        
+        # Write script only if it doesn't exist
+        if not os.path.exists(script_path):
+            # Read the template from _generate_orchestration_script
+            # but make it accept parameters
             with open(script_path, 'w') as f:
-                f.write(script_content)
-            
-            # Make it executable
+                f.write('''#!/bin/bash
+set -e
+
+BUCKET="$1"
+PROJECT="$2"
+LAYER_NAME="$3"
+PACKAGE_PATH="$4"
+HASH="$5"
+STACK="$6"
+FORCE_REBUILD="$7"
+
+echo "Starting simplified layer build and update process..."
+
+# The rest of the script logic will be filled by parameters
+# This is just a wrapper that executes with the provided parameters
+exec bash -c "$(cat <<'SCRIPT_EOF'
+#!/bin/bash
+set -e
+
+BUCKET="$1"
+PROJECT="$2"
+LAYER_NAME="$3"
+PACKAGE_PATH="$4"
+HASH="$5"
+STACK="$6"
+FORCE_REBUILD="$7"
+
+echo "Starting simplified layer build and update process..."
+
+# Check if we need to rebuild
+if ! aws s3api head-object --bucket "$BUCKET" --key "${LAYER_NAME}/hash.txt" &>/dev/null; then
+    NEEDS_REBUILD=true
+    echo "No previous hash found. Building layer."
+elif [ "$(aws s3 cp s3://$BUCKET/${LAYER_NAME}/hash.txt - 2>/dev/null || echo '')" != "$HASH" ]; then
+    NEEDS_REBUILD=true
+    echo "Hash changed. Rebuilding layer."
+elif [ "$FORCE_REBUILD" = "True" ]; then
+    NEEDS_REBUILD=true
+    echo "Force rebuild enabled. Rebuilding layer."
+else
+    NEEDS_REBUILD=false
+    echo "No changes detected. Skipping rebuild."
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    # Upload source package
+    echo "Uploading source package..."
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"' EXIT
+
+    mkdir -p "$TMP_DIR/source"
+    cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+    cd "$TMP_DIR"
+    zip -r source.zip source
+    cd - >/dev/null
+
+    aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/${LAYER_NAME}/source.zip"
+
+    # Start CodeBuild and wait for completion
+    echo "Starting CodeBuild..."
+    BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
+    echo "Build ID: $BUILD_ID"
+
+    echo "Waiting for build to complete..."
+    while true; do
+        BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
+        echo "Build status: $BUILD_STATUS"
+
+        if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+            echo "Build completed successfully!"
+            break
+        elif [ "$BUILD_STATUS" = "FAILED" ] || [ "$BUILD_STATUS" = "FAULT" ] || [ "$BUILD_STATUS" = "STOPPED" ] || [ "$BUILD_STATUS" = "TIMED_OUT" ]; then
+            echo "Build failed with status: $BUILD_STATUS"
+            exit 1
+        fi
+
+        sleep 30
+    done
+
+    # Save the new hash
+    echo "$HASH" | aws s3 cp - "s3://$BUCKET/${LAYER_NAME}/hash.txt"
+    echo "Process completed successfully!"
+else
+    echo "No rebuild needed."
+fi
+SCRIPT_EOF
+)" "$@"
+''')
             os.chmod(script_path, 0o755)
-            
-            # Return just the command to execute the script
-            # The script itself handles all the logic
-            return f"/bin/bash {script_path}"
-        except (OSError, IOError) as e:
-            raise RuntimeError(f"Failed to create orchestration script: {e}") from e
+        
+        return script_path
+
 
     def _generate_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
