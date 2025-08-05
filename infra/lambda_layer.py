@@ -218,7 +218,7 @@ class LambdaLayer(ComponentResource):
         upload_command = command.local.Command(
             f"{self.name}-upload-source",
             create=pulumi.Output.all(build_bucket.bucket, package_hash).apply(
-                lambda args: self._generate_upload_script(
+                lambda args: self._create_and_run_upload_script(
                     args[0], package_path, package_hash
                 )
             ),
@@ -550,6 +550,32 @@ class LambdaLayer(ComponentResource):
             },
             "artifacts": {"files": ["python/**/*"], "base-directory": "build"},
         }
+
+    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
+        """Create a script file and return just the execution command."""
+        import tempfile
+        import os
+        
+        try:
+            # Generate the script content
+            script_content = self._generate_upload_script(bucket, package_path, package_hash)
+            
+            # Create a persistent script file in /tmp with a unique name
+            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
+            script_path = os.path.join("/tmp", script_name)
+            
+            # Write the script file
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            
+            # Make it executable
+            os.chmod(script_path, 0o755)
+            
+            # Return just the command to execute the script
+            # The script itself handles all the logic
+            return f"/bin/bash {script_path}"
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to create upload script: {e}") from e
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate a bash script that uses tempfile for secure temporary directories."""
