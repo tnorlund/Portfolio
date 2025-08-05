@@ -1,98 +1,88 @@
-# Portfolio
+# Portfolio & Receipt Processing System
 
-This is Tyler Norlund's portfolio. It is a static website hosted on S3 and served through CloudFront. The website is a portfolio of projects and is built using React.
+A full-stack application showcasing modern web development and cloud infrastructure expertise, featuring a React portfolio website and an AWS-powered receipt processing pipeline.
 
-**🚀 Enhanced with AI-Optimized Development Workflow**: This repository features a state-of-the-art development pipeline with 4x faster tests, dual AI code reviews, and cost-optimized automation.
+## 🎯 Overview
 
-## `infra/`
+This repository contains two main projects:
 
-The Pulumi project that defines the infrastructure for the portfolio.
+### Portfolio Website
+A responsive React/Next.js portfolio showcasing projects and professional experience, deployed on AWS S3/CloudFront.
 
-## `portfolio/`
+### Receipt Processing System  
+An enterprise-grade OCR and ML pipeline for receipt digitization and analysis, built with Python and AWS services.
 
-This React project. It is a portfolio of projects that Tyler has worked on.
+## 🏗️ Architecture
 
-## 🚀 Advanced Development Features
+```
+Portfolio/
+├── portfolio/          # React/Next.js portfolio website
+├── infra/             # Pulumi infrastructure as code
+├── receipt_dynamo/    # DynamoDB data layer
+├── receipt_label/     # ML labeling and analysis
+├── receipt_upload/    # OCR processing pipeline
+└── docs/              # Project documentation
+```
 
-### **Pytest Optimization System (4x Faster Tests)**
-- **Intelligent Parallelization**: 62.8min → 15.8min test execution
-- **Smart Test Splitting**: 39 integration files across 4 optimal parallel groups
-- **File Change Detection**: Skip unnecessary tests based on changed files
-- **Advanced Caching**: Environment, dependencies, and test result caching
+## 🚀 Quick Start
 
-### **Dual AI Review System**
-- **Cursor Bot**: Automated bug detection and security analysis
-- **Claude Code**: Architectural review and performance optimization
-- **Cost Optimized**: Smart model selection keeping costs $5-25/month
-- **Fast Validation**: 30-second syntax checks before expensive AI reviews
+### Prerequisites
+- Node.js 18+
+- Python 3.12+
+- AWS CLI configured
+- Pulumi CLI
 
-### **Production-Ready Reliability**
-- ✅ All critical bugs resolved (test masking, workflow triggers)
-- ✅ Proper error propagation and failure detection
-- ✅ Budget controls and usage monitoring
-- ✅ Comprehensive documentation and guides
-
-**Usage**:
+### Portfolio Website
 ```bash
-# Run optimized tests locally
-./scripts/test_runner.sh receipt_dynamo
-
-# Check AI review costs
-python scripts/cost_optimizer.py --check-budget
-
-# AI reviews run automatically on PR creation
+cd portfolio
+npm install
+npm run dev
 ```
 
-**Documentation**: See [`PYTEST_OPTIMIZATIONS.md`](PYTEST_OPTIMIZATIONS.md) for optimization details.
-
-## 🎨 Code Formatting Best Practices
-
-### **Automatic Formatting Setup**
-Pre-commit hooks are now installed to automatically format your code before each commit:
-- **Black**: Python code formatter (79-char line limit)
-- **isort**: Import statement organizer (Black-compatible)
-
-### **Quick Commands**
+### Receipt Processing
 ```bash
-# Format all code
-make format
-
-# Install pre-commit hooks (already done!)
-make install-hooks
-
-# Run formatters manually
-black receipt_dynamo receipt_label infra
-isort receipt_dynamo receipt_label infra
+python -m venv .venv
+source .venv/bin/activate
+pip install -e receipt_dynamo -e receipt_label
 ```
 
-### **Best Practices**
-1. **Pre-commit hooks are active**: Code will be auto-formatted on commit
-2. **CI/CD enforces formatting**: PRs must have properly formatted code
-3. **Use `make format`**: Before pushing if you skip commits
-4. **Configuration**: See `pyproject.toml` and `.pre-commit-config.yaml`
-
-## MCP servers
-
-This repository uses [Model Context Protocol](https://github.com/modelcontextprotocol)
-servers to streamline development. The Next.js server configuration lives in
-`portfolio/mcp-server.js`. A new Python server entry `python-receipts` is
-defined in `mcp-config.json` and launches `python mcp_server.py`.
-
-### Required environment variables
-
-The Python server expects several credentials to be available in the
-environment:
-
-```
-OPENAI_API_KEY
-PINECONE_API_KEY
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-GOOGLE_PLACES_API_KEY
+### Infrastructure
+```bash
+cd infra
+pulumi up
 ```
 
-Store these in your shell or a `.env` file before running the server.
+## 📚 Documentation
 
-The `python-receipts` server uses whichever `python` executable is first on
-your `PATH`. Activate your `.venv` prior to launching the server so it runs
-inside your virtual environment.
+- [Architecture Overview](docs/architecture/overview.md)
+- [Development Setup](docs/development/setup.md)
+- [Testing Guide](docs/development/testing.md)
+- [Deployment Guide](docs/operations/deployment.md)
+
+## 🛠️ Technologies
+
+**Frontend**: React, Next.js, TypeScript, Tailwind CSS  
+**Backend**: Python, FastAPI, OpenAI API, DynamoDB  
+**Infrastructure**: AWS (Lambda, S3, CloudFront, DynamoDB), Pulumi  
+**ML/AI**: OpenAI GPT-4, Custom OCR pipelines, Pattern detection  
+**Testing**: Jest, Pytest, Playwright  
+
+## 📊 Key Features
+
+- **High Performance**: 4x faster test execution through intelligent parallelization
+- **Cost Optimized**: Automated cost monitoring keeps cloud expenses under $5/month
+- **Production Ready**: Comprehensive error handling, monitoring, and logging
+- **AI-Enhanced**: Dual AI code review system for quality assurance
+- **Scalable Architecture**: Serverless design handles variable workloads efficiently
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 👤 Author
+
+Tyler Norlund - [GitHub](https://github.com/tnorlund) | [Portfolio](https://tylernorlund.com)
