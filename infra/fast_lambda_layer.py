@@ -900,17 +900,21 @@ done
         import tempfile
         import os
         
-        # Generate the script content
-        script_content = self._generate_upload_script(bucket, package_path, package_hash)
-        
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-            f.write(script_content)
-            script_path = f.name
-        
-        # Make it executable and run it, cleaning up afterwards
-        os.chmod(script_path, 0o755)
-        return f"bash {script_path} && rm -f {script_path}"
+        try:
+            # Generate the script content
+            script_content = self._generate_upload_script(bucket, package_path, package_hash)
+            
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_content)
+                script_path = f.name
+            
+            # Make it executable and run it with guaranteed cleanup
+            os.chmod(script_path, 0o755)
+            # Use curly braces to ensure cleanup happens even if script fails
+            return f"{{ bash {script_path}; rm -f {script_path}; }}"
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to create upload script: {e}")
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate script to upload source package."""
