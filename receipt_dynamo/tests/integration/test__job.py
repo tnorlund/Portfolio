@@ -20,11 +20,8 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
 
-# This entity is not used in production infrastructure
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.unused_in_production
-]
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

@@ -429,7 +429,7 @@ Track which files have been updated to avoid duplicate work:
 | test\_\_receipt_metadata.py            | ✅ Complete     | All 55 tests passing                                             |
 | test\_\_places_cache.py                | ✅ Complete     | All 19 tests passing - fixed error message patterns and validation |
 
-### Non-Production Entities (Marked with `unused_in_production`)
+### Additional Entities (Now included in CI/CD)
 
 | File                                   | Status          | Notes                                                            |
 | -------------------------------------- | --------------- | ---------------------------------------------------------------- |
@@ -454,9 +454,9 @@ Track which files have been updated to avoid duplicate work:
 ## Test Execution Summary
 
 - **Total Integration Tests**: 1,890
-- **Production-Relevant Tests**: 819 (run with `-m "integration and not unused_in_production"`)
-- **Non-Production Tests**: 1,071 (marked with `unused_in_production`)
-- **Test Reduction**: 56.6% fewer tests for production CI/CD runs
+- **Production-Relevant Tests**: 1,128 (was 819 before including additional entities)
+- **Non-Production Tests**: 762 (marked with `unused_in_production`)
+- **Test Coverage Increase**: +309 tests now included in CI/CD runs
 
 ## Running Tests
 
