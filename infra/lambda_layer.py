@@ -552,30 +552,94 @@ class LambdaLayer(ComponentResource):
         }
 
     def _create_and_run_upload_script(self, bucket, package_path, package_hash):
-        """Create a script file and return just the execution command."""
+        """Create a minimal script and use environment files instead of embedded variables."""
         import tempfile
         import os
         
         try:
-            # Generate the script content with embedded variables to avoid argument issues
-            script_content = self._generate_upload_script(bucket, package_path, package_hash)
+            # Generate minimal script content without embedded variables
+            script_content = self._generate_minimal_upload_script()
             
             # Create a persistent script file in /tmp with a unique name
             script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
             script_path = os.path.join("/tmp", script_name)
             
-            # Write the script file
+            # Write the minimal script file
             with open(script_path, 'w') as f:
                 f.write(script_content)
             
             # Make it executable
             os.chmod(script_path, 0o755)
             
-            # Return just the simple command to execute the script
-            # No arguments or environment variables in the command line
-            return f"/bin/bash {script_path}"
+            # Store environment variables in a separate env file to avoid command line length issues
+            env_file = f"/tmp/pulumi-env-{self.name}-{package_hash[:8]}.env"
+            with open(env_file, 'w') as f:
+                f.write(f'export PULUMI_BUCKET="{bucket}"\n')
+                f.write(f'export PULUMI_PACKAGE_PATH="{package_path}"\n')
+                f.write(f'export PULUMI_HASH="{package_hash}"\n')
+                f.write(f'export PULUMI_LAYER_NAME="{self.name}"\n')
+                f.write(f'export PULUMI_FORCE_REBUILD="{self.force_rebuild}"\n')
+            
+            # Source the env file and run the script
+            return f'source {env_file} && /bin/bash {script_path}'
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create upload script: {e}") from e
+
+    def _generate_minimal_upload_script(self):
+        """Generate a minimal script that reads variables from environment."""
+        return """#!/bin/bash
+set -e
+
+# Read variables from environment (passed by Pulumi)
+BUCKET="$PULUMI_BUCKET"
+PACKAGE_PATH="$PULUMI_PACKAGE_PATH" 
+HASH="$PULUMI_HASH"
+LAYER_NAME="$PULUMI_LAYER_NAME"
+FORCE_REBUILD="$PULUMI_FORCE_REBUILD"
+
+echo "📦 Uploading layer source for '$LAYER_NAME'..."
+
+# Create a unique temporary directory
+TMP_DIR=$(mktemp -d)
+
+# Ensure cleanup on exit
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+# Create source directory and copy package files
+echo "Copying package from $PACKAGE_PATH to temp directory..."
+mkdir -p "$TMP_DIR/source"
+cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+# Create the zip file with the source directory
+echo "Creating source.zip..."
+cd "$TMP_DIR"
+zip -qr source.zip source
+cd - >/dev/null
+
+# Define retries and delay between retries
+MAX_RETRIES=3
+RETRY_DELAY=5
+
+echo "Uploading to s3://$BUCKET/$LAYER_NAME/source.zip..."
+attempt=0
+until [ "$attempt" -ge $MAX_RETRIES ]
+do
+    aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_NAME/source.zip" && break
+    attempt=$((attempt+1))
+    echo "Attempt $attempt failed. Retrying in $RETRY_DELAY seconds..."
+    sleep $RETRY_DELAY
+done
+
+if [ "$attempt" -ge $MAX_RETRIES ]; then
+    echo "Failed to upload after $MAX_RETRIES attempts"
+    exit 1
+fi
+
+# Upload the hash
+echo "Uploading hash..."
+echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
+echo "Upload complete!"
+"""
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate a bash script with safely embedded paths."""

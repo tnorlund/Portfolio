@@ -335,32 +335,165 @@ class SimpleLambdaLayer(ComponentResource):
     def _create_and_run_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
     ):
-        """Create a script file and return just the execution command."""
+        """Create a minimal script and use environment files instead of embedded variables."""
         import tempfile
         import os
         
         try:
-            # Generate the script content with embedded variables to avoid argument issues
-            script_content = self._generate_orchestration_script(
-                bucket, project_name, layer_name, package_path, package_hash
-            )
+            # Generate minimal script content without embedded variables
+            script_content = self._generate_minimal_orchestration_script()
             
             # Create a persistent script file in /tmp with a unique name
             script_name = f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
             script_path = os.path.join("/tmp", script_name)
             
-            # Write the script file
+            # Write the minimal script file
             with open(script_path, 'w') as f:
                 f.write(script_content)
             
             # Make it executable
             os.chmod(script_path, 0o755)
             
-            # Return just the simple command to execute the script
-            # No arguments or environment variables in the command line
-            return f"/bin/bash {script_path}"
+            # Store environment variables in a separate env file to avoid command line length issues
+            env_file = f"/tmp/pulumi-env-{self.name}-{package_hash[:8]}.env"
+            with open(env_file, 'w') as f:
+                f.write(f'export PULUMI_BUCKET="{bucket}"\n')
+                f.write(f'export PULUMI_PROJECT="{project_name}"\n')
+                f.write(f'export PULUMI_LAYER_NAME="{layer_name}"\n')
+                f.write(f'export PULUMI_PACKAGE_PATH="{package_path}"\n')
+                f.write(f'export PULUMI_HASH="{package_hash}"\n')
+                f.write(f'export PULUMI_STACK="{pulumi.get_stack()}"\n')
+                f.write(f'export PULUMI_FORCE_REBUILD="{self.force_rebuild}"\n')
+                f.write(f'export PULUMI_LAYER_KEY="{self.name}"\n')
+            
+            # Source the env file and run the script
+            return f'source {env_file} && /bin/bash {script_path}'
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create orchestration script: {e}") from e
+
+    def _generate_minimal_orchestration_script(self):
+        """Generate a minimal script that reads variables from environment."""
+        return """#!/bin/bash
+set -e
+
+# Read variables from environment (passed by Pulumi)
+BUCKET="$PULUMI_BUCKET"
+PROJECT="$PULUMI_PROJECT"
+LAYER_NAME="$PULUMI_LAYER_NAME"
+PACKAGE_PATH="$PULUMI_PACKAGE_PATH"
+HASH="$PULUMI_HASH"
+STACK="$PULUMI_STACK"
+FORCE_REBUILD="$PULUMI_FORCE_REBUILD"
+LAYER_KEY="$PULUMI_LAYER_KEY"
+
+echo "Starting simplified layer build and update process..."
+
+# Step 1: Check if we need to rebuild
+if ! aws s3api head-object --bucket "$BUCKET" --key "$LAYER_KEY/hash.txt" &>/dev/null; then
+    NEEDS_REBUILD=true
+    echo "No previous hash found. Building layer."
+elif [ "$(aws s3 cp s3://$BUCKET/$LAYER_KEY/hash.txt - 2>/dev/null || echo '')" != "$HASH" ]; then
+    NEEDS_REBUILD=true
+    echo "Hash changed. Rebuilding layer."
+elif [ "$FORCE_REBUILD" = "True" ]; then
+    NEEDS_REBUILD=true
+    echo "Force rebuild enabled. Rebuilding layer."
+else
+    NEEDS_REBUILD=false
+    echo "No changes detected. Skipping rebuild."
+fi
+
+if [ "$NEEDS_REBUILD" = "true" ]; then
+    # Step 2: Upload source
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"' EXIT
+
+    echo "Creating source package..."
+    mkdir -p "$TMP_DIR/source"
+    cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+    # Use cd instead of pushd/popd for better shell compatibility
+    cd "$TMP_DIR"
+    zip -r source.zip source
+    cd - >/dev/null
+
+    aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_KEY/source.zip"
+
+    # Step 3: Start CodeBuild and wait for completion
+    echo "Starting CodeBuild..."
+    BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
+    echo "Build ID: $BUILD_ID"
+
+    echo "Waiting for build to complete..."
+    while true; do
+        STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
+        
+        if [ "$STATUS" = "SUCCEEDED" ]; then
+            echo "Build completed successfully!"
+            break
+        elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "TIMED_OUT" ]; then
+            echo "Build failed with status: $STATUS"
+            exit 1
+        fi
+
+        sleep 30
+    done
+
+    # Step 4: Publish new layer version
+    echo "Publishing new layer version..."
+    NEW_LAYER_ARN=$(aws lambda publish-layer-version \
+        --layer-name "$LAYER_NAME" \
+        --content S3Bucket="$BUCKET",S3Key="$LAYER_KEY/layer.zip" \
+        --compatible-runtimes "python3.12" \
+        --compatible-architectures "x86_64" "arm64" \
+        --description "Lambda layer for $LAYER_NAME" \
+        --query 'LayerVersionArn' \
+        --output text)
+
+    echo "New layer ARN: $NEW_LAYER_ARN"
+
+    # Step 5: Update Lambda functions
+    echo "Finding Lambda functions to update..."
+    FUNCTIONS=$(aws lambda list-functions --query 'Functions[?starts_with(FunctionName, `'$STACK'`)].[FunctionName]' --output text)
+
+    for FUNC_NAME in $FUNCTIONS; do
+        echo "Checking function: $FUNC_NAME"
+        
+        CURRENT_LAYERS=$(aws lambda get-function --function-name "$FUNC_NAME" --query 'Configuration.Layers[].LayerArn' --output text || echo '')
+        
+        if echo "$CURRENT_LAYERS" | grep -q "$LAYER_NAME"; then
+            echo "Function $FUNC_NAME uses this layer. Updating..."
+            
+            NEW_LAYERS=""
+            for LAYER_ARN in $CURRENT_LAYERS; do
+                if echo "$LAYER_ARN" | grep -q "$LAYER_NAME"; then
+                    NEW_LAYERS="$NEW_LAYERS $NEW_LAYER_ARN"
+                else
+                    NEW_LAYERS="$NEW_LAYERS $LAYER_ARN"
+                fi
+            done
+            
+            if [ -n "$NEW_LAYERS" ]; then
+                aws lambda update-function-configuration \
+                    --function-name "$FUNC_NAME" \
+                    --layers $NEW_LAYERS >/dev/null
+                echo "Updated $FUNC_NAME successfully"
+            fi
+        fi
+    done
+
+    # Step 6: Save the new hash
+    echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_KEY/hash.txt"
+    echo "Process completed successfully!"
+else
+    echo "No rebuild needed. Checking if layer version exists..."
+    if ! aws s3api head-object --bucket "$BUCKET" --key "$LAYER_KEY/layer.zip" &>/dev/null; then
+        echo "Layer zip not found. This shouldn't happen. Please run with force-rebuild."
+        exit 1
+    fi
+    echo "Layer exists. Process completed."
+fi
+"""
 
     def _generate_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
