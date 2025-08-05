@@ -340,7 +340,7 @@ class SimpleLambdaLayer(ComponentResource):
         import os
         
         try:
-            # Generate the script content
+            # Generate the script content with embedded variables to avoid argument issues
             script_content = self._generate_orchestration_script(
                 bucket, project_name, layer_name, package_path, package_hash
             )
@@ -356,8 +356,8 @@ class SimpleLambdaLayer(ComponentResource):
             # Make it executable
             os.chmod(script_path, 0o755)
             
-            # Return just the command to execute the script
-            # The script itself handles all the logic
+            # Return just the simple command to execute the script
+            # No arguments or environment variables in the command line
             return f"/bin/bash {script_path}"
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create orchestration script: {e}") from e
@@ -365,27 +365,37 @@ class SimpleLambdaLayer(ComponentResource):
     def _generate_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
     ):
-        """Generate a single script that handles the entire process."""
+        """Generate a single script that safely embeds all paths."""
+        # Escape the paths to handle special characters
+        import shlex
+        safe_bucket = shlex.quote(bucket)
+        safe_project = shlex.quote(project_name)
+        safe_layer = shlex.quote(layer_name)
+        safe_package_path = shlex.quote(package_path)
+        
         return f"""#!/bin/bash
 set -e
 
-BUCKET="{bucket}"
-PROJECT="{project_name}"
-LAYER_NAME="{layer_name}"
-PACKAGE_PATH="{package_path}"
+# Set variables within the script to avoid command line length issues
+BUCKET={safe_bucket}
+PROJECT={safe_project}
+LAYER_NAME={safe_layer}
+PACKAGE_PATH={safe_package_path}
 HASH="{package_hash}"
 STACK="{pulumi.get_stack()}"
+FORCE_REBUILD="{self.force_rebuild}"
 
 echo "Starting simplified layer build and update process..."
 
 # Step 1: Check if we need to rebuild
-if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/hash.txt" &>/dev/null; then
+LAYER_KEY="{self.name}"
+if ! aws s3api head-object --bucket "$BUCKET" --key "$LAYER_KEY/hash.txt" &>/dev/null; then
     NEEDS_REBUILD=true
     echo "No previous hash found. Building layer."
-elif [ "$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')" != "$HASH" ]; then
+elif [ "$(aws s3 cp s3://$BUCKET/$LAYER_KEY/hash.txt - 2>/dev/null || echo '')" != "$HASH" ]; then
     NEEDS_REBUILD=true
     echo "Hash changed. Rebuilding layer."
-elif [ "{self.force_rebuild}" = "True" ]; then
+elif [ "$FORCE_REBUILD" = "True" ]; then
     NEEDS_REBUILD=true
     echo "Force rebuild enabled. Rebuilding layer."
 else
@@ -407,7 +417,7 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     zip -r source.zip source
     cd - >/dev/null
 
-    aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
+    aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_KEY/source.zip"
 
     # Step 3: Start CodeBuild and wait for completion
     echo "Starting CodeBuild..."
@@ -434,7 +444,7 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     echo "Publishing new layer version..."
     NEW_LAYER_ARN=$(aws lambda publish-layer-version \
         --layer-name "$LAYER_NAME" \
-        --content S3Bucket="$BUCKET",S3Key="{self.name}/layer.zip" \
+        --content S3Bucket="$BUCKET",S3Key="$LAYER_KEY/layer.zip" \
         --compatible-runtimes {' '.join([f'"python{v}"' for v in self.python_versions])} \
         --compatible-architectures "x86_64" "arm64" \
         --description "{self.description}" \
@@ -483,11 +493,11 @@ if [ "$NEEDS_REBUILD" = "true" ]; then
     done
 
     # Step 6: Save the new hash
-    echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
+    echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_KEY/hash.txt"
     echo "Process completed successfully!"
 else
     echo "No rebuild needed. Checking if layer version exists..."
-    if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
+    if ! aws s3api head-object --bucket "$BUCKET" --key "$LAYER_KEY/layer.zip" &>/dev/null; then
         echo "Layer zip not found. This shouldn't happen. Please run with force-rebuild."
         exit 1
     fi
