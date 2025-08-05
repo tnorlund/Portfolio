@@ -1,88 +1,116 @@
-# Portfolio & Receipt Processing System
+# Portfolio
 
-A full-stack application showcasing modern web development and cloud infrastructure expertise, featuring a React portfolio website and an AWS-powered receipt processing pipeline.
+Full-stack applications demonstrating modern web development, machine learning, and cloud infrastructure expertise.
 
-## 🎯 Overview
+## Projects
 
-This repository contains two main projects:
+### 🌐 Portfolio Website
+A responsive, server-side rendered personal portfolio built with Next.js and React. Features optimized image loading, dynamic content rendering, and modern web performance best practices.
 
-### Portfolio Website
-A responsive React/Next.js portfolio showcasing projects and professional experience, deployed on AWS S3/CloudFront.
+**Live Demo**: [tylernorlund.com](https://tylernorlund.com)
 
-### Receipt Processing System  
-An enterprise-grade OCR and ML pipeline for receipt digitization and analysis, built with Python and AWS services.
+### 🧾 Receipt Processing System  
+An intelligent document processing pipeline that extracts structured data from receipt images using OCR and machine learning. Processes receipts through text extraction, field detection, and merchant validation using GPT-4 and custom ML models.
 
-## 🏗️ Architecture
+**Key Features**:
+- Automated text extraction from receipt images
+- Intelligent field detection (merchant, total, date, items)
+- Merchant validation and normalization
+- RESTful API for receipt management
 
-```
-Portfolio/
-├── portfolio/          # React/Next.js portfolio website
-├── infra/             # Pulumi infrastructure as code
-├── receipt_dynamo/    # DynamoDB data layer
-├── receipt_label/     # ML labeling and analysis
-├── receipt_upload/    # OCR processing pipeline
-└── docs/              # Project documentation
-```
+### ☁️ Infrastructure as Code
+Complete AWS infrastructure managed with Pulumi, including serverless functions, CDN distribution, and auto-scaling services.
 
-## 🚀 Quick Start
+## Tech Stack
+
+**Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
+**Backend**: Python 3.12, FastAPI, OpenAI GPT-4, AWS Lambda  
+**Database**: DynamoDB, S3  
+**Infrastructure**: AWS (CloudFront, Lambda, API Gateway), Pulumi  
+**ML/AI**: OpenAI API, Custom OCR pipelines, scikit-learn  
+
+## Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- Python 3.12+
-- AWS CLI configured
-- Pulumi CLI
+```bash
+# Required
+node >= 18.0.0
+python >= 3.12
+aws-cli (configured)
+
+# Optional
+pulumi (for infrastructure)
+```
 
 ### Portfolio Website
+
 ```bash
 cd portfolio
 npm install
 npm run dev
+# Visit http://localhost:3000
 ```
 
-### Receipt Processing
+### Receipt Processing System
+
 ```bash
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate
-pip install -e receipt_dynamo -e receipt_label
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install packages
+pip install -e receipt_dynamo
+pip install -e receipt_label
+pip install -e receipt_upload
+
+# Run tests
+pytest receipt_label/tests/unit
 ```
 
-### Infrastructure
+### Infrastructure Deployment
+
 ```bash
 cd infra
+pulumi stack select dev
 pulumi up
 ```
 
-## 📚 Documentation
+## Project Structure
 
+```
+├── portfolio/          # Next.js portfolio website
+│   ├── pages/         # Page components
+│   ├── components/    # Reusable React components
+│   └── public/        # Static assets
+│
+├── receipt_dynamo/    # DynamoDB data access layer
+│   ├── entities/      # Data models
+│   └── tests/         # Unit and integration tests
+│
+├── receipt_label/     # ML-based receipt analysis
+│   ├── models/        # ML models and processors
+│   └── pattern_detection/  # Text pattern recognition
+│
+├── receipt_upload/    # OCR and image processing
+│   ├── ocr.py        # Text extraction
+│   └── geometry.py   # Spatial analysis
+│
+└── infra/            # Pulumi infrastructure
+    ├── __main__.py   # Infrastructure entry point
+    └── lambda_functions/  # Serverless functions
+```
+
+## Documentation
+
+Detailed documentation available in the [`docs/`](docs/) directory:
 - [Architecture Overview](docs/architecture/overview.md)
-- [Development Setup](docs/development/setup.md)
-- [Testing Guide](docs/development/testing.md)
-- [Deployment Guide](docs/operations/deployment.md)
+- [Development Guide](docs/development/setup.md)
+- [API Documentation](docs/api/)
 
-## 🛠️ Technologies
-
-**Frontend**: React, Next.js, TypeScript, Tailwind CSS  
-**Backend**: Python, FastAPI, OpenAI API, DynamoDB  
-**Infrastructure**: AWS (Lambda, S3, CloudFront, DynamoDB), Pulumi  
-**ML/AI**: OpenAI GPT-4, Custom OCR pipelines, Pattern detection  
-**Testing**: Jest, Pytest, Playwright  
-
-## 📊 Key Features
-
-- **High Performance**: 4x faster test execution through intelligent parallelization
-- **Cost Optimized**: Automated cost monitoring keeps cloud expenses under $5/month
-- **Production Ready**: Comprehensive error handling, monitoring, and logging
-- **AI-Enhanced**: Dual AI code review system for quality assurance
-- **Scalable Architecture**: Serverless design handles variable workloads efficiently
-
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
-
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 👤 Author
+## Contact
 
-Tyler Norlund - [GitHub](https://github.com/tnorlund) | [Portfolio](https://tylernorlund.com)
+Tyler Norlund - [GitHub](https://github.com/tnorlund) | [LinkedIn](https://linkedin.com/in/tylernorlund)
