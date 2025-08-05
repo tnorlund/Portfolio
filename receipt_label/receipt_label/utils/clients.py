@@ -1,11 +1,14 @@
 import os
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from openai import OpenAI
-from pinecone import Pinecone
 from receipt_dynamo import DynamoClient
 
 from .client_manager import ClientConfig, ClientManager
+
+# Only import Pinecone for type checking, not at runtime
+if TYPE_CHECKING:
+    from pinecone import Pinecone
 
 # Global client manager instance (lazy initialized)
 _default_manager: Optional[ClientManager] = None

@@ -21,6 +21,9 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
+from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+from base_images import BaseImages
+
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
 # from instance_registry import InstanceRegistry
@@ -71,12 +74,18 @@ notification_system = NotificationSystem(
     },
 )
 
+# Create base images first - they're used by multiple components
+base_images = BaseImages("base-images", stack=pulumi.get_stack())
+
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
+line_embedding_step_functions = LineEmbeddingStepFunction(
+    "step-func", 
+    base_image_name=base_images.label_base_image_name
+)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -128,6 +137,16 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     "ml-s3-policy-attachment",
     role=ml_training_role.name,
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+)
+
+# Create ChromaDB S3 buckets
+chromadb_storage = ChromaDBBuckets(
+    "chromadb-test",
+)
+
+# Create ChromaDB SQS queues
+chromadb_queues = ChromaDBQueues(
+    "chromadb-test",
 )
 
 # Create spot interruption handler
@@ -653,3 +672,9 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("training_efs_id", efs_storage.file_system_id)
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
+
+# ChromaDB infrastructure exports
+pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
+pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
+pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
+pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)

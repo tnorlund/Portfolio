@@ -43,20 +43,23 @@ class ClientConfig:
             dynamo_table = os.environ.get("DYNAMO_TABLE_NAME")
             if dynamo_table:
                 warnings.warn(
-                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME instead.",
+                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME"
+                    " instead.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
             else:
                 raise KeyError(
-                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"
+                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be"
+                    " set."
                 )
 
         # Check for deprecated Pinecone environment variables
         pinecone_api_key = os.environ.get("PINECONE_API_KEY")
         if pinecone_api_key:
             warnings.warn(
-                "PINECONE_API_KEY is deprecated. ChromaDB is now used for vector storage.",
+                "PINECONE_API_KEY is deprecated. ChromaDB is now used for"
+                " vector storage.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -84,7 +87,8 @@ class ClientManager:
     Manages client instances with lazy initialization and usage tracking.
 
     This class provides centralized access to all external service clients
-    while supporting lazy initialization, usage tracking, and easy mocking for tests.
+    while supporting lazy initialization, usage tracking, and easy mocking for
+    tests.
     """
 
     def __init__(self, config: ClientConfig):
@@ -119,17 +123,21 @@ class ClientManager:
                 track_to_dynamo=True,
                 track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
                 == "true",
-                validate_table_environment=False,  # Allow custom table names for test configurations
+                validate_table_environment=False,  # Allow custom table names
+                # for test configurations
             )
 
             # Override with resilient tracker if configured
             if self.config.use_resilient_tracker:
-                # In tests, we need to pass the mock client to avoid creating real DynamoDB connections
-                # In production, pass None to let ResilientAIUsageTracker create its own ResilientDynamoClient
+                # In tests, we need to pass the mock client to avoid creating
+                # real DynamoDB connections
+                # In production, pass None to let ResilientAIUsageTracker
+                # create its own ResilientDynamoClient
                 test_client = None
 
                 # Detect test environments by table name patterns
-                # Only match explicit test patterns, not any table containing "test"
+                # Only match explicit test patterns, not any table containing
+                # "test"
                 test_table_patterns = [
                     "test-table",
                     "integration-test-table",
@@ -146,7 +154,8 @@ class ClientManager:
                     or self.config.dynamo_table.lower().endswith("-test")
                     or self.config.dynamo_table.lower().startswith("test-")
                     or self.config.dynamo_table.lower() == "test"
-                    # Removed: "test" in table_name - too broad, matches "contest-results"
+                    # Removed: "test" in table_name - too broad, matches
+                    # "contest-results"
                 )
 
                 if is_test_env:
@@ -220,8 +229,8 @@ class ClientManager:
         """
         Get or create Pinecone index.
 
-        DEPRECATED: This property is maintained for backward compatibility only.
-        Use chroma property instead for vector storage.
+        DEPRECATED: This property is maintained for backward compatibility
+        only. Use chroma property instead for vector storage.
         """
         warnings.warn(
             "pinecone property is deprecated. Use chroma property instead.",
@@ -240,7 +249,8 @@ class ClientManager:
                 )
             except ImportError:
                 raise ImportError(
-                    "Pinecone is no longer a dependency. Please use ChromaDB instead."
+                    "Pinecone is no longer a dependency. Please use ChromaDB"
+                    " instead."
                 )
         return self._pinecone_index
 

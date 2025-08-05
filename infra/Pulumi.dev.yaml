@@ -6,7 +6,6 @@ config:
   portfolio:GOOGLE_PLACES_API_KEY:
     secure: AAABAAK8xGIKbSJImf3isrPRyJRt+P7pDXSUshC3r34OoDik3KWknQmYuu0q+/KfLXLReYCPe4IXmWFDEpFNnE4kEnOl7SM=
   ml-training:force-rebuild: "true"
-  lambda-layer:force-rebuild: "true"
   portfolio:PINECONE_API_KEY:
     secure: AAABAB6y1jBmasYCd0JbmQetWvndVC15ZSa7jtgyj2pNQ1y18JrMbJuCkSthuTX02pG7G2YYMmh4ee8Ck16UuQML90lKCiw3IIHBHK2dXNJeSI5ewuBW2KSdjLzhQA+K6bKNQCdYUT5O6N8=
   portfolio:PINECONE_INDEX_NAME: "receipt-validation-dev"

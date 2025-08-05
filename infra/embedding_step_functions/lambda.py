@@ -22,7 +22,6 @@ from receipt_label.embedding.line import (
     upload_serialized_lines,
     upload_to_openai,
     upsert_line_embeddings_to_pinecone,
-    write_line_embedding_results_to_dynamo,
     write_ndjson,
 )
 
@@ -42,7 +41,7 @@ if len(logger.handlers) == 0:
 bucket = os.environ["S3_BUCKET"]
 
 
-def embedding_submit_list_handler(event, context):
+def embedding_submit_list_handler(_event, _context):
     """
     This function is used to prepare the embedding batch for the line embedding
     step function.
@@ -50,14 +49,14 @@ def embedding_submit_list_handler(event, context):
     logger.info("Starting embedding_submit_list_handler")
     lines_without_embeddings = list_receipt_lines_with_no_embeddings()
     logger.info(
-        f"Found {len(lines_without_embeddings)} lines without embeddings"
+        "Found %d lines without embeddings", len(lines_without_embeddings)
     )
     batches = chunk_into_line_embedding_batches(lines_without_embeddings)
-    logger.info(f"Chunked into {len(batches)} batches")
+    logger.info("Chunked into %d batches", len(batches))
     uploaded = upload_serialized_lines(
         serialize_receipt_lines(batches), bucket
     )
-    logger.info(f"Uploaded {len(uploaded)} files")
+    logger.info("Uploaded %d files", len(uploaded))
     cleaned = [
         {
             "s3_key": e["s3_key"],
@@ -70,7 +69,7 @@ def embedding_submit_list_handler(event, context):
     return {"statusCode": 200, "batches": cleaned}
 
 
-def embedding_submit_upload_handler(event, context):
+def embedding_submit_upload_handler(event, _context):
     """
     This function is used to submit the embedding batch for the line embedding
     step function.
@@ -78,56 +77,57 @@ def embedding_submit_upload_handler(event, context):
     logger.info("Starting embedding_submit_upload_handler")
     s3_key = event["s3_key"]
     s3_bucket = event["s3_bucket"]
-    image_id = event["image_id"]
-    receipt_id = int(event["receipt_id"])
+    # These are passed in event but not used in current implementation
+    # image_id = event["image_id"]
+    # receipt_id = int(event["receipt_id"])
     batch_id = generate_batch_id()
 
     # Download the serialized lines
     filepath = download_serialized_lines(s3_bucket=s3_bucket, s3_key=s3_key)
-    logger.info(f"Downloaded file to {filepath}")
+    logger.info("Downloaded file to %s", filepath)
 
     lines = deserialize_receipt_lines(filepath)
-    logger.info(f"Deserialized {len(lines)} lines")
+    logger.info("Deserialized %d lines", len(lines))
 
     # Develop the embedding input
     formatted = format_line_context_embedding(lines)
-    logger.info(f"Formatted {len(formatted)} lines")
+    logger.info("Formatted %d lines", len(formatted))
 
     # Write the formatted lines to a file
     input_file = write_ndjson(batch_id, formatted)
-    logger.info(f"Wrote input file to {input_file}")
+    logger.info("Wrote input file to %s", input_file)
 
     # Upload the input file to OpenAI
     openai_file = upload_to_openai(input_file)
-    logger.info(f"Uploaded input file to OpenAI")
+    logger.info("Uploaded input file to OpenAI")
 
     # Submit the OpenAI batch
     openai_batch = submit_openai_batch(openai_file.id)
-    logger.info(f"Submitted OpenAI batch {openai_batch.id}")
+    logger.info("Submitted OpenAI batch %s", openai_batch.id)
 
     # Create a batch summary
     batch_summary = create_batch_summary(batch_id, openai_batch.id, input_file)
-    logger.info(f"Created batch summary with ID {batch_summary.batch_id}")
+    logger.info("Created batch summary with ID %s", batch_summary.batch_id)
 
     # Update the line embedding status
     update_line_embedding_status(lines)
-    logger.info(f"Updated line embedding status")
+    logger.info("Updated line embedding status")
 
     # Add the batch summary to the database
     add_batch_summary(batch_summary)
-    logger.info(f"Added batch summary with ID {batch_summary.batch_id}")
+    logger.info("Added batch summary with ID %s", batch_summary.batch_id)
 
     return {"statusCode": 200, "batch_id": batch_id}
 
 
-def embedding_poll_list_handler(event, context):
+def embedding_poll_list_handler(_event, _context):
     """
     This function is used to poll the embedding batch for the line embedding
     step function.
     """
     logger.info("Starting embedding_poll_list_handler")
     pending_batches = list_pending_line_embedding_batches()
-    logger.info(f"Found {len(pending_batches)} pending batches")
+    logger.info("Found %d pending batches", len(pending_batches))
     return {
         "statusCode": 200,
         "batches": [
@@ -135,32 +135,33 @@ def embedding_poll_list_handler(event, context):
                 "openai_batch_id": batch.openai_batch_id,
                 "batch_id": batch.batch_id,
             }
-            for batch in pending_batches
+            # TODO: Remove this once we have a proper polling mechanism  # pylint: disable=fixme
+            for batch in pending_batches[0:5]
         ],
     }
 
 
-def embedding_poll_download_handler(batch, context):
+def embedding_poll_download_handler(batch, _context):
     """
-    This function is used to download the embedding batch for the line embedding
-    step function.
+    This function is used to download the embedding batch for the line
+    embedding step function.
     """
     logger.info("Starting embedding_poll_download_handler")
     batch_id = batch["batch_id"]
     openai_batch_id = batch["openai_batch_id"]
     if get_openai_batch_status(openai_batch_id) == "completed":
-        logger.info(f"OpenAI batch {openai_batch_id} has completed")
+        logger.info("OpenAI batch %s has completed", openai_batch_id)
         results = download_openai_batch_result(openai_batch_id)
-        logger.info(f"Downloaded {len(results)} results")
+        logger.info("Downloaded %d results", len(results))
         descriptions = get_receipt_descriptions(results)
-        logger.info(f"Upserting {len(results)} line embeddings to Pinecone")
+        logger.info("Upserting %d line embeddings to Pinecone", len(results))
         upsert_line_embeddings_to_pinecone(results, descriptions)
-        logger.info(f"Upserted {len(results)} line embeddings to Pinecone")
+        logger.info("Upserted %d line embeddings to Pinecone", len(results))
         mark_batch_complete(batch_id)
-        logger.info(f"Marked batch {batch_id} as complete")
+        logger.info("Marked batch %s as complete", batch_id)
         update_line_embedding_status_to_success(results, descriptions)
-        logger.info(f"Updated line embedding status to success")
+        logger.info("Updated line embedding status to success")
         return {"statusCode": 200, "completed": True}
-    else:
-        logger.info(f"OpenAI batch {openai_batch_id} is still pending")
-        return {"statusCode": 200, "completed": False}
+
+    logger.info("OpenAI batch %s is still pending", openai_batch_id)
+    return {"statusCode": 200, "completed": False}

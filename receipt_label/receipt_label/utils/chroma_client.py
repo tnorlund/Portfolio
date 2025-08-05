@@ -8,12 +8,14 @@ replacing the previous Pinecone implementation.
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
+import boto3
 import chromadb
 from chromadb import Collection
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
+from chromadb.errors import NotFoundError
 
 
 class ChromaDBClient:
@@ -96,7 +98,7 @@ class ChromaDBClient:
                 self._collections[full_name] = self.client.get_collection(
                     name=full_name, embedding_function=self._embedding_function
                 )
-            except ValueError:
+            except (NotFoundError, ValueError):
                 # Collection doesn't exist, create it
                 self._collections[full_name] = self.client.create_collection(
                     name=full_name,
@@ -150,7 +152,9 @@ class ChromaDBClient:
                     ids=ids, documents=documents, metadatas=metadatas
                 )
             else:
-                raise ValueError("Either embeddings or documents must be provided")
+                raise ValueError(
+                    "Either embeddings or documents must be provided"
+                )
         except ValueError as e:
             if "ids already exist" in str(e):
                 # For compactor: delete and retry (overwrite behavior)
@@ -168,10 +172,8 @@ class ChromaDBClient:
                     )
             else:
                 raise
-        
-        # Persist to disk if using persistent client
-        if self.use_persistent_client:
-            self._client.persist()
+
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
 
     def query(
         self,
@@ -243,11 +245,10 @@ class ChromaDBClient:
             collection.delete(where=where)
         else:
             raise ValueError("Either ids or where must be provided")
-        
-        # Persist to disk if using persistent client
-        if self.use_persistent_client:
-            self._client.persist()
 
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
+
+    # pylint: disable=too-many-arguments
     def get_by_ids(
         self,
         collection_name: str,
@@ -285,44 +286,37 @@ class ChromaDBClient:
     ) -> str:
         """
         Flush the local DB to disk, upload to S3, and return the key prefix.
-        
+
         This method is used by producer lambdas to create delta files that
         will be processed by the compactor.
-        
+
         Args:
             bucket: S3 bucket name
             s3_prefix: S3 prefix for delta files
             s3_client: Optional boto3 S3 client (creates one if not provided)
-            
+
         Returns:
             S3 prefix where the delta was uploaded
-            
+
         Raises:
             RuntimeError: If not in delta mode
         """
         if self.mode != "delta":
-            raise RuntimeError("persist_and_upload_delta requires mode='delta'")
-        
+            raise RuntimeError(
+                "persist_and_upload_delta requires mode='delta'"
+            )
+
         if not self.persist_directory:
             raise RuntimeError("persist_directory required for delta uploads")
-        
-        # Import boto3 here to avoid dependency if not using S3
-        try:
-            import boto3
-        except ImportError:
-            raise ImportError(
-                "boto3 is required for S3 uploads. Install with: pip install boto3"
-            )
-        
+
         if s3_client is None:
             s3_client = boto3.client("s3")
-        
-        # Persist ChromaDB to disk
-        self._client.persist()
-        
+
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
+
         # Create unique prefix for this delta
         prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
-        
+
         # Upload all files in the persist directory
         persist_path = Path(self.persist_directory)
         for file_path in persist_path.rglob("*"):
@@ -330,7 +324,7 @@ class ChromaDBClient:
                 relative_path = file_path.relative_to(persist_path)
                 s3_key = f"{prefix}{relative_path}"
                 s3_client.upload_file(str(file_path), bucket, s3_key)
-        
+
         return prefix
 
     def reset(self) -> None:
@@ -352,7 +346,8 @@ def get_chroma_client(
     Get or create a singleton ChromaDB client instance.
 
     Args:
-        persist_directory: Directory for persistence (uses env var if not provided)
+        persist_directory: Directory for persistence (uses env var if not
+            provided)
         reset: Whether to reset the existing client
 
     Returns:

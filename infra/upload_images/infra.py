@@ -62,10 +62,17 @@ class UploadImages(ComponentResource):
         # Create S3 bucket for image files
         image_bucket = Bucket(
             f"{name}-image-bucket",
-            acl="private",
             force_destroy=True,
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+        
+        # Configure CORS as a separate resource
+        image_bucket_cors = aws.s3.BucketCorsConfiguration(
+            f"{name}-image-bucket-cors",
+            bucket=image_bucket.id,
             cors_rules=[
-                aws.s3.BucketCorsRuleArgs(
+                aws.s3.BucketCorsConfigurationCorsRuleArgs(
                     allowed_methods=["PUT"],
                     allowed_origins=[
                         "http://localhost:3000",
@@ -77,7 +84,6 @@ class UploadImages(ComponentResource):
                     max_age_seconds=3000,
                 )
             ],
-            tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
 
@@ -85,6 +91,14 @@ class UploadImages(ComponentResource):
         self.ocr_queue = Queue(
             f"{name}-ocr-queue",
             visibility_timeout_seconds=3600,
+            message_retention_seconds=1209600,  # 14 days
+            receive_wait_time_seconds=0,  # Short polling
+            redrive_policy=None,  # No DLQ for now
+            tags={
+                "Purpose": "OCR Job Queue",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
             opts=ResourceOptions(parent=self),
         )
 
@@ -92,6 +106,14 @@ class UploadImages(ComponentResource):
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
             visibility_timeout_seconds=300,
+            message_retention_seconds=345600,  # 4 days
+            receive_wait_time_seconds=0,  # Short polling
+            redrive_policy=None,  # No DLQ for now
+            tags={
+                "Purpose": "OCR Results Processing",
+                "Component": name,
+                "Environment": pulumi.get_stack(),
+            },
             opts=ResourceOptions(parent=self),
         )
 

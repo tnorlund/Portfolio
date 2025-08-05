@@ -20,6 +20,7 @@ receipt section classification.
 """
 
 import json
+import os
 import re
 from typing import List
 
@@ -32,6 +33,7 @@ from receipt_dynamo.entities import (
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+from receipt_label.utils.chroma_s3_helpers import produce_embedding_delta
 
 
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
@@ -468,3 +470,150 @@ def update_line_embedding_status_to_success(
                 if client_manager is None:
                     client_manager = get_client_manager()
                 client_manager.dynamo.update_receipt_lines(lines)
+
+
+def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
+    """
+    Mark the line embedding batch as complete in the system.
+    Args:
+        batch_id (str): The identifier of the batch.
+    """
+    if client_manager is None:
+        client_manager = get_client_manager()
+    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary.status = "COMPLETED"
+    client_manager.dynamo.update_batch_summary(batch_summary)
+
+
+def save_line_embeddings_as_delta(
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
+    batch_id: str,
+    client_manager: ClientManager = None,
+) -> dict:
+    """
+    Save line embedding results as a delta file to S3 for ChromaDB compaction.
+    
+    This replaces the direct Pinecone upsert with a delta file that will be
+    processed later by the compaction job.
+    
+    Args:
+        results (List[dict]): The list of embedding results, each containing:
+            - custom_id (str)
+            - embedding (List[float])
+        descriptions (dict): A nested dict of receipt details keyed by
+            image_id and receipt_id.
+        batch_id (str): The identifier of the batch.
+            
+    Returns:
+        dict: Delta creation result with keys:
+            - delta_id: Unique identifier for the delta
+            - delta_key: S3 key where delta was saved
+            - embedding_count: Number of embeddings in the delta
+    """
+    # Prepare ChromaDB-compatible data
+    ids = []
+    embeddings = []
+    metadatas = []
+    documents = []
+    
+    for result in results:
+        # Parse metadata from custom_id
+        meta = _parse_metadata_from_line_id(result["custom_id"])
+        image_id = meta["image_id"]
+        receipt_id = meta["receipt_id"]
+        line_id = meta["line_id"]
+        
+        # Get receipt details
+        receipt_details = descriptions[image_id][receipt_id]
+        lines = receipt_details["lines"]
+        words = receipt_details["words"]
+        metadata = receipt_details["metadata"]
+        
+        # Find the target line
+        target_line = next((l for l in lines if l.line_id == line_id), None)
+        if not target_line:
+            raise ValueError(
+                f"No ReceiptLine found for image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}"
+            )
+            
+        # Get line words for confidence calculation
+        line_words = [w for w in words if w.line_id == line_id]
+        avg_confidence = (
+            sum(w.confidence for w in line_words) / len(line_words)
+            if line_words
+            else target_line.confidence
+        )
+        
+        # Import locally to avoid circular import
+        from receipt_label.embedding.line.submit import (  # pylint: disable=import-outside-toplevel
+            _format_line_context_embedding_input,
+        )
+        
+        # Get line context
+        embedding_input = _format_line_context_embedding_input(target_line, lines)
+        prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
+        
+        # Priority: canonical name > regular merchant name
+        if (
+            hasattr(metadata, "canonical_merchant_name")
+            and metadata.canonical_merchant_name
+        ):
+            merchant_name = metadata.canonical_merchant_name
+        else:
+            merchant_name = metadata.merchant_name
+            
+        # Standardize the merchant name format
+        if merchant_name:
+            merchant_name = merchant_name.strip().title()
+            
+        # Build metadata for ChromaDB
+        line_metadata = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "text": target_line.text,
+            "confidence": target_line.confidence,
+            "avg_word_confidence": avg_confidence,
+            "x": target_line.bounding_box["x"],
+            "y": target_line.bounding_box["y"],
+            "width": target_line.bounding_box["width"],
+            "height": target_line.bounding_box["height"],
+            "prev_line": prev_line,
+            "next_line": next_line,
+            "merchant_name": merchant_name,
+            "source": "openai_embedding_batch",
+        }
+        
+        # Add section label if available
+        if hasattr(target_line, "section_label") and target_line.section_label:
+            line_metadata["section_label"] = target_line.section_label
+            
+        # Add to delta arrays
+        ids.append(result["custom_id"])
+        embeddings.append(result["embedding"])
+        metadatas.append(line_metadata)
+        documents.append(target_line.text)
+    
+    # Get S3 bucket from environment
+    bucket_name = os.environ.get("CHROMADB_BUCKET")
+    if not bucket_name:
+        raise ValueError("CHROMADB_BUCKET environment variable not set")
+    
+    # Get SQS queue URL if configured
+    sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+        
+    # Produce the delta file
+    delta_result = produce_embedding_delta(
+        ids=ids,
+        embeddings=embeddings,
+        documents=documents,
+        metadatas=metadatas,
+        bucket_name=bucket_name,
+        sqs_queue_url=sqs_queue_url,  # Will send SQS notification if configured
+        collection_name="receipt_lines",
+        batch_id=batch_id,
+    )
+    
+    return delta_result

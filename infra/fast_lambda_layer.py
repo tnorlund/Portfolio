@@ -366,10 +366,17 @@ echo "🎉 Parallel function updates completed!"'''
         build_bucket = aws.s3.Bucket(
             resource_name=f"fast-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
             bucket=f"fast-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
-            versioning=aws.s3.BucketVersioningArgs(  # <-- enable versioning
-                enabled=True,
-            ),
             force_destroy=True,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+        
+        # Configure versioning as a separate resource
+        build_bucket_versioning = aws.s3.BucketVersioning(
+            f"fast-lambda-layer-{self.name}-artifacts-versioning",
+            bucket=build_bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled",
+            ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 

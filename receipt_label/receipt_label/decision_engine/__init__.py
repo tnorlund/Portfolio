@@ -33,7 +33,12 @@ from .integration import (
     process_receipt_with_decision_engine,
 )
 from .chroma_integration import ChromaDecisionHelper
-from .pinecone_integration import PineconeDecisionHelper
+
+# Conditional import for backward compatibility
+try:
+    from .pinecone_integration import PineconeDecisionHelper
+except ImportError:
+    PineconeDecisionHelper = None  # Will be None if pinecone is not available
 from .types import (
     ConfidenceLevel,
     DecisionOutcome,

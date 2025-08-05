@@ -903,6 +903,14 @@ class LambdaLayer(ComponentResource):
         event_queue = aws.sqs.Queue(
             f"{self.name}-source-upload-queue",
             visibility_timeout_seconds=60,
+            message_retention_seconds=345600,  # 4 days
+            receive_wait_time_seconds=0,  # Short polling
+            redrive_policy=None,  # No DLQ for now
+            tags={
+                "Purpose": "Lambda Layer Build Triggers",
+                "Component": f"lambda-layer-{self.name}",
+                "Environment": pulumi.get_stack(),
+            },
             opts=pulumi.ResourceOptions(parent=self),
         )
 
