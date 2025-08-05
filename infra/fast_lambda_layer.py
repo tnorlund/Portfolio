@@ -377,12 +377,12 @@ echo "🎉 Parallel function updates completed!"'''
         upload_cmd = command.local.Command(
             f"{self.name}-upload-source",
             create=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
+                lambda b: self._create_and_run_upload_script(
                     b, package_path, package_hash
                 )
             ),
             update=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
+                lambda b: self._create_and_run_upload_script(
                     b, package_path, package_hash
                 )
             ),
@@ -894,6 +894,27 @@ done
 
         # Pulumi no longer manages the LayerVersion resource; layer publication is handled by CodePipeline.
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
+
+    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
+        """Create a temporary script file and execute it to avoid 'argument list too long' error."""
+        import tempfile
+        import os
+        
+        try:
+            # Generate the script content
+            script_content = self._generate_upload_script(bucket, package_path, package_hash)
+            
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(script_content)
+                script_path = f.name
+            
+            # Make it executable and run it with guaranteed cleanup
+            os.chmod(script_path, 0o755)
+            # Use curly braces to ensure cleanup happens even if script fails
+            return f"{{ bash {script_path}; rm -f {script_path}; }}"
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to create upload script: {e}") from e
 
     def _generate_upload_script(self, bucket, package_path, package_hash):
         """Generate script to upload source package."""
