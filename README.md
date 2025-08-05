@@ -113,4 +113,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Contact
 
-Tyler Norlund - [GitHub](https://github.com/tnorlund) | [LinkedIn](https://linkedin.com/in/tylernorlund)
+Tyler Norlund - [GitHub](https://github.com/tnorlund) | [LinkedIn](https://www.linkedin.com/in/tyler-norlund/)
