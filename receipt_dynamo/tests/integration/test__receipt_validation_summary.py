@@ -1,6 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Type
-from uuid import uuid4
+from typing import Any, Dict, Literal, Type
 
 import pytest
 from botocore.exceptions import ClientError
