@@ -12,6 +12,7 @@ Features:
 """
 
 import json
+import os
 from pathlib import Path
 
 import pulumi
@@ -20,7 +21,7 @@ from pulumi_aws import get_caller_identity, config
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token,
+    get_authorization_token_output,  # Use output version for docker-build
 )
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
@@ -28,13 +29,120 @@ from pulumi_aws.lambda_ import (
     FunctionEnvironmentArgs,
     FunctionEphemeralStorageArgs,
 )
-from pulumi_docker import DockerBuildArgs, Image, RegistryArgs
+# Migrate to docker-build provider for ECR caching support
+import pulumi_docker_build as docker_build
 
 from dynamo_db import dynamodb_table
 
 
 class ChromaDBLambdas(ComponentResource):
     """Component for ChromaDB containerized Lambda functions with optimized builds."""
+
+    def build_lambda_with_caching(
+        self,
+        name: str,
+        context_path: Path,
+        dockerfile_path: Path,
+        repository: Repository,
+        build_args: dict,
+        stack: str,
+        ecr_auth_token,
+        parent: ComponentResource,
+    ) -> docker_build.Image:
+        """Build a Lambda image with docker-build provider and ECR caching.
+        
+        This helper method provides:
+        1. ECR cache_from and cache_to configuration
+        2. Proper registry authentication
+        3. Multi-platform support (ARM64)
+        """
+        return docker_build.Image(
+            f"{name}-img-{stack}",
+            context=docker_build.ContextArgs(
+                location=str(context_path),
+            ),
+            dockerfile=docker_build.DockerfileArgs(
+                location=str(dockerfile_path),
+            ),
+            platforms=["linux/arm64"],
+            build_args=build_args,
+            # ECR caching configuration
+            cache_from=[
+                docker_build.CacheFromArgs(
+                    registry=docker_build.CacheFromRegistryArgs(
+                        ref=repository.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    ),
+                ),
+            ],
+            cache_to=[
+                docker_build.CacheToArgs(
+                    registry=docker_build.CacheToRegistryArgs(
+                        image_manifest=True,
+                        oci_media_types=True,
+                        ref=repository.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    ),
+                ),
+            ],
+            # Registry configuration for pushing
+            push=True,
+            registries=[
+                docker_build.RegistryArgs(
+                    # Use just the ECR registry address, not the full repository URL
+                    address=repository.repository_url.apply(
+                        lambda url: url.split("/")[0]  # Extract registry address
+                    ),
+                    password=ecr_auth_token.password,
+                    username=ecr_auth_token.user_name,
+                ),
+            ],
+            # Tags for the image
+            tags=[
+                repository.repository_url.apply(lambda url: f"{url}:latest"),
+            ],
+            opts=ResourceOptions(parent=parent, depends_on=[repository]),
+        )
+
+    def get_base_image_for_build(
+        self,
+        base_image_output: Output[str],
+        stack: str,
+        service: str = "label",
+    ) -> str:
+        """Get the base image name for Docker builds.
+
+        In development mode (use-static-base-image=true), returns a static image name
+        for better caching. In production, uses the dynamic Pulumi output.
+
+        Args:
+            base_image_output: The Pulumi output for the base image
+            stack: The current stack name
+            service: The service type ("label" or "dynamo")
+
+        Returns:
+            The base image name to use for builds
+        """
+        # Check Pulumi config first, then environment variable as fallback
+        pulumi_config = pulumi.Config("portfolio")
+        use_static = pulumi_config.get_bool("use-static-base-image")
+
+        # If not in config, check environment variable
+        if use_static is None:
+            use_static = os.environ.get(
+                "USE_STATIC_BASE_IMAGE", ""
+            ).lower() in ("true", "1", "yes")
+
+        if use_static:
+            # For local development - use a fixed tag
+            account_id = get_caller_identity().account_id
+            region = config.region or "us-east-1"
+            return f"{account_id}.dkr.ecr.{region}.amazonaws.com/base-receipt-{service}-{stack}:stable"
+        else:
+            # For production - use dynamic Pulumi output
+            return base_image_output
 
     def __init__(
         self,
@@ -46,6 +154,7 @@ class ChromaDBLambdas(ComponentResource):
         s3_batch_bucket_name: Output[str],
         stack: str,
         base_image_name: Output[str],  # Add base image parameter
+        base_image_resource=None,  # Add optional resource for dependency
         opts: ResourceOptions = None,
     ):
         super().__init__(
@@ -98,104 +207,87 @@ class ChromaDBLambdas(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Get ECR authorization token
-        ecr_auth_token = get_authorization_token()
+        # Get ECR authorization token (using output version for docker-build)
+        ecr_auth_token = get_authorization_token_output()
 
-        # Build context path
-        build_context_path = Path(__file__).parent.parent.parent
+        # Build context path - now we'll use handler-specific contexts
+        # Old: entire repo (2.9GB), Now: just handler directories (~10KB each)
+        base_lambda_path = Path(__file__).parent
 
         # Build polling image using Pulumi Docker provider
         # Pulumi will handle the Output[str] dependency automatically
-        build_args = {"PYTHON_VERSION": "3.12"}
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "BUILDKIT_INLINE_CACHE": "1",
+        }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.polling_image = Image(
-            f"chromadb-poll-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "chromadb_word_polling_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.polling_image = self.build_lambda_with_caching(
+            name="chromadb-poll",
+            context_path=base_lambda_path / "chromadb_word_polling_lambda",
+            dockerfile_path=(
+                base_lambda_path
+                / "chromadb_word_polling_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.polling_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.polling_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.polling_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Build compaction image using Pulumi Docker provider
-        build_args = {"PYTHON_VERSION": "3.12"}
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "BUILDKIT_INLINE_CACHE": "1",
+        }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.compaction_image = Image(
-            f"chromadb-compact-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "chromadb_compaction_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.compaction_image = self.build_lambda_with_caching(
+            name="chromadb-compact",
+            context_path=base_lambda_path / "chromadb_compaction_lambda",
+            dockerfile_path=(
+                base_lambda_path
+                / "chromadb_compaction_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.compaction_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.compaction_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.compaction_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Build line polling image using Pulumi Docker provider
-        build_args = {"PYTHON_VERSION": "3.12"}
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "BUILDKIT_INLINE_CACHE": "1",
+        }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.line_polling_image = Image(
-            f"chromadb-line-poll-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "chromadb_line_polling_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.line_polling_image = self.build_lambda_with_caching(
+            name="chromadb-line-poll",
+            context_path=base_lambda_path / "chromadb_line_polling_lambda",
+            dockerfile_path=(
+                base_lambda_path
+                / "chromadb_line_polling_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.line_polling_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.line_polling_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.line_polling_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Create ECR repository for find unembedded lines Lambda
@@ -240,103 +332,76 @@ class ChromaDBLambdas(ComponentResource):
         # Build find unembedded lines image using Pulumi Docker provider
         build_args = {
             "PYTHON_VERSION": "3.12",
-            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+            "BUILDKIT_INLINE_CACHE": "1",
         }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.find_unembedded_image = Image(
-            f"find-unembedded-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "find_unembedded_lines_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.find_unembedded_image = self.build_lambda_with_caching(
+            name="find-unembedded",
+            context_path=base_lambda_path / "find_unembedded_lines_lambda",
+            dockerfile_path=(
+                base_lambda_path
+                / "find_unembedded_lines_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.find_unembedded_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.find_unembedded_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.find_unembedded_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Build submit to OpenAI image using Pulumi Docker provider
         build_args = {
             "PYTHON_VERSION": "3.12",
-            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+            "BUILDKIT_INLINE_CACHE": "1",
         }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.submit_openai_image = Image(
-            f"submit-openai-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "submit_to_openai_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.submit_openai_image = self.build_lambda_with_caching(
+            name="submit-openai",
+            context_path=base_lambda_path / "submit_to_openai_lambda",
+            dockerfile_path=(
+                base_lambda_path
+                / "submit_to_openai_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.submit_openai_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.submit_openai_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.submit_openai_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Build list pending batches image using Pulumi Docker provider
         build_args = {
             "PYTHON_VERSION": "3.12",
-            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+            "BUILDKIT_INLINE_CACHE": "1",
         }
         if base_image_name:
-            build_args["BASE_IMAGE"] = base_image_name
+            build_args["BASE_IMAGE"] = self.get_base_image_for_build(
+                base_image_name, stack
+            )
 
-        self.list_pending_image = Image(
-            f"list-pending-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "list_pending_batches_lambda"
-                    / "Dockerfile"
-                ),
-                platform="linux/arm64",
-                args=build_args,
+        self.list_pending_image = self.build_lambda_with_caching(
+            name="list-pending",
+            context_path=base_lambda_path,  # Use parent dir for this lambda
+            dockerfile_path=(
+                base_lambda_path
+                / "list_pending_batches_lambda"
+                / "Dockerfile.optimized"
             ),
-            image_name=self.list_pending_repo.repository_url.apply(
-                lambda url: f"{url}:latest"
-            ),
-            registry=RegistryArgs(
-                server=self.list_pending_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
-                ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
-            opts=ResourceOptions(parent=self),
+            repository=self.list_pending_repo,
+            build_args=build_args,
+            stack=stack,
+            ecr_auth_token=ecr_auth_token,
+            parent=self,
         )
 
         # Create IAM role for polling Lambda (shorter names to avoid 64 char limit)
@@ -508,7 +573,8 @@ class ChromaDBLambdas(ComponentResource):
             f"line-embed-word-poll-fn-{stack}",
             name=f"line-embed-word-poll-{stack}",
             package_type="Image",
-            image_uri=self.polling_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.polling_image.tags[0],
             role=self.polling_role.arn,
             architectures=["arm64"],
             memory_size=3008,  # Increased for processing large batches
@@ -525,7 +591,7 @@ class ChromaDBLambdas(ComponentResource):
             ephemeral_storage=FunctionEphemeralStorageArgs(
                 size=3072,  # 3GB for temporary ChromaDB storage
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.polling_image]),
         )
 
         # Create compaction Lambda function
@@ -533,7 +599,8 @@ class ChromaDBLambdas(ComponentResource):
             f"line-embed-compact-fn-{stack}",
             name=f"line-embed-compact-{stack}",
             package_type="Image",
-            image_uri=self.compaction_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.compaction_image.tags[0],
             role=self.compaction_role.arn,
             architectures=["arm64"],
             memory_size=4096,  # More memory for compaction
@@ -548,7 +615,7 @@ class ChromaDBLambdas(ComponentResource):
             ephemeral_storage=FunctionEphemeralStorageArgs(
                 size=5120,  # 5GB for compaction operations
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.compaction_image]),
         )
 
         # Create IAM role for line polling Lambda
@@ -644,7 +711,8 @@ class ChromaDBLambdas(ComponentResource):
             f"line-embed-line-poll-fn-{stack}",
             name=f"line-embed-line-poll-{stack}",
             package_type="Image",
-            image_uri=self.line_polling_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.line_polling_image.tags[0],
             role=self.line_polling_role.arn,
             architectures=["arm64"],
             memory_size=3008,  # Same as word polling
@@ -656,12 +724,13 @@ class ChromaDBLambdas(ComponentResource):
                     "COMPACTION_QUEUE_URL": chromadb_queue_url,
                     "OPENAI_API_KEY": openai_api_key,
                     "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+                    "SKIP_TABLE_VALIDATION": "true",  # Skip environment validation for table name
                 },
             ),
             ephemeral_storage=FunctionEphemeralStorageArgs(
                 size=3072,  # 3GB for temporary ChromaDB storage
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.line_polling_image]),
         )
 
         # Create IAM role for find unembedded lines Lambda
@@ -738,7 +807,8 @@ class ChromaDBLambdas(ComponentResource):
             f"find-unembedded-fn-{stack}",
             name=f"find-unembedded-lines-{stack}",
             package_type="Image",
-            image_uri=self.find_unembedded_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.find_unembedded_image.tags[0],
             role=self.find_unembedded_role.arn,
             architectures=["arm64"],
             memory_size=1024,
@@ -750,7 +820,7 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.find_unembedded_image]),
         )
 
         # Create IAM role for submit to OpenAI Lambda
@@ -826,7 +896,8 @@ class ChromaDBLambdas(ComponentResource):
             f"submit-openai-fn-{stack}",
             name=f"submit-to-openai-{stack}",
             package_type="Image",
-            image_uri=self.submit_openai_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.submit_openai_image.tags[0],
             role=self.submit_openai_role.arn,
             architectures=["arm64"],
             memory_size=1024,
@@ -837,7 +908,7 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.submit_openai_image]),
         )
 
         # Create IAM role for list pending batches Lambda
@@ -907,7 +978,8 @@ class ChromaDBLambdas(ComponentResource):
             f"list-pending-fn-{stack}",
             name=f"list-pending-batches-{stack}",
             package_type="Image",
-            image_uri=self.list_pending_image.image_name,
+            # Use the first tag instead of ref for reliability
+            image_uri=self.list_pending_image.tags[0],
             role=self.list_pending_role.arn,
             architectures=["arm64"],
             memory_size=512,
@@ -918,7 +990,7 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.list_pending_image]),
         )
 
         # Register outputs

@@ -7,4 +7,4 @@ FROM ${BASE_IMAGE}
 COPY handler.py ${LAMBDA_TASK_ROOT}/
 
 # Command to run the Lambda handler
-CMD ["handler.poll_handler"]
+CMD ["handler.lambda_handler"]
