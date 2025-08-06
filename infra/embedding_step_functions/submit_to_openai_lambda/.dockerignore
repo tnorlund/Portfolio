@@ -1,0 +1,14 @@
+# Ignore everything by default
+*
+
+# Only include the handler file
+!handler.py
+
+# Exclude Python cache and test files
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/tests/
+**/test_*.py
+**/.pytest_cache/
