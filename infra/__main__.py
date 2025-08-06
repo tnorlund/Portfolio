@@ -1,10 +1,27 @@
 """Main Pulumi program for AWS infrastructure."""
 
 import base64
+import os
 
 import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
+
+# Auto-enable Docker BuildKit based on Pulumi config
+config = pulumi.Config("portfolio")
+if config.get_bool("docker-buildkit") != False:  # Default to True if not set
+    os.environ["DOCKER_BUILDKIT"] = "1"
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
+        "1"  # Also enable for docker-compose
+    )
+
+    # Warning if BuildKit might not be inherited by Docker
+    if not os.environ.get("DOCKER_BUILDKIT"):
+        print("⚠️  DOCKER_BUILDKIT not set in parent environment")
+        print("   For best performance, run: export DOCKER_BUILDKIT=1")
+        print("   Or use: ./pulumi_up.sh instead of 'pulumi up'")
+    else:
+        print("✓ Docker BuildKit enabled for faster builds")
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
@@ -22,7 +39,9 @@ from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
-from base_images import BaseImages
+
+# Using the new docker-build based base images with scoped contexts
+from base_images.base_images_v3 import BaseImages
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -79,15 +98,17 @@ base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
 word_label_step_functions = WordLabelStepFunctions(
     "word-label-step-functions",
-    base_image_name=base_images.label_base_image.image_name
+    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
+    base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction(
-    "step-func", 
-    base_image_name=base_images.label_base_image.image_name
+    "step-func",
+    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
+    base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"

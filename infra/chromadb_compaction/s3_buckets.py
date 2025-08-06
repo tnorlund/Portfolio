@@ -59,10 +59,10 @@ class ChromaDBBuckets(ComponentResource):
         )
 
         # Configure versioning as a separate resource
-        self.bucket_versioning = aws.s3.BucketVersioning(
+        self.bucket_versioning = aws.s3.BucketVersioningV2(
             f"{name}-vectors-versioning",
             bucket=self.bucket.id,
-            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+            versioning_configuration=aws.s3.BucketVersioningV2VersioningConfigurationArgs(
                 status="Enabled",
             ),
             opts=ResourceOptions(parent=self),

@@ -1,0 +1,76 @@
+# Python cache files
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/*.egg-info
+**/*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test files
+**/tests/
+**/test_*.py
+**/*_test.py
+pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation
+docs/
+*.md
+*.rst
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+build/
+dist/
+*.whl
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Pulumi
+Pulumi.*.yaml
+.pulumi/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Large data files
+*.csv
+*.json
+*.db
+*.sqlite
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Node modules (if any)
+node_modules/
+
+# AWS CDK
+cdk.out/

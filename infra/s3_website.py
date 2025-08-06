@@ -81,11 +81,11 @@ site_bucket = aws.s3.Bucket(
 )
 
 # Configure CORS as a separate resource
-site_bucket_cors = aws.s3.BucketCorsConfiguration(
+site_bucket_cors = aws.s3.BucketCorsConfigurationV2(
     "siteBucket-cors",
     bucket=site_bucket.id,
     cors_rules=[
-        aws.s3.BucketCorsConfigurationCorsRuleArgs(
+        aws.s3.BucketCorsConfigurationV2CorsRuleArgs(
             allowed_headers=["*"],
             allowed_methods=["GET", "HEAD"],
             allowed_origins=[

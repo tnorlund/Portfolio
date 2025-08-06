@@ -26,6 +26,7 @@ from pulumi import (
     FileAsset,
     Output,
     ResourceOptions,
+    Resource,
 )
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
@@ -47,7 +48,7 @@ stack = pulumi.get_stack()
 
 
 class WordLabelStepFunctions(ComponentResource):
-    def __init__(self, name: str, base_image_name: Output[str] = None, opts: ResourceOptions = None):
+    def __init__(self, name: str, base_image_name: Output[str] = None, base_image_resource: Resource = None, opts: ResourceOptions = None):
         super().__init__(
             "custom:stepfunctions:WordLabelStepFunctions", 
             name,
@@ -69,6 +70,11 @@ class WordLabelStepFunctions(ComponentResource):
         )
 
         # Create ChromaDB containerized Lambdas
+        # Add dependency on base image resource if provided
+        lambda_opts = ResourceOptions(parent=self)
+        if base_image_resource:
+            lambda_opts = ResourceOptions(parent=self, depends_on=[base_image_resource])
+            
         self.chromadb_lambdas = ChromaDBLambdas(
             f"{name}-chromadb-lambdas",
             chromadb_bucket_name=self.chromadb_buckets.bucket_name,
@@ -77,7 +83,7 @@ class WordLabelStepFunctions(ComponentResource):
             openai_api_key=openai_api_key,
             stack=stack,
             base_image_name=base_image_name,
-            opts=ResourceOptions(parent=self),
+            opts=lambda_opts,
         )
 
         # Define IAM role for Lambda

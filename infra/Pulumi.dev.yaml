@@ -24,3 +24,5 @@ config:
   lambda-layer:sync-mode: "true"
   portfolio:notification_emails:
     - "tnorlund@icloud.com" # Replace with your actual email address
+  portfolio:use-static-base-image: "true"  # Use stable tags for faster dev builds
+  portfolio:docker-buildkit: "true"        # Enable Docker BuildKit for caching
