@@ -1,20 +1,27 @@
 import uuid
 from datetime import datetime
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job_resource import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_resource import JobResource
 
-# This entity is not used in production infrastructure
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.unused_in_production
-]
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -114,7 +121,7 @@ def test_addJobResource_success(
 def test_addJobResource_raises_value_error(job_resource_dynamo):
     """Test that addJobResource raises ValueError when job_resource is None"""
     with pytest.raises(
-        ValueError,
+        OperationError,
         match="job_resource cannot be None",
     ):
         job_resource_dynamo.add_job_resource(None)
@@ -127,8 +134,8 @@ def test_addJobResource_raises_value_error_not_instance(job_resource_dynamo):
     instance of JobResource
     """
     with pytest.raises(
-        ValueError,
-        match="job_resource must be an instance of the JobResource class.",
+        OperationError,
+        match="job_resource must be an instance of JobResource",
     ):
         job_resource_dynamo.add_job_resource("not a job resource")
 
@@ -150,9 +157,7 @@ def test_addJobResource_raises_conditional_check_failed(
     # Try to add it again
     with pytest.raises(
         EntityAlreadyExistsError,
-        match=f"JobResource with resource ID "
-        f"{sample_job_resource.resource_id} for job "
-        f"{sample_job_resource.job_id} already exists",
+        match="job_resource already exists",
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
 
@@ -177,7 +182,7 @@ def test_addJobResource_raises_resource_not_found(
     )
 
     with pytest.raises(
-        Exception, match="Could not add job resource to DynamoDB"
+        OperationError, match="DynamoDB resource not found during add_job_resource"
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
     mock_put.assert_called_once()
@@ -217,7 +222,7 @@ def test_getJobResource_success(
 @pytest.mark.integration
 def test_getJobResource_raises_value_error_job_id_none(job_resource_dynamo):
     """Test that getJobResource raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_resource_dynamo.get_job_resource(None, "resource-123")
 
 
@@ -242,7 +247,7 @@ def test_getJobResource_raises_value_error_not_found(
     not exist
     """
     with pytest.raises(
-        ValueError, match="No job resource found with job ID.*"
+        EntityNotFoundError, match="No job resource found with job ID.*"
     ):
         job_resource_dynamo.get_job_resource(
             sample_job.job_id, "nonexistent-resource"
@@ -291,7 +296,7 @@ def test_updateJobResourceStatus_raises_value_error_job_id_none(
     """
     Test that updateJobResourceStatus raises ValueError when job_id is None
     """
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_resource_dynamo.update_job_resource_status(
             None, "resource-123", "released"
         )
@@ -322,7 +327,7 @@ def test_updateJobResourceStatus_raises_value_error_status_none(
     Test that updateJobResourceStatus raises ValueError when status is None
     """
     with pytest.raises(
-        ValueError, match="Status is required and must be a non-empty string."
+        EntityValidationError, match="Status is required and must be a non-empty string"
     ):
         job_resource_dynamo.update_job_resource_status(
             sample_job.job_id, sample_job_resource.resource_id, None
@@ -336,7 +341,7 @@ def test_updateJobResourceStatus_raises_value_error_invalid_status(
     """
     Test that updateJobResourceStatus raises ValueError when status is invalid
     """
-    with pytest.raises(ValueError, match="Invalid status.*"):
+    with pytest.raises(EntityValidationError, match="Invalid status.*"):
         job_resource_dynamo.update_job_resource_status(
             sample_job.job_id,
             sample_job_resource.resource_id,
@@ -364,7 +369,7 @@ def test_updateJobResourceStatus_not_found(
     )
 
     with pytest.raises(
-        ValueError, match="No job resource found with job ID.*"
+        EntityNotFoundError, match="No job resource found with job ID.*"
     ):
         job_resource_dynamo.update_job_resource_status(
             sample_job.job_id,
@@ -645,7 +650,7 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises ValueError when keys are
     missing
     """
-    with pytest.raises(ValueError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
@@ -686,7 +691,7 @@ def test_listJobResources_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not list job resources from the database"
+        OperationError, match="DynamoDB resource not found during list_job_resources"
     ):
         job_resource_dynamo.list_job_resources(sample_job.job_id)
     mock_query.assert_called_once()
@@ -714,7 +719,7 @@ def test_listResourcesByType_raises_client_error(job_resource_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        Exception, match="Could not query resources by type from the database"
+        OperationError, match="DynamoDB resource not found during list_resources_by_type"
     ):
         job_resource_dynamo.list_resources_by_type("gpu")
     mock_query.assert_called_once()
@@ -743,6 +748,6 @@ def test_getResourceById_raises_client_error(job_resource_dynamo, mocker):
     # Call the method and verify it raises the expected exception
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(DynamoDBError, match="Could not get resource by ID"):
+    with pytest.raises(OperationError, match="DynamoDB resource not found during get_resource_by_id"):
         job_resource_dynamo.get_resource_by_id("resource-123")
     mock_query.assert_called_once()
