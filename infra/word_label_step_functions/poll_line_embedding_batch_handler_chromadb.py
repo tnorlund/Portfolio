@@ -6,12 +6,12 @@ The compaction job will later merge these deltas into the main ChromaDB collecti
 """
 
 import json
-import boto3
 import uuid
 import gzip
 import os
 from datetime import datetime, timezone
 from logging import INFO, Formatter, StreamHandler, getLogger
+import boto3
 
 from receipt_label.poll_line_embedding_batch.poll_line_batch import (
     download_openai_batch_result,
@@ -23,9 +23,10 @@ from receipt_label.poll_line_embedding_batch.poll_line_batch import (
     _parse_metadata_from_line_id,
     _parse_prev_next_from_formatted,
 )
-from receipt_label.submit_line_embedding_batch.submit_line_batch import (
+from receipt_label.embedding.line.realtime import (
     _format_line_context_embedding_input,
 )
+
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -48,7 +49,7 @@ DELTA_BUCKET = os.environ.get("DELTA_BUCKET", "chromadb-deltas-bucket")
 def save_embeddings_delta(results, descriptions, batch_id):
     """
     Save embeddings as a delta file to S3.
-    
+
     This creates a compressed JSON file with ChromaDB-compatible data structure
     that will be processed later by the compaction job.
     """
@@ -61,26 +62,26 @@ def save_embeddings_delta(results, descriptions, batch_id):
         "metadatas": [],
         "documents": [],
     }
-    
+
     for result in results:
         # Parse metadata from custom_id
         meta = _parse_metadata_from_line_id(result["custom_id"])
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
         line_id = meta["line_id"]
-        
+
         # Get receipt details
         receipt_details = descriptions[image_id][receipt_id]
         lines = receipt_details["lines"]
         target_line = next((l for l in lines if l.line_id == line_id), None)
-        
+
         if not target_line:
             logger.warning(
                 f"No ReceiptLine found for image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id}"
             )
             continue
-            
+
         # Calculate line metrics
         line_words = [
             w for w in receipt_details["words"] if w.line_id == line_id
@@ -91,18 +92,18 @@ def save_embeddings_delta(results, descriptions, batch_id):
             else target_line.confidence
         )
         word_count = len(line_words)
-        
+
         # Get line centroid and dimensions
         x_center, y_center = target_line.calculate_centroid()
         width = target_line.bounding_box["width"]
         height = target_line.bounding_box["height"]
-        
+
         # Format the line context to extract prev/next lines
         embedding_input = _format_line_context_embedding_input(
             target_line, lines
         )
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
-        
+
         # Merchant name handling
         metadata = receipt_details["metadata"]
         if (
@@ -112,11 +113,11 @@ def save_embeddings_delta(results, descriptions, batch_id):
             merchant_name = metadata.canonical_merchant_name
         else:
             merchant_name = metadata.merchant_name
-            
+
         # Standardize merchant name format
         if merchant_name:
             merchant_name = merchant_name.strip().title()
-        
+
         # Add to delta
         delta_data["ids"].append(result["custom_id"])
         delta_data["embeddings"].append(result["embedding"])
@@ -141,11 +142,11 @@ def save_embeddings_delta(results, descriptions, batch_id):
             }
         )
         delta_data["documents"].append(target_line.text)
-    
+
     # Compress and save to S3
     delta_id = str(uuid.uuid4())
     delta_key = f"deltas/{delta_id}/embeddings.json.gz"
-    
+
     compressed = gzip.compress(json.dumps(delta_data).encode("utf-8"))
     s3_client.put_object(
         Bucket=DELTA_BUCKET,
@@ -157,7 +158,7 @@ def save_embeddings_delta(results, descriptions, batch_id):
             "count": str(len(delta_data["ids"])),
         },
     )
-    
+
     return {
         "delta_id": delta_id,
         "delta_key": delta_key,
@@ -168,7 +169,7 @@ def save_embeddings_delta(results, descriptions, batch_id):
 def poll_handler(event, context):
     """
     Poll an embedding batch and save results as deltas to S3.
-    
+
     This handler creates delta files that will be processed by the
     compaction job, avoiding direct writes to ChromaDB.
 
@@ -179,9 +180,7 @@ def poll_handler(event, context):
     Returns:
         A dictionary containing the status code and delta information.
     """
-    logger.info(
-        "Starting poll_line_embedding_batch_handler (Delta pattern)"
-    )
+    logger.info("Starting poll_line_embedding_batch_handler (Delta pattern)")
     logger.info(f"Event: {event}")
 
     batch_id = event["batch_id"]

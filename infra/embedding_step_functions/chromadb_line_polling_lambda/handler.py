@@ -106,8 +106,9 @@ def poll_handler(event, _context):
         mark_batch_complete(batch_id)
         logger.info("Marked batch %s as complete", batch_id)
 
+        # Return delta information for CompactAllDeltas step
+        # Include batch info for tracking/debugging
         return {
-            "statusCode": 200,
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
             "batch_status": batch_status,
@@ -118,9 +119,10 @@ def poll_handler(event, _context):
             "storage": "s3_delta",
         }
 
+    # Batch not completed yet - return minimal info
     return {
-        "statusCode": 200,
         "batch_id": batch_id,
         "openai_batch_id": openai_batch_id,
         "batch_status": batch_status,
+        # No delta info since batch isn't complete
     }

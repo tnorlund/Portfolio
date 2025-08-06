@@ -427,7 +427,7 @@ def save_line_embeddings_as_delta(
         )
 
         # Import locally to avoid circular import
-        from receipt_label.embedding.line.submit import (  # pylint: disable=import-outside-toplevel
+        from receipt_label.embedding.line.realtime import (  # pylint: disable=import-outside-toplevel
             _format_line_context_embedding_input,
         )
 

@@ -20,6 +20,7 @@ from pulumi import (
     FileAsset,
     Output,
     ResourceOptions,
+    Resource,
 )
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
@@ -29,7 +30,8 @@ from pulumi_aws.sfn import StateMachine
 # Import ChromaDB infrastructure components
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
 from .chromadb_lambdas import ChromaDBLambdas
-from base_images import BaseImages
+# Note: This import is not actually used in this file
+# from base_images.base_images_v3 import BaseImages
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -44,7 +46,13 @@ stack = pulumi.get_stack()
 class LineEmbeddingStepFunction(ComponentResource):
     """ChromaDB-based line embedding step function."""
 
-    def __init__(self, name: str, base_image_name: Output[str] = None, opts: ResourceOptions = None):
+    def __init__(
+        self,
+        name: str,
+        base_image_name: Output[str] = None,
+        base_image_resource: Resource = None,
+        opts: ResourceOptions = None,
+    ):
         super().__init__(
             f"{__name__}-{name}",
             "aws:stepfunctions:LineEmbeddingStepFunction",
@@ -70,8 +78,15 @@ class LineEmbeddingStepFunction(ComponentResource):
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
-        
+
         # Create ChromaDB containerized Lambdas (includes all Lambda functions)
+        # Add dependency on base image resource if provided
+        lambda_opts = ResourceOptions(parent=self)
+        if base_image_resource:
+            lambda_opts = ResourceOptions(
+                parent=self, depends_on=[base_image_resource]
+            )
+
         self.chromadb_lambdas = ChromaDBLambdas(
             f"{name}-chromadb",
             chromadb_bucket_name=self.chromadb_buckets.bucket_name,
@@ -81,7 +96,8 @@ class LineEmbeddingStepFunction(ComponentResource):
             s3_batch_bucket_name=self.batch_bucket.bucket,
             stack=stack,
             base_image_name=base_image_name,
-            opts=ResourceOptions(parent=self),
+            base_image_resource=base_image_resource,
+            opts=lambda_opts,
         )
 
         # Create IAM role for Step Function
@@ -140,13 +156,19 @@ class LineEmbeddingStepFunction(ComponentResource):
             ).apply(
                 lambda arns: json.dumps(
                     {
-                        "Comment": "Poll OpenAI for completed line embedding batches and store in ChromaDB",
+                        "Comment": (
+                            "Poll OpenAI for completed line embedding batches and "
+                            "store in ChromaDB"
+                        ),
                         "StartAt": "ListPendingBatches",
                         "States": {
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Comment": "Find all OpenAI batches with status=PENDING",
+                                "Comment": (
+                                    "Find all OpenAI batches with "
+                                    "status=PENDING"
+                                ),
                                 "Next": "PollLineEmbeddingBatch",
                             },
                             "PollLineEmbeddingBatch": {
@@ -154,8 +176,8 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "ItemsPath": "$",
                                 "MaxConcurrency": 10,
                                 "Parameters": {
-                                    "batch_id.$": "$.batch_id",
-                                    "openai_batch_id.$": "$.openai_batch_id",
+                                    "batch_id.$": "$$.Map.Item.Value.batch_id",
+                                    "openai_batch_id.$": "$$.Map.Item.Value.openai_batch_id",
                                     "skip_sqs_notification": True,
                                 },
                                 "Iterator": {
@@ -175,7 +197,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Task",
                                 "Resource": arns[2],
                                 "Parameters": {
-                                    "delta_results.$": "$.poll_results[*]"
+                                    "delta_results.$": "$.poll_results"
                                 },
                                 "End": True,
                             },
@@ -196,13 +218,19 @@ class LineEmbeddingStepFunction(ComponentResource):
             ).apply(
                 lambda arns: json.dumps(
                     {
-                        "Comment": "Find receipt lines without embeddings and submit them to OpenAI Batch API",
+                        "Comment": (
+                            "Find receipt lines without embeddings and submit "
+                            "them to OpenAI Batch API"
+                        ),
                         "StartAt": "ListLinesThatNeedEmbedding",
                         "States": {
                             "ListLinesThatNeedEmbedding": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Comment": "Query DynamoDB for lines with embedding_status=NONE",
+                                "Comment": (
+                                    "Query DynamoDB for lines with "
+                                    "embedding_status=NONE"
+                                ),
                                 "Next": "SubmitEmbedding",
                             },
                             "SubmitEmbedding": {
@@ -239,13 +267,21 @@ class LineEmbeddingStepFunction(ComponentResource):
                 "chromadb_compaction_lambda_arn": (
                     self.chromadb_lambdas.compaction_lambda.arn
                 ),
-                "poll_and_store_embeddings_sm_arn": self.poll_and_store_embeddings_sm.arn,
-                "create_embedding_batches_sm_arn": self.create_embedding_batches_sm.arn,
+                "poll_and_store_embeddings_sm_arn": (
+                    self.poll_and_store_embeddings_sm.arn
+                ),
+                "create_embedding_batches_sm_arn": (
+                    self.create_embedding_batches_sm.arn
+                ),
                 "list_pending_openai_batches_lambda_arn": (
                     self.chromadb_lambdas.list_pending_lambda.arn
                 ),
-                "find_lines_needing_embeddings_lambda_arn": self.chromadb_lambdas.find_unembedded_lambda.arn,
-                "submit_lines_to_openai_lambda_arn": self.chromadb_lambdas.submit_openai_lambda.arn,
+                "find_lines_needing_embeddings_lambda_arn": (
+                    self.chromadb_lambdas.find_unembedded_lambda.arn
+                ),
+                "submit_lines_to_openai_lambda_arn": (
+                    self.chromadb_lambdas.submit_openai_lambda.arn
+                ),
             }
         )
 
