@@ -1,23 +1,27 @@
 import uuid
 from datetime import datetime, timedelta
+from typing import Type
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo.data._job_metric import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
 )
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_metric import JobMetric
 
-# This entity is not used in production infrastructure
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.unused_in_production
-]
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -131,7 +135,7 @@ def test_addJobMetric_success(
 @pytest.mark.integration
 def test_addJobMetric_raises_value_error(job_metric_dynamo):
     """Test that addJobMetric raises ValueError when job_metric is None"""
-    with pytest.raises(ValueError, match="job_metric cannot be None"):
+    with pytest.raises(OperationError, match="job_metric cannot be None"):
         job_metric_dynamo.add_job_metric(None)
 
 
@@ -142,8 +146,8 @@ def test_addJobMetric_raises_value_error_not_instance(job_metric_dynamo):
     instance of JobMetric
     """
     with pytest.raises(
-        ValueError,
-        match="job_metric must be an instance of the JobMetric class.",
+        OperationError,
+        match="job_metric must be an instance of JobMetric",
     ):
         job_metric_dynamo.add_job_metric("not a job metric")
 
@@ -229,7 +233,7 @@ def test_getJobMetric_success(
 @pytest.mark.integration
 def test_getJobMetric_raises_value_error_job_id_none(job_metric_dynamo):
     """Test that getJobMetric raises ValueError when job_id is None"""
-    with pytest.raises(ValueError, match="job_id cannot be None"):
+    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
         job_metric_dynamo.get_job_metric(None, "loss", "2021-01-01T12:30:45")
 
 
@@ -266,7 +270,7 @@ def test_getJobMetric_raises_value_error_not_found(
     """
     Test that getJobMetric raises ValueError when the job metric does not exist
     """
-    with pytest.raises(ValueError, match="No job metric found with job ID.*"):
+    with pytest.raises(EntityNotFoundError, match="No job metric found with job ID.*"):
         job_metric_dynamo.get_job_metric(
             sample_job.job_id, "nonexistent", "2021-01-01T12:30:45"
         )
@@ -683,7 +687,7 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises ValueError when keys are
     missing
     """
-    with pytest.raises(ValueError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
