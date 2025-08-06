@@ -51,32 +51,21 @@ def poll_handler(_event, _context):
                 }
             )
 
-        return {
-            "statusCode": 200,
-            "body": batch_list,
-        }
+        # Return the list directly for Step Functions
+        # Step Functions doesn't need HTTP-style responses
+        return batch_list
 
     except AttributeError as e:
         logger.error("Client manager configuration error: %s", str(e))
-        return {
-            "statusCode": 500,
-            "error": f"Configuration error: {str(e)}",
-            "body": [],
-        }
+        # For Step Functions, throwing an exception is better than returning an error object
+        # This will cause the state to fail with proper error handling
+        raise RuntimeError(f"Configuration error: {str(e)}") from e
     except KeyError as e:
         logger.error("Missing expected field in DynamoDB response: %s", str(e))
-        return {
-            "statusCode": 500,
-            "error": f"Data format error: {str(e)}",
-            "body": [],
-        }
+        raise RuntimeError(f"Data format error: {str(e)}") from e
     except Exception as e:  # pylint: disable=broad-exception-caught
         # Catch-all for other exceptions (network errors, etc.)
         logger.error(
             "Unexpected error listing pending line batches: %s", str(e)
         )
-        return {
-            "statusCode": 500,
-            "error": f"Internal error: {str(e)}",
-            "body": [],
-        }
+        raise RuntimeError(f"Internal error: {str(e)}") from e

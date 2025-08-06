@@ -151,7 +151,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                             },
                             "PollLineEmbeddingBatch": {
                                 "Type": "Map",
-                                "ItemsPath": "$.body",
+                                "ItemsPath": "$",
                                 "MaxConcurrency": 10,
                                 "Parameters": {
                                     "batch_id.$": "$.batch_id",
