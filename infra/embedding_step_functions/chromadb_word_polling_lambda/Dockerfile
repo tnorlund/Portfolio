@@ -1,15 +1,23 @@
+# syntax=docker/dockerfile:1
 # Use the base image with receipt_label (which includes receipt_dynamo)
 ARG BASE_IMAGE
 ARG PYTHON_VERSION=3.12
+ARG CACHE_DATE
 FROM ${BASE_IMAGE:-public.ecr.aws/lambda/python:${PYTHON_VERSION}}
 
-# Always reinstall packages to ensure we have the latest version without pinecone
+# Conditionally install packages based on base image presence
 COPY receipt_dynamo /tmp/receipt_dynamo
 COPY receipt_label /tmp/receipt_label
 
-RUN pip install --no-cache-dir --force-reinstall /tmp/receipt_dynamo && \
-    pip install --no-cache-dir --force-reinstall /tmp/receipt_label && \
-    pip install --no-cache-dir chromadb>=0.5.0 && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -z "$BASE_IMAGE" ]; then \
+        # No base image - install everything
+        pip install --no-cache-dir /tmp/receipt_dynamo && \
+        pip install --no-cache-dir /tmp/receipt_label; \
+    else \
+        # Base image has receipt_label which already includes chromadb>=0.5.0
+        echo "Using base image - all dependencies including chromadb already installed"; \
+    fi && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
 # Copy handler code

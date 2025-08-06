@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 ARG BASE_IMAGE
 ARG PYTHON_VERSION=3.12
 ARG CACHE_DATE
@@ -11,17 +12,33 @@ RUN if [ -z "$BASE_IMAGE" ]; then \
     fi
 
 # Only copy and install packages if not using base image
+# When using base image, packages are already installed
 RUN if [ -z "$BASE_IMAGE" ]; then \
-        echo "Installing packages..."; \
+        echo "Installing packages from source..."; \
     fi
 
-# Always copy and install packages to ensure we have the latest version
-# even when using base image (base might have old version with pinecone)
+# Conditionally copy and install packages only if not using base image
+# Base images already have these packages installed
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -z "$BASE_IMAGE" ]; then \
+        # Copy packages inline during the RUN command
+        mkdir -p /tmp/packages && \
+        echo "No base image detected, will install packages"; \
+    else \
+        echo "Using base image with pre-installed packages"; \
+    fi
+
+# Only copy and install if not using base image
 COPY receipt_dynamo /tmp/receipt_dynamo
 COPY receipt_label /tmp/receipt_label
 
-RUN pip install --no-cache-dir --force-reinstall /tmp/receipt_dynamo && \
-    pip install --no-cache-dir --force-reinstall /tmp/receipt_label && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -z "$BASE_IMAGE" ]; then \
+        pip install --no-cache-dir /tmp/receipt_dynamo && \
+        pip install --no-cache-dir /tmp/receipt_label; \
+    else \
+        echo "Packages already installed in base image"; \
+    fi && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
 # Copy Lambda handler
