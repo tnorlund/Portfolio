@@ -154,8 +154,8 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "ItemsPath": "$.body",
                                 "MaxConcurrency": 10,
                                 "Parameters": {
-                                    "batch_id.$": "$.Map.Item.Value.batch_id",
-                                    "openai_batch_id.$": "$.Map.Item.Value.openai_batch_id",
+                                    "batch_id.$": "$.batch_id",
+                                    "openai_batch_id.$": "$.openai_batch_id",
                                     "skip_sqs_notification": True,
                                 },
                                 "Iterator": {

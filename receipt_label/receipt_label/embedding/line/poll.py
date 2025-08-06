@@ -78,7 +78,7 @@ def list_pending_line_embedding_batches(
         status="PENDING",
         batch_type=BatchType.LINE_EMBEDDING,
         limit=25,
-        lastEvaluatedKey=None,
+        last_evaluated_key=None,
     )
     while lek:
         next_summaries, lek = (
@@ -86,7 +86,7 @@ def list_pending_line_embedding_batches(
                 status="PENDING",
                 batch_type=BatchType.LINE_EMBEDDING,
                 limit=25,
-                lastEvaluatedKey=lek,
+                last_evaluated_key=lek,
             )
         )
         summaries.extend(next_summaries)
@@ -222,7 +222,6 @@ def _get_section_by_line_id(
     return next(
         (s.section_type for s in sections if line_id in s.line_ids), None
     )
-
 
 
 def write_line_embedding_results_to_dynamo(
@@ -374,10 +373,10 @@ def save_line_embeddings_as_delta(
 ) -> dict:
     """
     Save line embedding results as a delta file to S3 for ChromaDB compaction.
-    
+
     This replaces the direct Pinecone upsert with a delta file that will be
     processed later by the compaction job.
-    
+
     Args:
         results (List[dict]): The list of embedding results, each containing:
             - custom_id (str)
@@ -385,7 +384,7 @@ def save_line_embeddings_as_delta(
         descriptions (dict): A nested dict of receipt details keyed by
             image_id and receipt_id.
         batch_id (str): The identifier of the batch.
-            
+
     Returns:
         dict: Delta creation result with keys:
             - delta_id: Unique identifier for the delta
@@ -397,20 +396,20 @@ def save_line_embeddings_as_delta(
     embeddings = []
     metadatas = []
     documents = []
-    
+
     for result in results:
         # Parse metadata from custom_id
         meta = _parse_metadata_from_line_id(result["custom_id"])
         image_id = meta["image_id"]
         receipt_id = meta["receipt_id"]
         line_id = meta["line_id"]
-        
+
         # Get receipt details
         receipt_details = descriptions[image_id][receipt_id]
         lines = receipt_details["lines"]
         words = receipt_details["words"]
         metadata = receipt_details["metadata"]
-        
+
         # Find the target line
         target_line = next((l for l in lines if l.line_id == line_id), None)
         if not target_line:
@@ -418,7 +417,7 @@ def save_line_embeddings_as_delta(
                 f"No ReceiptLine found for image_id={image_id}, "
                 f"receipt_id={receipt_id}, line_id={line_id}"
             )
-            
+
         # Get line words for confidence calculation
         line_words = [w for w in words if w.line_id == line_id]
         avg_confidence = (
@@ -426,16 +425,18 @@ def save_line_embeddings_as_delta(
             if line_words
             else target_line.confidence
         )
-        
+
         # Import locally to avoid circular import
         from receipt_label.embedding.line.submit import (  # pylint: disable=import-outside-toplevel
             _format_line_context_embedding_input,
         )
-        
+
         # Get line context
-        embedding_input = _format_line_context_embedding_input(target_line, lines)
+        embedding_input = _format_line_context_embedding_input(
+            target_line, lines
+        )
         prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
-        
+
         # Priority: canonical name > regular merchant name
         if (
             hasattr(metadata, "canonical_merchant_name")
@@ -444,11 +445,11 @@ def save_line_embeddings_as_delta(
             merchant_name = metadata.canonical_merchant_name
         else:
             merchant_name = metadata.merchant_name
-            
+
         # Standardize the merchant name format
         if merchant_name:
             merchant_name = merchant_name.strip().title()
-            
+
         # Build metadata for ChromaDB
         line_metadata = {
             "image_id": image_id,
@@ -466,25 +467,25 @@ def save_line_embeddings_as_delta(
             "merchant_name": merchant_name,
             "source": "openai_embedding_batch",
         }
-        
+
         # Add section label if available
         if hasattr(target_line, "section_label") and target_line.section_label:
             line_metadata["section_label"] = target_line.section_label
-            
+
         # Add to delta arrays
         ids.append(result["custom_id"])
         embeddings.append(result["embedding"])
         metadatas.append(line_metadata)
         documents.append(target_line.text)
-    
+
     # Get S3 bucket from environment
     bucket_name = os.environ.get("CHROMADB_BUCKET")
     if not bucket_name:
         raise ValueError("CHROMADB_BUCKET environment variable not set")
-    
+
     # Get SQS queue URL if configured
     sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-        
+
     # Produce the delta file
     delta_result = produce_embedding_delta(
         ids=ids,
@@ -496,5 +497,5 @@ def save_line_embeddings_as_delta(
         collection_name="receipt_lines",
         batch_id=batch_id,
     )
-    
+
     return delta_result
