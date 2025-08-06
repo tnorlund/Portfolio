@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 from botocore.exceptions import ClientError
+from pytest_mock import MockerFixture
 
 from receipt_dynamo import (
     ReceiptValidationResult,
@@ -12,12 +13,13 @@ from receipt_dynamo import (
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
     DynamoDBServerError,
-    DynamoDBValidationError,
+    DynamoDBThroughputError,
     EntityAlreadyExistsError,
+    EntityNotFoundError,
     EntityValidationError,
+    OperationError,
 )
 
 # This entity is not used in production infrastructure
@@ -26,9 +28,12 @@ pytestmark = [
     pytest.mark.unused_in_production
 ]
 
+# =============================================================================
+# TEST DATA AND FIXTURES
+# =============================================================================
 
 @pytest.fixture
-def sample_receipt_validation_result():
+def sample_receipt_validation_result() -> ReceiptValidationResult:
     """
     Creates a sample ReceiptValidationResult for testing.
     """
@@ -50,6 +55,74 @@ def sample_receipt_validation_result():
         },
     )
 
+
+# -------------------------------------------------------------------
+#                   PARAMETERIZED CLIENT ERROR TESTS
+# -------------------------------------------------------------------
+
+# Common error scenarios for all operations
+ERROR_SCENARIOS = [
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
+    ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
+    ("ValidationException", EntityValidationError, "Validation error"),
+    ("AccessDeniedException", DynamoDBError, "DynamoDB error during"),
+    (
+        "ResourceNotFoundException",
+        OperationError,
+        "DynamoDB resource not found",
+    ),
+]
+
+# Additional error for add operations
+ADD_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityAlreadyExistsError,
+        "receipt_validation_result already exists",
+    ),
+] + ERROR_SCENARIOS
+
+# Additional error for update operations
+UPDATE_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "not found during update_receipt_validation_result",
+    ),
+] + ERROR_SCENARIOS
+
+# Additional error for delete operations
+DELETE_ERROR_SCENARIOS = [
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "receiptvalidationresult not found during delete_receipt_validation_result",
+    ),
+] + ERROR_SCENARIOS
+
+# -------------------------------------------------------------------
+#                   PARAMETERIZED VALIDATION ERROR TESTS
+# -------------------------------------------------------------------
+
+ADD_VALIDATION_SCENARIOS = [
+    (None, "result cannot be None"),
+    (
+        "not-a-validation-result",
+        "result must be an instance of ReceiptValidationResult",
+    ),
+]
+
+UPDATE_VALIDATION_SCENARIOS = [
+    (None, "result cannot be None"),
+    (
+        "not a ReceiptValidationResult",
+        "result must be an instance of ReceiptValidationResult",
+    ),
+]
 
 # Now let's implement test for addReceiptValidationResult
 @pytest.mark.integration
@@ -103,101 +176,51 @@ def test_addReceiptValidationResult_duplicate_raises(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "result cannot be None"),
-        (
-            "not-a-validation-result",
-            "result must be an instance of the ReceiptValidationResult class.",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_VALIDATION_SCENARIOS)
 def test_addReceiptValidationResult_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test adding a validation result with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_result raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock the put_item method to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "put_item")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.add_receipt_validation_result(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.add_receipt_validation_result(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_exception",
-    [
-        (
-            "ConditionalCheckFailedException",
-            "Item already exists",
-            "already exists",
-        ),
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "UnknownError",
-            "Unknown error",
-            "Could not add receipt validation result to DynamoDB",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
-    ],
+    "error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS
 )
 def test_addReceiptValidationResult_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_exception,
-):
-    """Test handling of client errors when adding a validation result"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_result raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "PutItem",
+    # pylint: disable=protected-access
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "PutItem",
+        ),
     )
-
-    # Mock the put_item method to raise the client error
-    mocker.patch.object(client._client, "put_item", side_effect=client_error)
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_exception):
+    with pytest.raises(expected_exception, match=error_match):
         client.add_receipt_validation_result(sample_receipt_validation_result)
+    mock_put.assert_called_once()
 
 
 # Now let's implement tests for addReceiptValidationResults
@@ -330,86 +353,46 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
     assert mock_batch_write.call_count >= 2
 
 
+ADD_RESULTS_VALIDATION_SCENARIOS = [
+    (None, "results cannot be None"),
+    (
+        "not-a-list",
+        "results must be a list",
+    ),
+    (
+        ["not-a-validation-result"],
+        "All items in results must be instances of ReceiptValidationResult",
+    ),
+]
+
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "results cannot be None"),
-        (
-            "not-a-list",
-            "results must be a list",
-        ),
-        (
-            ["not-a-validation-result"],
-            "results must be a list of ReceiptValidationResult instances.",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_RESULTS_VALIDATION_SCENARIOS)
 def test_addReceiptValidationResults_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test adding validation results with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_results raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock batch_write_item to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "batch_write_item")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.add_receipt_validation_results(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.add_receipt_validation_results(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error_message",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not add receipt validation result to DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_addReceiptValidationResults_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error_message,
-):
-    """Test handling of client errors when adding multiple validation results"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that add_receipt_validation_results raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
     # Create 3 different validation results
@@ -419,25 +402,23 @@ def test_addReceiptValidationResults_client_errors(
         result.result_index = i
         validation_results.append(result)
 
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "BatchWriteItem",
+    # pylint: disable=protected-access
+    mock_batch_write = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "BatchWriteItem",
+        ),
     )
-
-    # Mock batch_write_item to raise the client error
-    mocker.patch.object(
-        client._client, "batch_write_item", side_effect=client_error
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error_message):
+    with pytest.raises(expected_exception, match=error_match):
         client.add_receipt_validation_results(validation_results)
+    mock_batch_write.assert_called_once()
 
 
 # Now let's implement tests for updateReceiptValidationResult
@@ -481,107 +462,51 @@ def test_updateReceiptValidationResult_success(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "result cannot be None"),
-        (
-            "not a ReceiptValidationResult",
-            "result must be an instance of the ReceiptValidationResult class.",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS)
 def test_updateReceiptValidationResult_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test updating a validation result with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that update_receipt_validation_result raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock the put_item method to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "put_item")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.update_receipt_validation_result(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.update_receipt_validation_result(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ConditionalCheckFailedException",
-            "Item does not exist",
-            "does not exist",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not update receipt validation result in DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", UPDATE_ERROR_SCENARIOS
 )
 def test_updateReceiptValidationResult_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when updating a validation result"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that update_receipt_validation_result raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "PutItem",
+    # pylint: disable=protected-access
+    mock_put = mocker.patch.object(
+        client._client,
+        "put_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "PutItem",
+        ),
     )
-
-    # Mock the put_item method to raise the client error
-    mocker.patch.object(client._client, "put_item", side_effect=client_error)
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
-        client.update_receipt_validation_result(
-            sample_receipt_validation_result
-        )
+    with pytest.raises(expected_exception, match=error_match):
+        client.update_receipt_validation_result(sample_receipt_validation_result)
+    mock_put.assert_called_once()
 
 
 # Now let's implement tests for updateReceiptValidationResults
@@ -685,107 +610,46 @@ def test_updateReceiptValidationResults_with_large_batch(
         assert retrieved_result.message == f"Large batch updated message {i}"
 
 
+UPDATE_RESULTS_VALIDATION_SCENARIOS = [
+    (None, "results cannot be None"),
+    (
+        "not-a-list",
+        "results must be a list",
+    ),
+    (
+        [123, "not-a-validation-result"],
+        "All items in results must be instances of ReceiptValidationResult",
+    ),
+]
+
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "results cannot be None"),
-        (
-            "not-a-list",
-            "results must be a list",
-        ),
-        (
-            [123, "not-a-validation-result"],
-            "results must be a list of ReceiptValidationResult instances",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_RESULTS_VALIDATION_SCENARIOS)
 def test_updateReceiptValidationResults_invalid_inputs(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test updating validation results with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that update_receipt_validation_results raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock transact_write_items to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "transact_write_items")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.update_receipt_validation_results(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.update_receipt_validation_results(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error,cancellation_reasons,exception_type",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-            None,
-            DynamoDBError,
-        ),
-        (
-            "TransactionCanceledException",
-            "Transaction canceled due to ConditionalCheckFailed",
-            "One or more entities do not exist or conditions failed",
-            [{"Code": "ConditionalCheckFailed"}],
-            ValueError,
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-            None,
-            DynamoDBServerError,
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-            None,
-            Exception,  # Still Exception in the test
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-            None,
-            DynamoDBValidationError,
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-            None,
-            DynamoDBAccessError,
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not update receipt validation result in DynamoDB",
-            None,
-            DynamoDBError,
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_updateReceiptValidationResults_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-    cancellation_reasons,
-    exception_type,
-):
-    """Test handling of client errors when updating multiple validation results"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that update_receipt_validation_results raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
     # Create 3 different validation results
@@ -795,28 +659,23 @@ def test_updateReceiptValidationResults_client_errors(
         result.result_index = i
         validation_results.append(result)
 
-    # Create a client error response
-    error_response = {
-        "Error": {
-            "Code": error_code,
-            "Message": error_message,
-        }
-    }
-
-    # For TransactionCanceledException, add CancellationReasons if provided
-    if cancellation_reasons:
-        error_response["CancellationReasons"] = cancellation_reasons
-
-    client_error = ClientError(error_response, "TransactWriteItems")
-
-    # Mock transact_write_items to raise the client error
-    mocker.patch.object(
-        client._client, "transact_write_items", side_effect=client_error
+    # pylint: disable=protected-access
+    mock_transact = mocker.patch.object(
+        client._client,
+        "transact_write_items",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "TransactWriteItems",
+        ),
     )
-
-    # Act & Assert
-    with pytest.raises(exception_type, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.update_receipt_validation_results(validation_results)
+    mock_transact.assert_called_once()
 
 
 # Now let's implement tests for deleteReceiptValidationResult
@@ -861,106 +720,60 @@ def test_deleteReceiptValidationResult_success(
     assert "Item" not in response
 
 
+DELETE_VALIDATION_SCENARIOS = [
+    (None, "result cannot be None"),
+    (
+        "not-a-validation-result",
+        "result must be an instance of ReceiptValidationResult",
+    ),
+]
+
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "result cannot be None"),
-        (
-            "not-a-validation-result",
-            "result must be an instance of the ReceiptValidationResult class",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", DELETE_VALIDATION_SCENARIOS)
 def test_deleteReceiptValidationResult_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test deleting a validation result with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that delete_receipt_validation_result raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock delete_item to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "delete_item")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.delete_receipt_validation_result(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.delete_receipt_validation_result(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ConditionalCheckFailedException",
-            "Item does not exist",
-            "does not exist",
-        ),
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Provisioned throughput exceeded",
-            "Provisioned throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        ("AccessDeniedException", "Access denied", "Access denied"),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not delete receipt validation result from DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", DELETE_ERROR_SCENARIOS
 )
 def test_deleteReceiptValidationResult_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when deleting a validation result"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that delete_receipt_validation_result raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "DeleteItem",
+    # pylint: disable=protected-access
+    mock_delete = mocker.patch.object(
+        client._client,
+        "delete_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "DeleteItem",
+        ),
     )
-
-    # Mock delete_item to raise the client error
-    mocker.patch.object(
-        client._client, "delete_item", side_effect=client_error
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
-        client.delete_receipt_validation_result(
-            sample_receipt_validation_result
-        )
+    with pytest.raises(expected_exception, match=error_match):
+        client.delete_receipt_validation_result(sample_receipt_validation_result)
+    mock_delete.assert_called_once()
 
 
 # Now let's implement tests for deleteReceiptValidationResults
@@ -1019,86 +832,46 @@ def test_deleteReceiptValidationResults_success(
         assert "Item" not in response
 
 
+DELETE_RESULTS_VALIDATION_SCENARIOS = [
+    (None, "results cannot be None"),
+    (
+        "not-a-list",
+        "results must be a list",
+    ),
+    (
+        [123, "not-a-validation-result"],
+        "All items in results must be instances of ReceiptValidationResult",
+    ),
+]
+
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,expected_error",
-    [
-        (None, "results cannot be None"),
-        (
-            "not-a-list",
-            "results must be a list",
-        ),
-        (
-            [123, "not-a-validation-result"],
-            "results must be a list of ReceiptValidationResult instances",
-        ),
-    ],
-)
+@pytest.mark.parametrize("invalid_input,error_match", DELETE_RESULTS_VALIDATION_SCENARIOS)
 def test_deleteReceiptValidationResults_invalid_parameters(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    invalid_input,
-    expected_error,
-):
-    """Test deleting validation results with invalid parameters"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    invalid_input: Any,
+    error_match: str,
+) -> None:
+    """Tests that delete_receipt_validation_results raises appropriate error for
+    invalid inputs."""
     client = DynamoClient(dynamodb_table)
-
-    # Mock batch_write_item to avoid actual DynamoDB calls for invalid inputs
-    mocker.patch.object(client._client, "batch_write_item")
-
-    # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
-        client.delete_receipt_validation_results(invalid_input)
+    with pytest.raises(OperationError, match=error_match):
+        client.delete_receipt_validation_results(invalid_input)  # type: ignore
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not delete receipt validation result from DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_deleteReceiptValidationResults_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when deleting multiple validation results"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that delete_receipt_validation_results raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
 
     # Create 3 different validation results
@@ -1108,25 +881,23 @@ def test_deleteReceiptValidationResults_client_errors(
         result.result_index = i
         validation_results.append(result)
 
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "BatchWriteItem",
+    # pylint: disable=protected-access
+    mock_batch_write = mocker.patch.object(
+        client._client,
+        "batch_write_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "BatchWriteItem",
+        ),
     )
-
-    # Mock batch_write_item to raise the client error
-    mocker.patch.object(
-        client._client, "batch_write_item", side_effect=client_error
-    )
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_validation_results(validation_results)
+    mock_batch_write.assert_called_once()
 
 
 @pytest.mark.integration
@@ -1274,7 +1045,7 @@ def test_getReceiptValidationResult_not_found(
 
     # Act & Assert
     with pytest.raises(
-        ValueError,
+        EntityNotFoundError,
         match=f"ReceiptValidationResult with field {field_name} and index {result_index} not found",
     ):
         client.get_receipt_validation_result(
@@ -1323,31 +1094,31 @@ def test_getReceiptValidationResult_not_found(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",
             0,
-            "field_name must not be empty.",
+            "field_name must not be empty",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field",
             -1,
-            "result_index must be non-negative.",
+            "result_index must be non-negative",
         ),
     ],
 )
 def test_getReceiptValidationResult_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
-    receipt_id,
-    image_id,
-    field_name,
-    result_index,
-    expected_error,
-):
+    receipt_id: Any,
+    image_id: Any,
+    field_name: Any,
+    result_index: Any,
+    expected_error: str,
+) -> None:
     """Test retrieving a validation result with invalid parameters"""
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises((ValueError, AssertionError), match=expected_error):
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.get_receipt_validation_result(
             receipt_id=receipt_id,
             image_id=image_id,
@@ -1358,74 +1129,41 @@ def test_getReceiptValidationResult_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not get receipt validation result",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_getReceiptValidationResult_client_errors(
-    dynamodb_table,
-    sample_receipt_validation_result,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when retrieving a validation result"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_validation_result: ReceiptValidationResult,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that get_receipt_validation_result raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "GetItem",
+    # pylint: disable=protected-access
+    mock_get = mocker.patch.object(
+        client._client,
+        "get_item",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "GetItem",
+        ),
     )
-
-    # Mock get_item to raise the client error
-    mocker.patch.object(client._client, "get_item", side_effect=client_error)
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.get_receipt_validation_result(
             receipt_id=sample_receipt_validation_result.receipt_id,
             image_id=sample_receipt_validation_result.image_id,
             field_name=sample_receipt_validation_result.field_name,
             result_index=sample_receipt_validation_result.result_index,
         )
+    mock_get.assert_called_once()
 
 
 # Now let's implement tests for listReceiptValidationResults
@@ -1635,68 +1373,35 @@ def test_listReceiptValidationResults_with_negative_limit(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not list receipt validation result from DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_listReceiptValidationResults_client_errors(
-    dynamodb_table,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when listing validation results"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that list_receipt_validation_results raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "Query",
+    # pylint: disable=protected-access
+    mock_query = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "Query",
+        ),
     )
-
-    # Mock query to raise the client error
-    mocker.patch.object(client._client, "query", side_effect=client_error)
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results()
+    mock_query.assert_called_once()
 
 
 # Now let's implement tests for listReceiptValidationResultsByType
@@ -1968,16 +1673,16 @@ def test_listReceiptValidationResultsByType_empty_results(
     ],
 )
 def test_listReceiptValidationResultsByType_invalid_parameters(
-    dynamodb_table,
-    result_type,
-    expected_error,
-):
+    dynamodb_table: Literal["MyMockedTable"],
+    result_type: Any,
+    expected_error: str,
+) -> None:
     """Test listing validation results by type with invalid parameters"""
     # Arrange
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_validation_results_by_type(result_type=result_type)
 
 
@@ -2000,68 +1705,35 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not list receipt validation result from DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_listReceiptValidationResultsByType_client_errors(
-    dynamodb_table,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
-    """Test handling of client errors when listing validation results by type"""
-    # Arrange
+    dynamodb_table: Literal["MyMockedTable"],
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests that list_receipt_validation_results_by_type raises appropriate exceptions for various
+    ClientError scenarios."""
     client = DynamoClient(dynamodb_table)
-
-    # Create a ClientError with the specified error code
-    client_error = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "Query",
+    # pylint: disable=protected-access
+    mock_query = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "Query",
+        ),
     )
-
-    # Mock query to raise the client error
-    mocker.patch.object(client._client, "query", side_effect=client_error)
-
-    # Act & Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results_by_type(result_type="error")
+    mock_query.assert_called_once()
 
 
 @pytest.mark.integration
@@ -2137,20 +1809,20 @@ def test_listReceiptValidationResultsForField_success(
     assert results[0].type == sample_receipt_validation_result.type
 
     # Verify query parameters
-    mock_query.assert_called_once_with(
-        TableName=dynamodb_table,
-        KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
-        ExpressionAttributeNames={
-            "#pk": "PK",
-            "#sk": "SK",
+    mock_query.assert_called_once()
+    call_args = mock_query.call_args
+    assert call_args[1]["TableName"] == dynamodb_table
+    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(call_args)
+    assert call_args[1]["ExpressionAttributeNames"] == {
+        "#pk": "PK",
+        "#sk": "SK",
+    }
+    assert call_args[1]["ExpressionAttributeValues"] == {
+        ":pk": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+        ":sk_prefix": {
+            "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
         },
-        ExpressionAttributeValues={
-            ":pk": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
-            ":sk_prefix": {
-                "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#"
-            },
-        },
-    )
+    }
 
 
 @pytest.mark.integration
@@ -2278,18 +1950,12 @@ def test_listReceiptValidationResultsForField_with_pagination(
     # First call
     first_call_args = mock_query.call_args_list[0][1]
     assert first_call_args["TableName"] == dynamodb_table
-    assert (
-        first_call_args["KeyConditionExpression"]
-        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-    )
+    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(mock_query.call_args_list[0])
 
     # Second call with ExclusiveStartKey
     second_call_args = mock_query.call_args_list[1][1]
     assert second_call_args["TableName"] == dynamodb_table
-    assert (
-        second_call_args["KeyConditionExpression"]
-        == "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-    )
+    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(mock_query.call_args_list[1])
     assert (
         second_call_args["ExclusiveStartKey"]
         == first_response["LastEvaluatedKey"]
@@ -2341,7 +2007,7 @@ def test_listReceiptValidationResultsForField_empty_results(
             "not_an_int",
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "field_name",
-            "receipt_id must be an integer.",
+            "receipt_id must be an integer",
         ),
         (
             1,
@@ -2360,23 +2026,23 @@ def test_listReceiptValidationResultsForField_empty_results(
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,
-            "field_name must be a string.",
+            "field_name must be a string",
         ),
         (
             1,
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "",
-            "field_name must not be empty.",
+            "field_name must not be empty",
         ),
     ],
 )
 def test_listReceiptValidationResultsForField_invalid_parameters(
-    dynamodb_table,
-    receipt_id,
-    image_id,
-    field_name,
-    expected_error,
-):
+    dynamodb_table: Literal["MyMockedTable"],
+    receipt_id: Any,
+    image_id: Any,
+    field_name: Any,
+    expected_error: str,
+) -> None:
     """
     Tests that listReceiptValidationResultsForField raises appropriate errors for invalid parameters.
     """
@@ -2384,7 +2050,7 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
     client = DynamoClient(table_name=dynamodb_table)
 
     # Execute and Assert
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_validation_results_for_field(
             receipt_id=receipt_id,
             image_id=image_id,
@@ -2394,69 +2060,40 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "error_code,error_message,expected_error",
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            "Table not found",
-        ),
-        (
-            "ProvisionedThroughputExceededException",
-            "Throughput exceeded",
-            "Throughput exceeded",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            "Internal server error",
-        ),
-        (
-            "ValidationException",
-            "One or more parameters given were invalid",
-            "One or more parameters given were invalid",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            "Access denied",
-        ),
-        (
-            "UnknownError",
-            "Unknown error occurred",
-            "Could not list receipt validation result from DynamoDB",
-        ),
-    ],
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
 )
 def test_listReceiptValidationResultsForField_client_errors(
-    dynamodb_table,
-    mocker,
-    error_code,
-    error_message,
-    expected_error,
-):
+    dynamodb_table: Literal["MyMockedTable"],
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
     """
     Tests that listReceiptValidationResultsForField handles client errors appropriately.
     """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
 
-    # Mock the client error
-    mock_query = mocker.patch.object(client._client, "query")
-    mock_query.side_effect = ClientError(
-        {
-            "Error": {
-                "Code": error_code,
-                "Message": error_message,
-            }
-        },
-        "Query",
+    # pylint: disable=protected-access
+    mock_query = mocker.patch.object(
+        client._client,
+        "query",
+        side_effect=ClientError(
+            {
+                "Error": {
+                    "Code": error_code,
+                    "Message": f"Mocked {error_code}",
+                }
+            },
+            "Query",
+        ),
     )
-
     # Execute and Assert
-    with pytest.raises(Exception, match=expected_error):
+    with pytest.raises(expected_exception, match=error_match):
         client.list_receipt_validation_results_for_field(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             field_name="total_amount",
         )
+    mock_query.assert_called_once()
