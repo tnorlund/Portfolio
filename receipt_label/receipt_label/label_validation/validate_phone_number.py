@@ -9,7 +9,7 @@ from receipt_dynamo.entities import ReceiptWord  # type: ignore
 from receipt_dynamo.entities import ReceiptWordLabel
 
 from receipt_label.label_validation.data import LabelValidationResult
-from receipt_label.label_validation.utils import pinecone_id_from_label
+from receipt_label.label_validation.utils import chroma_id_from_label
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 
@@ -78,9 +78,9 @@ def validate_phone_number(
         client_manager = get_client_manager()
     pinecone_index = client_manager.pinecone
 
-    pinecone_id = pinecone_id_from_label(label)
-    fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
-    vector_data = fetch_response.vectors.get(pinecone_id)
+    chroma_id = chroma_id_from_label(label)
+    fetch_response = pinecone_index.fetch(ids=[chroma_id], namespace="words")
+    vector_data = fetch_response.vectors.get(chroma_id)
     if vector_data is None:
         return LabelValidationResult(
             image_id=label.image_id,
@@ -92,7 +92,7 @@ def validate_phone_number(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            pinecone_id=pinecone_id,
+            chroma_id=chroma_id,
         )
     vector = vector_data.values
     query_response = pinecone_index.query(

@@ -1,22 +1,25 @@
-# Use AWS Lambda Python base image for ARM64
-FROM public.ecr.aws/lambda/python:3.12-arm64
+# Use the base image if provided, otherwise use Lambda Python base
+ARG BASE_IMAGE
+ARG PYTHON_VERSION=3.12
+FROM ${BASE_IMAGE:-public.ecr.aws/lambda/python:${PYTHON_VERSION}-arm64}
 
-# Install system dependencies for ChromaDB compilation
-RUN dnf install -y \
-    gcc-c++ \
-    python3-devel \
-    && dnf clean all
+# Install system dependencies only if not using base image
+RUN if [ -z "${BASE_IMAGE}" ]; then \
+        dnf install -y gcc-c++ python3-devel && dnf clean all && \
+        export HNSWLIB_NO_NATIVE=1; \
+    fi
 
-# Set environment variable to avoid compilation issues
-ENV HNSWLIB_NO_NATIVE=1
+# Install ChromaDB separately since it's not in the base image
+RUN pip install --no-cache-dir chromadb>=0.5.0
 
 # Copy requirements file and handler code
-# These paths are relative to the build context (repository root)
 COPY infra/word_label_step_functions/chromadb_compaction_lambda/requirements.txt ${LAMBDA_TASK_ROOT}/
 COPY infra/word_label_step_functions/chromadb_compaction_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install additional dependencies only if not using base image
+RUN if [ -z "${BASE_IMAGE}" ]; then \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 # Command to run the Lambda handler
 CMD ["handler.compact_handler"]

@@ -72,6 +72,7 @@ class BaseImages(ComponentResource):
         build_context_path = Path(__file__).parent.parent.parent
 
         # Build receipt_dynamo base image
+        # Explicitly depend on ECR repository being ready
         self.dynamo_base_image = Image(
             f"base-receipt-dynamo-img-{stack}",
             build=DockerBuildArgs(
@@ -95,10 +96,10 @@ class BaseImages(ComponentResource):
                 password=ecr_auth_token.password,
             ),
             skip_push=False,
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[self.dynamo_base_repo]),
         )
 
-        # Build receipt_label base image (depends on dynamo base)
+        # Build receipt_label base image (depends on dynamo base image and label ECR repo)
         self.label_base_image = Image(
             f"base-receipt-label-img-{stack}",
             build=DockerBuildArgs(
@@ -125,7 +126,10 @@ class BaseImages(ComponentResource):
                 password=ecr_auth_token.password,
             ),
             skip_push=False,
-            opts=ResourceOptions(parent=self, depends_on=[self.dynamo_base_image]),
+            opts=ResourceOptions(
+                parent=self, 
+                depends_on=[self.dynamo_base_image, self.label_base_repo]
+            ),
         )
 
         # Register outputs

@@ -1,35 +1,37 @@
-# Use AWS Lambda Python base image for ARM64
-FROM public.ecr.aws/lambda/python:3.12-arm64
+# Use the base image if provided, otherwise use Lambda Python base
+ARG BASE_IMAGE
+ARG PYTHON_VERSION=3.12
+FROM ${BASE_IMAGE:-public.ecr.aws/lambda/python:${PYTHON_VERSION}-arm64}
 
-# Install system dependencies for ChromaDB and other packages
-RUN dnf install -y \
-    gcc-c++ \
-    python3-devel \
-    && dnf clean all
+# If using base image, only install ChromaDB (packages already installed)
+# If using vanilla Lambda base, install everything
+RUN if [ -z "${BASE_IMAGE}" ]; then \
+        dnf install -y gcc-c++ python3-devel && dnf clean all && \
+        export HNSWLIB_NO_NATIVE=1; \
+    fi
 
-# Set environment variable to avoid compilation issues
-ENV HNSWLIB_NO_NATIVE=1
+# Install ChromaDB separately since it's not in the base image
+RUN pip install --no-cache-dir chromadb>=0.5.0
 
-# Copy requirements file first (without local package references)
-COPY infra/word_label_step_functions/chromadb_polling_lambda/requirements.txt ${LAMBDA_TASK_ROOT}/
+# Copy and install local packages only if not using base image
+RUN if [ -z "${BASE_IMAGE}" ]; then \
+        pip install --no-cache-dir \
+            numpy>=1.24.0 \
+            boto3>=1.34.0 \
+            openai>=1.0.0 \
+            pydantic>=2.0.0; \
+    fi
 
-# Install Python dependencies from PyPI first
-RUN pip install --no-cache-dir \
-    chromadb>=0.5.0 \
-    numpy>=1.24.0 \
-    boto3>=1.34.0 \
-    openai>=1.0.0 \
-    pydantic>=2.0.0
-
-# Copy the local packages into the container
-# These paths are relative to the build context (repository root)
+# Copy the local packages (always needed for handler imports)
 COPY receipt_label/ /lambda/receipt_label/
 COPY receipt_dynamo/ /lambda/receipt_dynamo/
 
-# Install local packages
-RUN cd /lambda && \
-    pip install --no-cache-dir ./receipt_dynamo && \
-    pip install --no-cache-dir ./receipt_label
+# Install local packages only if not using base image
+RUN if [ -z "${BASE_IMAGE}" ]; then \
+        cd /lambda && \
+        pip install --no-cache-dir ./receipt_dynamo && \
+        pip install --no-cache-dir ./receipt_label; \
+    fi
 
 # Copy handler code
 COPY infra/word_label_step_functions/chromadb_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/

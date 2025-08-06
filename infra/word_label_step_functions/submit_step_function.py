@@ -47,7 +47,7 @@ stack = pulumi.get_stack()
 
 
 class WordLabelStepFunctions(ComponentResource):
-    def __init__(self, name: str, opts: ResourceOptions = None):
+    def __init__(self, name: str, base_image_name: Output[str] = None, opts: ResourceOptions = None):
         super().__init__(
             "custom:stepfunctions:WordLabelStepFunctions", 
             name,
@@ -76,6 +76,7 @@ class WordLabelStepFunctions(ComponentResource):
             chromadb_queue_arn=self.chromadb_queues.delta_queue_arn,
             openai_api_key=openai_api_key,
             stack=stack,
+            base_image_name=base_image_name,
             opts=ResourceOptions(parent=self),
         )
 

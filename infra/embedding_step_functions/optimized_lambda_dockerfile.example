@@ -1,0 +1,9 @@
+# Optimized Lambda Dockerfile - uses pre-built base image
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Only copy what's needed - the handler
+COPY handler.py ${LAMBDA_TASK_ROOT}/
+
+# That's it! Base image has all dependencies
+CMD ["handler.lambda_handler"]

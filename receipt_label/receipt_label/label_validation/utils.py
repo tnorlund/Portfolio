@@ -15,9 +15,6 @@ def chroma_id_from_label(label: ReceiptWordLabel) -> str:
         f"WORD#{label.word_id:05d}"
     )
 
-# Backward compatibility alias
-pinecone_id_from_label = chroma_id_from_label
-
 
 def normalize_text(text: str) -> str:
     """Normalize text for fuzzy matching."""

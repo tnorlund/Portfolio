@@ -23,13 +23,13 @@ RUN pip install --no-cache-dir \
 COPY receipt_dynamo/ /lambda/receipt_dynamo/
 COPY receipt_label/ /lambda/receipt_label/
 
-# Install local packages
+# Force reinstall local packages to ensure we have the latest version without pinecone
 RUN cd /lambda && \
-    pip install --no-cache-dir ./receipt_dynamo && \
-    pip install --no-cache-dir ./receipt_label
+    pip install --no-cache-dir --force-reinstall ./receipt_dynamo && \
+    pip install --no-cache-dir --force-reinstall ./receipt_label
 
 # Copy handler code
-COPY infra/word_label_step_functions/chromadb_line_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/
+COPY infra/embedding_step_functions/chromadb_line_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 
 # Add /lambda to Python path so imports work
 ENV PYTHONPATH=/lambda:$PYTHONPATH

@@ -105,6 +105,11 @@ class ChromaDBLambdas(ComponentResource):
         build_context_path = Path(__file__).parent.parent.parent
 
         # Build polling image using Pulumi Docker provider
+        # Pulumi will handle the Output[str] dependency automatically
+        build_args = {"PYTHON_VERSION": "3.12"}
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.polling_image = Image(
             f"chromadb-poll-img-{stack}",
             build=DockerBuildArgs(
@@ -115,7 +120,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.polling_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -132,6 +137,10 @@ class ChromaDBLambdas(ComponentResource):
         )
 
         # Build compaction image using Pulumi Docker provider
+        build_args = {"PYTHON_VERSION": "3.12"}
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.compaction_image = Image(
             f"chromadb-compact-img-{stack}",
             build=DockerBuildArgs(
@@ -142,7 +151,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.compaction_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -159,6 +168,10 @@ class ChromaDBLambdas(ComponentResource):
         )
 
         # Build line polling image using Pulumi Docker provider
+        build_args = {"PYTHON_VERSION": "3.12"}
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.line_polling_image = Image(
             f"chromadb-line-poll-img-{stack}",
             build=DockerBuildArgs(
@@ -169,7 +182,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.line_polling_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -225,6 +238,13 @@ class ChromaDBLambdas(ComponentResource):
         )
 
         # Build find unembedded lines image using Pulumi Docker provider
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+        }
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.find_unembedded_image = Image(
             f"find-unembedded-img-{stack}",
             build=DockerBuildArgs(
@@ -235,7 +255,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.find_unembedded_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -252,6 +272,13 @@ class ChromaDBLambdas(ComponentResource):
         )
 
         # Build submit to OpenAI image using Pulumi Docker provider
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+        }
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.submit_openai_image = Image(
             f"submit-openai-img-{stack}",
             build=DockerBuildArgs(
@@ -262,7 +289,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.submit_openai_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -279,6 +306,13 @@ class ChromaDBLambdas(ComponentResource):
         )
 
         # Build list pending batches image using Pulumi Docker provider
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "CACHE_DATE": "2025-08-06-v3"  # Force rebuild to fix pinecone import error
+        }
+        if base_image_name:
+            build_args["BASE_IMAGE"] = base_image_name
+
         self.list_pending_image = Image(
             f"list-pending-img-{stack}",
             build=DockerBuildArgs(
@@ -289,7 +323,7 @@ class ChromaDBLambdas(ComponentResource):
                     / "Dockerfile"
                 ),
                 platform="linux/arm64",
-                args={"PYTHON_VERSION": "3.12"},
+                args=build_args,
             ),
             image_name=self.list_pending_repo.repository_url.apply(
                 lambda url: f"{url}:latest"
@@ -388,6 +422,7 @@ class ChromaDBLambdas(ComponentResource):
                                     "dynamodb:UpdateItem",
                                     "dynamodb:BatchWriteItem",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[3]}:{args[4]}:table/{args[0]}",
@@ -442,6 +477,7 @@ class ChromaDBLambdas(ComponentResource):
                                     "dynamodb:GetItem",
                                     "dynamodb:UpdateItem",
                                     "dynamodb:DeleteItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[2]}:{args[3]}:table/{args[0]}",
@@ -569,6 +605,7 @@ class ChromaDBLambdas(ComponentResource):
                                     "dynamodb:UpdateItem",
                                     "dynamodb:BatchWriteItem",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[3]}:{args[4]}:table/{args[0]}",
@@ -677,6 +714,7 @@ class ChromaDBLambdas(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:GetItem",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[2]}:{args[3]}:table/{args[0]}",
@@ -709,6 +747,7 @@ class ChromaDBLambdas(ComponentResource):
                 variables={
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                     "S3_BUCKET": s3_batch_bucket_name,
+                    "OPENAI_API_KEY": openai_api_key,
                 },
             ),
             opts=ResourceOptions(parent=self),
@@ -764,6 +803,7 @@ class ChromaDBLambdas(ComponentResource):
                                     "dynamodb:PutItem",
                                     "dynamodb:UpdateItem",
                                     "dynamodb:BatchWriteItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[2]}:{args[3]}:table/{args[0]}",
@@ -848,6 +888,7 @@ class ChromaDBLambdas(ComponentResource):
                                 "Action": [
                                     "dynamodb:Query",
                                     "dynamodb:GetItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:{args[1]}:{args[2]}:table/{args[0]}",
@@ -874,6 +915,7 @@ class ChromaDBLambdas(ComponentResource):
             environment=FunctionEnvironmentArgs(
                 variables={
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
                 },
             ),
             opts=ResourceOptions(parent=self),

@@ -225,34 +225,23 @@ class ClientManager:
         return self._chroma_client
 
     @property
-    def pinecone(self) -> Any:  # Returns Pinecone Index
+    def pinecone(self) -> Any:  # Returns ChromaDB client for backward compatibility
         """
-        Get or create Pinecone index.
+        Get ChromaDB client for backward compatibility.
 
         DEPRECATED: This property is maintained for backward compatibility
-        only. Use chroma property instead for vector storage.
+        only and now returns the ChromaDB client instead of Pinecone.
+        Use chroma property instead for new code.
         """
         warnings.warn(
-            "pinecone property is deprecated. Use chroma property instead.",
+            "pinecone property is deprecated and now returns ChromaDB client. "
+            "Use chroma property instead for new code.",
             DeprecationWarning,
             stacklevel=2,
         )
-
-        if self._pinecone_index is None and self.config.pinecone_api_key:
-            try:
-                from pinecone import Pinecone
-
-                pc = Pinecone(api_key=self.config.pinecone_api_key)
-                self._pinecone_index = pc.Index(
-                    self.config.pinecone_index_name,
-                    host=self.config.pinecone_host,
-                )
-            except ImportError:
-                raise ImportError(
-                    "Pinecone is no longer a dependency. Please use ChromaDB"
-                    " instead."
-                )
-        return self._pinecone_index
+        
+        # Return ChromaDB client instead of trying to import Pinecone
+        return self.chroma
 
     def get_all_clients(self) -> tuple[DynamoClient, OpenAI, Any]:
         """
