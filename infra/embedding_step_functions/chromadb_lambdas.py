@@ -59,10 +59,18 @@ class ChromaDBLambdas(ComponentResource):
         Args:
             dockerfile_name: Name of the Dockerfile relative to context_path
         """
+        # Ensure context_path is absolute and exists
+        context_path_str = str(context_path.resolve())
+        dockerfile_path = context_path / dockerfile_name
+        
+        # Log for debugging
+        pulumi.log.info(f"Building {name} with context: {context_path_str}")
+        pulumi.log.info(f"Looking for Dockerfile at: {dockerfile_path}")
+        
         return docker_build.Image(
             f"{name}-img-{stack}",
             context=docker_build.ContextArgs(
-                location=str(context_path),
+                location=context_path_str,
             ),
             dockerfile=docker_build.DockerfileArgs(
                 location=dockerfile_name,  # Relative to context
