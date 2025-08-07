@@ -69,46 +69,46 @@ class ChromaDBLambdas(ComponentResource):
         
         return docker_build.Image(
             f"{name}-img-{stack}",
-            context=docker_build.ContextArgs(
-                location=context_path_str,
-            ),
-            dockerfile=docker_build.DockerfileArgs(
-                location=dockerfile_name,  # Relative to context
-            ),
+            context={
+                "location": context_path_str,
+            },
+            dockerfile={
+                "location": dockerfile_name,  # Relative to context
+            },
             platforms=["linux/arm64"],
             build_args=build_args,
             # ECR caching configuration
             cache_from=[
-                docker_build.CacheFromArgs(
-                    registry=docker_build.CacheFromRegistryArgs(
-                        ref=repository.repository_url.apply(
+                {
+                    "registry": {
+                        "ref": repository.repository_url.apply(
                             lambda url: f"{url}:cache"
                         ),
-                    ),
-                ),
+                    },
+                },
             ],
             cache_to=[
-                docker_build.CacheToArgs(
-                    registry=docker_build.CacheToRegistryArgs(
-                        image_manifest=True,
-                        oci_media_types=True,
-                        ref=repository.repository_url.apply(
+                {
+                    "registry": {
+                        "imageManifest": True,
+                        "ociMediaTypes": True,
+                        "ref": repository.repository_url.apply(
                             lambda url: f"{url}:cache"
                         ),
-                    ),
-                ),
+                    },
+                },
             ],
             # Registry configuration for pushing
             push=True,
             registries=[
-                docker_build.RegistryArgs(
+                {
                     # Use just the ECR registry address, not the full repository URL
-                    address=repository.repository_url.apply(
+                    "address": repository.repository_url.apply(
                         lambda url: url.split("/")[0]  # Extract registry address
                     ),
-                    password=ecr_auth_token.password,
-                    username=ecr_auth_token.user_name,
-                ),
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                },
             ],
             # Tags for the image
             tags=[
