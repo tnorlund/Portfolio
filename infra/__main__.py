@@ -98,7 +98,7 @@ base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
 word_label_step_functions = WordLabelStepFunctions(
     "word-label-step-functions",
-    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
+    base_image_name=base_images.label_base_image.image_name,  # Using .image_name from docker-build provider
     base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
@@ -107,7 +107,7 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction(
     "step-func",
-    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
+    base_image_name=base_images.label_base_image.image_name,  # Using .image_name from docker-build provider
     base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
