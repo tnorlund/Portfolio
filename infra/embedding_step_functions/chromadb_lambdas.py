@@ -47,7 +47,7 @@ class ChromaDBLambdas(ComponentResource):
         stack: str,
         ecr_auth_token,
         parent: ComponentResource,
-        dockerfile_name: str = "Dockerfile.optimized",
+        dockerfile_name: str = "Dockerfile",
     ) -> docker_build.Image:
         """Build a Lambda image with docker-build provider and ECR caching.
         
@@ -375,7 +375,7 @@ class ChromaDBLambdas(ComponentResource):
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
-            dockerfile_name="list_pending_batches_lambda/Dockerfile.optimized",  # Path from context
+            dockerfile_name="list_pending_batches_lambda/Dockerfile",  # Path from context
         )
 
         # Create IAM role for polling Lambda (shorter names to avoid 64 char limit)
