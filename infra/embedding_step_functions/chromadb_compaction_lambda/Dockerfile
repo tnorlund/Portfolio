@@ -16,7 +16,7 @@ ENV HNSWLIB_NO_NATIVE=1
 
 # Copy handler code
 # These paths are relative to the build context (repository root)
-COPY infra/word_label_step_functions/chromadb_compaction_lambda/handler.py ${LAMBDA_TASK_ROOT}/
+COPY infra/embedding_step_functions/chromadb_compaction_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 
 # Dependencies are already in base image or will be installed with packages
 RUN --mount=type=cache,target=/root/.cache/pip \

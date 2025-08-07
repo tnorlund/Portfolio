@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
 # Copy handler code
-COPY infra/word_label_step_functions/chromadb_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/
+COPY infra/embedding_step_functions/chromadb_word_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 
 # Command to run the Lambda handler
 CMD ["handler.poll_handler"]

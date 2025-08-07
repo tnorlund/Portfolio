@@ -57,11 +57,18 @@ class ChromaDBLambdas(ComponentResource):
         3. Multi-platform support (ARM64)
         
         Args:
-            dockerfile_name: Name of the Dockerfile relative to context_path
+            dockerfile_name: Path to Dockerfile relative to context_path
         """
         # Ensure context_path is absolute and exists
         context_path_str = str(context_path.resolve())
-        dockerfile_path = context_path / dockerfile_name
+        
+        # Handle both relative and full path Dockerfiles
+        if "/" in dockerfile_name:
+            # Full path from repo root
+            dockerfile_path = context_path / dockerfile_name
+        else:
+            # Simple filename in context directory
+            dockerfile_path = context_path / dockerfile_name
         
         # Log for debugging
         pulumi.log.info(f"Building {name} with context: {context_path_str}")
@@ -73,7 +80,7 @@ class ChromaDBLambdas(ComponentResource):
                 "location": context_path_str,
             },
             dockerfile={
-                "location": dockerfile_name,  # Relative to context
+                "location": str(dockerfile_path.resolve()),  # Use absolute path to Dockerfile
             },
             platforms=["linux/arm64"],
             build_args=build_args,
@@ -221,9 +228,9 @@ class ChromaDBLambdas(ComponentResource):
         # Get ECR authorization token (using output version for docker-build)
         ecr_auth_token = get_authorization_token_output()
 
-        # Build context path - now we'll use handler-specific contexts
-        # Old: entire repo (2.9GB), Now: just handler directories (~10KB each)
-        base_lambda_path = Path(__file__).parent
+        # Build context path - use repository root for access to packages
+        # The Dockerfiles expect to copy receipt_dynamo and receipt_label from root
+        build_context_path = Path(__file__).parent.parent.parent  # Go up to repo root
 
         # Build polling image using Pulumi Docker provider
         # Pulumi will handle the Output[str] dependency automatically
@@ -238,12 +245,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.polling_image = self.build_lambda_with_caching(
             name="chromadb-poll",
-            context_path=base_lambda_path / "chromadb_word_polling_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.polling_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/chromadb_word_polling_lambda/Dockerfile",
         )
 
         # Build compaction image using Pulumi Docker provider
@@ -258,12 +266,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.compaction_image = self.build_lambda_with_caching(
             name="chromadb-compact",
-            context_path=base_lambda_path / "chromadb_compaction_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.compaction_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/chromadb_compaction_lambda/Dockerfile",
         )
 
         # Build line polling image using Pulumi Docker provider
@@ -278,12 +287,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.line_polling_image = self.build_lambda_with_caching(
             name="chromadb-line-poll",
-            context_path=base_lambda_path / "chromadb_line_polling_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.line_polling_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/chromadb_line_polling_lambda/Dockerfile",
         )
 
         # Create ECR repository for find unembedded lines Lambda
@@ -337,12 +347,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.find_unembedded_image = self.build_lambda_with_caching(
             name="find-unembedded",
-            context_path=base_lambda_path / "find_unembedded_lines_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.find_unembedded_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/find_unembedded_lines_lambda/Dockerfile",
         )
 
         # Build submit to OpenAI image using Pulumi Docker provider
@@ -357,12 +368,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.submit_openai_image = self.build_lambda_with_caching(
             name="submit-openai",
-            context_path=base_lambda_path / "submit_to_openai_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.submit_openai_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/submit_to_openai_lambda/Dockerfile",
         )
 
         # Build list pending batches image using Pulumi Docker provider
@@ -377,12 +389,13 @@ class ChromaDBLambdas(ComponentResource):
 
         self.list_pending_image = self.build_lambda_with_caching(
             name="list-pending",
-            context_path=base_lambda_path / "list_pending_batches_lambda",
+            context_path=build_context_path,  # Use repo root as context
             repository=self.list_pending_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="infra/embedding_step_functions/list_pending_batches_lambda/Dockerfile",
         )
 
         # Create IAM role for polling Lambda (shorter names to avoid 64 char limit)
