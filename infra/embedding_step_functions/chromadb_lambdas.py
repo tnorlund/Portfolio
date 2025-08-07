@@ -377,13 +377,12 @@ class ChromaDBLambdas(ComponentResource):
 
         self.list_pending_image = self.build_lambda_with_caching(
             name="list-pending",
-            context_path=base_lambda_path,  # Use parent dir for this lambda
+            context_path=base_lambda_path / "list_pending_batches_lambda",
             repository=self.list_pending_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
-            dockerfile_name="list_pending_batches_lambda/Dockerfile",  # Path from context
         )
 
         # Create IAM role for polling Lambda (shorter names to avoid 64 char limit)
