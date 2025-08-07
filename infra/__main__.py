@@ -97,9 +97,7 @@ notification_system = NotificationSystem(
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
 word_label_step_functions = WordLabelStepFunctions(
-    "word-label-step-functions",
-    base_image_name=base_images.label_base_image.image_name,  # Using .image_name from docker-build provider
-    base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
+    "word-label-step-functions"
 )
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
