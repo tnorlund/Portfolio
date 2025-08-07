@@ -25,8 +25,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     fi && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
-# Copy Lambda handler (using the existing file)
-COPY infra/embedding_step_functions/list_pending_line_batches_for_polling.py ${LAMBDA_TASK_ROOT}/
+# Copy Lambda handler
+COPY infra/embedding_step_functions/list_pending_batches_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 
 # Set the handler
-CMD ["list_pending_line_batches_for_polling.poll_handler"]
+CMD ["handler.poll_handler"]

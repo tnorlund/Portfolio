@@ -15,7 +15,7 @@ from typing import List, Optional
 def create_minimal_context(
     packages: List[str],
     dockerfile_path: Path,
-    base_path: Optional[Path] = None
+    base_path: Optional[Path] = None,
 ) -> Path:
     """
     Create a minimal build context containing only specified packages.
@@ -24,7 +24,7 @@ def create_minimal_context(
         packages: List of package names to include (e.g., ["receipt_dynamo"])
         dockerfile_path: Path to the Dockerfile
         base_path: Base path where packages are located (defaults to repo root)
-        
+
     Returns:
         Path to the temporary build context directory
     """
@@ -33,7 +33,7 @@ def create_minimal_context(
 
     # Create a temporary directory for the build context
     temp_dir = Path(tempfile.mkdtemp(prefix="docker-build-context-"))
-    
+
     try:
         # Copy only the required packages
         for package in packages:
@@ -45,10 +45,17 @@ def create_minimal_context(
                     src,
                     dst,
                     ignore=shutil.ignore_patterns(
-                        '__pycache__', '*.pyc', '*.pyo', 
-                        '.pytest_cache', 'tests', '*.egg-info',
-                        '.coverage', 'htmlcov', '*.log', '.DS_Store'
-                    )
+                        "__pycache__",
+                        "*.pyc",
+                        "*.pyo",
+                        ".pytest_cache",
+                        "tests",
+                        "*.egg-info",
+                        ".coverage",
+                        "htmlcov",
+                        "*.log",
+                        ".DS_Store",
+                    ),
                 )
 
         # Copy the Dockerfile to the context
@@ -68,8 +75,9 @@ def create_minimal_context(
 
 def cleanup_context(context_path: Path):
     """Clean up a temporary build context."""
-    if (context_path.exists() and
-            context_path.name.startswith("docker-build-context-")):
+    if context_path.exists() and context_path.name.startswith(
+        "docker-build-context-"
+    ):
         shutil.rmtree(context_path, ignore_errors=True)
 
 
@@ -77,7 +85,7 @@ if __name__ == "__main__":
     # Example usage
     context = create_minimal_context(
         packages=["receipt_dynamo"],
-        dockerfile_path=Path("dockerfiles/Dockerfile.receipt_dynamo")
+        dockerfile_path=Path("dockerfiles/Dockerfile.receipt_dynamo"),
     )
     print(f"Created minimal context at: {context}")
 

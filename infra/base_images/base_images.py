@@ -35,17 +35,25 @@ class BaseImages(ComponentResource):
         """
         # Option 1: Try to use git commit SHA (fast and reliable)
         try:
-            commit = subprocess.check_output(
-                ['git', 'rev-parse', '--short', 'HEAD'],
-                cwd=str(package_dir.parent),
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
+            commit = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=str(package_dir.parent),
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode()
+                .strip()
+            )
             # Also get the status to see if there are uncommitted changes
-            status = subprocess.check_output(
-                ['git', 'status', '--porcelain', str(package_dir)],
-                cwd=str(package_dir.parent),
-                stderr=subprocess.DEVNULL
-            ).decode().strip()
+            status = (
+                subprocess.check_output(
+                    ["git", "status", "--porcelain", str(package_dir)],
+                    cwd=str(package_dir.parent),
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode()
+                .strip()
+            )
             if status:
                 # There are uncommitted changes, add a dirty flag
                 return f"git-{commit}-dirty"
@@ -217,7 +225,7 @@ class BaseImages(ComponentResource):
             skip_push=False,
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.dynamo_base_image, self.label_base_repo]
+                depends_on=[self.dynamo_base_image, self.label_base_repo],
             ),
         )
 
