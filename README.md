@@ -1,98 +1,116 @@
 # Portfolio
 
-This is Tyler Norlund's portfolio. It is a static website hosted on S3 and served through CloudFront. The website is a portfolio of projects and is built using React.
+Full-stack applications demonstrating modern web development, machine learning, and cloud infrastructure expertise.
 
-**🚀 Enhanced with AI-Optimized Development Workflow**: This repository features a state-of-the-art development pipeline with 4x faster tests, dual AI code reviews, and cost-optimized automation.
+## Projects
 
-## `infra/`
+### 🌐 Portfolio Website
+A responsive, server-side rendered personal portfolio built with Next.js and React. Features optimized image loading, dynamic content rendering, and modern web performance best practices.
 
-The Pulumi project that defines the infrastructure for the portfolio.
+**Live Demo**: [tylernorlund.com](https://tylernorlund.com)
 
-## `portfolio/`
+### 🧾 Receipt Processing System  
+An intelligent document processing pipeline that extracts structured data from receipt images using OCR and machine learning. Processes receipts through text extraction, field detection, and merchant validation using GPT-4 and custom ML models.
 
-This React project. It is a portfolio of projects that Tyler has worked on.
+**Key Features**:
+- Automated text extraction from receipt images
+- Intelligent field detection (merchant, total, date, items)
+- Merchant validation and normalization
+- RESTful API for receipt management
 
-## 🚀 Advanced Development Features
+### ☁️ Infrastructure as Code
+Complete AWS infrastructure managed with Pulumi, including serverless functions, CDN distribution, and auto-scaling services.
 
-### **Pytest Optimization System (4x Faster Tests)**
-- **Intelligent Parallelization**: 62.8min → 15.8min test execution
-- **Smart Test Splitting**: 39 integration files across 4 optimal parallel groups
-- **File Change Detection**: Skip unnecessary tests based on changed files
-- **Advanced Caching**: Environment, dependencies, and test result caching
+## Tech Stack
 
-### **Dual AI Review System**
-- **Cursor Bot**: Automated bug detection and security analysis
-- **Claude Code**: Architectural review and performance optimization
-- **Cost Optimized**: Smart model selection keeping costs $5-25/month
-- **Fast Validation**: 30-second syntax checks before expensive AI reviews
+**Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
+**Backend**: Python 3.12, FastAPI, OpenAI GPT-4, AWS Lambda  
+**Database**: DynamoDB, S3  
+**Infrastructure**: AWS (CloudFront, Lambda, API Gateway), Pulumi  
+**ML/AI**: OpenAI API, Custom OCR pipelines, scikit-learn  
 
-### **Production-Ready Reliability**
-- ✅ All critical bugs resolved (test masking, workflow triggers)
-- ✅ Proper error propagation and failure detection
-- ✅ Budget controls and usage monitoring
-- ✅ Comprehensive documentation and guides
+## Getting Started
 
-**Usage**:
+### Prerequisites
 ```bash
-# Run optimized tests locally
-./scripts/test_runner.sh receipt_dynamo
+# Required
+node >= 18.0.0
+python >= 3.12
+aws-cli (configured)
 
-# Check AI review costs
-python scripts/cost_optimizer.py --check-budget
-
-# AI reviews run automatically on PR creation
+# Optional
+pulumi (for infrastructure)
 ```
 
-**Documentation**: See [`PYTEST_OPTIMIZATIONS.md`](PYTEST_OPTIMIZATIONS.md) for optimization details.
+### Portfolio Website
 
-## 🎨 Code Formatting Best Practices
-
-### **Automatic Formatting Setup**
-Pre-commit hooks are now installed to automatically format your code before each commit:
-- **Black**: Python code formatter (79-char line limit)
-- **isort**: Import statement organizer (Black-compatible)
-
-### **Quick Commands**
 ```bash
-# Format all code
-make format
-
-# Install pre-commit hooks (already done!)
-make install-hooks
-
-# Run formatters manually
-black receipt_dynamo receipt_label infra
-isort receipt_dynamo receipt_label infra
+cd portfolio
+npm install
+npm run dev
+# Visit http://localhost:3000
 ```
 
-### **Best Practices**
-1. **Pre-commit hooks are active**: Code will be auto-formatted on commit
-2. **CI/CD enforces formatting**: PRs must have properly formatted code
-3. **Use `make format`**: Before pushing if you skip commits
-4. **Configuration**: See `pyproject.toml` and `.pre-commit-config.yaml`
+### Receipt Processing System
 
-## MCP servers
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-This repository uses [Model Context Protocol](https://github.com/modelcontextprotocol)
-servers to streamline development. The Next.js server configuration lives in
-`portfolio/mcp-server.js`. A new Python server entry `python-receipts` is
-defined in `mcp-config.json` and launches `python mcp_server.py`.
+# Install packages
+pip install -e receipt_dynamo
+pip install -e receipt_label
+pip install -e receipt_upload
 
-### Required environment variables
-
-The Python server expects several credentials to be available in the
-environment:
-
-```
-OPENAI_API_KEY
-PINECONE_API_KEY
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-GOOGLE_PLACES_API_KEY
+# Run tests
+pytest receipt_label/tests/unit
 ```
 
-Store these in your shell or a `.env` file before running the server.
+### Infrastructure Deployment
 
-The `python-receipts` server uses whichever `python` executable is first on
-your `PATH`. Activate your `.venv` prior to launching the server so it runs
-inside your virtual environment.
+```bash
+cd infra
+pulumi stack select dev
+pulumi up
+```
+
+## Project Structure
+
+```
+├── portfolio/          # Next.js portfolio website
+│   ├── pages/         # Page components
+│   ├── components/    # Reusable React components
+│   └── public/        # Static assets
+│
+├── receipt_dynamo/    # DynamoDB data access layer
+│   ├── entities/      # Data models
+│   └── tests/         # Unit and integration tests
+│
+├── receipt_label/     # ML-based receipt analysis
+│   ├── models/        # ML models and processors
+│   └── pattern_detection/  # Text pattern recognition
+│
+├── receipt_upload/    # OCR and image processing
+│   ├── ocr.py        # Text extraction
+│   └── geometry.py   # Spatial analysis
+│
+└── infra/            # Pulumi infrastructure
+    ├── __main__.py   # Infrastructure entry point
+    └── lambda_functions/  # Serverless functions
+```
+
+## Documentation
+
+Detailed documentation available in the [`docs/`](docs/) directory:
+- [Architecture Overview](docs/architecture/overview.md)
+- [Development Guide](docs/development/setup.md)
+- [API Documentation](docs/api/)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Contact
+
+Tyler Norlund - [GitHub](https://github.com/tnorlund) | [LinkedIn](https://www.linkedin.com/in/tyler-norlund/)
