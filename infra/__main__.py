@@ -40,8 +40,8 @@ from validation_pipeline import ValidationPipeline
 
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
 
-# Using the new docker-build based base images with scoped contexts
-from base_images.base_images_v3 import BaseImages
+# Using the optimized docker-build based base images with scoped contexts
+from base_images.base_images import BaseImages
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
