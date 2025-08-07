@@ -16,9 +16,9 @@ from pulumi_aws import get_caller_identity, config
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token,
+    get_authorization_token_output,  # Use output version for docker-build
 )
-from pulumi_docker import DockerBuildArgs, Image, RegistryArgs
+import pulumi_docker_build as docker_build
 
 
 class BaseImages(ComponentResource):
@@ -142,8 +142,8 @@ class BaseImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Get ECR authorization token
-        ecr_auth_token = get_authorization_token()
+        # Get ECR authorization token (using output version for docker-build)
+        ecr_auth_token = get_authorization_token_output()
 
         # Build context path (project root)
         build_context_path = Path(__file__).parent.parent.parent
@@ -154,37 +154,60 @@ class BaseImages(ComponentResource):
         label_tag = self.get_image_tag("receipt_label", label_package_dir)
 
         # Build receipt_dynamo base image with content-based tag
-        # Explicitly depend on ECR repository being ready
-        self.dynamo_base_image = Image(
+        # Using docker-build provider for proper ECR caching support
+        self.dynamo_base_image = docker_build.Image(
             f"base-receipt-dynamo-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "dockerfiles"
-                    / "Dockerfile.receipt_dynamo"
+            context={
+                "location": str(build_context_path),
+            },
+            dockerfile={
+                "location": str(
+                    (Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo").resolve()
                 ),
-                platform="linux/arm64",
-                args={
-                    "PYTHON_VERSION": "3.12",
-                    "BUILDKIT_INLINE_CACHE": "1",
+            },
+            platforms=["linux/arm64"],
+            build_args={
+                "PYTHON_VERSION": "3.12",
+                "BUILDKIT_INLINE_CACHE": "1",
+            },
+            # ECR caching configuration
+            cache_from=[
+                {
+                    "registry": {
+                        "ref": self.dynamo_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
                 },
-                # TODO: Re-enable cache_from once Pulumi serialization issue
-                # is resolved. The issue: Pulumi's type serialization expects
-                # a list but gets CacheFromArgs. Workaround: Use manual cache
-                # warming with ./pull_base_images.sh
-            ),
-            image_name=self.dynamo_base_repo.repository_url.apply(
-                lambda url: f"{url}:{dynamo_tag}"
-            ),
-            registry=RegistryArgs(
-                server=self.dynamo_base_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
+            ],
+            cache_to=[
+                {
+                    "registry": {
+                        "imageManifest": True,
+                        "ociMediaTypes": True,
+                        "ref": self.dynamo_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
+                },
+            ],
+            # Registry configuration for pushing
+            push=True,
+            registries=[
+                {
+                    "address": self.dynamo_base_repo.repository_url.apply(
+                        lambda url: url.split("/")[0]  # Extract registry address
+                    ),
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                },
+            ],
+            # Tags for the image
+            tags=[
+                self.dynamo_base_repo.repository_url.apply(
+                    lambda url: f"{url}:{dynamo_tag}"
                 ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
+            ],
             opts=ResourceOptions(
                 parent=self, depends_on=[self.dynamo_base_repo]
             ),
@@ -192,37 +215,60 @@ class BaseImages(ComponentResource):
 
         # Build receipt_label base image (depends on dynamo base image
         # and label ECR repo)
-        self.label_base_image = Image(
+        self.label_base_image = docker_build.Image(
             f"base-receipt-label-img-{stack}",
-            build=DockerBuildArgs(
-                context=str(build_context_path),
-                dockerfile=str(
-                    Path(__file__).parent
-                    / "dockerfiles"
-                    / "Dockerfile.receipt_label"
+            context={
+                "location": str(build_context_path),
+            },
+            dockerfile={
+                "location": str(
+                    (Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label").resolve()
                 ),
-                platform="linux/arm64",
-                args={
-                    "PYTHON_VERSION": "3.12",
-                    "BASE_IMAGE": self.dynamo_base_image.image_name,
-                    "BUILDKIT_INLINE_CACHE": "1",
+            },
+            platforms=["linux/arm64"],
+            build_args={
+                "PYTHON_VERSION": "3.12",
+                "BASE_IMAGE": self.dynamo_base_image.tags[0],  # Use first tag from the built image
+                "BUILDKIT_INLINE_CACHE": "1",
+            },
+            # ECR caching configuration
+            cache_from=[
+                {
+                    "registry": {
+                        "ref": self.label_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
                 },
-                # TODO: Re-enable cache_from once Pulumi serialization issue
-                # is resolved. The issue: Pulumi's type serialization expects
-                # a list but gets CacheFromArgs. Workaround: Use manual cache
-                # warming with ./pull_base_images.sh
-            ),
-            image_name=self.label_base_repo.repository_url.apply(
-                lambda url: f"{url}:{label_tag}"
-            ),
-            registry=RegistryArgs(
-                server=self.label_base_repo.repository_url.apply(
-                    lambda url: url.split("/")[0]
+            ],
+            cache_to=[
+                {
+                    "registry": {
+                        "imageManifest": True,
+                        "ociMediaTypes": True,
+                        "ref": self.label_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
+                },
+            ],
+            # Registry configuration for pushing
+            push=True,
+            registries=[
+                {
+                    "address": self.label_base_repo.repository_url.apply(
+                        lambda url: url.split("/")[0]  # Extract registry address
+                    ),
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                },
+            ],
+            # Tags for the image
+            tags=[
+                self.label_base_repo.repository_url.apply(
+                    lambda url: f"{url}:{label_tag}"
                 ),
-                username="AWS",
-                password=ecr_auth_token.password,
-            ),
-            skip_push=False,
+            ],
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[self.dynamo_base_image, self.label_base_repo],
@@ -232,8 +278,8 @@ class BaseImages(ComponentResource):
         # Register outputs
         self.register_outputs(
             {
-                "dynamo_base_image_name": self.dynamo_base_image.image_name,
-                "label_base_image_name": self.label_base_image.image_name,
+                "dynamo_base_image_name": self.dynamo_base_image.tags[0],
+                "label_base_image_name": self.label_base_image.tags[0],
                 "dynamo_base_repo_url": self.dynamo_base_repo.repository_url,
                 "label_base_repo_url": self.label_base_repo.repository_url,
             }

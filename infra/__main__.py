@@ -105,7 +105,7 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction(
     "step-func",
-    base_image_name=base_images.label_base_image.image_name,  # Using .image_name from docker-build provider
+    base_image_name=base_images.label_base_image.tags[0],  # Using first tag from docker-build provider
     base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
