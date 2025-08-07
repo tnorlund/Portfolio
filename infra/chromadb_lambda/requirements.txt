@@ -1,3 +1,0 @@
-chromadb==0.4.22
-boto3>=1.26.0
-# Add any other dependencies you need
