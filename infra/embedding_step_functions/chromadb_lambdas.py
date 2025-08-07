@@ -42,12 +42,12 @@ class ChromaDBLambdas(ComponentResource):
         self,
         name: str,
         context_path: Path,
-        dockerfile_path: Path,
         repository: Repository,
         build_args: dict,
         stack: str,
         ecr_auth_token,
         parent: ComponentResource,
+        dockerfile_name: str = "Dockerfile.optimized",
     ) -> docker_build.Image:
         """Build a Lambda image with docker-build provider and ECR caching.
         
@@ -55,6 +55,9 @@ class ChromaDBLambdas(ComponentResource):
         1. ECR cache_from and cache_to configuration
         2. Proper registry authentication
         3. Multi-platform support (ARM64)
+        
+        Args:
+            dockerfile_name: Name of the Dockerfile relative to context_path
         """
         return docker_build.Image(
             f"{name}-img-{stack}",
@@ -62,7 +65,7 @@ class ChromaDBLambdas(ComponentResource):
                 location=str(context_path),
             ),
             dockerfile=docker_build.DockerfileArgs(
-                location=str(dockerfile_path),
+                location=dockerfile_name,  # Relative to context
             ),
             platforms=["linux/arm64"],
             build_args=build_args,
@@ -228,11 +231,6 @@ class ChromaDBLambdas(ComponentResource):
         self.polling_image = self.build_lambda_with_caching(
             name="chromadb-poll",
             context_path=base_lambda_path / "chromadb_word_polling_lambda",
-            dockerfile_path=(
-                base_lambda_path
-                / "chromadb_word_polling_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.polling_repo,
             build_args=build_args,
             stack=stack,
@@ -253,11 +251,6 @@ class ChromaDBLambdas(ComponentResource):
         self.compaction_image = self.build_lambda_with_caching(
             name="chromadb-compact",
             context_path=base_lambda_path / "chromadb_compaction_lambda",
-            dockerfile_path=(
-                base_lambda_path
-                / "chromadb_compaction_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.compaction_repo,
             build_args=build_args,
             stack=stack,
@@ -278,11 +271,6 @@ class ChromaDBLambdas(ComponentResource):
         self.line_polling_image = self.build_lambda_with_caching(
             name="chromadb-line-poll",
             context_path=base_lambda_path / "chromadb_line_polling_lambda",
-            dockerfile_path=(
-                base_lambda_path
-                / "chromadb_line_polling_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.line_polling_repo,
             build_args=build_args,
             stack=stack,
@@ -342,11 +330,6 @@ class ChromaDBLambdas(ComponentResource):
         self.find_unembedded_image = self.build_lambda_with_caching(
             name="find-unembedded",
             context_path=base_lambda_path / "find_unembedded_lines_lambda",
-            dockerfile_path=(
-                base_lambda_path
-                / "find_unembedded_lines_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.find_unembedded_repo,
             build_args=build_args,
             stack=stack,
@@ -367,11 +350,6 @@ class ChromaDBLambdas(ComponentResource):
         self.submit_openai_image = self.build_lambda_with_caching(
             name="submit-openai",
             context_path=base_lambda_path / "submit_to_openai_lambda",
-            dockerfile_path=(
-                base_lambda_path
-                / "submit_to_openai_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.submit_openai_repo,
             build_args=build_args,
             stack=stack,
@@ -392,16 +370,12 @@ class ChromaDBLambdas(ComponentResource):
         self.list_pending_image = self.build_lambda_with_caching(
             name="list-pending",
             context_path=base_lambda_path,  # Use parent dir for this lambda
-            dockerfile_path=(
-                base_lambda_path
-                / "list_pending_batches_lambda"
-                / "Dockerfile.optimized"
-            ),
             repository=self.list_pending_repo,
             build_args=build_args,
             stack=stack,
             ecr_auth_token=ecr_auth_token,
             parent=self,
+            dockerfile_name="list_pending_batches_lambda/Dockerfile.optimized",  # Path from context
         )
 
         # Create IAM role for polling Lambda (shorter names to avoid 64 char limit)
