@@ -1,4 +1,22 @@
-"""submit_step_function.py
+import json
+import os
+
+import pulumi
+import pulumi_aws as aws
+from pulumi import (
+    AssetArchive,
+    ComponentResource,
+    Config,
+    FileAsset,
+    Output,
+    ResourceOptions,
+)
+from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
+from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.sfn import StateMachine
+
+"""
+submit_batch.py
 
 This module handles the preparation, formatting, submission, and tracking of
 embedding batch jobs to OpenAI's Batch API. It includes functionality to:
@@ -14,76 +32,22 @@ This script supports agentic document labeling and validation pipelines
 by facilitating scalable embedding of labeled receipt tokens.
 """
 
-import json
-import os
-
-import pulumi
-import pulumi_aws as aws
-from pulumi import (
-    AssetArchive,
-    ComponentResource,
-    Config,
-    FileAsset,
-    Output,
-    ResourceOptions,
-    Resource,
-)
-from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
-from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
-from pulumi_aws.sfn import StateMachine
-
 
 from dynamo_db import dynamodb_table
 from lambda_layer import dynamo_layer, label_layer
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
-from word_label_step_functions.chromadb_lambdas import ChromaDBLambdas
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
-# Keep Pinecone config for backward compatibility during migration
-pinecone_api_key = config.get_secret("PINECONE_API_KEY") or ""
-pinecone_index_name = config.get("PINECONE_INDEX_NAME") or ""
-pinecone_host = config.get("PINECONE_HOST") or ""
+pinecone_api_key = config.require_secret("PINECONE_API_KEY")
+pinecone_index_name = config.require("PINECONE_INDEX_NAME")
+pinecone_host = config.require("PINECONE_HOST")
 stack = pulumi.get_stack()
 
 
 class WordLabelStepFunctions(ComponentResource):
-    def __init__(self, name: str, base_image_name: Output[str] = None, base_image_resource: Resource = None, opts: ResourceOptions = None):
+    def __init__(self, name: str, opts: ResourceOptions = None):
         super().__init__(
-            "custom:stepfunctions:WordLabelStepFunctions", 
-            name,
-            None,  # props
-            opts
-        )
-
-        # Create ChromaDB infrastructure components
-        self.chromadb_buckets = ChromaDBBuckets(
-            f"{name}-chromadb",
-            stack=stack,
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.chromadb_queues = ChromaDBQueues(
-            f"{name}-chromadb",
-            stack=stack,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create ChromaDB containerized Lambdas
-        # Add dependency on base image resource if provided
-        lambda_opts = ResourceOptions(parent=self)
-        if base_image_resource:
-            lambda_opts = ResourceOptions(parent=self, depends_on=[base_image_resource])
-            
-        self.chromadb_lambdas = ChromaDBLambdas(
-            f"{name}-chromadb-lambdas",
-            chromadb_bucket_name=self.chromadb_buckets.bucket_name,
-            chromadb_queue_url=self.chromadb_queues.delta_queue_url,
-            chromadb_queue_arn=self.chromadb_queues.delta_queue_arn,
-            openai_api_key=openai_api_key,
-            stack=stack,
-            base_image_name=base_image_name,
-            opts=lambda_opts,
+            f"{__name__}-{name}", "aws:stepfunctions:StateMachine", opts
         )
 
         # Define IAM role for Lambda
@@ -107,13 +71,47 @@ class WordLabelStepFunctions(ComponentResource):
         # Create S3 bucket for NDJSON batch files
         batch_bucket = aws.s3.Bucket(
             f"{name}-embedding-batch-bucket",
+            acl="private",
             force_destroy=True,
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
 
-        # The poll lambda is now containerized - reference from ChromaDBLambdas
-        poll_embedding_batch_lambda = self.chromadb_lambdas.polling_lambda
+        # Define the poll lambda
+        poll_embedding_batch_lambda = Function(
+            f"{name}-poll-embedding-batch-lambda",
+            role=submit_lambda_role.arn,
+            runtime="python3.12",
+            handler="poll_single_batch.poll_handler",
+            timeout=900,
+            memory_size=512,
+            code=AssetArchive(
+                {
+                    "poll_single_batch.py": FileAsset(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "poll_single_batch.py",
+                        )
+                    )
+                }
+            ),
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "OPENAI_API_KEY": openai_api_key,
+                    "PINECONE_API_KEY": pinecone_api_key,
+                    "PINECONE_INDEX_NAME": pinecone_index_name,
+                    "PINECONE_HOST": pinecone_host,
+                    "S3_BUCKET": batch_bucket.bucket,
+                }
+            ),
+            layers=[dynamo_layer.arn, label_layer.arn],
+            tags={"environment": stack},
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
 
         # Define IAM role for poll Step Function
         poll_sfn_role = Role(
@@ -159,12 +157,8 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
-                    # ChromaDB configuration
-                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": self.chromadb_queues.delta_queue_url,
                 }
             ),
-            architectures=["arm64"],  # Match layer architecture
             layers=[dynamo_layer.arn, label_layer.arn],
             tags={"environment": stack},
             opts=ResourceOptions(
@@ -178,7 +172,6 @@ class WordLabelStepFunctions(ComponentResource):
             policy=Output.all(
                 list_pending_batches_lambda.arn,
                 poll_embedding_batch_lambda.arn,
-                self.chromadb_lambdas.compaction_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -195,14 +188,13 @@ class WordLabelStepFunctions(ComponentResource):
             ),
         )
 
-        # Define the poll embedding batch Step Function with compaction
+        # Define the poll embedding batch Step Function
         StateMachine(
             f"{name}-poll-embedding-batch-sm",
             role_arn=poll_sfn_role.arn,
             definition=Output.all(
                 poll_embedding_batch_lambda.arn,
                 list_pending_batches_lambda.arn,
-                self.chromadb_lambdas.compaction_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -220,7 +212,6 @@ class WordLabelStepFunctions(ComponentResource):
                                 "Parameters": {
                                     "batch_id.$": "$$.Map.Item.Value.batch_id",
                                     "openai_batch_id.$": "$$.Map.Item.Value.openai_batch_id",
-                                    "skip_sqs_notification": True,  # Skip individual SQS notifications
                                 },
                                 "Iterator": {
                                     "StartAt": "PollEmbeddingBatchTask",
@@ -231,15 +222,6 @@ class WordLabelStepFunctions(ComponentResource):
                                             "End": True,
                                         }
                                     },
-                                },
-                                "ResultPath": "$.poll_results",
-                                "Next": "CompactAllDeltas",
-                            },
-                            "CompactAllDeltas": {
-                                "Type": "Task",
-                                "Resource": arns[2],
-                                "Parameters": {
-                                    "delta_results.$": "$.poll_results[*]"
                                 },
                                 "End": True,
                             },
@@ -310,59 +292,6 @@ class WordLabelStepFunctions(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Add S3 permissions for ChromaDB bucket
-        RolePolicy(
-            f"{name}-lambda-chromadb-s3-policy",
-            role=submit_lambda_role.id,
-            policy=Output.all(self.chromadb_buckets.bucket_name).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:PutObject",
-                                    "s3:PutObjectAcl",
-                                    "s3:GetObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:s3:::{args[0]}",
-                                    f"arn:aws:s3:::{args[0]}/*",
-                                ],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Add SQS permissions for ChromaDB queue
-        RolePolicy(
-            f"{name}-lambda-chromadb-sqs-policy",
-            role=submit_lambda_role.id,
-            policy=Output.all(self.chromadb_queues.delta_queue_arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "sqs:SendMessage",
-                                    "sqs:GetQueueAttributes",
-                                ],
-                                "Resource": args[0],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
         # Define the prepare lambda
         prepare_batch_lambda = Function(
             f"{name}-prepare-embedding-batch-lambda",
@@ -389,12 +318,8 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
-                    # ChromaDB configuration
-                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": self.chromadb_queues.delta_queue_url,
                 }
             ),
-            architectures=["arm64"],  # Match layer architecture
             layers=[dynamo_layer.arn, label_layer.arn],
             tags={"environment": stack},
             opts=ResourceOptions(
@@ -429,12 +354,8 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
-                    # ChromaDB configuration
-                    "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": self.chromadb_queues.delta_queue_url,
                 }
             ),
-            architectures=["arm64"],  # Match layer architecture
             layers=[dynamo_layer.arn, label_layer.arn],
             tags={"environment": stack},
             opts=ResourceOptions(
@@ -520,52 +441,4 @@ class WordLabelStepFunctions(ComponentResource):
                 )
             ),
             opts=ResourceOptions(parent=self),
-        )
-
-        # Create Lambda for listing pending line embedding batches
-        list_pending_line_batches_lambda = Function(
-            f"{name}-list-pending-line-batches",
-            role=submit_lambda_role.arn,
-            runtime="python3.12",
-            handler="list_pending_line_batches_for_polling.poll_handler",
-            timeout=900,
-            memory_size=512,
-            code=AssetArchive(
-                {
-                    "list_pending_line_batches_for_polling.py": FileAsset(
-                        os.path.join(os.path.dirname(__file__), "list_pending_line_batches_for_polling.py")
-                    )
-                }
-            ),
-            layers=[dynamo_layer.arn, label_layer.arn],
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create Line Embedding ChromaDB Step Function
-        from .line_embedding_chromadb_step_function import LineEmbeddingChromaDBStepFunction
-        
-        self.line_embedding_chromadb_sf = LineEmbeddingChromaDBStepFunction(
-            f"{name}-line-chromadb",
-            chromadb_lambdas=self.chromadb_lambdas,
-            list_pending_batches_lambda=list_pending_line_batches_lambda,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Export ChromaDB resources
-        self.register_outputs(
-            {
-                "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
-                "chromadb_bucket_arn": self.chromadb_buckets.bucket_arn,
-                "chromadb_delta_queue_url": self.chromadb_queues.delta_queue_url,
-                "chromadb_delta_queue_arn": self.chromadb_queues.delta_queue_arn,
-                "chromadb_polling_lambda_arn": self.chromadb_lambdas.polling_lambda.arn,
-                "chromadb_compaction_lambda_arn": self.chromadb_lambdas.compaction_lambda.arn,
-                "chromadb_line_polling_lambda_arn": self.chromadb_lambdas.line_polling_lambda.arn,
-                "line_embedding_chromadb_sf_arn": self.line_embedding_chromadb_sf.state_machine.arn,
-            }
         )

@@ -40,8 +40,8 @@ from validation_pipeline import ValidationPipeline
 
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
 
-# Using the new docker-build based base images with scoped contexts
-from base_images.base_images_v3 import BaseImages
+# Using the optimized docker-build based base images with scoped contexts
+from base_images.base_images import BaseImages
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -97,9 +97,7 @@ notification_system = NotificationSystem(
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
 word_label_step_functions = WordLabelStepFunctions(
-    "word-label-step-functions",
-    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
-    base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
+    "word-label-step-functions"
 )
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
@@ -107,7 +105,7 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
 validation_pipeline = ValidationPipeline("validation-pipeline")
 line_embedding_step_functions = LineEmbeddingStepFunction(
     "step-func",
-    base_image_name=base_images.label_base_image.ref,  # Using .ref from docker-build provider
+    base_image_name=base_images.label_base_image.image_name,  # Using .image_name from docker-build provider
     base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(

@@ -37,4 +37,3 @@ list_pending_batches_lambda/
 *.py
 !handler.py
 !__init__.py
-!list_pending_line_batches_for_polling.py
