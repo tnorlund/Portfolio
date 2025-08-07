@@ -386,12 +386,12 @@ echo "🎉 Parallel function updates completed!"'''
         upload_cmd = command.local.Command(
             f"{self.name}-upload-source",
             create=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
+                lambda b: self._create_and_run_upload_script(
                     b, package_path, package_hash
                 )
             ),
             update=build_bucket.bucket.apply(
-                lambda b: self._generate_upload_script(
+                lambda b: self._create_and_run_upload_script(
                     b, package_path, package_hash
                 )
             ),
@@ -904,24 +904,54 @@ done
         # Pulumi no longer manages the LayerVersion resource; layer publication is handled by CodePipeline.
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
 
+    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
+        """Create a script file and return just the execution command."""
+        import tempfile
+        import os
+        
+        try:
+            # Generate the script content with embedded variables to avoid argument issues
+            script_content = self._generate_upload_script(bucket, package_path, package_hash)
+            
+            # Create a persistent script file in /tmp with a unique name
+            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
+            script_path = os.path.join("/tmp", script_name)
+            
+            # Write the script file
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            
+            # Make it executable
+            os.chmod(script_path, 0o755)
+            
+            # Return just the simple command to execute the script
+            # No arguments or environment variables in the command line
+            return f"/bin/bash {script_path}"
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to create upload script: {e}") from e
+
     def _generate_upload_script(self, bucket, package_path, package_hash):
-        """Generate script to upload source package."""
+        """Generate script to upload source package with safely embedded paths."""
+        # Escape the paths to handle special characters
+        import shlex
+        safe_package_path = shlex.quote(package_path)
+        safe_bucket = shlex.quote(bucket)
+        
         return f"""#!/bin/bash
 set -e
 
-BUCKET="{bucket}"
-PACKAGE_PATH="{package_path}"
+# Set variables within the script to avoid command line length issues
+BUCKET={safe_bucket}
+PACKAGE_PATH={safe_package_path}
 HASH="{package_hash}"
+LAYER_NAME="{self.name}"
+FORCE_REBUILD="{self.force_rebuild}"
 
-echo "📦 Checking if source upload needed for layer '{self.name}'..."
-echo "Package path: $PACKAGE_PATH"
-echo "Checking package structure..."
-ls -la "$PACKAGE_PATH" || echo "Package path not found: $PACKAGE_PATH"
-ls -la "$PACKAGE_PATH/pyproject.toml" || echo "pyproject.toml not found in $PACKAGE_PATH"
+echo "📦 Checking if source upload needed for layer '$LAYER_NAME'..."
 
 # Check if we need to upload
-STORED_HASH=$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')
-if [ "$STORED_HASH" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
+STORED_HASH=$(aws s3 cp "s3://$BUCKET/$LAYER_NAME/hash.txt" - 2>/dev/null || echo '')
+if [ "$STORED_HASH" = "$HASH" ] && [ "$FORCE_REBUILD" != "True" ]; then
     HASH_SHORT=$(echo "$HASH" | cut -c1-12)
     echo "✅ Source already up-to-date (hash: $HASH_SHORT...). Skipping upload."
     exit 0
@@ -929,7 +959,7 @@ fi
 
 if [ "$STORED_HASH" != "$HASH" ]; then
     echo "📝 Source changes detected, uploading..."
-elif [ "{self.force_rebuild}" = "True" ]; then
+elif [ "$FORCE_REBUILD" = "True" ]; then
     echo "🔨 Force rebuild enabled, re-uploading source..."
 fi
 
@@ -948,22 +978,17 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "Creating source package structure..."
 mkdir -p "$TMP_DIR/source"
 
-# Copy the entire package directory structure, not just contents
+# Copy the entire package directory structure
 cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
 
-echo "Verifying created structure..."
-ls -la "$TMP_DIR"
-ls -la "$TMP_DIR/source"
-ls -la "$TMP_DIR/source/pyproject.toml" || echo "❌ pyproject.toml missing in created structure"
-
-# Use cd instead of pushd/popd for better shell compatibility
+# Create zip quietly to reduce output
 cd "$TMP_DIR"
-zip -r source.zip source
+zip -qr source.zip source
 cd - >/dev/null
 
 echo "Uploading to S3..."
-aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
-echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
+aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_NAME/source.zip"
+echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
 
 echo "✅ Source uploaded successfully"
 """
