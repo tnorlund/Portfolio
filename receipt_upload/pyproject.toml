@@ -51,6 +51,30 @@ dev = [
     "pylint>=3.0.0,<4.0.0",
 ]
 
+[tool.hatch.build]
+exclude = [
+  "tests/",
+  "test/",
+  "**/*.md",
+  "**/*.txt",
+  "**/*.json",
+  "**/*.yaml",
+  "**/*.yml",
+  "**/*.ini",
+  "**/*.cfg",
+  "**/*.sh",
+  "**/conftest.py",
+  "**/pytest.ini",
+  "**/__pycache__/",
+  "**/*.pyc",
+  "**/*.pyo",
+  "**/*.pyd",
+  ".coverage",
+  ".pytest_cache/",
+  "test_*.py",
+  "OCRSwift.swift",  # Swift files not needed in Python layer
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_upload"]
 
