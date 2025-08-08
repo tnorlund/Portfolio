@@ -132,7 +132,7 @@ jobs:
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_dynamo dependency from PR source first"
             # Install from the parent directory since we haven't cd'd yet
-            python3 -m pip install --force-reinstall -e "./receipt_dynamo" --disable-pip-version-check
+            python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
             # Verify receipt_dynamo is importable
             echo "Verifying receipt_dynamo installation..."
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
@@ -143,7 +143,12 @@ jobs:
           cd ${{ matrix.package }}
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
             echo "Installing package with test dependencies from PR source"
-            python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
+            # Don't use --force-reinstall for receipt_label to preserve local receipt_dynamo
+            if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+              python3 -m pip install -e ".[test]" --disable-pip-version-check
+            else
+              python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
+            fi
           else
             echo "Installing package from PR source with minimal test dependencies"
             python3 -m pip install --force-reinstall -e . --disable-pip-version-check
@@ -184,6 +189,17 @@ jobs:
           # Show full package info for debugging
           echo "=== Package info ==="
           echo "$PIP_SHOW_OUTPUT" | grep -E "(Name:|Version:|Location:|Editable)" || true
+          
+          # Final verification for receipt_label that receipt_dynamo is still local
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            echo "=== Final receipt_dynamo verification ==="
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo location: {receipt_dynamo.__file__}')"
+            python3 -c "from receipt_dynamo.entities.places_cache import PlacesCache; print('PlacesCache still importable')" || {
+              echo "ERROR: receipt_dynamo imports broken after receipt_label installation!"
+              python3 -m pip list | grep receipt
+              exit 1
+            }
+          fi
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
