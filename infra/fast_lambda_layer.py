@@ -904,26 +904,30 @@ done
         # Pulumi no longer manages the LayerVersion resource; layer publication is handled by CodePipeline.
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
 
-    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
+    def _create_and_run_upload_script(
+        self, bucket, package_path, package_hash
+    ):
         """Create a script file and return just the execution command."""
         import tempfile
         import os
-        
+
         try:
             # Generate the script content with embedded variables to avoid argument issues
-            script_content = self._generate_upload_script(bucket, package_path, package_hash)
-            
+            script_content = self._generate_upload_script(
+                bucket, package_path, package_hash
+            )
+
             # Create a persistent script file in /tmp with a unique name
             script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
             script_path = os.path.join("/tmp", script_name)
-            
+
             # Write the script file
-            with open(script_path, 'w') as f:
+            with open(script_path, "w") as f:
                 f.write(script_content)
-            
+
             # Make it executable
             os.chmod(script_path, 0o755)
-            
+
             # Return just the simple command to execute the script
             # No arguments or environment variables in the command line
             return f"/bin/bash {script_path}"
@@ -934,9 +938,10 @@ done
         """Generate script to upload source package with safely embedded paths."""
         # Escape the paths to handle special characters
         import shlex
+
         safe_package_path = shlex.quote(package_path)
         safe_bucket = shlex.quote(bucket)
-        
+
         return f"""#!/bin/bash
 set -e
 
@@ -1175,22 +1180,36 @@ layers_to_build = [
 ]
 
 # Create Lambda layers using the fast approach
+# TEMPORARILY SKIP LAYER BUILDING
+SKIP_LAYER_BUILDING = True  # Set to False to enable layer building
+
 fast_lambda_layers = {}
 
-for layer_config in layers_to_build:
-    fast_layer = FastLambdaLayer(
-        name=layer_config["name"],
-        package_dir=layer_config["package_dir"],
-        python_versions=layer_config["python_versions"],
-        description=layer_config["description"],
-        needs_pillow=layer_config["needs_pillow"],
-    )
-    fast_lambda_layers[layer_config["name"]] = fast_layer
+if not SKIP_LAYER_BUILDING:
+    for layer_config in layers_to_build:
+        fast_layer = FastLambdaLayer(
+            name=layer_config["name"],
+            package_dir=layer_config["package_dir"],
+            python_versions=layer_config["python_versions"],
+            description=layer_config["description"],
+            needs_pillow=layer_config["needs_pillow"],
+        )
+        fast_lambda_layers[layer_config["name"]] = fast_layer
 
-# Access the built layers by name
-fast_dynamo_layer = fast_lambda_layers["receipt-dynamo"]
-fast_label_layer = fast_lambda_layers["receipt-label"]
-fast_upload_layer = fast_lambda_layers["receipt-upload"]
+    # Access the built layers by name
+    fast_dynamo_layer = fast_lambda_layers["receipt-dynamo"]
+    fast_label_layer = fast_lambda_layers["receipt-label"]
+    fast_upload_layer = fast_lambda_layers["receipt-upload"]
+else:
+    # Create dummy objects when skipping
+    class DummyLayer:
+        def __init__(self, name):
+            self.name = name
+            self.arn = None
+    
+    fast_dynamo_layer = DummyLayer("receipt-dynamo")
+    fast_label_layer = DummyLayer("receipt-label")
+    fast_upload_layer = DummyLayer("receipt-upload")
 
 # Create aliases for backward compatibility
 dynamo_layer = fast_dynamo_layer
