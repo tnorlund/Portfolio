@@ -59,8 +59,10 @@
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
       "source.organizeImports": "explicit"
-    }
+    },
+    "editor.rulers": [79]
   },
+  "black-formatter.args": ["--line-length", "79"],
   "isort.args": ["--profile", "black", "--line-length", "79"],
   "pylint.args": ["--max-line-length=79"],
   "python.linting.pylintArgs": ["--max-line-length=79"],

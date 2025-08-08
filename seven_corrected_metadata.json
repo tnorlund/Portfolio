@@ -1,0 +1,85 @@
+{
+  "generated_at": "2025-08-07T21:30:00.000000",
+  "total_count": 6,
+  "notes": "82c4720e-1c52-4dad-b8af-8605f84dc2ab excluded due to multi-receipt image",
+  "metadata": [
+    {
+      "image_id": "f9da2cd6-f008-4e5e-8915-7e68ac709240",
+      "receipt_id": 1,
+      "place_id": "ChIJEwrHZKsm6IARBRHWK3Ox38I",
+      "merchant_name": "Speedway",
+      "matched_fields": ["name", "address"],
+      "timestamp": "2025-08-08T00:20:20.649873+00:00",
+      "merchant_category": "Fuel & Lube",
+      "address": "5000 Kanan Rd, Agoura Hills, CA 91301",
+      "phone_number": "991-3401",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Speedway gas station at Kanan Rd location"
+    },
+    {
+      "image_id": "abaec508-6730-4d75-9d48-76492a26a168",
+      "receipt_id": 1,
+      "place_id": "ChIJG5IhD_sk6IARePXtEv4iyFg",
+      "merchant_name": "Neighborly",
+      "matched_fields": ["address"],
+      "timestamp": "2025-08-08T04:00:00.000000+00:00",
+      "merchant_category": "Service",
+      "address": "4000 E Thousand Oaks Blvd, Westlake Village, CA 91362",
+      "phone_number": "",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Neighborly service company at Thousand Oaks Blvd location"
+    },
+    {
+      "image_id": "8362b52a-60a1-4534-857f-028dd531976e",
+      "receipt_id": 1,
+      "place_id": "ChIJG5IhD_sk6IARePXtEv4iyFg",
+      "merchant_name": "Neighborly",
+      "matched_fields": ["address"],
+      "timestamp": "2025-08-08T04:00:00.000000+00:00",
+      "merchant_category": "Service",
+      "address": "4000 E Thousand Oaks Blvd, Westlake Village, CA 91362",
+      "phone_number": "",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Neighborly service company at Thousand Oaks Blvd location"
+    },
+    {
+      "image_id": "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
+      "receipt_id": 1,
+      "place_id": "ChIJbcsNQ2wk6IARlmoF-6DlBuE",
+      "merchant_name": "Target",
+      "matched_fields": ["phone_number"],
+      "timestamp": "2025-08-08T03:53:53.200541+00:00",
+      "merchant_category": "Retail",
+      "address": "30740 Russell Ranch Rd, Westlake Village, CA 91362, USA",
+      "phone_number": "818-661-2631",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Target store at Russell Ranch location with matching phone number"
+    },
+    {
+      "image_id": "1bee49cb-cc59-40d6-b0e4-72b0f9dc58ed",
+      "receipt_id": 1,
+      "place_id": "ChIJEwrHZKsm6IARBRHWK3Ox38I",
+      "merchant_name": "Speedway",
+      "matched_fields": ["name", "address"],
+      "timestamp": "2025-08-08T00:20:20.649873+00:00",
+      "merchant_category": "Fuel & Lube",
+      "address": "5000 Kanan Rd, Agoura Hills, CA 91301",
+      "phone_number": "991-3401",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Speedway gas station at Kanan Rd location"
+    },
+    {
+      "image_id": "0a345fdd-ecc3-4577-b3d3-869140451f43",
+      "receipt_id": 1,
+      "merchant_name": "Ranch Hand BBQ",
+      "address": "1015 Broadbeck Dr Unit A, Newbury Park, CA 91320, United States",
+      "phone_number": "",
+      "place_id": "ChIJT6JcrAA66IAR7QKIukij5NQ",
+      "merchant_category": "Restaurant",
+      "matched_fields": ["name"],
+      "validated_by": "TEXT_SEARCH",
+      "timestamp": "2025-08-08T04:00:00.000000+00:00",
+      "reasoning": "Ranch Hand BBQ restaurant at Broadbeck Dr location"
+    }
+  ]
+}

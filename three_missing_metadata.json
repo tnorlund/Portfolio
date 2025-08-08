@@ -1,0 +1,46 @@
+{
+  "generated_at": "2025-08-08T05:00:00.000000",
+  "total_count": 3,
+  "notes": "Three missing receipts from multi-receipt images",
+  "metadata": [
+    {
+      "image_id": "49a1a1e7-348a-4cd9-af96-2312e838476e",
+      "receipt_id": 1,
+      "merchant_name": "DIY Home Center",
+      "address": "28750 Roadside Dr, Agoura Hills, CA 91301, United States",
+      "phone_number": "",
+      "place_id": "ChIJ8xPLMU0h6IARly1ZEceQdWs",
+      "merchant_category": "Hardware Store",
+      "matched_fields": ["name"],
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "DIY Home Center on Roadside Dr identified from receipt text",
+      "timestamp": "2025-08-08T05:00:00.000000+00:00"
+    },
+    {
+      "image_id": "49a1a1e7-348a-4cd9-af96-2312e838476e",
+      "receipt_id": 2,
+      "merchant_name": "Speedway",
+      "address": "5000 Kanan Rd, Agoura Hills, CA 91301",
+      "phone_number": "991-3401",
+      "place_id": "ChIJEwrHZKsm6IARBRHWK3Ox38I",
+      "merchant_category": "Fuel & Lube",
+      "matched_fields": ["name", "address"],
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Speedway gas station identified from second receipt in image",
+      "timestamp": "2025-08-08T05:00:00.000000+00:00"
+    },
+    {
+      "image_id": "82c4720e-1c52-4dad-b8af-8605f84dc2ab",
+      "receipt_id": 2,
+      "merchant_name": "Stockton Ace Hardware",
+      "address": "3201 W Benjamin Holt Dr, Stockton, CA 95219, United States",
+      "phone_number": "(209) 951-8050",
+      "place_id": "ChIJtSWW7KcOkIAREaPEkk_AkQ0",
+      "merchant_category": "Hardware Store",
+      "matched_fields": ["name", "address", "phone_number"],
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Stockton Ace Hardware identified from receipt text with phone number",
+      "timestamp": "2025-08-08T05:00:00.000000+00:00"
+    }
+  ]
+}

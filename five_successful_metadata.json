@@ -1,0 +1,116 @@
+{
+  "generated_at": "2025-08-07T21:05:14.237466",
+  "total_count": 5,
+  "metadata": [
+    {
+      "image_id": "aa53b064-5cdf-4049-8276-131eb2cd5396",
+      "receipt_id": 1,
+      "place_id": "ChIJq3YA-msk6IARdbcVfWwCYOw",
+      "merchant_name": "Target",
+      "matched_fields": [
+        "phone_number"
+      ],
+      "timestamp": "2025-08-08T03:53:53.200541+00:00",
+      "merchant_category": "Retail",
+      "address": "30740 Russell Ranch Rd, Westlake Village, CA 91362, USA",
+      "phone_number": "818-661-2631",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Phone number 818-661-2631 on receipt matches Target Westlake Village. Text search returned Target with same number and matching address. Selected Merchant based on phone/address match.",
+      "canonical_place_id": "",
+      "canonical_merchant_name": "",
+      "canonical_address": "",
+      "canonical_phone_number": "",
+      "validation_status": "UNSURE",
+      "selection_reason": "Best score from multiple validation runs"
+    },
+    {
+      "image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac",
+      "receipt_id": 1,
+      "place_id": "ChIJj8jxfGgMkIARBQxpbdDeHTY",
+      "merchant_name": "Trader Joe's",
+      "matched_fields": [
+        "phone_number",
+        "address",
+        "merchant_name"
+      ],
+      "timestamp": "2025-08-08T00:26:38.873222+00:00",
+      "merchant_category": "Supermarket",
+      "address": "6535 Pacific Ave, Stockton, CA 95207, USA",
+      "phone_number": "951-7597",
+      "validated_by": "ADDRESS_LOOKUP",
+      "reasoning": "The receipt lists a phone number 951-7597, the name JOE'S, and a URL pointing to www.traderjoes.com. A text search for \"Trader Joe's\" with the bias to the address 6535 Pacific Ave (matched to 95207 zipcode) returned the Trader Joe\u2019s location in Stockton, CA with the same phone number and place ID. The address matches 6535 Pacific Ave, Stockton, CA 95207. Thus the merchant is Trader Joe\u2019s Stockton.",
+      "canonical_place_id": "",
+      "canonical_merchant_name": "",
+      "canonical_address": "",
+      "canonical_phone_number": "",
+      "validation_status": "MATCHED",
+      "selection_reason": "Best score from multiple validation runs"
+    },
+    {
+      "image_id": "e0e74bc2-5acf-4dad-85ab-7e1d5f89cd6d",
+      "receipt_id": 1,
+      "place_id": "ChIJEwrHZKsm6IARBRHWK3Ox38I",
+      "merchant_name": "Speedway",
+      "matched_fields": [
+        "name",
+        "address"
+      ],
+      "timestamp": "2025-08-08T00:20:20.649873+00:00",
+      "merchant_category": "Fuel & Lube",
+      "address": "5000 Kanan Rd, Agoura Hills, CA 91301",
+      "phone_number": "991-3401",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "The receipt text contains \"SPEED AY 5000 KANAN RD\" which matches the Google Places result for \"Speedway\" at 5000 Kanan Rd. The store name and full address correspond to the place details. The phone number 991-3401 is extracted from the receipt and is associated with this location.",
+      "canonical_place_id": "",
+      "canonical_merchant_name": "",
+      "canonical_address": "",
+      "canonical_phone_number": "",
+      "validation_status": "MATCHED",
+      "selection_reason": "Best score from multiple validation runs"
+    },
+    {
+      "image_id": "c8a2468a-e1a7-4562-ab60-df3e68c7ac23",
+      "receipt_id": 1,
+      "place_id": "ChIJ_fLB-x4l6IARTjvpnqokrls",
+      "merchant_name": "Sparkling Image Car Wash",
+      "matched_fields": [
+        "address",
+        "phone_number"
+      ],
+      "timestamp": "2025-08-08T00:14:45.058391+00:00",
+      "merchant_category": "Car Wash",
+      "address": "3369 Thousand Oaks Blvd, Thousand Oaks, CA 91362, USA",
+      "phone_number": "(805)495-5110",
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "The receipt contains the phone number (805)495-5110 and the URL www.Sparklinglmage.com. A text search with the phone number and nearby location returned Sparkling Image Car Wash at 3369 Thousand Oaks Blvd, Thousand Oaks, CA 91362. The phone matches and the name matches the URL and receipt text. Therefore the merchant is Sparkling Image Car Wash.",
+      "canonical_place_id": "",
+      "canonical_merchant_name": "",
+      "canonical_address": "",
+      "canonical_phone_number": "",
+      "validation_status": "MATCHED",
+      "selection_reason": "Best score from multiple validation runs"
+    },
+    {
+      "image_id": "b81f388d-5c6d-459e-a5c5-d38007950ba5",
+      "receipt_id": 1,
+      "place_id": "ChIJbcsNQ2wk6IARlmoF-6DlBuE",
+      "merchant_name": "30740 Russell Ranch Rd (Westlake Village)",
+      "matched_fields": [
+        "phone_number",
+        "address"
+      ],
+      "timestamp": "2025-08-08T00:05:38.188004+00:00",
+      "merchant_category": "Retail",
+      "address": "30740 Russell Ranch Rd, Westlake Village, CA 91362",
+      "phone_number": "818-661-2631",
+      "validated_by": "ADDRESS_LOOKUP",
+      "reasoning": "The receipt phone number matches 818-661-2631 and the only address on the receipt is \"30740\" which geocodes to 30740 Russell Ranch Rd, Westlake Village CA 91362 with the same phone number. The place_id corresponds to the address, so the merchant is matched by address lookup.",
+      "canonical_place_id": "",
+      "canonical_merchant_name": "",
+      "canonical_address": "",
+      "canonical_phone_number": "",
+      "validation_status": "MATCHED",
+      "selection_reason": "Best score from multiple validation runs"
+    }
+  ]
+}

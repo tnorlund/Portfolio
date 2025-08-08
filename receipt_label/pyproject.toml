@@ -34,11 +34,12 @@ classifiers = [
 dependencies = [
   "receipt-dynamo",  # Include receipt_dynamo in the layer
   "openai>=1.3.0",
-  "openai-agents>=0.0.12",
-  # pinecone moved to optional - using ChromaDB instead
+  "openai-agents>=0.2.4",
+  "chromadb>=0.5.0",
   "fuzzywuzzy>=0.18.0",
   "RapidFuzz>=3.13.0",
   # numpy removed - use AWS Lambda Layer instead
+  # pinecone moved to optional dependencies
 ]
 keywords = ["llm", "labeling", "validation"]
 

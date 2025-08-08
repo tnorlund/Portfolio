@@ -1,0 +1,37 @@
+{
+  "generated_at": "2025-08-07T20:30:00.000000",
+  "total_count": 2,
+  "metadata": [
+    {
+      "image_id": "aa53b064-5cdf-4049-8276-131eb2cd5396",
+      "receipt_id": 1,
+      "merchant_name": "Target",
+      "address": "30740 Russell Ranch Rd, Westlake Village, CA 91362",
+      "phone_number": "818-661-2631",
+      "place_id": "ChIJbcsNQ2wk6IARlmoF-6DlBuE",
+      "merchant_category": "Department Store",
+      "matched_fields": [
+        "phone_number",
+        "brand"
+      ],
+      "validated_by": "PHONE_LOOKUP",
+      "reasoning": "Receipt shows Up & Up Beauty products (Target house brand) with phone 818-661-2631 and Russell Ranch location. This matches Target at 30740 Russell Ranch Rd.",
+      "timestamp": "2025-08-07T20:30:00.000000"
+    },
+    {
+      "image_id": "0a345fdd-ecc3-4577-b3d3-869140451f43",
+      "receipt_id": 1,
+      "merchant_name": "Ranch Hand BBQ",
+      "address": "1015 Broadbeck Dr Unit A, Newbury Park, CA 91320, United States",
+      "phone_number": "",
+      "place_id": "ChIJT6JcrAA66IAR7QKIukij5NQ",
+      "merchant_category": "Restaurant",
+      "matched_fields": [
+        "name"
+      ],
+      "validated_by": "TEXT_SEARCH",
+      "reasoning": "Receipt contains 'Ranch' and 'Hand' text indicating Ranch Hand BBQ restaurant at 1015 Broadbeck Dr, Newbury Park.",
+      "timestamp": "2025-08-07T20:30:00.000000"
+    }
+  ]
+}

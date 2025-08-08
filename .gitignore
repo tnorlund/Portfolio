@@ -228,3 +228,8 @@ receipt_label/receipt_data/
 receipt_label/receipt_data_*/
 receipt_label/test_results/
 .venv_test/
+
+# Local development files
+dev.local_export/
+dev.traces/
+*.local.json

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationMethod
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptMetadata
 
 from .agent import MerchantValidationAgent
 from .merchant_validation import (
@@ -33,7 +33,10 @@ class MerchantValidationHandler:
     """High-level handler for merchant validation operations."""
 
     def __init__(
-        self, google_places_api_key: str, model: str = "gpt-3.5-turbo"
+        self,
+        google_places_api_key: str,
+        model: str = "gpt-3.5-turbo",
+        openai_client=None,
     ):
         """
         Initialize the validation handler.
@@ -41,16 +44,19 @@ class MerchantValidationHandler:
         Args:
             google_places_api_key: API key for Google Places
             model: OpenAI model to use for validation
+            openai_client: Optional OpenAI client for local LLMs (e.g., Ollama)
         """
-        self.agent = MerchantValidationAgent(google_places_api_key, model)
+        self.agent = MerchantValidationAgent(
+            google_places_api_key, model, openai_client
+        )
         self.google_places_api_key = google_places_api_key
 
     def validate_receipt_merchant(
         self,
         image_id: str,
         receipt_id: int,
-        receipt_lines: list,
-        receipt_words: list,
+        receipt_lines: list[ReceiptLine],
+        receipt_words: list[ReceiptWord],
         max_attempts: Optional[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> Tuple[ReceiptMetadata, Dict[str, Any]]:
@@ -69,17 +75,16 @@ class MerchantValidationHandler:
             Tuple of (ReceiptMetadata, status_info)
         """
         # Prepare user input
+        extracted_fields = extract_candidate_merchant_fields(receipt_words)
         user_input = {
             "image_id": image_id,
             "receipt_id": receipt_id,
             "raw_text": [line.text for line in receipt_lines],
-            "extracted_data": {
-                key: [w.text for w in words]
-                for key, words in extract_candidate_merchant_fields(
-                    receipt_words
-                ).items()
-            },
+            "extracted_data": extracted_fields.to_dict(),  # Convert dataclass to dict for agent
         }
+        
+        # Log what we're sending to the agent
+        logger.debug(f"Sending to agent - extracted_data: {user_input['extracted_data']}")
 
         # Run the agent
         metadata, partial_results = self.agent.validate_receipt(
@@ -105,7 +110,8 @@ class MerchantValidationHandler:
 
         if best_partial_match:
             logger.info(
-                f"Using best partial match from {best_partial_match.get('source', 'unknown')}"
+                "Using best partial match from %s",
+                best_partial_match.get("source", "unknown"),
             )
             metadata_obj = build_receipt_metadata_from_partial_result(
                 image_id,
