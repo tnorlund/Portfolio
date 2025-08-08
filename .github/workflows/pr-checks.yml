@@ -100,9 +100,13 @@ jobs:
 
       - name: Setup virtual environment and install packages
         run: |
-          # Create isolated virtual environment for this PR check job
-          VENV_PATH=".venv-pr-${{ matrix.package }}"
+          # Create isolated virtual environment for this PR check job - unique per run
+          VENV_PATH=".venv-pr-${{ matrix.package }}-${{ github.run_id }}"
           echo "Creating virtual environment: $VENV_PATH"
+          
+          # Clean up any stale environments from previous runs
+          echo "Cleaning up stale virtual environments..."
+          rm -rf .venv-pr-${{ matrix.package }}-* 2>/dev/null || true
           
           # Always create fresh virtual environment to ensure we test against PR code
           if [ -d "$VENV_PATH" ]; then
@@ -147,8 +151,21 @@ jobs:
           echo "Python location: $(which python3)"
           echo "Virtual environment: $VIRTUAL_ENV"
           
-          # Verify editable installs
-          echo "=== Verifying editable installs ==="
+          # Verify editable installs are from PR checkout
+          echo "=== Verifying editable installs from PR checkout ==="
+          EXPECTED_PATH="$PWD/${{ matrix.package }}"
+          ACTUAL_PATH=$(python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep "Location:" | cut -d' ' -f2 || echo "NOT_FOUND")
+          
+          if [[ "$ACTUAL_PATH" == *"$PWD"* ]]; then
+            echo "✅ Package installed from PR checkout: $ACTUAL_PATH"
+          else
+            echo "❌ ERROR: Package not installed from PR checkout!"
+            echo "Expected path containing: $PWD"
+            echo "Actual path: $ACTUAL_PATH"
+            exit 1
+          fi
+          
+          # Show editable project location
           python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
 
       - name: Run Python tests
@@ -156,7 +173,13 @@ jobs:
         env:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
-
+          # Ensure we're using the unique virtual environment
+          VENV_PATH="../.venv-pr-${{ matrix.package }}-${{ github.run_id }}"
+          source "$VENV_PATH/bin/activate"
+          
+          echo "Using Python from: $(which python3)"
+          echo "Virtual environment: $VIRTUAL_ENV"
+          
           # Run only fast unit tests with 30-second timeout
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
@@ -165,6 +188,16 @@ jobs:
           else
             # receipt_dynamo uses directory-based test organization
             pytest tests/unit -n auto --timeout=30 -m "not slow" --tb=short -q -o addopts=""
+          fi
+
+      - name: Cleanup after test
+        if: always()
+        run: |
+          # Clean up the unique venv after the test
+          VENV_PATH=".venv-pr-${{ matrix.package }}-${{ github.run_id }}"
+          if [ -d "$VENV_PATH" ]; then
+            echo "Cleaning up virtual environment: $VENV_PATH"
+            rm -rf "$VENV_PATH"
           fi
 
   # TypeScript tests on GitHub-hosted
