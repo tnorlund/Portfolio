@@ -1,0 +1,81 @@
+
+====================================
+    AGENT TRACE ANALYSIS REPORT
+====================================
+
+📊 OVERVIEW
+-----------
+Total traces analyzed: 76
+Average tool calls per trace: 4.2
+Successful completions: 72/76 (94.7%)
+
+🔧 TOOL USAGE PATTERNS
+----------------------
+Most frequent tools:
+  - tool_return_metadata: 93 calls
+  - search_by_text: 87 calls
+  - search_by_phone: 67 calls
+  - search_by_address: 48 calls
+  - search_nearby: 25 calls
+
+Most common call sequences:
+  - search_by_phone → search_by_address → tool_return_metadata: 13 times
+  - search_by_phone → search_by_text → tool_return_metadata: 6 times
+  - search_by_phone → search_by_address → search_by_text: 5 times
+
+
+📞 API CALL ANALYSIS
+--------------------
+Validation methods used:
+  - TEXT_SEARCH: 42
+  - INFERENCE: 31
+  - ADDRESS_LOOKUP: 17
+  - PHONE_LOOKUP: 3
+
+
+📱 PHONE NUMBER ANALYSIS
+------------------------
+Phone formats encountered:
+  - incomplete: 32
+  - formatted: 19
+  - other: 11
+  - 10_digits: 5
+
+Address searches: 48
+
+💭 REASONING ANALYSIS
+---------------------
+Average reasoning length: 281 characters
+
+Top reasoning keywords:
+  - phone: 134
+  - receipt: 117
+  - address: 84
+  - number: 76
+  - returned: 53
+  - merchant: 52
+  - search: 46
+  - match: 35
+  - lists: 35
+  - matches: 35
+
+
+Confidence distribution:
+  - High confidence: 6
+  - Medium confidence: 2
+  - Low confidence: 4
+
+
+🎯 OPTIMIZATION OPPORTUNITIES
+-----------------------------
+1. Many incomplete phone numbers. Consider preprocessing or fallback strategies.
+2. High proportion of low-confidence validations. Consider additional data sources or validation strategies.
+
+
+💡 RECOMMENDATIONS
+------------------
+1. Cache Results: Implement caching for frequently searched merchants
+2. Preprocess Data: Clean and normalize phone/address data before validation
+3. Fallback Strategy: Use multiple validation approaches in sequence
+4. Confidence Scoring: Add confidence thresholds to choose best method
+5. Batch Processing: Group similar receipts for efficient processing

@@ -22,7 +22,7 @@ from .data_access import (
     query_records_by_place_id,
     write_receipt_metadata_to_dynamo,
 )
-from .field_extraction import extract_candidate_merchant_fields
+from .field_extraction import extract_candidate_merchant_fields, ExtractedMerchantFields
 from .google_places import (
     is_match_found,
     is_valid_google_match,
@@ -47,6 +47,7 @@ __all__ = [
     "persist_alias_updates",
     # Field extraction
     "extract_candidate_merchant_fields",
+    "ExtractedMerchantFields",
     # Google Places integration
     "query_google_places",
     "is_match_found",

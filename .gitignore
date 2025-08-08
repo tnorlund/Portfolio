@@ -226,3 +226,8 @@ PR_DESCRIPTION.md
 receipt_label/receipt_data/
 receipt_label/receipt_data_*/
 receipt_label/test_results/
+
+# Local development files
+dev.local_export/
+dev.traces/
+*.local.json

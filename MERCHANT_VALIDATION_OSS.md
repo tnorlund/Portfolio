@@ -3,6 +3,7 @@
 This document describes the current merchant validation implementation and how to adapt it for use with open-source language models (Ollama, vLLM, etc.) running locally.
 
 ## Table of Contents
+
 - [Current Architecture](#current-architecture)
 - [The Metadata Creation Pattern](#the-metadata-creation-pattern)
 - [OSS Model Integration](#oss-model-integration)
@@ -29,7 +30,7 @@ Receipt Data → MerchantValidationAgent → Function Tools → ReceiptMetadata
                          ↓
                    [5 Tools Available]
                    1. search_by_phone
-                   2. search_by_address  
+                   2. search_by_address
                    3. search_nearby
                    4. search_by_text
                    5. tool_return_metadata (REQUIRED)
@@ -47,6 +48,7 @@ Receipt Data → MerchantValidationAgent → Function Tools → ReceiptMetadata
 ### The Challenge
 
 The agent must return a structured `ReceiptMetadata` object with specific fields. Without enforcement, agents might:
+
 - Return unstructured text
 - Miss required fields
 - Fail to call the final tool
@@ -95,15 +97,15 @@ with the exact values for each field (place_id, merchant_name, etc.) and then st
 ```python
 for attempt in range(1, max_attempts + 1):
     run_result = Runner.run_sync(agent, messages)
-    
+
     # Check if tool_return_metadata was called
     metadata = extract_metadata_from_result(run_result)
     if metadata:
         return metadata
-    
+
     # Collect partial results for fallback
     partial_results.extend(extract_partial_results(run_result))
-    
+
 # If all attempts fail, use partial results
 return build_metadata_from_partial_results(partial_results)
 ```
@@ -119,7 +121,7 @@ return build_metadata_from_partial_results(partial_results)
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull a model
-ollama pull llama2:13b
+ollama pull gpt-oss:20b
 
 # Start Ollama server (default port 11434)
 ollama serve
@@ -187,6 +189,7 @@ with ThreadPoolExecutor(max_workers=1) as executor:
 ```
 
 For local models, this pattern still works but consider:
+
 - Local models don't have network latency
 - Timeout might need adjustment (local models can be slower)
 - Thread overhead might not be necessary for local execution
@@ -194,15 +197,18 @@ For local models, this pattern still works but consider:
 ### Model-Specific Considerations
 
 #### Context Length
+
 - **OpenAI GPT-3.5**: 4096 tokens
-- **Llama 2**: 4096 tokens  
+- **Llama 2**: 4096 tokens
 - **Mistral**: 8192 tokens
 - **GPT-OSS:20b**: Check your specific model
 
 Adjust prompt length and receipt data accordingly.
 
 #### Response Quality
+
 Local models may need prompt engineering:
+
 - More explicit instructions
 - Examples in the prompt
 - Structured output templates
@@ -219,7 +225,7 @@ def mock_places_api(mocker):
     class DummyAPI:
         def search_by_phone(self, phone):
             return {"place_id": "test_id", "name": "Test Merchant"}
-    
+
     return mocker.patch(
         'receipt_label.data.places_api.PlacesAPI',
         DummyAPI
@@ -238,13 +244,13 @@ def test_merchant_validation_with_local_model():
         "phone": "555-1234",
         "address": "123 Main St",
     }
-    
+
     # Configure agent with temperature=0 for consistency
     agent = create_oss_agent(temperature=0)
-    
+
     # Run validation
     metadata, partial = agent.validate_receipt(receipt_data)
-    
+
     # Assert structure, not exact values
     assert metadata is not None
     assert "merchant_name" in metadata
@@ -262,14 +268,14 @@ def benchmark_models():
         ("llama2:13b", create_ollama_agent),
         ("mistral:7b", create_mistral_agent),
     ]
-    
+
     for model_name, create_fn in models:
         agent = create_fn()
-        
+
         start = time.time()
         metadata, _ = agent.validate_receipt(test_data)
         elapsed = time.time() - start
-        
+
         print(f"{model_name}: {elapsed:.2f}s")
         print(f"  Success: {metadata is not None}")
         print(f"  Fields: {len(metadata) if metadata else 0}")
@@ -282,7 +288,7 @@ For continuous integration without local models:
 ```python
 class MockLocalModel:
     """Deterministic mock for testing without real LLM"""
-    
+
     def complete(self, messages, tools):
         # Always return a tool_return_metadata call
         return {
@@ -337,7 +343,7 @@ agent:
   max_turns: 10
 
 cache:
-  ttl_seconds: 86400  # 24 hours
+  ttl_seconds: 86400 # 24 hours
   enable_dynamo: true
 
 logging:
@@ -352,19 +358,21 @@ logging:
 The system already implements comprehensive caching:
 
 1. **Google Places API Cache**
+
    - Stored in DynamoDB via PlacesCache entity
    - TTL-based expiration
    - Query count tracking
    - Normalized address matching
 
 2. **Cache Key Design**
+
    ```python
    # Phone lookups
    cache_key = f"PHONE#{normalized_phone}"
-   
-   # Address lookups  
+
+   # Address lookups
    cache_key = f"ADDRESS#{normalized_address_hash}"
-   
+
    # Nearby searches
    cache_key = f"{lat},{lng}:{radius}:{keyword}"
    ```
@@ -381,17 +389,17 @@ Consider pre-filtering before invoking the agent:
 ```python
 def should_use_agent(receipt_data):
     """Determine if agent is needed or if patterns suffice"""
-    
+
     # Known merchant patterns
     if is_known_merchant(receipt_data["merchant_name"]):
         return False
-    
+
     # High-confidence phone match
     if has_valid_phone(receipt_data["phone"]):
         cached = get_cached_phone_lookup(receipt_data["phone"])
         if cached and cached["confidence"] > 0.9:
             return False
-    
+
     return True
 ```
 
@@ -402,13 +410,13 @@ For multiple receipts, consider parallel processing:
 ```python
 async def validate_receipts_batch(receipts, max_concurrent=5):
     """Process multiple receipts with concurrency limit"""
-    
+
     semaphore = asyncio.Semaphore(max_concurrent)
-    
+
     async def validate_with_limit(receipt):
         async with semaphore:
             return await validate_receipt_async(receipt)
-    
+
     tasks = [validate_with_limit(r) for r in receipts]
     return await asyncio.gather(*tasks)
 ```
@@ -422,6 +430,7 @@ async def validate_receipts_batch(receipts, max_concurrent=5):
 **Symptoms**: Validation fails after all retry attempts
 
 **Solutions**:
+
 - Increase MAX_AGENT_TURNS (agent might need more steps)
 - Adjust prompt to be more explicit about calling the tool
 - Check if model understands function calling syntax
@@ -432,6 +441,7 @@ async def validate_receipts_batch(receipts, max_concurrent=5):
 **Symptoms**: ThreadPoolExecutor timeout errors
 
 **Solutions**:
+
 - Increase AGENT_TIMEOUT_SECONDS
 - Use smaller/faster model
 - Optimize prompt length
@@ -442,6 +452,7 @@ async def validate_receipts_batch(receipts, max_concurrent=5):
 **Symptoms**: Same input produces different outputs
 
 **Solutions**:
+
 - Set temperature=0 for deterministic output
 - Use structured prompt templates
 - Implement result validation and retry logic
@@ -452,6 +463,7 @@ async def validate_receipts_batch(receipts, max_concurrent=5):
 **Symptoms**: OOM errors or slow performance
 
 **Solutions**:
+
 - Use quantized models (4-bit, 8-bit)
 - Reduce batch size
 - Implement model unloading between batches
@@ -486,10 +498,10 @@ import pstats
 def profile_validation():
     profiler = cProfile.Profile()
     profiler.enable()
-    
+
     # Run validation
     metadata, _ = agent.validate_receipt(test_data)
-    
+
     profiler.disable()
     stats = pstats.Stats(profiler)
     stats.sort_stats('cumulative')

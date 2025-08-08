@@ -5,14 +5,16 @@ This module provides a configurable agent that validates merchant information
 from receipts using Google Places API lookups and GPT validation.
 """
 
+import asyncio
+from datetime import datetime
+from pathlib import Path
 import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Dict, List, Optional, Tuple
 
-from agents import Agent, Runner, function_tool
+from agents import Agent, Runner, function_tool, OpenAIChatCompletionsModel
 from receipt_dynamo.constants import ValidationMethod
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,10 @@ class MerchantValidationAgent:
     """Encapsulates the merchant validation agent and its tools."""
 
     def __init__(
-        self, google_places_api_key: str, model: str = "gpt-3.5-turbo"
+        self,
+        google_places_api_key: str,
+        model: str = "gpt-3.5-turbo",
+        openai_client=None,
     ):
         """
         Initialize the merchant validation agent.
@@ -38,9 +43,11 @@ class MerchantValidationAgent:
         Args:
             google_places_api_key: API key for Google Places
             model: OpenAI model to use for the agent
+            openai_client: Optional OpenAI client for local LLMs (e.g., Ollama)
         """
         self.google_places_api_key = google_places_api_key
         self.model = model
+        self.openai_client = openai_client
         self.agent = self._create_agent()
 
     def _create_agent(self) -> Agent:
@@ -52,6 +59,14 @@ class MerchantValidationAgent:
             self._create_search_by_text_tool(),
             self._create_return_metadata_tool(),
         ]
+
+        # Use OpenAIChatCompletionsModel if client provided, otherwise use string model
+        if self.openai_client:
+            model_obj = OpenAIChatCompletionsModel(
+                model=self.model, openai_client=self.openai_client
+            )
+        else:
+            model_obj = self.model  # Backward compatibility with string model
 
         return Agent(
             name="ReceiptMerchantAgent",
@@ -72,7 +87,7 @@ You may call the following tools in any order:
 - After deciding on the final metadata, call the function `tool_return_metadata`
   with the exact values for each field (place_id, merchant_name, etc.) and then stop.
 """,
-            model=self.model,
+            model=model_obj,
             tools=tools,
         )
 
@@ -164,17 +179,34 @@ You may call the following tools in any order:
                 phone_number: The merchant's phone number.
                 merchant_category: The merchant's category.
                 matched_fields: List of receipt fields that were used to validate the match.
-                validated_by: The method used for validation.
+                validated_by: The method used for validation. MUST be one of: "PHONE_LOOKUP", "ADDRESS_LOOKUP", "NEARBY_LOOKUP", "TEXT_SEARCH", or "INFERENCE"
                 reasoning: Explanation of how the match was determined.
             """
             # Normalize validated_by to allowed enum value
             try:
                 vb_enum = ValidationMethod(validated_by)
             except ValueError:
-                valid_vals = [e.value for e in ValidationMethod]
-                raise ValueError(
-                    f"validated_by must be one of: {valid_vals}. Got: {validated_by!r}"
+                # Try to map common variations
+                normalized = (
+                    validated_by.upper().replace(" ", "_").replace("GPT_", "")
                 )
+                if "INFERENCE" in normalized or "INFER" in normalized:
+                    vb_enum = ValidationMethod.INFERENCE
+                elif "PHONE" in normalized:
+                    vb_enum = ValidationMethod.PHONE_LOOKUP
+                elif "ADDRESS" in normalized:
+                    vb_enum = ValidationMethod.ADDRESS_LOOKUP
+                elif "NEARBY" in normalized:
+                    vb_enum = ValidationMethod.NEARBY_LOOKUP
+                elif "TEXT" in normalized or "SEARCH" in normalized:
+                    vb_enum = ValidationMethod.TEXT_SEARCH
+                else:
+                    valid_vals = [e.value for e in ValidationMethod]
+                    logger.warning(
+                        f"Could not map validated_by '{validated_by}' to valid enum. "
+                        f"Valid values: {valid_vals}. Defaulting to INFERENCE."
+                    )
+                    vb_enum = ValidationMethod.INFERENCE
 
             return {
                 "place_id": place_id,
@@ -221,43 +253,75 @@ You may call the following tools in any order:
             )
 
             try:
-                # Run the agent with timeout using ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(
-                        Runner.run_sync,
-                        self.agent,
-                        user_messages,
-                        max_turns=MAX_AGENT_TURNS,
-                    )
+                # Run the agent with timeout
+                # If we have an async client, we need to handle it differently
+                if self.openai_client and hasattr(
+                    self.openai_client, "__aenter__"
+                ):
+                    # AsyncOpenAI client - need to run in async context
+                    import asyncio
+                    import nest_asyncio
 
+                    nest_asyncio.apply()  # Allow nested event loops
+
+                    async def run_agent_async():
+                        return await Runner.run(
+                            self.agent,
+                            user_messages,
+                            max_turns=MAX_AGENT_TURNS,
+                        )
+
+                    # Run with timeout
                     try:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        run_result = loop.run_until_complete(
+                            asyncio.wait_for(
+                                run_agent_async(), timeout=timeout_seconds
+                            )
+                        )
+                    finally:
+                        loop.close()
+                else:
+                    # Regular sync client or string model
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            Runner.run_sync,
+                            self.agent,
+                            user_messages,
+                            max_turns=MAX_AGENT_TURNS,
+                        )
                         run_result = future.result(timeout=timeout_seconds)
 
-                        # Process agent results
-                        metadata, partial = self._extract_agent_results(
-                            run_result, attempt
-                        )
-                        partial_results.extend(partial)
+                # Process agent results
+                metadata, partial = self._extract_agent_results(
+                    run_result, attempt
+                )
+                partial_results.extend(partial)
 
-                        if metadata is not None:
-                            break
+                if metadata is not None:
+                    logger.info(
+                        "✅ Agent successfully found merchant metadata on attempt %d/%d",
+                        attempt,
+                        max_attempts,
+                    )
+                    break
 
-                    except FutureTimeoutError:
-                        logger.error(
-                            "Agent attempt timed out",
-                            extra={
-                                "attempt": attempt,
-                                "timeout_seconds": timeout_seconds,
-                                "image_id": user_input.get("image_id"),
-                                "receipt_id": user_input.get("receipt_id"),
-                                "partial_results_so_far": len(partial_results),
-                            },
-                        )
-                        future.cancel()
-
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Agent attempt timed out",
+                    extra={
+                        "attempt": attempt,
+                        "timeout_seconds": timeout_seconds,
+                        "image_id": user_input.get("image_id"),
+                        "receipt_id": user_input.get("receipt_id"),
+                        "partial_results_so_far": len(partial_results),
+                    },
+                )
             except Exception as e:
                 logger.error(
-                    "Agent attempt failed with exception",
+                    "Agent attempt failed with exception: %s",
+                    str(e),
                     extra={
                         "attempt": attempt,
                         "error_type": type(e).__name__,
@@ -265,6 +329,7 @@ You may call the following tools in any order:
                         "image_id": user_input.get("image_id"),
                         "receipt_id": user_input.get("receipt_id"),
                     },
+                    exc_info=True,  # Add stack trace
                 )
 
             logger.warning(
@@ -285,17 +350,93 @@ You may call the following tools in any order:
         metadata = None
         partial_results = []
 
-        # Log all function calls made by the agent
+        # Save trace data if environment variable is set
+        trace_dir = os.environ.get("AGENT_TRACE_DIR")
+        if trace_dir:
+            try:
+
+                trace_path = Path(trace_dir)
+                trace_path.mkdir(exist_ok=True)
+
+                # Create a trace file with timestamp and trace ID
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                trace_id = getattr(run_result, "trace_id", None) or f"local_{timestamp}"
+                trace_file = (
+                    trace_path
+                    / f"trace_{timestamp}_{trace_id}.json"
+                )
+
+                # Extract trace data
+                trace_data = {
+                    "trace_id": trace_id,
+                    "attempt": attempt,
+                    "timestamp": timestamp,
+                    "messages": [],
+                    "function_calls": [],
+                    "model_responses": [],
+                }
+
+                # Extract all items from the run
+                for item in run_result.new_items:
+                    raw = getattr(item, "raw_item", None)
+                    if raw:
+                        if hasattr(raw, "name"):  # Function call
+                            trace_data["function_calls"].append(
+                                {
+                                    "name": raw.name,
+                                    "arguments": getattr(
+                                        raw, "arguments", None
+                                    ),
+                                    "output": getattr(item, "output", None),
+                                }
+                            )
+                        elif hasattr(raw, "content"):  # Message
+                            trace_data["messages"].append(
+                                {
+                                    "role": getattr(raw, "role", "unknown"),
+                                    "content": getattr(raw, "content", None),
+                                }
+                            )
+
+                # Save trace to file
+                with open(trace_file, "w") as f:
+                    json.dump(trace_data, f, indent=2, default=str)
+
+                logger.info(f"💾 Saved trace to {trace_file.name}")
+            except Exception as e:
+                logger.error(f"Failed to save trace: {e}", exc_info=True)
+
+        # Log all function calls made by the agent with details
         if LOG_AGENT_FUNCTION_CALLS:
             function_calls = []
             for item in run_result.new_items:
                 raw = getattr(item, "raw_item", None)
                 if hasattr(raw, "name") and raw.name:
-                    function_calls.append(raw.name)
+                    # Get function arguments for more detail
+                    args_str = ""
+                    if hasattr(raw, "arguments"):
+                        try:
+                            args = json.loads(raw.arguments)
+                            # Format key arguments based on function
+                            if raw.name == "search_by_phone":
+                                args_str = f"(phone='{args.get('phone', '')}')"
+                            elif raw.name == "search_by_address":
+                                args_str = f"(address='{args.get('address', '')[:30]}...')"
+                            elif raw.name == "search_by_text":
+                                args_str = f"(query='{args.get('query', '')[:30]}...')"
+                            elif raw.name == "search_nearby":
+                                args_str = f"(lat={args.get('lat')}, lng={args.get('lng')})"
+                            elif raw.name == "tool_return_metadata":
+                                args_str = f"(merchant='{args.get('merchant_name', '')[:30]}...', method={args.get('validated_by', '')})"
+                        except:
+                            pass
+
+                    function_calls.append(f"{raw.name}{args_str}")
 
             if function_calls:
                 logger.info(
-                    f"Agent made {len(function_calls)} function calls: {', '.join(function_calls)}"
+                    f"🔧 Agent called {len(function_calls)} tools:\n  "
+                    + "\n  ".join(f"→ {call}" for call in function_calls)
                 )
 
         # Extract results

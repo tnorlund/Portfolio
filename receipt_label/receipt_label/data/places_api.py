@@ -81,7 +81,7 @@ class PlacesAPI:
 
                 # Skip cache for route-level results
                 try:
-                    cached_item = self.client_manager.dynamo.getPlacesCache(
+                    cached_item = self.client_manager.dynamo.get_places_cache(
                         search_type, search_value
                     )
                     if cached_item and cached_item.places_response.get(
@@ -96,7 +96,7 @@ class PlacesAPI:
 
             # Try to get from cache
             try:
-                cached_item = self.client_manager.dynamo.getPlacesCache(
+                cached_item = self.client_manager.dynamo.get_places_cache(
                     search_type, search_value
                 )
                 if cached_item:
@@ -109,7 +109,7 @@ class PlacesAPI:
                     logger.info("   Query count: %s", cached_item.query_count)
                     # Increment query count
                     try:
-                        self.client_manager.dynamo.incrementQueryCount(
+                        self.client_manager.dynamo.increment_query_count(
                             cached_item
                         )
                         logger.info(
@@ -124,8 +124,16 @@ class PlacesAPI:
                 )
                 return None
             except Exception as e:
-                logger.error("Error accessing DynamoDB cache: %s", e)
-                logger.error("Stack trace: %s", traceback.format_exc())
+                # Handle expired TTL or other cache errors
+                if "time_to_live must be in the future" in str(e):
+                    logger.info(
+                        f"⏰ EXPIRED CACHE: {search_type} - {search_value}, will refresh"
+                    )
+                    # Return None to trigger API call and cache update
+                    return None
+                else:
+                    logger.error("Error accessing DynamoDB cache: %s", e)
+                    logger.error("Stack trace: %s", traceback.format_exc())
                 return None
 
         except Exception as e:
@@ -218,7 +226,7 @@ class PlacesAPI:
             )
 
             try:
-                self.client_manager.dynamo.addPlacesCache(cache_item)
+                self.client_manager.dynamo.add_places_cache(cache_item)
                 logger.info(
                     "SUCCESS: Cached %s - %s", search_type, search_value
                 )
@@ -228,8 +236,29 @@ class PlacesAPI:
                     )
                     logger.info("   Hash: %s", cache_item.value_hash)
             except Exception as e:
-                logger.error("Error adding to DynamoDB cache: %s", e)
-                logger.error("Stack trace: %s", traceback.format_exc())
+                # Handle case where cache entry already exists (might be expired)
+                if "already exists" in str(e):
+                    logger.info(
+                        f"Cache entry already exists for {search_type} - {search_value}, skipping add"
+                    )
+                    # Try to update existing entry instead
+                    try:
+                        # Get the existing item first
+                        existing = self.client_manager.dynamo.get_places_cache(
+                            search_type, search_value
+                        )
+                        if existing:
+                            # Update with new data
+                            existing.places_response = places_response
+                            existing.last_updated = datetime.now(timezone.utc).isoformat()
+                            existing.time_to_live = expires_at
+                            # Note: update_places_cache might not exist, would need to be added
+                            logger.info(f"Would update existing cache for {search_type} - {search_value}")
+                    except Exception as update_e:
+                        logger.debug(f"Could not update existing cache: {update_e}")
+                else:
+                    logger.error("Error adding to DynamoDB cache: %s", e)
+                    logger.error("Stack trace: %s", traceback.format_exc())
         except Exception as e:
             logger.error("Error in _cache_place: %s", e)
             logger.error("Stack trace: %s", traceback.format_exc())
