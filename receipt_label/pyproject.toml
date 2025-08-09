@@ -123,6 +123,7 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+asyncio_mode = "auto"
 python_files = ["test_*.py"]
 markers = [
     "unit: Fast, isolated unit tests",
@@ -131,6 +132,7 @@ markers = [
     "unused_in_production: Tests for deprecated/experimental code",
     "slow: Tests that take >5 seconds",
     "fast: Tests that take <1 second", 
+    "performance: Performance benchmarking tests",
     "aws: Tests requiring AWS services",
     "chroma: Tests requiring ChromaDB",
     "openai: Tests requiring OpenAI API",

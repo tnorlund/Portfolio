@@ -25,8 +25,8 @@ class PatternConfig:
         rf"(?:{FORMATTED_NUMBER}(?:\.\d{{1,2}})?|{DECIMAL_NUMBER})"
     )
 
-    # Common currency symbols
-    CURRENCY_SYMBOLS = r"[$€£¥₹¢]"
+    # Common currency symbols (added Ruble ₽ and Won ₩)
+    CURRENCY_SYMBOLS = r"[$€£¥₹¢₽₩]"
 
     # Date component patterns
     DATE_SEPARATORS = r"[/\-\.]"
@@ -198,8 +198,8 @@ class PatternConfig:
         "quantity_for": rf"({BASIC_NUMBER})\s+for\s+\$?({CURRENCY_NUMBER})",
         # Quantity labels: "Qty: 5" or "Quantity: 5"
         "quantity_label": r"(?:qty|quantity):?\s*(\d+(?:\.\d+)?)",
-        # Weight patterns: "1.5 lbs", "2.3 kg"
-        "weight": rf"({DECIMAL_NUMBER})\s*(lbs?|pounds?|kg|kgs?|oz|ounces?|g|grams?)",
+        # Weight patterns: "1.5 lbs", "2.3 kg", "2½ lbs"
+        "weight": rf"({DECIMAL_NUMBER}|[0-9½¼¾⅓⅔⅛⅜⅝⅞]+)\s*(lbs?|pounds?|kg|kgs?|oz|ounces?|g|grams?|cups?)",
         # Volume patterns: "12 oz", "1 L"
         "volume": rf"({DECIMAL_NUMBER})\s*(oz|fl\.?\s*oz|ml|l|liters?|gallons?|gal)",
         # Unit patterns: "2 items", "3 pieces", "1 each"
