@@ -322,15 +322,17 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Building wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
                 'echo "Installing wheel with optimization exclusions for Lambda layer"',
-                # Check for ARG_MAX before running pip install
-                'echo "Checking command length for pip install..."',
+                # Find the wheel file and install with extras if specified
+                'echo "Finding wheel file..."',
+                'WHEEL_FILE=$(ls dist/*.whl | head -1)',
+                'echo "Found wheel: $WHEEL_FILE"',
                 # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
                 f"python{version} -m pip install --no-cache-dir --no-compile "
-                f"dist/*.whl{f'[{self.package_extras}]' if self.package_extras else ''} "
+                f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages || "
                 f"{{ echo 'First pip install attempt failed, retrying...'; "
                 f"python{version} -m pip install --no-cache-dir --no-compile "
-                f"dist/*.whl{f'[{self.package_extras}]' if self.package_extras else ''} "
+                f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages; }}",
                 'echo "Removing packages provided by AWS Lambda runtime"',
                 "rm -rf build/python/lib/python*/site-packages/boto* || true",
