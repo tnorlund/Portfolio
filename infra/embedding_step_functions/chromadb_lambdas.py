@@ -604,6 +604,12 @@ class ChromaDBLambdas(ComponentResource):
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                     "CHROMADB_BUCKET": chromadb_bucket_name,
                     "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+                    # Configurable compaction parameters
+                    "CHUNK_SIZE": "10",  # Number of deltas per chunk
+                    "HEARTBEAT_INTERVAL_SECONDS": "60",  # How often to update lock heartbeat
+                    "LOCK_DURATION_MINUTES": "5",  # Initial lock duration (extended by heartbeat)
+                    "DELETE_PROCESSED_DELTAS": "false",  # Whether to delete deltas after compaction
+                    "DELETE_INTERMEDIATE_CHUNKS": "true",  # Whether to delete intermediate chunks after merge
                 },
             ),
             ephemeral_storage=FunctionEphemeralStorageArgs(

@@ -145,7 +145,7 @@ class LineEmbeddingStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Poll and Store Line Embeddings Step Function
+        # Create the Poll and Store Line Embeddings Step Function with Chunked Compaction
         self.poll_and_store_embeddings_sm = StateMachine(
             f"{name}-poll-store-embeddings-sm",
             role_arn=self.step_function_role.arn,
@@ -158,7 +158,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                     {
                         "Comment": (
                             "Poll OpenAI for completed line embedding batches and "
-                            "store in ChromaDB"
+                            "store in ChromaDB using chunked compaction"
                         ),
                         "StartAt": "ListPendingBatches",
                         "States": {
@@ -191,16 +191,126 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.poll_results",
-                                "Next": "CompactAllDeltas",
+                                "Next": "PrepareChunkedCompaction",
                             },
-                            "CompactAllDeltas": {
+                            "PrepareChunkedCompaction": {
+                                "Type": "Pass",
+                                "Comment": "Prepare data for chunked compaction",
+                                "Parameters": {
+                                    "batch_id.$": "$$.Execution.Name",
+                                    "delta_results.$": "$.poll_results",
+                                    "chunk_index": 0,
+                                    "total_chunks_processed": 0,
+                                    "operation": "process_chunk"
+                                },
+                                "Next": "CheckForDeltas",
+                            },
+                            "CheckForDeltas": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are deltas to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.delta_results[0]",
+                                        "IsPresent": true,
+                                        "Next": "ProcessChunk"
+                                    }
+                                ],
+                                "Default": "FinalMerge"
+                            },
+                            "ProcessChunk": {
                                 "Type": "Task",
                                 "Resource": arns[2],
+                                "Comment": "Process a chunk of deltas (max 10)",
                                 "Parameters": {
-                                    "delta_results.$": "$.poll_results"
+                                    "operation": "process_chunk",
+                                    "batch_id.$": "$.batch_id",
+                                    "chunk_index.$": "$.chunk_index",
+                                    "delta_results.$": "$.delta_results"
+                                },
+                                "ResultPath": "$.chunk_result",
+                                "Next": "CheckContinuation",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "States.ALL"
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "ChunkProcessingFailed",
+                                        "ResultPath": "$.error"
+                                    }
+                                ]
+                            },
+                            "CheckContinuation": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are more chunks to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.chunk_result.has_more_chunks",
+                                        "BooleanEquals": true,
+                                        "Next": "PrepareNextChunk"
+                                    }
+                                ],
+                                "Default": "FinalMerge"
+                            },
+                            "PrepareNextChunk": {
+                                "Type": "Pass",
+                                "Comment": "Prepare for next chunk iteration",
+                                "Parameters": {
+                                    "batch_id.$": "$.batch_id",
+                                    "operation": "process_chunk",
+                                    "chunk_index.$": "$.chunk_result.next_chunk_index", 
+                                    "delta_results.$": "$.chunk_result.remaining_deltas",
+                                    "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)"
+                                },
+                                "Next": "ProcessChunk"
+                            },
+                            "FinalMerge": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Final merge of all intermediate chunks",
+                                "Parameters": {
+                                    "operation": "final_merge",
+                                    "batch_id.$": "$.batch_id",
+                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)"
                                 },
                                 "End": True,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "States.ALL"
+                                        ],
+                                        "IntervalSeconds": 10,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "FinalMergeFailed",
+                                        "ResultPath": "$.error"
+                                    }
+                                ]
                             },
+                            "ChunkProcessingFailed": {
+                                "Type": "Fail",
+                                "Comment": "Chunk processing failed",
+                                "Cause": "Failed to process chunk during compaction"
+                            },
+                            "FinalMergeFailed": {
+                                "Type": "Fail",
+                                "Comment": "Final merge failed",
+                                "Cause": "Failed to merge intermediate chunks during final compaction"
+                            }
                         },
                     }
                 )
