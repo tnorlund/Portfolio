@@ -145,7 +145,7 @@ jobs:
             echo "Installing package with test dependencies from PR source"
             # Don't use --force-reinstall for receipt_label to preserve local receipt_dynamo
             if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-              python3 -m pip install -e ".[test]" --disable-pip-version-check
+              python3 -m pip install -e ".[test,lambda]" --disable-pip-version-check
             else
               python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
             fi

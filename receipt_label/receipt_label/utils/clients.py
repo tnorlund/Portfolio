@@ -1,14 +1,10 @@
 import os
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 from openai import OpenAI
 from receipt_dynamo import DynamoClient
 
 from .client_manager import ClientConfig, ClientManager
-
-# Only import Pinecone for type checking, not at runtime
-if TYPE_CHECKING:
-    from pinecone import Pinecone
 
 # Global client manager instance (lazy initialized)
 _default_manager: Optional[ClientManager] = None
@@ -32,14 +28,14 @@ def get_client_manager() -> ClientManager:
 
 def get_clients():
     """
-    Get client instances for DynamoDB, OpenAI, and Pinecone.
+    Get client instances for DynamoDB, OpenAI, and ChromaDB.
 
     DEPRECATED: This function is maintained for backward compatibility.
     New code should use ClientManager directly via get_client_manager()
     or by injecting a ClientManager instance.
 
     Returns:
-        Tuple of (dynamo_client, openai_client, pinecone_index)
+        Tuple of (dynamo_client, openai_client, chroma_client)
     """
     manager = get_client_manager()
     return manager.get_all_clients()

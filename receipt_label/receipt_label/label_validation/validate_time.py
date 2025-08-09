@@ -124,14 +124,24 @@ def validate_time(
 ) -> LabelValidationResult:
     """Validate that a word is a time using Pinecone neighbors."""
 
-    # Get pinecone index from client manager
+    # Get ChromaDB client from client manager
     if client_manager is None:
         client_manager = get_client_manager()
-    pinecone_index = client_manager.pinecone
+    chroma_client = client_manager.chroma
 
     chroma_id = chroma_id_from_label(label)
-    fetch_response = pinecone_index.fetch(ids=[chroma_id], namespace="words")
-    vector_data = fetch_response.vectors.get(chroma_id)
+    # Get vector from ChromaDB
+    results = chroma_client.get_by_ids("words", [chroma_id], include=["embeddings", "metadatas"])
+    
+    # Extract vector data
+    vector_data = None
+    if results and 'ids' in results and len(results['ids']) > 0:
+        idx = results['ids'].index(chroma_id) if chroma_id in results['ids'] else -1
+        if idx >= 0:
+            vector_data = {
+                'values': results['embeddings'][idx] if 'embeddings' in results else None,
+                'metadata': results['metadatas'][idx] if 'metadatas' in results else {}
+            }
 
     if vector_data is None:
         return LabelValidationResult(
