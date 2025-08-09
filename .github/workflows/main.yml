@@ -170,17 +170,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-cache-py312-v3-
 
-      - name: Cache pytest results and coverage
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ matrix.package }}/.pytest_cache
-            ${{ matrix.package }}/.coverage
-            .pytest_cache
-          key: ${{ runner.os }}-pytest-${{ matrix.package }}-${{ hashFiles(format('{0}/**/*.py', matrix.package)) }}
-          restore-keys: |
-            ${{ runner.os }}-pytest-${{ matrix.package }}-
-
       - name: Setup virtual environment and install packages
         run: |
           # Create isolated virtual environment for this job to prevent collisions
