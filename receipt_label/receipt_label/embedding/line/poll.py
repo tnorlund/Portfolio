@@ -370,6 +370,7 @@ def save_line_embeddings_as_delta(
     descriptions: dict[str, dict[int, dict]],
     batch_id: str,
     client_manager: ClientManager = None,
+    skip_sqs_notification: bool = False,
 ) -> dict:
     """
     Save line embedding results as a delta file to S3 for ChromaDB compaction.
@@ -384,6 +385,9 @@ def save_line_embeddings_as_delta(
         descriptions (dict): A nested dict of receipt details keyed by
             image_id and receipt_id.
         batch_id (str): The identifier of the batch.
+        client_manager (ClientManager, optional): Client manager for AWS services.
+        skip_sqs_notification (bool, optional): If True, skip sending SQS notification
+            for delta compaction. Defaults to False.
 
     Returns:
         dict: Delta creation result with keys:
@@ -483,8 +487,13 @@ def save_line_embeddings_as_delta(
     if not bucket_name:
         raise ValueError("CHROMADB_BUCKET environment variable not set")
 
-    # Get SQS queue URL if configured
-    sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+    # Determine SQS queue URL based on skip_sqs_notification flag
+    if skip_sqs_notification:
+        # Explicitly pass None to skip SQS notification
+        sqs_queue_url = None
+    else:
+        # Get SQS queue URL from environment if configured
+        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
 
     # Produce the delta file
     delta_result = produce_embedding_delta(

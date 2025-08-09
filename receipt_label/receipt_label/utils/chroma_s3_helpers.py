@@ -22,6 +22,9 @@ from .chroma_client import ChromaDBClient
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value to distinguish "not provided" from "explicitly None"
+_NOT_PROVIDED = object()
+
 
 def produce_embedding_delta(
     ids: List[str],
@@ -31,7 +34,7 @@ def produce_embedding_delta(
     collection_name: str = "words",
     bucket_name: Optional[str] = None,
     bucket: Optional[str] = None,  # Alternative parameter name for tests
-    sqs_queue_url: Optional[str] = None,
+    sqs_queue_url: Any = _NOT_PROVIDED,  # Use sentinel to distinguish from explicit None
     batch_id: Optional[str] = None,
     delta_prefix: str = "delta/",  # For tests
     local_temp_dir: Optional[str] = None,  # For tests
@@ -49,8 +52,8 @@ def produce_embedding_delta(
         metadatas: Metadata dictionaries
         collection_name: ChromaDB collection name (default: "words")
         bucket_name: S3 bucket (uses VECTORS_BUCKET env var if not provided)
-        sqs_queue_url: SQS queue URL (uses COMPACTION_QUEUE_URL or 
-            DELTA_QUEUE_URL env var if not provided)
+        sqs_queue_url: SQS queue URL. If not provided, uses COMPACTION_QUEUE_URL or 
+            DELTA_QUEUE_URL env var. If explicitly None, skips SQS notification
         batch_id: Optional batch identifier for tracking purposes
 
     Returns:
@@ -72,7 +75,11 @@ def produce_embedding_delta(
     if bucket_name is None:
         bucket_name = os.environ.get("VECTORS_BUCKET", "default-vectors-bucket")
 
-    if sqs_queue_url is None:
+    # Handle SQS queue URL:
+    # - If not provided (sentinel value), check environment variables
+    # - If explicitly None, skip SQS notification
+    # - Otherwise use the provided value
+    if sqs_queue_url is _NOT_PROVIDED:
         # Try COMPACTION_QUEUE_URL first (preferred), then DELTA_QUEUE_URL (legacy)
         sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL") or os.environ.get("DELTA_QUEUE_URL")
 

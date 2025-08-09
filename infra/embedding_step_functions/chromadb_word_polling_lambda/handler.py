@@ -95,28 +95,17 @@ def poll_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         descriptions = get_receipt_descriptions(results)
         logger.info(f"Retrieved details for {len(descriptions)} receipts")
 
-        # Override SQS queue URL if we're skipping notifications
-        original_queue_url = None
+        # Save delta with or without SQS notification based on skip_sqs flag
         if skip_sqs:
-            original_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            # Temporarily remove it to prevent SQS notification
-            if "COMPACTION_QUEUE_URL" in os.environ:
-                del os.environ["COMPACTION_QUEUE_URL"]
             logger.info("Skipping SQS notification for this delta")
 
-        try:
-            # Save delta without SQS notification
-            delta_result = save_word_embeddings_as_delta(
-                results, descriptions, batch_id
-            )
-            logger.info(
-                f"Saved delta {delta_result['delta_id']} with "
-                f"{delta_result['embedding_count']} embeddings"
-            )
-        finally:
-            # Restore original queue URL
-            if skip_sqs and original_queue_url:
-                os.environ["COMPACTION_QUEUE_URL"] = original_queue_url
+        delta_result = save_word_embeddings_as_delta(
+            results, descriptions, batch_id, skip_sqs_notification=skip_sqs
+        )
+        logger.info(
+            f"Saved delta {delta_result['delta_id']} with "
+            f"{delta_result['embedding_count']} embeddings"
+        )
 
         # Write to DynamoDB for tracking
         written = write_embedding_results_to_dynamo(

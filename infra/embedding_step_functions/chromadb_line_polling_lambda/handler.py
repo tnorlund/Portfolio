@@ -62,29 +62,18 @@ def _handle_completed_batch(
     descriptions = get_receipt_descriptions(results)
     logger.info("Retrieved details for %d receipts", len(descriptions))
 
-    # Override SQS queue URL if we're skipping notifications
-    original_queue_url = None
+    # Save delta with or without SQS notification based on skip_sqs flag
     if skip_sqs:
-        original_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-        # Temporarily remove it to prevent SQS notification
-        if "COMPACTION_QUEUE_URL" in os.environ:
-            del os.environ["COMPACTION_QUEUE_URL"]
         logger.info("Skipping SQS notification for this delta")
-
-    try:
-        # Save delta without SQS notification
-        delta_result = save_line_embeddings_as_delta(
-            results, descriptions, batch_id
-        )
-        logger.info(
-            "Saved delta %s with %d embeddings",
-            delta_result["delta_id"],
-            delta_result["embedding_count"],
-        )
-    finally:
-        # Restore original queue URL
-        if skip_sqs and original_queue_url:
-            os.environ["COMPACTION_QUEUE_URL"] = original_queue_url
+    
+    delta_result = save_line_embeddings_as_delta(
+        results, descriptions, batch_id, skip_sqs_notification=skip_sqs
+    )
+    logger.info(
+        "Saved delta %s with %d embeddings",
+        delta_result["delta_id"],
+        delta_result["embedding_count"],
+    )
 
     # Write to DynamoDB for tracking
     write_line_embedding_results_to_dynamo(results, descriptions, batch_id)
