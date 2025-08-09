@@ -124,6 +124,21 @@ testpaths = [
     "tests",
 ]
 python_files = ["test_*.py"]
+markers = [
+    "unit: Fast, isolated unit tests",
+    "integration: Component interaction tests", 
+    "end_to_end: Full system tests",
+    "unused_in_production: Tests for deprecated/experimental code",
+    "slow: Tests that take >5 seconds",
+    "fast: Tests that take <1 second", 
+    "aws: Tests requiring AWS services",
+    "chroma: Tests requiring ChromaDB",
+    "openai: Tests requiring OpenAI API",
+    "pattern_detection: Pattern detection system tests",
+    "completion: Completion pipeline tests",
+    "embedding: Embedding pipeline tests", 
+    "cost_optimization: Cost optimization feature tests"
+]
 
 [tool.pylint.format]
 max-line-length = 79
