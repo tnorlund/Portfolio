@@ -22,7 +22,7 @@ receipt section classification.
 import json
 import os
 import re
-from typing import List
+from typing import List, Optional
 
 from receipt_dynamo.constants import BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
@@ -369,6 +369,8 @@ def save_line_embeddings_as_delta(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
     batch_id: str,
+    bucket_name: str,
+    sqs_queue_url: Optional[str] = None,
     client_manager: ClientManager = None,
 ) -> dict:
     """
@@ -384,6 +386,10 @@ def save_line_embeddings_as_delta(
         descriptions (dict): A nested dict of receipt details keyed by
             image_id and receipt_id.
         batch_id (str): The identifier of the batch.
+        bucket_name (str): S3 bucket name for storing the delta.
+        sqs_queue_url (Optional[str]): SQS queue URL for compaction notification.
+            If None, skips SQS notification.
+        client_manager (ClientManager, optional): Client manager for AWS services.
 
     Returns:
         dict: Delta creation result with keys:
@@ -478,14 +484,6 @@ def save_line_embeddings_as_delta(
         metadatas.append(line_metadata)
         documents.append(target_line.text)
 
-    # Get S3 bucket from environment
-    bucket_name = os.environ.get("CHROMADB_BUCKET")
-    if not bucket_name:
-        raise ValueError("CHROMADB_BUCKET environment variable not set")
-
-    # Get SQS queue URL if configured
-    sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-
     # Produce the delta file
     delta_result = produce_embedding_delta(
         ids=ids,
@@ -493,8 +491,8 @@ def save_line_embeddings_as_delta(
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        sqs_queue_url=sqs_queue_url,  # Will send SQS notification if configured
         collection_name="receipt_lines",
+        sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )
 

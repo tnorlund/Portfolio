@@ -95,28 +95,26 @@ def poll_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         descriptions = get_receipt_descriptions(results)
         logger.info(f"Retrieved details for {len(descriptions)} receipts")
 
-        # Override SQS queue URL if we're skipping notifications
-        original_queue_url = None
+        # Get configuration from environment
+        bucket_name = os.environ.get("CHROMADB_BUCKET")
+        if not bucket_name:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+        
+        # Determine SQS queue URL based on skip_sqs flag
         if skip_sqs:
-            original_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            # Temporarily remove it to prevent SQS notification
-            if "COMPACTION_QUEUE_URL" in os.environ:
-                del os.environ["COMPACTION_QUEUE_URL"]
             logger.info("Skipping SQS notification for this delta")
+            sqs_queue_url = None
+        else:
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+            logger.info(f"Will send SQS notification to: {sqs_queue_url}")
 
-        try:
-            # Save delta without SQS notification
-            delta_result = save_word_embeddings_as_delta(
-                results, descriptions, batch_id
-            )
-            logger.info(
-                f"Saved delta {delta_result['delta_id']} with "
-                f"{delta_result['embedding_count']} embeddings"
-            )
-        finally:
-            # Restore original queue URL
-            if skip_sqs and original_queue_url:
-                os.environ["COMPACTION_QUEUE_URL"] = original_queue_url
+        delta_result = save_word_embeddings_as_delta(
+            results, descriptions, batch_id, bucket_name, sqs_queue_url
+        )
+        logger.info(
+            f"Saved delta {delta_result['delta_id']} with "
+            f"{delta_result['embedding_count']} embeddings"
+        )
 
         # Write to DynamoDB for tracking
         written = write_embedding_results_to_dynamo(

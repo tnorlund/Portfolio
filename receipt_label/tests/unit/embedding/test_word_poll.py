@@ -494,22 +494,21 @@ class TestWordEmbeddingPoll:
         }
         
         batch_id = "test_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = "test-sqs-url"
         
-        # Mock environment variables
-        with patch.dict('os.environ', {
-            'CHROMADB_BUCKET': 'test-chroma-bucket',
-            'COMPACTION_QUEUE_URL': 'test-sqs-url'
-        }):
-            with patch('receipt_label.embedding.word.poll.produce_embedding_delta') as mock_produce:
-                mock_produce.return_value = {
-                    "delta_id": "delta_123",
-                    "delta_key": "s3://bucket/delta_123",
-                    "embedding_count": 1
-                }
-                
-                with patch('receipt_label.embedding.word.poll.get_client_manager',
-                           return_value=mock_client_manager):
-                    result = save_word_embeddings_as_delta(results, descriptions, batch_id)
+        with patch('receipt_label.embedding.word.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "delta_123",
+                "delta_key": "s3://bucket/delta_123",
+                "embedding_count": 1
+            }
+            
+            with patch('receipt_label.embedding.word.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_word_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
         
         # Should return delta creation result
         assert result["delta_id"] == "delta_123"
@@ -669,3 +668,109 @@ class TestWordEmbeddingPoll:
         # Should have chunked into multiple DynamoDB calls
         call_count = mock_client_manager.dynamo.add_embedding_batch_results.call_count
         assert call_count == 40  # 1000 / 25 = 40 chunks
+
+    def test_save_word_embeddings_as_delta_with_skip_sqs(self, mock_client_manager, 
+                                                         sample_receipt_words,
+                                                         sample_word_labels, 
+                                                         sample_receipt_metadata):
+        """Test saving word embeddings as delta with skip_sqs_notification flag."""
+        results = [
+            {
+                "custom_id": "IMAGE#IMG001#RECEIPT#00001#LINE#00001#WORD#00001",
+                "embedding": [0.1, 0.2, 0.3] * 512
+            }
+        ]
+        
+        descriptions = {
+            "IMG001": {
+                1: {
+                    "words": sample_receipt_words[:1],
+                    "labels": sample_word_labels[:1],
+                    "metadata": sample_receipt_metadata
+                }
+            }
+        }
+        
+        batch_id = "test_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = None  # Skip SQS notification
+        
+        with patch('receipt_label.embedding.word.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "delta_123",
+                "delta_key": "s3://bucket/delta_123",
+                "embedding_count": 1
+            }
+            
+            # Test with sqs_queue_url=None
+            with patch('receipt_label.embedding.word.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_word_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
+        
+        # Should return delta creation result
+        assert result["delta_id"] == "delta_123"
+        assert result["embedding_count"] == 1
+        
+        # Should have called produce_embedding_delta with sqs_queue_url=None
+        mock_produce.assert_called_once()
+        call_kwargs = mock_produce.call_args.kwargs
+        
+        # Verify SQS queue URL is explicitly None when skip_sqs_notification=True
+        assert call_kwargs["sqs_queue_url"] is None
+        assert call_kwargs["bucket_name"] == "test-chroma-bucket"
+        assert call_kwargs["collection_name"] == "receipt_words"
+
+    def test_save_word_embeddings_as_delta_without_skip_sqs(self, mock_client_manager,
+                                                            sample_receipt_words,
+                                                            sample_word_labels,
+                                                            sample_receipt_metadata):
+        """Test saving word embeddings as delta without skip_sqs_notification flag (default behavior)."""
+        results = [
+            {
+                "custom_id": "IMAGE#IMG001#RECEIPT#00001#LINE#00001#WORD#00001",
+                "embedding": [0.1, 0.2, 0.3] * 512
+            }
+        ]
+        
+        descriptions = {
+            "IMG001": {
+                1: {
+                    "words": sample_receipt_words[:1],
+                    "labels": sample_word_labels[:1],
+                    "metadata": sample_receipt_metadata
+                }
+            }
+        }
+        
+        batch_id = "test_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = "test-sqs-url"
+        
+        with patch('receipt_label.embedding.word.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "delta_456",
+                "delta_key": "s3://bucket/delta_456",
+                "embedding_count": 1
+            }
+            
+            # Test with sqs_queue_url provided
+            with patch('receipt_label.embedding.word.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_word_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
+        
+        # Should return delta creation result
+        assert result["delta_id"] == "delta_456"
+        assert result["embedding_count"] == 1
+        
+        # Should have called produce_embedding_delta with sqs_queue_url from environment
+        mock_produce.assert_called_once()
+        call_kwargs = mock_produce.call_args.kwargs
+        
+        # Verify SQS queue URL is from environment when skip_sqs_notification=False
+        assert call_kwargs["sqs_queue_url"] == "test-sqs-url"
+        assert call_kwargs["bucket_name"] == "test-chroma-bucket"
+        assert call_kwargs["collection_name"] == "receipt_words"
