@@ -4,8 +4,9 @@ import pytest
 from unittest.mock import Mock, patch
 
 from receipt_label.pattern_detection.contact import ContactPatternDetector
-from receipt_label.tests.markers import unit, fast, pattern_detection
+from tests.markers import unit, fast, pattern_detection
 from receipt_dynamo.entities import ReceiptWord
+from tests.helpers import create_test_receipt_word
 
 
 @unit
@@ -61,7 +62,7 @@ class TestContactPatternDetector:
     ])
     def test_contact_pattern_detection(self, detector, text, expected_match, expected_label, min_confidence):
         """Test contact pattern detection with various formats."""
-        word = ReceiptWord(
+        word = create_test_receipt_word(
             image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
             text=text, x1=100, y1=100, x2=200, y2=120
         )
@@ -93,7 +94,7 @@ class TestContactPatternDetector:
         normalized_results = []
         
         for text in equivalent_formats:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -134,7 +135,7 @@ class TestContactPatternDetector:
         
         # Valid emails should be detected
         for email in valid_emails:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=email, x1=100, y1=100, x2=200, y2=120
             )
@@ -145,7 +146,7 @@ class TestContactPatternDetector:
         
         # Invalid emails should NOT be detected (or have very low confidence)
         for email in invalid_emails:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=email, x1=100, y1=100, x2=200, y2=120
             )
@@ -180,7 +181,7 @@ class TestContactPatternDetector:
         ]
         
         for text, expected_label, min_confidence in url_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -211,7 +212,7 @@ class TestContactPatternDetector:
         ]
         
         for position_percentile, text, expected_labels in context_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=int(position_percentile * 1000),
                 x2=200, y2=int(position_percentile * 1000) + 20
@@ -250,7 +251,7 @@ class TestContactPatternDetector:
         ]
         
         for text, min_confidence in international_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -283,7 +284,7 @@ class TestContactPatternDetector:
         ]
         
         for text, should_match, expected_label, min_confidence in business_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -330,7 +331,7 @@ class TestContactPatternDetector:
         
         for cases, confidence_level in all_cases:
             for text, expected_min in cases:
-                word = ReceiptWord(
+                word = create_test_receipt_word(
                     image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                     text=text, x1=100, y1=100, x2=200, y2=120
                 )
@@ -357,7 +358,7 @@ class TestContactPatternDetector:
         
         batch_words = []
         for i, text in enumerate(contact_batch):
-            batch_words.append(ReceiptWord(
+            batch_words.append(create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=i, word_id=1,
                 text=text, x1=100, y1=100 + i * 10, x2=200, y2=120 + i * 10
             ))
@@ -398,7 +399,7 @@ class TestContactPatternDetector:
         ]
         
         for text, should_match in edge_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -421,7 +422,7 @@ class TestContactPatternDetector:
         ]
         
         for text, expected_pattern_type, expected_labels in type_consistency_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )

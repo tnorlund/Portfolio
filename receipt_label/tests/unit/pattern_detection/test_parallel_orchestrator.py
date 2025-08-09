@@ -6,8 +6,9 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timezone
 
 from receipt_label.pattern_detection.orchestrator import ParallelPatternOrchestrator
-from receipt_label.tests.markers import unit, fast, pattern_detection, cost_optimization
+from tests.markers import unit, fast, pattern_detection, cost_optimization
 from receipt_dynamo.entities import ReceiptWord
+from tests.helpers import create_test_receipt_word
 
 
 @unit
@@ -27,33 +28,81 @@ class TestParallelPatternOrchestrator:
         """Sample receipt words covering all pattern types."""
         return [
             # Merchant name
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
-                       text="Walmart", x1=100, y1=50, x2=200, y2=70),
+            create_test_receipt_word(
+            text="Walmart",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
             
             # Currency amounts
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=10, word_id=1,
-                       text="$12.99", x1=250, y1=300, x2=300, y2=320),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=20, word_id=1,
-                       text="$45.67", x1=250, y1=500, x2=300, y2=520),
+            create_test_receipt_word(
+            text="$12.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=10,
+            word_id=1,
+            x1=250, y1=300, x2=300, y2=320
+        ),
+            create_test_receipt_word(
+            text="$45.67",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=20,
+            word_id=1,
+            x1=250, y1=500, x2=300, y2=520
+        ),
             
             # Date/time
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=25, word_id=1,
-                       text="12/25/2023", x1=100, y1=600, x2=180, y2=620),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=26, word_id=1,
-                       text="2:34 PM", x1=100, y1=625, x2=160, y2=645),
+            create_test_receipt_word(
+            text="12/25/2023",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=25,
+            word_id=1,
+            x1=100, y1=600, x2=180, y2=620
+        ),
+            create_test_receipt_word(
+            text="2:34 PM",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=26,
+            word_id=1,
+            x1=100, y1=625, x2=160, y2=645
+        ),
             
             # Contact info
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=5, word_id=1,
-                       text="(555) 123-4567", x1=100, y1=150, x2=220, y2=170),
+            create_test_receipt_word(
+            text="(555) 123-4567",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=5,
+            word_id=1,
+            x1=100, y1=150, x2=220, y2=170
+        ),
             
             # Quantities
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=11, word_id=1,
-                       text="2 @ $5.99", x1=50, y1=350, x2=150, y2=370),
+            create_test_receipt_word(
+            text="2 @ $5.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=11,
+            word_id=1,
+            x1=50, y1=350, x2=150, y2=370
+        ),
             
             # Noise words (should be ignored)
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=30, word_id=1,
-                       text="___", x1=100, y1=700, x2=130, y2=720),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=31, word_id=1,
+            create_test_receipt_word(
+            text="___",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=30,
+            word_id=1,
+            x1=100, y1=700, x2=130, y2=720
+        ),
+            create_test_receipt_word(image_id="IMG001", receipt_id=1, line_id=31, word_id=1,
                        text="", x1=100, y1=725, x2=100, y2=725),
         ]
 
@@ -162,18 +211,42 @@ class TestParallelPatternOrchestrator:
         """Test confidence scoring for different pattern qualities."""
         # High confidence patterns
         high_conf_words = [
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
-                       text="$12.99", x1=100, y1=100, x2=150, y2=120),  # Perfect currency
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=2, word_id=1,
-                       text="Walmart", x1=100, y1=130, x2=160, y2=150),  # Clear merchant
+            create_test_receipt_word(
+            text="$12.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=100, x2=150, y2=120
+        ),  # Perfect currency
+            create_test_receipt_word(
+            text="Walmart",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=2,
+            word_id=1,
+            x1=100, y1=130, x2=160, y2=150
+        ),  # Clear merchant
         ]
         
         # Lower confidence patterns  
         low_conf_words = [
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=3, word_id=1,
-                       text="12.99", x1=100, y1=160, x2=150, y2=180),  # Currency without symbol
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=4, word_id=1,
-                       text="WAL", x1=100, y1=190, x2=130, y2=210),  # Partial merchant name
+            create_test_receipt_word(
+            text="12.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=3,
+            word_id=1,
+            x1=100, y1=160, x2=150, y2=180
+        ),  # Currency without symbol
+            create_test_receipt_word(
+            text="WAL",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=4,
+            word_id=1,
+            x1=100, y1=190, x2=130, y2=210
+        ),  # Partial merchant name
         ]
         
         with patch('receipt_label.utils.get_client_manager', return_value=stub_all_apis):
@@ -190,14 +263,32 @@ class TestParallelPatternOrchestrator:
     def test_noise_filtering(self, orchestrator, stub_all_apis):
         """Test that noise words are properly filtered out."""
         noise_words = [
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
+            create_test_receipt_word(image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                        text="", x1=100, y1=100, x2=100, y2=100),  # Empty
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=2, word_id=1,
-                       text="___", x1=100, y1=120, x2=130, y2=140),  # Separators
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=3, word_id=1,
-                       text="...", x1=100, y1=150, x2=130, y2=170),  # Dots
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=4, word_id=1,
-                       text="$12.99", x1=100, y1=180, x2=150, y2=200),  # Valid currency
+            create_test_receipt_word(
+            text="___",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=2,
+            word_id=1,
+            x1=100, y1=120, x2=130, y2=140
+        ),  # Separators
+            create_test_receipt_word(
+            text="...",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=3,
+            word_id=1,
+            x1=100, y1=150, x2=130, y2=170
+        ),  # Dots
+            create_test_receipt_word(
+            text="$12.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=4,
+            word_id=1,
+            x1=100, y1=180, x2=150, y2=200
+        ),  # Valid currency
         ]
         
         with patch('receipt_label.utils.get_client_manager', return_value=stub_all_apis):
@@ -266,7 +357,7 @@ class TestParallelPatternOrchestrator:
         # Generate test words
         test_words = []
         for i in range(word_count):
-            test_words.append(ReceiptWord(
+            test_words.append(create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=i, word_id=1,
                 text=f"item_{i}" if i % 3 != 0 else f"${i}.99",  # Mix of items and prices
                 x1=100, y1=100 + i * 20, x2=200, y2=120 + i * 20

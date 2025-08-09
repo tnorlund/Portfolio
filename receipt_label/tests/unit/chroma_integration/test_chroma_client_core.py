@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, call
 
 from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.tests.markers import unit, fast, chroma
+from tests.markers import unit, fast, chroma
 import chromadb
 from chromadb.config import Settings
 

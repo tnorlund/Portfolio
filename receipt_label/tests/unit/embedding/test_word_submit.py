@@ -28,6 +28,7 @@ from receipt_label.embedding.word.submit import (
 )
 from tests.markers import unit, fast, embedding
 from receipt_dynamo.entities import ReceiptWord, BatchSummary
+from tests.helpers import create_test_receipt_word
 from receipt_dynamo.constants import EmbeddingStatus
 
 

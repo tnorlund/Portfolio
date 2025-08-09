@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.chroma_compactor import ChromaCompactor 
 from receipt_label.utils.chroma_s3_helpers import produce_embedding_delta, consume_latest_snapshot
-from receipt_label.tests.markers import integration, chroma, aws
+from tests.markers import integration, chroma, aws
 
 
 @integration

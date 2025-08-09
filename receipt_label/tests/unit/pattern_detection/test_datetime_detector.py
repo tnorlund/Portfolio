@@ -5,8 +5,9 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 from receipt_label.pattern_detection.datetime_patterns import DateTimePatternDetector
-from receipt_label.tests.markers import unit, fast, pattern_detection
+from tests.markers import unit, fast, pattern_detection
 from receipt_dynamo.entities import ReceiptWord
+from tests.helpers import create_test_receipt_word
 
 
 @unit
@@ -61,7 +62,7 @@ class TestDateTimePatternDetector:
     ])
     def test_datetime_pattern_detection(self, detector, text, expected_match, expected_label, min_confidence):
         """Test datetime pattern detection with various formats."""
-        word = ReceiptWord(
+        word = create_test_receipt_word(
             image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
             text=text, x1=100, y1=100, x2=200, y2=120
         )
@@ -90,7 +91,7 @@ class TestDateTimePatternDetector:
         ]
         
         for text, expected_label, min_confidence in timezone_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -120,7 +121,7 @@ class TestDateTimePatternDetector:
         ]
         
         for position_percentile, text, expected_labels in test_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=int(position_percentile * 1000), 
                 x2=200, y2=int(position_percentile * 1000) + 20
@@ -150,7 +151,7 @@ class TestDateTimePatternDetector:
         confidence_results = []
         
         for text, expected_min in format_confidence_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -192,7 +193,7 @@ class TestDateTimePatternDetector:
         
         # Valid cases should be detected
         for text in valid_edge_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -203,7 +204,7 @@ class TestDateTimePatternDetector:
         
         # Invalid cases should NOT be detected
         for text in invalid_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -222,7 +223,7 @@ class TestDateTimePatternDetector:
         ]
         
         for i, text in enumerate(datetime_texts * 10):  # 90 words total
-            batch_words.append(ReceiptWord(
+            batch_words.append(create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=i, word_id=1,
                 text=text, x1=100, y1=100 + i * 10, x2=200, y2=120 + i * 10
             ))
@@ -258,7 +259,7 @@ class TestDateTimePatternDetector:
         ]
         
         for text, should_match, min_confidence in year_test_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -295,7 +296,7 @@ class TestDateTimePatternDetector:
         ]
         
         for text, should_match, min_confidence in month_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -315,7 +316,7 @@ class TestDateTimePatternDetector:
             [],
             [None],
             ["not a ReceiptWord"],
-            [ReceiptWord(image_id="", receipt_id=0, line_id=0, word_id=0,
+            [create_test_receipt_word(image_id="", receipt_id=0, line_id=0, word_id=0,
                         text=None, x1=0, y1=0, x2=0, y2=0)],  # Null text
         ]
         
@@ -340,7 +341,7 @@ class TestDateTimePatternDetector:
         ]
         
         for text, expected_type in test_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )

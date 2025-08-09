@@ -16,7 +16,7 @@ from receipt_label.completion.poll import (
     write_completion_batch_results,
     update_batch_summary
 )
-from receipt_label.tests.markers import unit, fast, completion
+from tests.markers import unit, fast, completion
 from receipt_dynamo.entities import ReceiptWordLabel, BatchSummary, CompletionBatchResult
 from receipt_dynamo.constants import ValidationStatus, BatchStatus, BatchType
 

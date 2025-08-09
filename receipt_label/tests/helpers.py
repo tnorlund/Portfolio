@@ -7,7 +7,7 @@ from receipt_dynamo.entities import ReceiptWord
 
 def create_test_receipt_word(
     text: str,
-    image_id: str = None,
+    image_id: Optional[str] = None,
     receipt_id: int = 1,
     line_id: int = 1,
     word_id: int = 1,
@@ -28,16 +28,16 @@ def create_test_receipt_word(
         image_id = str(uuid.uuid4())
     
     bounding_box = {
-        "Width": x2 - x1,
-        "Height": y2 - y1,
-        "Left": x1,
-        "Top": y1
+        "x": x1,
+        "y": y1,
+        "width": x2 - x1,
+        "height": y2 - y1
     }
     
-    top_left = {"X": x1, "Y": y1}
-    top_right = {"X": x2, "Y": y1}
-    bottom_left = {"X": x1, "Y": y2}
-    bottom_right = {"X": x2, "Y": y2}
+    top_left = {"x": x1, "y": y1}
+    top_right = {"x": x2, "y": y1}
+    bottom_left = {"x": x1, "y": y2}
+    bottom_right = {"x": x2, "y": y2}
     
     return ReceiptWord(
         receipt_id=receipt_id,

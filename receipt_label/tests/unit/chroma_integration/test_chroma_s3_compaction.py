@@ -16,7 +16,7 @@ from receipt_label.utils.chroma_s3_helpers import (
     upload_delta_to_s3,
     download_snapshot_from_s3
 )
-from receipt_label.tests.markers import unit, fast, chroma, aws
+from tests.markers import unit, fast, chroma, aws
 from receipt_dynamo.entities import CompactionLock
 
 

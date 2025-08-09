@@ -4,8 +4,9 @@ import pytest
 from unittest.mock import Mock, patch
 
 from receipt_label.pattern_detection.quantity import QuantityPatternDetector
-from receipt_label.tests.markers import unit, fast, pattern_detection
+from tests.markers import unit, fast, pattern_detection
 from receipt_dynamo.entities import ReceiptWord
+from tests.helpers import create_test_receipt_word
 
 
 @unit
@@ -84,7 +85,7 @@ class TestQuantityPatternDetector:
     ])
     def test_quantity_pattern_detection(self, detector, text, expected_match, expected_label, min_confidence):
         """Test quantity pattern detection with various formats."""
-        word = ReceiptWord(
+        word = create_test_receipt_word(
             image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
             text=text, x1=100, y1=100, x2=200, y2=120
         )
@@ -111,7 +112,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, expected_values in at_price_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -152,7 +153,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, expected_type, expected_unit in measurement_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -195,7 +196,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, should_match, min_confidence in size_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -233,7 +234,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, context, expected_label, min_confidence in context_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -265,7 +266,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, should_match, min_confidence in decimal_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -298,7 +299,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, expected_label, min_confidence in unit_price_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -333,7 +334,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, should_match, expected_label, min_confidence in grocery_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -372,7 +373,7 @@ class TestQuantityPatternDetector:
             confidences = []
             
             for text in texts:
-                word = ReceiptWord(
+                word = create_test_receipt_word(
                     image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                     text=text, x1=100, y1=100, x2=200, y2=120
                 )
@@ -396,7 +397,7 @@ class TestQuantityPatternDetector:
         
         batch_words = []
         for i, text in enumerate(quantity_batch):
-            batch_words.append(ReceiptWord(
+            batch_words.append(create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=i, word_id=1,
                 text=text, x1=100, y1=100 + i * 5, x2=200, y2=120 + i * 5
             ))
@@ -437,7 +438,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, should_have_result in edge_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )
@@ -463,7 +464,7 @@ class TestQuantityPatternDetector:
         ]
         
         for text, expected_pattern_type, expected_labels in type_consistency_cases:
-            word = ReceiptWord(
+            word = create_test_receipt_word(
                 image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
                 text=text, x1=100, y1=100, x2=200, y2=120
             )

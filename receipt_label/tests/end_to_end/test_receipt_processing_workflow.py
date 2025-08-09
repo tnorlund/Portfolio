@@ -4,8 +4,9 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
-from receipt_label.tests.markers import end_to_end, pattern_detection, cost_optimization
+from tests.markers import end_to_end, pattern_detection, cost_optimization
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel, ReceiptMetadata
+from tests.helpers import create_test_receipt_word
 
 
 @end_to_end
@@ -19,61 +20,187 @@ class TestReceiptProcessingWorkflow:
         """Complete Walmart receipt word data."""
         return [
             # Header
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=1, word_id=1, 
-                       text="Walmart", x1=100, y1=50, x2=200, y2=70),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=2, word_id=1,
-                       text="Supercenter", x1=100, y1=75, x2=180, y2=95),
+            create_test_receipt_word(
+            text="Walmart",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
+            create_test_receipt_word(
+            text="Supercenter",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=2,
+            word_id=1,
+            x1=100, y1=75, x2=180, y2=95
+        ),
             
             # Address
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=3, word_id=1,
-                       text="123", x1=100, y1=100, x2=130, y2=120),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=3, word_id=2,
-                       text="Main", x1=135, y1=100, x2=170, y2=120),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=3, word_id=3,
-                       text="St", x1=175, y1=100, x2=195, y2=120),
+            create_test_receipt_word(
+            text="123",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=3,
+            word_id=1,
+            x1=100, y1=100, x2=130, y2=120
+        ),
+            create_test_receipt_word(
+            text="Main",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=3,
+            word_id=2,
+            x1=135, y1=100, x2=170, y2=120
+        ),
+            create_test_receipt_word(
+            text="St",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=3,
+            word_id=3,
+            x1=175, y1=100, x2=195, y2=120
+        ),
             
             # Phone
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=4, word_id=1,
-                       text="(555)", x1=100, y1=125, x2=140, y2=145),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=4, word_id=2,
-                       text="123-4567", x1=145, y1=125, x2=210, y2=145),
+            create_test_receipt_word(
+            text="(555)",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=4,
+            word_id=1,
+            x1=100, y1=125, x2=140, y2=145
+        ),
+            create_test_receipt_word(
+            text="123-4567",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=4,
+            word_id=2,
+            x1=145, y1=125, x2=210, y2=145
+        ),
             
             # Items
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=10, word_id=1,
-                       text="BANANAS", x1=50, y1=300, x2=120, y2=320),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=10, word_id=2,
-                       text="$2.99", x1=250, y1=300, x2=300, y2=320),
+            create_test_receipt_word(
+            text="BANANAS",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=10,
+            word_id=1,
+            x1=50, y1=300, x2=120, y2=320
+        ),
+            create_test_receipt_word(
+            text="$2.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=10,
+            word_id=2,
+            x1=250, y1=300, x2=300, y2=320
+        ),
             
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=11, word_id=1,
-                       text="MILK", x1=50, y1=325, x2=90, y2=345),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=11, word_id=2,
-                       text="GALLON", x1=95, y1=325, x2=150, y2=345),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=11, word_id=3,
-                       text="$3.49", x1=250, y1=325, x2=300, y2=345),
+            create_test_receipt_word(
+            text="MILK",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=11,
+            word_id=1,
+            x1=50, y1=325, x2=90, y2=345
+        ),
+            create_test_receipt_word(
+            text="GALLON",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=11,
+            word_id=2,
+            x1=95, y1=325, x2=150, y2=345
+        ),
+            create_test_receipt_word(
+            text="$3.49",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=11,
+            word_id=3,
+            x1=250, y1=325, x2=300, y2=345
+        ),
             
             # Totals section
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=20, word_id=1,
-                       text="SUBTOTAL", x1=150, y1=500, x2=220, y2=520),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=20, word_id=2,
-                       text="$6.48", x1=250, y1=500, x2=300, y2=520),
+            create_test_receipt_word(
+            text="SUBTOTAL",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=20,
+            word_id=1,
+            x1=150, y1=500, x2=220, y2=520
+        ),
+            create_test_receipt_word(
+            text="$6.48",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=20,
+            word_id=2,
+            x1=250, y1=500, x2=300, y2=520
+        ),
             
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=21, word_id=1,
-                       text="TAX", x1=180, y1=525, x2=210, y2=545),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=21, word_id=2,
-                       text="$0.52", x1=250, y1=525, x2=300, y2=545),
+            create_test_receipt_word(
+            text="TAX",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=21,
+            word_id=1,
+            x1=180, y1=525, x2=210, y2=545
+        ),
+            create_test_receipt_word(
+            text="$0.52",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=21,
+            word_id=2,
+            x1=250, y1=525, x2=300, y2=545
+        ),
             
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=22, word_id=1,
-                       text="TOTAL", x1=180, y1=550, x2=220, y2=570),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=22, word_id=2,
-                       text="$7.00", x1=250, y1=550, x2=300, y2=570),
+            create_test_receipt_word(
+            text="TOTAL",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=22,
+            word_id=1,
+            x1=180, y1=550, x2=220, y2=570
+        ),
+            create_test_receipt_word(
+            text="$7.00",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=22,
+            word_id=2,
+            x1=250, y1=550, x2=300, y2=570
+        ),
             
             # Footer
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=25, word_id=1,
-                       text="12/25/2023", x1=100, y1=600, x2=180, y2=620),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=26, word_id=1,
-                       text="2:34", x1=100, y1=625, x2=140, y2=645),
-            ReceiptWord(image_id="IMG001", receipt_id=1, line_id=26, word_id=2,
-                       text="PM", x1=145, y1=625, x2=165, y2=645),
+            create_test_receipt_word(
+            text="12/25/2023",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=25,
+            word_id=1,
+            x1=100, y1=600, x2=180, y2=620
+        ),
+            create_test_receipt_word(
+            text="2:34",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=26,
+            word_id=1,
+            x1=100, y1=625, x2=140, y2=645
+        ),
+            create_test_receipt_word(
+            text="PM",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=26,
+            word_id=2,
+            x1=145, y1=625, x2=165, y2=645
+        ),
         ]
 
     @pytest.fixture
@@ -250,12 +377,30 @@ class TestReceiptProcessingWorkflow:
         # Create merchant-specific test data
         if receipt_type == "mcdonalds":
             words = [
-                ReceiptWord(image_id="IMG002", receipt_id=2, line_id=1, word_id=1,
-                           text="McDonald's", x1=100, y1=50, x2=200, y2=70),
-                ReceiptWord(image_id="IMG002", receipt_id=2, line_id=5, word_id=1,
-                           text="Big Mac", x1=50, y1=200, x2=120, y2=220),
-                ReceiptWord(image_id="IMG002", receipt_id=2, line_id=5, word_id=2,
-                           text="$5.49", x1=250, y1=200, x2=300, y2=220)
+                create_test_receipt_word(
+            text="McDonald's",
+            image_id="IMG002",
+            receipt_id=2,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
+                create_test_receipt_word(
+            text="Big Mac",
+            image_id="IMG002",
+            receipt_id=2,
+            line_id=5,
+            word_id=1,
+            x1=50, y1=200, x2=120, y2=220
+        ),
+                create_test_receipt_word(
+            text="$5.49",
+            image_id="IMG002",
+            receipt_id=2,
+            line_id=5,
+            word_id=2,
+            x1=250, y1=200, x2=300, y2=220
+        )
             ]
             merchant_name = "McDonalds"
         else:
@@ -380,30 +525,72 @@ class TestReceiptProcessingWorkflow:
             {
                 "merchant": "Walmart",
                 "words": [
-                    ReceiptWord(image_id="IMG001", receipt_id=1, line_id=1, word_id=1,
-                               text="Walmart", x1=100, y1=50, x2=200, y2=70),
-                    ReceiptWord(image_id="IMG001", receipt_id=1, line_id=2, word_id=1,
-                               text="$12.99", x1=250, y1=100, x2=300, y2=120)
+                    create_test_receipt_word(
+            text="Walmart",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
+                    create_test_receipt_word(
+            text="$12.99",
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=2,
+            word_id=1,
+            x1=250, y1=100, x2=300, y2=120
+        )
                 ]
             },
             {
                 "merchant": "Target", 
                 "words": [
-                    ReceiptWord(image_id="IMG002", receipt_id=2, line_id=1, word_id=1,
-                               text="Target", x1=100, y1=50, x2=200, y2=70),
-                    ReceiptWord(image_id="IMG002", receipt_id=2, line_id=2, word_id=1,
-                               text="$8.49", x1=250, y1=100, x2=300, y2=120)
+                    create_test_receipt_word(
+            text="Target",
+            image_id="IMG002",
+            receipt_id=2,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
+                    create_test_receipt_word(
+            text="$8.49",
+            image_id="IMG002",
+            receipt_id=2,
+            line_id=2,
+            word_id=1,
+            x1=250, y1=100, x2=300, y2=120
+        )
                 ]
             },
             {
                 "merchant": "McDonalds",
                 "words": [
-                    ReceiptWord(image_id="IMG003", receipt_id=3, line_id=1, word_id=1,
-                               text="McDonald's", x1=100, y1=50, x2=200, y2=70),
-                    ReceiptWord(image_id="IMG003", receipt_id=3, line_id=2, word_id=1,
-                               text="Big Mac", x1=50, y1=100, x2=120, y2=120),
-                    ReceiptWord(image_id="IMG003", receipt_id=3, line_id=2, word_id=2,
-                               text="$5.49", x1=250, y1=100, x2=300, y2=120)
+                    create_test_receipt_word(
+            text="McDonald's",
+            image_id="IMG003",
+            receipt_id=3,
+            line_id=1,
+            word_id=1,
+            x1=100, y1=50, x2=200, y2=70
+        ),
+                    create_test_receipt_word(
+            text="Big Mac",
+            image_id="IMG003",
+            receipt_id=3,
+            line_id=2,
+            word_id=1,
+            x1=50, y1=100, x2=120, y2=120
+        ),
+                    create_test_receipt_word(
+            text="$5.49",
+            image_id="IMG003",
+            receipt_id=3,
+            line_id=2,
+            word_id=2,
+            x1=250, y1=100, x2=300, y2=120
+        )
                 ]
             }
         ]

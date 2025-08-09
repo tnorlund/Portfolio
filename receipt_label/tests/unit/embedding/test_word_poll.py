@@ -19,6 +19,7 @@ from receipt_label.embedding.word.poll import (
 )
 from tests.markers import unit, fast, embedding
 from receipt_dynamo.entities import BatchSummary, ReceiptWord, ReceiptWordLabel, EmbeddingBatchResult, ReceiptMetadata
+from tests.helpers import create_test_receipt_word
 from receipt_dynamo.constants import BatchType, ValidationStatus, EmbeddingStatus
 
 

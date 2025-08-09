@@ -14,7 +14,7 @@ from receipt_label.completion.submit import (
     merge_ndjsons,
     submit_openai_batch
 )
-from receipt_label.tests.markers import unit, fast, completion, aws
+from tests.markers import unit, fast, completion, aws
 from receipt_dynamo.entities import ReceiptWordLabel, BatchSummary
 from receipt_dynamo.constants import ValidationStatus, BatchStatus, BatchType
 
