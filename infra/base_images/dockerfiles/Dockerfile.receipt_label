@@ -3,9 +3,9 @@ ARG PYTHON_VERSION=3.12
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# Copy and install receipt_label package (which depends on receipt_dynamo)
+# Copy and install receipt_label package with full chromadb for containers
 COPY receipt_label /tmp/receipt_label
-RUN pip install --no-cache-dir /tmp/receipt_label && \
+RUN pip install --no-cache-dir "/tmp/receipt_label[full]" && \
     rm -rf /tmp/receipt_label
 
 # This is a base image, no CMD needed

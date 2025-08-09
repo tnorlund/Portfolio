@@ -50,6 +50,7 @@ class FastLambdaLayer(ComponentResource):
         description: Optional[str] = None,
         needs_pillow: bool = False,
         sync_mode: Optional[bool] = None,
+        package_extras: Optional[str] = None,  # e.g., "lambda" for receipt_label[lambda]
         opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"fast-lambda-layer:{name}", name, {}, opts)
@@ -68,6 +69,7 @@ class FastLambdaLayer(ComponentResource):
             description or f"Automatically built Lambda layer for {name}"
         )
         self.needs_pillow = needs_pillow
+        self.package_extras = package_extras
         self.opts = opts
 
         # Determine build mode
@@ -308,10 +310,10 @@ echo "🎉 Parallel function updates completed!"'''
         if version:
             build_commands = [
                 "echo Build directory prep",
-                # Add debug logging if enabled
-                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Starting build for Python ${PYTHON_VERSION}"',
-                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Current directory:" && pwd',
-                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Directory contents:" && ls -la',
+                # Add debug logging if enabled (use || true to prevent failure when DEBUG_MODE is false)
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Starting build for Python ${PYTHON_VERSION}" || true',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Current directory:" && pwd || true',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Directory contents:" && ls -la || true',
                 "echo Checking source structure:",
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
@@ -322,14 +324,26 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Installing wheel with optimization exclusions for Lambda layer"',
                 # Check for ARG_MAX before running pip install
                 'echo "Checking command length for pip install..."',
+                # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
                 f"python{version} -m pip install --no-cache-dir --no-compile "
-                f"dist/*.whl -t build/python/lib/python{version}/site-packages || "
+                f"dist/*.whl{f'[{self.package_extras}]' if self.package_extras else ''} "
+                f"-t build/python/lib/python{version}/site-packages || "
                 f"{{ echo 'First pip install attempt failed, retrying...'; "
                 f"python{version} -m pip install --no-cache-dir --no-compile "
-                f"dist/*.whl -t build/python/lib/python{version}/site-packages; }}",
-                'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
+                f"dist/*.whl{f'[{self.package_extras}]' if self.package_extras else ''} "
+                f"-t build/python/lib/python{version}/site-packages; }}",
+                'echo "Removing packages provided by AWS Lambda runtime"',
                 "rm -rf build/python/lib/python*/site-packages/boto* || true",
                 "rm -rf build/python/lib/python*/site-packages/*boto* || true",
+                "rm -rf build/python/lib/python*/site-packages/urllib3* || true",
+                "rm -rf build/python/lib/python*/site-packages/certifi* || true",
+                "rm -rf build/python/lib/python*/site-packages/requests* || true",
+                "rm -rf build/python/lib/python*/site-packages/dateutil* || true",
+                "rm -rf build/python/lib/python*/site-packages/jmespath* || true",
+                "rm -rf build/python/lib/python*/site-packages/s3transfer* || true",
+                "rm -rf build/python/lib/python*/site-packages/six* || true",
+                'echo "Removing numpy (use AWS Lambda Layer instead)"',
+                "rm -rf build/python/lib/python*/site-packages/numpy* || true",
                 'echo "Cleaning up unnecessary files from all packages"',
                 "find build -type d -name '__pycache__' -exec rm -rf {} + "
                 "2>/dev/null || true",
@@ -352,6 +366,14 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Final cleanup after flattening"',
                 "rm -rf build/python/boto* || true",
                 "rm -rf build/python/*boto* || true",
+                "rm -rf build/python/urllib3* || true",
+                "rm -rf build/python/certifi* || true",
+                "rm -rf build/python/requests* || true",
+                "rm -rf build/python/dateutil* || true",
+                "rm -rf build/python/jmespath* || true",
+                "rm -rf build/python/s3transfer* || true",
+                "rm -rf build/python/six* || true",
+                "rm -rf build/python/numpy* || true",
                 "chmod -R 755 build",
                 # Validate layer output
                 'echo "Validating build output..."',
@@ -406,6 +428,14 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Final cleanup after flattening"',
                 "rm -rf build/python/boto* || true",
                 "rm -rf build/python/*boto* || true",
+                "rm -rf build/python/urllib3* || true",
+                "rm -rf build/python/certifi* || true",
+                "rm -rf build/python/requests* || true",
+                "rm -rf build/python/dateutil* || true",
+                "rm -rf build/python/jmespath* || true",
+                "rm -rf build/python/s3transfer* || true",
+                "rm -rf build/python/six* || true",
+                "rm -rf build/python/numpy* || true",
                 "chmod -R 755 build",
             ]
             pre_build_phase = {
@@ -809,10 +839,7 @@ echo "🎉 Parallel function updates completed!"'''
             commands.append("[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }")
             # Check if zip size exceeds Lambda limits
             commands.append("MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes")
-            commands.append("if [ \"$ZIP_SIZE\" -gt \"$MAX_SIZE\" ]; then")
-            commands.append('    echo "WARNING: Layer size exceeds Lambda limit (250MB)"')
-            commands.append('    echo "Size: $(($ZIP_SIZE / 1024 / 1024))MB"')
-            commands.append("fi")
+            commands.append("if [ \"$ZIP_SIZE\" -gt \"$MAX_SIZE\" ]; then echo \"WARNING: Layer size exceeds Lambda limit (250MB)\"; echo \"Size: $(($ZIP_SIZE / 1024 / 1024))MB\"; fi")
             # Step 3.1: Upload combined zip to artifact bucket
             commands.append('echo "Uploading merged layer.zip to S3..."')
             commands.append(
@@ -1143,7 +1170,7 @@ for attempt in 1 2 3; do
     fi
 done
 
-echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
+echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
 
 echo "✅ Source uploaded successfully"
 """
@@ -1299,7 +1326,7 @@ while true; do
 done
 
 # Save hash
-echo "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
+echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
 echo "✅ Layer build process completed!"
 """
 
@@ -1319,6 +1346,7 @@ layers_to_build = [
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
         "needs_pillow": False,
+        "package_extras": "lambda",  # Use lightweight chromadb-client for Lambda layer
     },
     {
         "package_dir": "receipt_upload",
@@ -1343,6 +1371,7 @@ if not SKIP_LAYER_BUILDING:
             python_versions=layer_config["python_versions"],  # type: ignore
             description=layer_config["description"],  # type: ignore
             needs_pillow=layer_config["needs_pillow"],  # type: ignore
+            package_extras=layer_config.get("package_extras"),  # type: ignore
         )
         fast_lambda_layers[layer_config["name"]] = fast_layer
 
