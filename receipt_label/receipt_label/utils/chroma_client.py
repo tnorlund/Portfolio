@@ -175,7 +175,7 @@ class ChromaDBClient:
 
         # ChromaDB PersistentClient auto-persists, no manual persist needed
 
-    def query(
+    def query_collection(
         self,
         collection_name: str,
         query_embeddings: Optional[List[List[float]]] = None,
