@@ -50,7 +50,8 @@ def compact_handler(event, context):  # pylint: disable=unused-argument
             {
                 "delta_key": "delta/abc123/",
                 "delta_id": "abc123",
-                "embedding_count": 100
+                "embedding_count": 100,
+                "collection": "receipt_words"  # or "receipt_lines"
             },
             ...
         ]
@@ -65,16 +66,23 @@ def compact_handler(event, context):  # pylint: disable=unused-argument
         logger.warning("No delta results provided for compaction")
         return {"statusCode": 200, "message": "No deltas to compact"}
 
-    # Extract delta information
-    delta_keys = [result["delta_key"] for result in delta_results]
+    # Group deltas by collection name
+    deltas_by_collection = {}
+    for result in delta_results:
+        collection = result.get("collection", "receipt_words")  # Default for backward compat
+        if collection not in deltas_by_collection:
+            deltas_by_collection[collection] = []
+        deltas_by_collection[collection].append(result)
+
     total_embeddings = sum(
         result.get("embedding_count", 0) for result in delta_results
     )
 
     logger.info(
-        "Compacting %d deltas with %d total embeddings",
-        len(delta_keys),
-        total_embeddings
+        "Compacting %d deltas with %d total embeddings across %d collections",
+        len(delta_results),
+        total_embeddings,
+        len(deltas_by_collection)
     )
 
     try:
@@ -90,22 +98,34 @@ def compact_handler(event, context):  # pylint: disable=unused-argument
                 "message": "Compaction already in progress",
             }
 
-        # Perform compaction
-        compaction_result = compact_deltas(delta_keys)
+        # Perform compaction for each collection
+        compaction_results = {}
+        for collection_name, collection_deltas in deltas_by_collection.items():
+            logger.info(
+                "Compacting %d deltas for collection: %s",
+                len(collection_deltas),
+                collection_name
+            )
+            delta_keys = [d["delta_key"] for d in collection_deltas]
+            compaction_results[collection_name] = compact_deltas(
+                delta_keys, collection_name
+            )
 
         # Release lock
         release_compaction_lock()
 
         logger.info(
-            "Compaction completed successfully: %s", compaction_result
+            "Compaction completed successfully for %d collections",
+            len(compaction_results)
         )
 
         return {
             "statusCode": 200,
             "compaction_method": "batch",
-            "delta_count": len(delta_keys),
+            "collections_compacted": list(compaction_results.keys()),
+            "compaction_results": compaction_results,
+            "delta_count": len(delta_results),
             "total_embeddings": total_embeddings,
-            "snapshot_key": compaction_result["snapshot_key"],
             "message": "Compaction completed successfully",
         }
 
@@ -156,9 +176,13 @@ def release_compaction_lock():
         logger.error("Error releasing lock: %s", str(e))
 
 
-def compact_deltas(delta_keys: list) -> dict:
+def compact_deltas(delta_keys: list, collection_name: str = "receipt_words") -> dict:
     """
     Download and compact multiple delta files into a single ChromaDB snapshot.
+    
+    Args:
+        delta_keys: List of S3 keys for delta files to compact
+        collection_name: Name of the ChromaDB collection (e.g., "receipt_words", "receipt_lines")
     """
     bucket_name = os.environ["CHROMADB_BUCKET"]
     snapshot_id = str(uuid.uuid4())
@@ -166,16 +190,19 @@ def compact_deltas(delta_keys: list) -> dict:
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create main ChromaDB instance for compaction
         main_client = chromadb.PersistentClient(
-            path=os.path.join(temp_dir, "main")
+            path=os.path.join(temp_dir, collection_name)
         )
         main_collection = main_client.get_or_create_collection(
-            name="receipt_words",
-            metadata={"created_at": datetime.utcnow().isoformat()},
+            name=collection_name,
+            metadata={
+                "created_at": datetime.utcnow().isoformat(),
+                "collection_type": collection_name,
+            },
         )
 
         # Process each delta
         for delta_key in delta_keys:
-            logger.info("Processing delta: %s", delta_key)
+            logger.info("Processing delta for %s: %s", collection_name, delta_key)
 
             # Download delta to temporary directory
             delta_dir = os.path.join(
@@ -197,8 +224,17 @@ def compact_deltas(delta_keys: list) -> dict:
                     s3_client.download_file(bucket_name, key, local_path)
 
             # Load delta ChromaDB
-            delta_client = chromadb.PersistentClient(path=delta_dir)
-            delta_collection = delta_client.get_collection("receipt_words")
+            try:
+                delta_client = chromadb.PersistentClient(path=delta_dir)
+                # Try to get the collection with the expected name
+                delta_collection = delta_client.get_collection(collection_name)
+            except ValueError as e:
+                # If collection doesn't exist, log and skip
+                logger.warning(
+                    "Delta %s does not contain collection %s, skipping: %s",
+                    delta_key, collection_name, str(e)
+                )
+                continue
 
             # Get all data from delta
             delta_data = delta_collection.get(
@@ -214,25 +250,26 @@ def compact_deltas(delta_keys: list) -> dict:
                     metadatas=delta_data["metadatas"],
                 )
                 logger.info(
-                    "Added %d embeddings from delta",
-                    len(delta_data['ids'])
+                    "Added %d embeddings from delta to %s collection",
+                    len(delta_data['ids']),
+                    collection_name
                 )
 
-        # Upload compacted snapshot to S3
-        snapshot_key = f"snapshot/{snapshot_id}/"
-        for root, _, files in os.walk(os.path.join(temp_dir, "main")):
+        # Upload compacted snapshot to S3 with collection-specific path
+        snapshot_key = f"snapshot/{collection_name}/{snapshot_id}/"
+        collection_path = os.path.join(temp_dir, collection_name)
+        
+        for root, _, files in os.walk(collection_path):
             for file in files:
                 local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(
-                    local_path, os.path.join(temp_dir, "main")
-                )
+                relative_path = os.path.relpath(local_path, collection_path)
                 s3_key = snapshot_key + relative_path
 
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         logger.info(
-            "Uploaded snapshot %s to s3://%s/%s",
-            snapshot_id, bucket_name, snapshot_key
+            "Uploaded %s snapshot %s to s3://%s/%s",
+            collection_name, snapshot_id, bucket_name, snapshot_key
         )
 
         # Clean up processed deltas (optional - can be done via S3 lifecycle)
@@ -260,5 +297,6 @@ def compact_deltas(delta_keys: list) -> dict:
     return {
         "snapshot_id": snapshot_id,
         "snapshot_key": snapshot_key,
+        "collection_name": collection_name,
         "deltas_processed": len(delta_keys),
     }
