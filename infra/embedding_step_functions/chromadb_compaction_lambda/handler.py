@@ -19,8 +19,9 @@ import boto3
 import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
-from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_lock import CompactionLock
+from receipt_label.utils.lock_manager import LockManager
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -38,6 +39,17 @@ if len(logger.handlers) == 0:
 # Initialize clients
 s3_client = boto3.client("s3")
 dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+# Get configuration from environment
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
+
+# Create a module-level lock manager instance for the final merge
+lock_manager = LockManager(
+    dynamo_client=dynamo_client,
+    heartbeat_interval=heartbeat_interval,
+    lock_duration_minutes=lock_duration_minutes,
+)
 
 
 def compact_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # pylint: disable=unused-argument
@@ -114,7 +126,11 @@ def legacy_compact_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # Create a local lock manager for this execution
-    legacy_lock_manager = LockManager()
+    legacy_lock_manager = LockManager(
+        dynamo_client=dynamo_client,
+        heartbeat_interval=heartbeat_interval,
+        lock_duration_minutes=lock_duration_minutes,
+    )
     
     try:
         # Acquire compaction lock
