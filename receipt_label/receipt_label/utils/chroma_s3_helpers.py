@@ -28,9 +28,8 @@ def produce_embedding_delta(
     embeddings: List[List[float]],
     documents: List[str],
     metadatas: List[Dict[str, Any]],
+    bucket_name: str,
     collection_name: str = "words",
-    bucket_name: Optional[str] = None,
-    bucket: Optional[str] = None,  # Alternative parameter name for tests
     sqs_queue_url: Optional[str] = None,
     batch_id: Optional[str] = None,
     delta_prefix: str = "delta/",  # For tests
@@ -47,11 +46,13 @@ def produce_embedding_delta(
         embeddings: Embedding vectors
         documents: Document texts
         metadatas: Metadata dictionaries
+        bucket_name: S3 bucket name for storing the delta
         collection_name: ChromaDB collection name (default: "words")
-        bucket_name: S3 bucket (uses VECTORS_BUCKET env var if not provided)
-        sqs_queue_url: SQS queue URL (uses COMPACTION_QUEUE_URL or 
-            DELTA_QUEUE_URL env var if not provided)
+        sqs_queue_url: SQS queue URL for compaction notification. If None, skips SQS notification
         batch_id: Optional batch identifier for tracking purposes
+        delta_prefix: S3 prefix for delta files (default: "delta/")
+        local_temp_dir: Optional local directory for temporary files
+        compress: Whether to compress the delta (default: False)
 
     Returns:
         Dict with status and delta_key
@@ -61,20 +62,13 @@ def produce_embedding_delta(
         ...     ids=["WORD#1", "WORD#2"],
         ...     embeddings=[[0.1, 0.2, ...], [0.3, 0.4, ...]],
         ...     documents=["hello", "world"],
-        ...     metadatas=[{"pos": 1}, {"pos": 2}]
+        ...     metadatas=[{"pos": 1}, {"pos": 2}],
+        ...     bucket_name="my-vectors-bucket",
+        ...     sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue"
         ... )
         >>> print(result["delta_key"])
         "delta/a1b2c3d4e5f6/"
     """
-    # Handle alternative parameter names
-    if bucket_name is None and bucket is not None:
-        bucket_name = bucket
-    if bucket_name is None:
-        bucket_name = os.environ.get("VECTORS_BUCKET", "default-vectors-bucket")
-
-    if sqs_queue_url is None:
-        # Try COMPACTION_QUEUE_URL first (preferred), then DELTA_QUEUE_URL (legacy)
-        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL") or os.environ.get("DELTA_QUEUE_URL")
 
     # Create temporary directory for delta
     if local_temp_dir is not None:
