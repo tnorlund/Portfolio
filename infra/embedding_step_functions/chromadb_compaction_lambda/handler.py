@@ -72,8 +72,7 @@ def compact_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # p
                 "embedding_count": 100
             },
             ...
-        ],
-        "continuation_token": "..." // Optional, for pagination
+        ]
     }
 
     Input event format for final merge:
@@ -81,11 +80,6 @@ def compact_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # p
         "operation": "final_merge",
         "batch_id": "batch-uuid",
         "total_chunks": 5
-    }
-
-    Legacy format (for backward compatibility):
-    {
-        "delta_results": [...]
     }
     """
     logger.info("Starting ChromaDB compaction handler")
@@ -99,86 +93,13 @@ def compact_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # p
     elif operation == "final_merge":
         return final_merge_handler(event)
     else:
-        # Legacy mode for backward compatibility
-        return legacy_compact_handler(event)
-
-
-def legacy_compact_handler(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Legacy compaction handler for backward compatibility."""
-    logger.info("Using legacy compaction mode")
-    
-    delta_results = event.get("delta_results", [])
-
-    if not delta_results:
-        logger.warning("No delta results provided for compaction")
-        return {"statusCode": 200, "message": "No deltas to compact"}
-
-    # Extract delta information
-    delta_keys = [result["delta_key"] for result in delta_results]
-    total_embeddings = sum(
-        result.get("embedding_count", 0) for result in delta_results
-    )
-
-    logger.info(
-        "Compacting %d deltas with %d total embeddings",
-        len(delta_keys),
-        total_embeddings
-    )
-
-    # Create a local lock manager for this execution
-    legacy_lock_manager = LockManager(
-        dynamo_client=dynamo_client,
-        heartbeat_interval=heartbeat_interval,
-        lock_duration_minutes=lock_duration_minutes,
-    )
-    
-    try:
-        # Acquire compaction lock
-        if not legacy_lock_manager.acquire():
-            logger.warning(
-                "Could not acquire compaction lock - "
-                "another compaction is in progress"
-            )
-            return {
-                "statusCode": 423,  # Locked
-                "message": "Compaction already in progress",
-            }
-
-        # Start heartbeat thread to keep lock alive during processing
-        legacy_lock_manager.start_heartbeat()
-
-        # Perform compaction
-        compaction_result = compact_deltas(delta_keys)
-
-        # Stop heartbeat thread and release lock
-        legacy_lock_manager.stop_heartbeat()
-        legacy_lock_manager.release()
-
-        logger.info(
-            "Legacy compaction completed successfully: %s", compaction_result
-        )
-
+        logger.error("Invalid operation: %s. Expected 'process_chunk' or 'final_merge'", operation)
         return {
-            "statusCode": 200,
-            "compaction_method": "batch",
-            "delta_count": len(delta_keys),
-            "total_embeddings": total_embeddings,
-            "snapshot_key": compaction_result["snapshot_key"],
-            "message": "Compaction completed successfully",
+            "statusCode": 400,
+            "error": f"Invalid operation: {operation}",
+            "message": "Operation must be 'process_chunk' or 'final_merge'"
         }
 
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Legacy compaction failed: %s", str(e))
-        # Stop heartbeat thread and try to release lock on error
-        if 'legacy_lock_manager' in locals():
-            legacy_lock_manager.stop_heartbeat()
-            legacy_lock_manager.release()
-
-        return {
-            "statusCode": 500,
-            "error": str(e),
-            "message": "Legacy compaction failed",
-        }
 
 
 def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -338,133 +259,6 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Final merge failed",
         }
 
-
-# Note: Old lock functions have been removed in favor of the LockManager class
-# which provides better state management and configurability
-
-
-def compact_deltas(delta_keys: List[str]) -> Dict[str, Any]:
-    """
-    Download and compact multiple delta files into a single ChromaDB snapshot.
-    """
-    start_time = time.time()
-    bucket_name = os.environ["CHROMADB_BUCKET"]
-    snapshot_id = str(uuid.uuid4())
-    total_embeddings_processed = 0
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Create main ChromaDB instance for compaction
-        main_client = chromadb.PersistentClient(
-            path=os.path.join(temp_dir, "main")
-        )
-        main_collection = main_client.get_or_create_collection(
-            name="receipt_words",
-            metadata={"created_at": datetime.utcnow().isoformat()},
-        )
-
-        # Process each delta
-        for delta_key in delta_keys:
-            logger.info("Processing delta: %s", delta_key)
-
-            # Download delta to temporary directory
-            delta_dir = os.path.join(
-                temp_dir, "delta", os.path.basename(delta_key.rstrip("/"))
-            )
-            os.makedirs(delta_dir, exist_ok=True)
-
-            # List and download all files in delta
-            paginator = s3_client.get_paginator("list_objects_v2")
-            pages = paginator.paginate(Bucket=bucket_name, Prefix=delta_key)
-
-            for page in pages:
-                for obj in page.get("Contents", []):
-                    key = obj["Key"]
-                    local_path = os.path.join(
-                        delta_dir, os.path.relpath(key, delta_key)
-                    )
-                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                    s3_client.download_file(bucket_name, key, local_path)
-
-            # Load delta ChromaDB
-            delta_client = chromadb.PersistentClient(path=delta_dir)
-            delta_collection = delta_client.get_collection("receipt_words")
-
-            # Get all data from delta
-            delta_data = delta_collection.get(
-                include=["embeddings", "documents", "metadatas"]
-            )
-
-            if delta_data["ids"]:
-                # Add to main collection
-                embeddings_count = len(delta_data["ids"])
-                main_collection.add(
-                    ids=delta_data["ids"],
-                    embeddings=delta_data["embeddings"],
-                    documents=delta_data["documents"],
-                    metadatas=delta_data["metadatas"],
-                )
-                total_embeddings_processed += embeddings_count
-                logger.info(
-                    "Added %d embeddings from delta (total so far: %d)",
-                    embeddings_count,
-                    total_embeddings_processed
-                )
-
-        # Upload compacted snapshot to S3
-        snapshot_key = f"snapshot/{snapshot_id}/"
-        for root, _, files in os.walk(os.path.join(temp_dir, "main")):
-            for file in files:
-                local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(
-                    local_path, os.path.join(temp_dir, "main")
-                )
-                s3_key = snapshot_key + relative_path
-
-                s3_client.upload_file(local_path, bucket_name, s3_key)
-
-        logger.info(
-            "Uploaded snapshot %s to s3://%s/%s",
-            snapshot_id, bucket_name, snapshot_key
-        )
-
-        # Clean up processed deltas (optional - can be done via S3 lifecycle)
-        if (
-            os.environ.get("DELETE_PROCESSED_DELTAS", "false").lower()
-            == "true"
-        ):
-            for delta_key in delta_keys:
-                # Delete all objects with this prefix
-                paginator = s3_client.get_paginator("list_objects_v2")
-                pages = paginator.paginate(
-                    Bucket=bucket_name, Prefix=delta_key
-                )
-
-                for page in pages:
-                    if "Contents" in page:
-                        objects = [
-                            {"Key": obj["Key"]} for obj in page["Contents"]
-                        ]
-                        s3_client.delete_objects(
-                            Bucket=bucket_name, 
-                            Delete={"Objects": objects}  # type: ignore[typeddict-item]
-                        )
-                logger.info("Deleted processed delta: %s", delta_key)
-
-    elapsed_time = time.time() - start_time
-    logger.info(
-        "Compaction completed in %.2f seconds. Processed %d deltas with %d total embeddings",
-        elapsed_time,
-        len(delta_keys),
-        total_embeddings_processed
-    )
-
-    return {
-        "snapshot_id": snapshot_id,
-        "snapshot_key": snapshot_key,
-        "deltas_processed": len(delta_keys),
-        "total_embeddings": total_embeddings_processed,
-        "processing_time_seconds": elapsed_time,
-    }
 
 
 def process_chunk_deltas(batch_id: str, chunk_index: int, delta_results: List[Dict[str, Any]]) -> Dict[str, Any]:
