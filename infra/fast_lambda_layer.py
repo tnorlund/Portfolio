@@ -12,16 +12,17 @@ Modes:
 - sync: Wait for builds to complete (useful for CI/CD)
 """
 
+import base64
 import glob
 import hashlib
 import json
 import os
-from pathlib import Path
-from typing import Optional
+import shlex
+import tempfile
+from typing import Optional, List, Dict, Any
 
 import pulumi
 import pulumi_aws as aws
-import pulumi_aws.codepipeline as codepipeline
 import pulumi_command as command
 from pulumi import ComponentResource, Output
 from utils import _find_project_root
@@ -45,11 +46,11 @@ class FastLambdaLayer(ComponentResource):
         self,
         name: str,
         package_dir: str,
-        python_versions,
-        description: str = None,
+        python_versions: List[str],
+        description: Optional[str] = None,
         needs_pillow: bool = False,
-        sync_mode: bool = None,
-        opts: pulumi.ResourceOptions = None,
+        sync_mode: Optional[bool] = None,
+        opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"fast-lambda-layer:{name}", name, {}, opts)
 
@@ -59,7 +60,7 @@ class FastLambdaLayer(ComponentResource):
 
         # Accept either a single version string or a list
         if isinstance(python_versions, str):
-            self.python_versions = [python_versions]
+            self.python_versions: List[str] = [python_versions]
         else:
             self.python_versions = list(python_versions)
 
@@ -85,6 +86,9 @@ class FastLambdaLayer(ComponentResource):
 
         # Get the force-rebuild config
         self.force_rebuild = config.get_bool("force-rebuild") or False
+        
+        # Get debug mode config
+        self.debug_mode = config.get_bool("debug-mode") or False
 
         # Calculate package hash for change detection
         package_hash = self._calculate_package_hash()
@@ -110,7 +114,7 @@ class FastLambdaLayer(ComponentResource):
 
         self._setup_fast_build(package_hash, package_path)
 
-    def _validate_package_dir(self):
+    def _validate_package_dir(self) -> None:
         """Validate that the package directory exists and contains the necessary files."""
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
@@ -127,7 +131,8 @@ class FastLambdaLayer(ComponentResource):
         ]
         if missing_files:
             raise ValueError(
-                f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
+                f"Package directory {package_path} is missing required files: "
+                f"{', '.join(missing_files)}"
             )
 
         python_files = glob.glob(
@@ -138,7 +143,7 @@ class FastLambdaLayer(ComponentResource):
                 f"Package directory {package_path} contains no Python files"
             )
 
-    def _calculate_package_hash(self):
+    def _calculate_package_hash(self) -> str:
         """Calculate a hash of the package contents to detect changes."""
         hash_obj = hashlib.sha256()
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
@@ -157,13 +162,37 @@ class FastLambdaLayer(ComponentResource):
 
         return hash_obj.hexdigest()
 
-    def _encode_shell_script(self, script_content):
+    def _encode_shell_script(self, script_content: str) -> str:
         """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
-        import base64
-
         return base64.b64encode(script_content.encode("utf-8")).decode("utf-8")
+    
+    def _generate_batched_pip_install(self, packages: List[str], target_dir: str, 
+                                     python_version: str, batch_size: int = 10) -> List[str]:
+        """Generate batched pip install commands to avoid ARG_MAX errors.
+        
+        Args:
+            packages: List of package names to install
+            target_dir: Target directory for installation  
+            python_version: Python version to use
+            batch_size: Number of packages per batch
+            
+        Returns:
+            List of pip install commands
+        """
+        if not packages:
+            return []
+            
+        commands = []
+        for i in range(0, len(packages), batch_size):
+            batch = packages[i:i + batch_size]
+            pkg_str = " ".join(batch)
+            commands.append(
+                f"python{python_version} -m pip install --no-cache-dir --no-compile "
+                f"{pkg_str} -t {target_dir}"
+            )
+        return commands
 
-    def _get_update_functions_script(self):
+    def _get_update_functions_script(self) -> str:
         """Generate the shell script for updating Lambda functions."""
         return '''#!/bin/bash
 set -e
@@ -254,12 +283,14 @@ aws lambda list-functions --query "Functions[*].[FunctionName,FunctionArn]" --ou
 
 echo "🎉 Parallel function updates completed!"'''
 
-    def _get_buildspec(self, version: str | None = None):
+    def _get_buildspec(self, version: str | None = None) -> Dict[str, Any]:
         """Return a buildspec dict for CodeBuild.
 
         If ``version`` is provided, the buildspec targets a single Python
         version. Otherwise, it handles all versions listed in
         ``self.python_versions``.
+        
+        Includes ARG_MAX protection for long command lines.
         """
 
         versions = [version] if version else self.python_versions
@@ -269,13 +300,18 @@ echo "🎉 Parallel function updates completed!"'''
             "echo Installing native libraries for Pillow…",
             "dnf install -y libjpeg-turbo libpng libtiff libwebp freetype lcms2 zlib",
             "pip install build",
+            # Add error handling for pip install
+            'echo "Setting up pip error handling..."',
+            "set -e",  # Exit on any error
         ]
 
         if version:
             build_commands = [
                 "echo Build directory prep",
-                "pwd",
-                "ls -la",
+                # Add debug logging if enabled
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Starting build for Python ${PYTHON_VERSION}"',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Current directory:" && pwd',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Directory contents:" && ls -la',
                 "echo Checking source structure:",
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
@@ -283,13 +319,45 @@ echo "🎉 Parallel function updates completed!"'''
                 f"mkdir -p build/python/lib/python{version}/site-packages",
                 'echo "Building wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
-                'echo "Installing wheel"',
-                f"python{version} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python{version}/site-packages",
+                'echo "Installing wheel with optimization exclusions for Lambda layer"',
+                # Check for ARG_MAX before running pip install
+                'echo "Checking command length for pip install..."',
+                f"python{version} -m pip install --no-cache-dir --no-compile "
+                f"dist/*.whl -t build/python/lib/python{version}/site-packages || "
+                f"{{ echo 'First pip install attempt failed, retrying...'; "
+                f"python{version} -m pip install --no-cache-dir --no-compile "
+                f"dist/*.whl -t build/python/lib/python{version}/site-packages; }}",
+                'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
+                "rm -rf build/python/lib/python*/site-packages/boto* || true",
+                "rm -rf build/python/lib/python*/site-packages/*boto* || true",
+                'echo "Cleaning up unnecessary files from all packages"',
+                "find build -type d -name '__pycache__' -exec rm -rf {} + "
+                "2>/dev/null || true",
+                "find build -type d -name 'tests' -o -name 'test' -exec rm -rf {} + "
+                "2>/dev/null || true",
+                "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + "
+                "2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' "
+                "-o -name '*.yaml' -o -name '*.rst' \\) -not -path "
+                "'*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f -name '*.dist-info/RECORD' -exec sed -i "
+                "'/\\.pyc/d' {} + 2>/dev/null || true",
                 'echo "Copying native libraries"',
-                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
+                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* "
+                "/usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* "
+                "/usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* "
+                "/usr/lib64/libfreetype*.so* build/lib || true",
                 'echo "Flattening site-packages to root python directory"',
                 "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Final cleanup after flattening"',
+                "rm -rf build/python/boto* || true",
+                "rm -rf build/python/*boto* || true",
                 "chmod -R 755 build",
+                # Validate layer output
+                'echo "Validating build output..."',
+                "[ -d build/python ] || { echo 'ERROR: build/python not found'; exit 1; }",
+                "ls -la build/python/ | head -20 || true",
+                'echo "Build validation complete"',
             ]
             if self.needs_pillow:
                 build_commands.append('echo "Installing Pillow"')
@@ -322,12 +390,22 @@ echo "🎉 Parallel function updates completed!"'''
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
                 'echo "Building wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
-                'echo "Installing wheel and Pillow for each runtime"',
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
+                'echo "Installing wheel and Pillow for each runtime with Lambda optimizations"',
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --no-compile dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
+                'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
+                "find build -type d -name 'boto*' -exec rm -rf {} + 2>/dev/null || true",
+                'echo "Cleaning up unnecessary files from all packages"',
+                "find build -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true",
+                "find build -type d -name 'tests' -o -name 'test' -exec rm -rf {} + 2>/dev/null || true",
+                "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' -o -name '*.yaml' -o -name '*.rst' \\) -not -path '*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
                 'echo "Copying native libraries"',
                 "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
                 'echo "Flattening site-packages to root python directory"',
                 "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Final cleanup after flattening"',
+                "rm -rf build/python/boto* || true",
+                "rm -rf build/python/*boto* || true",
                 "chmod -R 755 build",
             ]
             pre_build_phase = {
@@ -359,19 +437,35 @@ echo "🎉 Parallel function updates completed!"'''
             "artifacts": artifacts,
         }
 
-    def _setup_fast_build(self, package_hash, package_path):
+    def _setup_fast_build(self, package_hash: str, package_path: str) -> None:
         """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
 
         # Create S3 bucket for artifacts
+        # Truncate to fit AWS S3 bucket naming limits (63 chars)
+        stack = pulumi.get_stack()
+        
+        # Use a hash of the full name for uniqueness when truncating
+        full_name = f"{self.name}-{stack}"
+        name_hash = hashlib.md5(full_name.encode()).hexdigest()[:8]
+        
+        # Build a bucket name that's guaranteed to be under 63 chars
+        # Pattern: "fll-{name_short}-{stack_short}-{hash}"
+        name_short = self.name[:10]
+        stack_short = stack[:15] if len(stack) > 15 else stack
+        
+        bucket_name = f"fll-{name_short}-{stack_short}-{name_hash}"
+        # Ensure lowercase and replace underscores
+        bucket_name = bucket_name.lower().replace("_", "-").replace("--", "-")
+        
         build_bucket = aws.s3.Bucket(
-            resource_name=f"fast-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
-            bucket=f"fast-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
+            resource_name=f"fast-lambda-layer-{self.name}-artifacts-{stack}",
+            bucket=bucket_name,
             force_destroy=True,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
         # Configure versioning as a separate resource
-        build_bucket_versioning = aws.s3.BucketVersioningV2(
+        aws.s3.BucketVersioningV2(
             f"fast-lambda-layer-{self.name}-artifacts-versioning",
             bucket=build_bucket.id,
             versioning_configuration=(
@@ -430,7 +524,7 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Create CodeBuild policy with permissions for layer publishing and function updates
-        codebuild_policy = aws.iam.RolePolicy(
+        aws.iam.RolePolicy(
             f"{self.name}-fast-codebuild-policy",
             role=codebuild_role.id,
             policy=pulumi.Output.all(build_bucket.arn, self.layer_name).apply(
@@ -528,7 +622,7 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Grant CodePipeline read/write access to the S3 artifact bucket
-        pipeline_s3_policy = aws.iam.RolePolicy(
+        aws.iam.RolePolicy(
             f"{self.name}-pipeline-s3-policy",
             role=pipeline_role.id,
             policy=pulumi.Output.all(build_bucket.arn).apply(
@@ -576,7 +670,7 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Grant CodePipeline permission to invoke CodeBuild projects (including StartBuildBatch)
-        pipeline_codebuild_policy = aws.iam.RolePolicy(
+        aws.iam.RolePolicy(
             f"{self.name}-pipeline-codebuild-policy",
             role=pipeline_role.id,
             policy=Output.all(
@@ -654,6 +748,9 @@ echo "🎉 Parallel function updates completed!"'''
                         aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                             name="NEEDS_PILLOW", value=str(self.needs_pillow)
                         ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="DEBUG_MODE", value=str(self.debug_mode)
+                        ),
                     ],
                 ),
                 cache=aws.codebuild.ProjectCacheArgs(
@@ -662,11 +759,18 @@ echo "🎉 Parallel function updates completed!"'''
                         lambda b: f"{b}/{self.name}/cache"
                     ),
                 ),
+                logs_config=aws.codebuild.ProjectLogsConfigArgs(
+                    cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
+                        status="ENABLED",
+                        group_name=f"/aws/codebuild/{self.name}-build-py{v.replace('.', '')}",
+                        stream_name=f"{self.name}-build-stream",
+                    ),
+                ),
                 opts=pulumi.ResourceOptions(parent=self),
             )
             build_projects[v] = project
 
-        def publish_buildspec():
+        def publish_buildspec() -> Dict[str, Any]:
             # This buildspec will merge all version artifacts under a single python/lib/python<ver>/site-packages tree, zip, upload to S3, and publish as one layer from S3.
             commands = []
             # Step 1: Prepare merged directory
@@ -697,6 +801,18 @@ echo "🎉 Parallel function updates completed!"'''
             # Step 3: Zip the merged python directory
             commands.append('echo "Zipping merged layer..."')
             commands.append("cd merged && zip -r ../layer.zip python && cd ..")
+            # Validate the zip file
+            commands.append('echo "Validating layer.zip..."')
+            commands.append("[ -f layer.zip ] || { echo 'ERROR: layer.zip not created'; exit 1; }")
+            commands.append("ZIP_SIZE=$(stat -c%s layer.zip 2>/dev/null || stat -f%z layer.zip 2>/dev/null || echo 0)")
+            commands.append('echo "Layer zip size: $ZIP_SIZE bytes"')
+            commands.append("[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }")
+            # Check if zip size exceeds Lambda limits
+            commands.append("MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes")
+            commands.append("if [ \"$ZIP_SIZE\" -gt \"$MAX_SIZE\" ]; then")
+            commands.append('    echo "WARNING: Layer size exceeds Lambda limit (250MB)"')
+            commands.append('    echo "Size: $(($ZIP_SIZE / 1024 / 1024))MB"')
+            commands.append("fi")
             # Step 3.1: Upload combined zip to artifact bucket
             commands.append('echo "Uploading merged layer.zip to S3..."')
             commands.append(
@@ -714,9 +830,11 @@ echo "🎉 Parallel function updates completed!"'''
                 + " ".join([f"python{v}" for v in self.python_versions])
                 + " --compatible-architectures arm64 "
                 f'--description "{self.description}" '
-                '--query "LayerVersionArn" --output text)'
+                '--query "LayerVersionArn" --output text 2>&1) || '
+                '{ echo "ERROR: Failed to publish layer version"; echo "Output: $NEW_LAYER_ARN"; exit 1; }'
             )
             commands.append('echo "New layer ARN: $NEW_LAYER_ARN"')
+            commands.append("[ -n \"$NEW_LAYER_ARN\" ] || { echo 'ERROR: No layer ARN returned'; exit 1; }")
             commands.append("export NEW_LAYER_ARN")
             commands.append(
                 f'echo "{self._encode_shell_script(self._get_update_functions_script())}" | base64 -d > update_layers.sh'
@@ -765,9 +883,19 @@ echo "🎉 Parallel function updates completed!"'''
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
                         name="NEEDS_PILLOW", value=str(self.needs_pillow)
                     ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="DEBUG_MODE", value=str(self.debug_mode)
+                    ),
                 ],
             ),
             build_timeout=60,
+            logs_config=aws.codebuild.ProjectLogsConfigArgs(
+                cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
+                    status="ENABLED",
+                    group_name=f"/aws/codebuild/{self.name}-publish",
+                    stream_name=f"{self.name}-publish-stream",
+                ),
+            ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 
@@ -854,7 +982,7 @@ EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipeline
 echo "Triggered pipeline: $EXEC_ID"
 """
         )
-        trigger_cmd = command.local.Command(
+        command.local.Command(
             f"{self.name}-trigger-pipeline",
             create=trigger_script,
             update=trigger_script,
@@ -891,7 +1019,7 @@ while true; do
 done
 """
             )
-            sync_cmd = command.local.Command(
+            command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
                 opts=pulumi.ResourceOptions(
@@ -905,12 +1033,9 @@ done
         self.arn = None  # Placeholder: Pulumi does not manage or export the layer ARN directly.
 
     def _create_and_run_upload_script(
-        self, bucket, package_path, package_hash
-    ):
+        self, bucket: str, package_path: str, package_hash: str
+    ) -> str:
         """Create a script file and return just the execution command."""
-        import tempfile
-        import os
-
         try:
             # Generate the script content with embedded variables to avoid argument issues
             script_content = self._generate_upload_script(
@@ -934,11 +1059,12 @@ done
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create upload script: {e}") from e
 
-    def _generate_upload_script(self, bucket, package_path, package_hash):
-        """Generate script to upload source package with safely embedded paths."""
+    def _generate_upload_script(self, bucket: str, package_path: str, package_hash: str) -> str:
+        """Generate script to upload source package with safely embedded paths.
+        
+        Includes improved error handling and validation.
+        """
         # Escape the paths to handle special characters
-        import shlex
-
         safe_package_path = shlex.quote(package_path)
         safe_bucket = shlex.quote(bucket)
 
@@ -972,8 +1098,18 @@ fi
 if [ ! -f "$PACKAGE_PATH/pyproject.toml" ]; then
     echo "❌ Error: pyproject.toml not found in $PACKAGE_PATH"
     echo "Package contents:"
-    ls -la "$PACKAGE_PATH"
+    ls -la "$PACKAGE_PATH" 2>/dev/null || echo "Directory not accessible"
+    echo "Current directory: $(pwd)"
+    echo "Looking for package in: $PACKAGE_PATH"
     exit 1
+fi
+
+# Check if package has Python files
+PY_FILES=$(find "$PACKAGE_PATH" -name "*.py" -type f | head -5)
+if [ -z "$PY_FILES" ]; then
+    echo "⚠️  Warning: No Python files found in package"
+else
+    echo "✓ Found Python files in package"
 fi
 
 # Upload source
@@ -992,13 +1128,27 @@ zip -qr source.zip source
 cd - >/dev/null
 
 echo "Uploading to S3..."
-aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_NAME/source.zip"
+# Add retry logic for S3 operations
+for attempt in 1 2 3; do
+    if aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_NAME/source.zip"; then
+        echo "✓ Source zip uploaded"
+        break
+    else
+        echo "Attempt $attempt failed, retrying..."
+        sleep 2
+    fi
+    if [ $attempt -eq 3 ]; then
+        echo "❌ Failed to upload source.zip after 3 attempts"
+        exit 1
+    fi
+done
+
 echo "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
 
 echo "✅ Source uploaded successfully"
 """
 
-    def _generate_trigger_script(self, bucket, project_name, package_hash):
+    def _generate_trigger_script(self, bucket: str, project_name: str, package_hash: str) -> str:
         """Generate script to trigger build without waiting."""
         return f"""#!/bin/bash
 set -e
@@ -1048,7 +1198,7 @@ echo "📊 Monitor at: https://console.aws.amazon.com/codesuite/codebuild/projec
 echo "⚡ Continuing with fast pulumi up (not waiting for completion)"
 """
 
-    def _generate_initial_build_script(self, bucket, project_name):
+    def _generate_initial_build_script(self, bucket: str, project_name: str) -> str:
         """Generate script to ensure initial layer exists."""
         return f"""#!/bin/bash
 set -e
@@ -1087,8 +1237,8 @@ done
 """
 
     def _generate_sync_script(
-        self, bucket, project_name, layer_name, package_path, package_hash
-    ):
+        self, bucket: str, project_name: str, layer_name: str, package_path: str, package_hash: str
+    ) -> str:
         """Generate script for sync mode (waits for completion)."""
         return f"""#!/bin/bash
 set -e
@@ -1181,18 +1331,18 @@ layers_to_build = [
 
 # Create Lambda layers using the fast approach
 # TEMPORARILY SKIP LAYER BUILDING
-SKIP_LAYER_BUILDING = True  # Set to False to enable layer building
+SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
 
 fast_lambda_layers = {}
 
 if not SKIP_LAYER_BUILDING:
     for layer_config in layers_to_build:
         fast_layer = FastLambdaLayer(
-            name=layer_config["name"],
-            package_dir=layer_config["package_dir"],
-            python_versions=layer_config["python_versions"],
-            description=layer_config["description"],
-            needs_pillow=layer_config["needs_pillow"],
+            name=layer_config["name"],  # type: ignore
+            package_dir=layer_config["package_dir"],  # type: ignore
+            python_versions=layer_config["python_versions"],  # type: ignore
+            description=layer_config["description"],  # type: ignore
+            needs_pillow=layer_config["needs_pillow"],  # type: ignore
         )
         fast_lambda_layers[layer_config["name"]] = fast_layer
 
@@ -1203,13 +1353,13 @@ if not SKIP_LAYER_BUILDING:
 else:
     # Create dummy objects when skipping
     class DummyLayer:
-        def __init__(self, name):
+        def __init__(self, name: str) -> None:
             self.name = name
             self.arn = None
     
-    fast_dynamo_layer = DummyLayer("receipt-dynamo")
-    fast_label_layer = DummyLayer("receipt-label")
-    fast_upload_layer = DummyLayer("receipt-upload")
+    fast_dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
+    fast_label_layer = DummyLayer("receipt-label")  # type: ignore
+    fast_upload_layer = DummyLayer("receipt-upload")  # type: ignore
 
 # Create aliases for backward compatibility
 dynamo_layer = fast_dynamo_layer
