@@ -44,13 +44,6 @@ dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
 lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
 
-# Create a module-level lock manager instance for the final merge
-lock_manager = LockManager(
-    dynamo_client=dynamo_client,
-    heartbeat_interval=heartbeat_interval,
-    lock_duration_minutes=lock_duration_minutes,
-)
-
 
 def compact_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # pylint: disable=unused-argument
     """
@@ -209,6 +202,13 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     logger.info(
         "Final merge for batch %s with %d chunks",
         batch_id, total_chunks
+    )
+    
+    # Create a fresh lock manager for this invocation
+    lock_manager = LockManager(
+        dynamo_client=dynamo_client,
+        heartbeat_interval=heartbeat_interval,
+        lock_duration_minutes=lock_duration_minutes,
     )
     
     try:
@@ -500,4 +500,4 @@ def merge_intermediate_chunks(batch_id: str, total_chunks: int) -> Dict[str, Any
     }
 
 
-# Old heartbeat functions have been removed - see LockManager class above
+# LockManager is imported from receipt_label.utils.lock_manager for proper state management
