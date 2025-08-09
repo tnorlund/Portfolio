@@ -363,22 +363,21 @@ class TestLineEmbeddingPoll:
         }
         
         batch_id = "test_line_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = "test-sqs-url"
         
-        # Mock environment variables
-        with patch.dict('os.environ', {
-            'CHROMADB_BUCKET': 'test-chroma-bucket',
-            'COMPACTION_QUEUE_URL': 'test-sqs-url'
-        }):
-            with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
-                mock_produce.return_value = {
-                    "delta_id": "line_delta_123",
-                    "delta_key": "s3://bucket/line_delta_123",
-                    "embedding_count": 1
-                }
-                
-                with patch('receipt_label.embedding.line.poll.get_client_manager',
-                           return_value=mock_client_manager):
-                    result = save_line_embeddings_as_delta(results, descriptions, batch_id)
+        with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "line_delta_123",
+                "delta_key": "s3://bucket/line_delta_123",
+                "embedding_count": 1
+            }
+            
+            with patch('receipt_label.embedding.line.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_line_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
         
         # Should return delta creation result
         assert result["delta_id"] == "line_delta_123"
@@ -614,25 +613,22 @@ class TestLineEmbeddingPoll:
         }
         
         batch_id = "test_line_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = None  # Skip SQS notification
         
-        # Mock environment variables
-        with patch.dict('os.environ', {
-            'CHROMADB_BUCKET': 'test-chroma-bucket',
-            'COMPACTION_QUEUE_URL': 'test-sqs-url'
-        }):
-            with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
-                mock_produce.return_value = {
-                    "delta_id": "line_delta_123",
-                    "delta_key": "s3://bucket/line_delta_123",
-                    "embedding_count": 1
-                }
-                
-                # Test with skip_sqs_notification=True
-                with patch('receipt_label.embedding.line.poll.get_client_manager',
-                           return_value=mock_client_manager):
-                    result = save_line_embeddings_as_delta(
-                        results, descriptions, batch_id, skip_sqs_notification=True
-                    )
+        with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "line_delta_123",
+                "delta_key": "s3://bucket/line_delta_123",
+                "embedding_count": 1
+            }
+            
+            # Test with sqs_queue_url=None
+            with patch('receipt_label.embedding.line.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_line_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
         
         # Should return delta creation result
         assert result["delta_id"] == "line_delta_123"
@@ -668,25 +664,22 @@ class TestLineEmbeddingPoll:
         }
         
         batch_id = "test_line_batch"
+        bucket_name = "test-chroma-bucket"
+        sqs_queue_url = "test-sqs-url"
         
-        # Mock environment variables with SQS queue URL
-        with patch.dict('os.environ', {
-            'CHROMADB_BUCKET': 'test-chroma-bucket',
-            'COMPACTION_QUEUE_URL': 'test-sqs-url'
-        }):
-            with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
-                mock_produce.return_value = {
-                    "delta_id": "line_delta_456",
-                    "delta_key": "s3://bucket/line_delta_456",
-                    "embedding_count": 1
-                }
-                
-                # Test with skip_sqs_notification=False (default)
-                with patch('receipt_label.embedding.line.poll.get_client_manager',
-                           return_value=mock_client_manager):
-                    result = save_line_embeddings_as_delta(
-                        results, descriptions, batch_id, skip_sqs_notification=False
-                    )
+        with patch('receipt_label.embedding.line.poll.produce_embedding_delta') as mock_produce:
+            mock_produce.return_value = {
+                "delta_id": "line_delta_456",
+                "delta_key": "s3://bucket/line_delta_456",
+                "embedding_count": 1
+            }
+            
+            # Test with sqs_queue_url provided
+            with patch('receipt_label.embedding.line.poll.get_client_manager',
+                       return_value=mock_client_manager):
+                result = save_line_embeddings_as_delta(
+                    results, descriptions, batch_id, bucket_name, sqs_queue_url
+                )
         
         # Should return delta creation result
         assert result["delta_id"] == "line_delta_456"

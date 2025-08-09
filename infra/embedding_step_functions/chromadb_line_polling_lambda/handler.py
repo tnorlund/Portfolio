@@ -62,12 +62,21 @@ def _handle_completed_batch(
     descriptions = get_receipt_descriptions(results)
     logger.info("Retrieved details for %d receipts", len(descriptions))
 
-    # Save delta with or without SQS notification based on skip_sqs flag
+    # Get configuration from environment
+    bucket_name = os.environ.get("CHROMADB_BUCKET")
+    if not bucket_name:
+        raise ValueError("CHROMADB_BUCKET environment variable not set")
+    
+    # Determine SQS queue URL based on skip_sqs flag
     if skip_sqs:
         logger.info("Skipping SQS notification for this delta")
+        sqs_queue_url = None
+    else:
+        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+        logger.info("Will send SQS notification to: %s", sqs_queue_url)
     
     delta_result = save_line_embeddings_as_delta(
-        results, descriptions, batch_id, skip_sqs_notification=skip_sqs
+        results, descriptions, batch_id, bucket_name, sqs_queue_url
     )
     logger.info(
         "Saved delta %s with %d embeddings",

@@ -95,12 +95,21 @@ def poll_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         descriptions = get_receipt_descriptions(results)
         logger.info(f"Retrieved details for {len(descriptions)} receipts")
 
-        # Save delta with or without SQS notification based on skip_sqs flag
+        # Get configuration from environment
+        bucket_name = os.environ.get("CHROMADB_BUCKET")
+        if not bucket_name:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+        
+        # Determine SQS queue URL based on skip_sqs flag
         if skip_sqs:
             logger.info("Skipping SQS notification for this delta")
+            sqs_queue_url = None
+        else:
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+            logger.info(f"Will send SQS notification to: {sqs_queue_url}")
 
         delta_result = save_word_embeddings_as_delta(
-            results, descriptions, batch_id, skip_sqs_notification=skip_sqs
+            results, descriptions, batch_id, bucket_name, sqs_queue_url
         )
         logger.info(
             f"Saved delta {delta_result['delta_id']} with "

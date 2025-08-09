@@ -22,7 +22,7 @@ distributed receipt labeling and validation workflow.
 import json
 import os
 import re
-from typing import List
+from typing import List, Optional
 
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
@@ -292,8 +292,9 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
     batch_id: str,
+    bucket_name: str,
+    sqs_queue_url: Optional[str] = None,
     client_manager: ClientManager = None,
-    skip_sqs_notification: bool = False,
 ) -> dict:
     """
     Save word embedding results as a delta file to S3 for ChromaDB compaction.
@@ -308,9 +309,10 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         descriptions (dict): A nested dict of receipt details keyed by
             image_id and receipt_id.
         batch_id (str): The identifier of the batch.
+        bucket_name (str): S3 bucket name for storing the delta.
+        sqs_queue_url (Optional[str]): SQS queue URL for compaction notification.
+            If None, skips SQS notification.
         client_manager (ClientManager, optional): Client manager for AWS services.
-        skip_sqs_notification (bool, optional): If True, skip sending SQS notification
-            for delta compaction. Defaults to False.
             
     Returns:
         dict: Delta creation result with keys:
@@ -467,19 +469,6 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         metadatas.append(word_metadata)
         documents.append(text)
     
-    # Get S3 bucket from environment
-    bucket_name = os.environ.get("CHROMADB_BUCKET")
-    if not bucket_name:
-        raise ValueError("CHROMADB_BUCKET environment variable not set")
-    
-    # Determine SQS queue URL based on skip_sqs_notification flag
-    if skip_sqs_notification:
-        # Explicitly pass None to skip SQS notification
-        sqs_queue_url = None
-    else:
-        # Get SQS queue URL from environment if configured
-        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-        
     # Produce the delta file
     delta_result = produce_embedding_delta(
         ids=ids,
@@ -487,8 +476,8 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        sqs_queue_url=sqs_queue_url,  # Will send SQS notification if configured
         collection_name="receipt_words",
+        sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )
     
