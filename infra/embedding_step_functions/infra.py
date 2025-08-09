@@ -8,28 +8,25 @@ This module creates step functions for processing line embeddings using:
 """
 
 import json
-import os
+from typing import Optional
+
 import pulumi
 
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
 from pulumi import (
-    AssetArchive,
     ComponentResource,
     Config,
-    FileAsset,
     Output,
     ResourceOptions,
     Resource,
 )
 from pulumi_aws.s3 import Bucket
-from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
-from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.iam import Role, RolePolicy
 from pulumi_aws.sfn import StateMachine
 
 # Import ChromaDB infrastructure components
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
 from .chromadb_lambdas import ChromaDBLambdas
+
 # Note: This import is not actually used in this file
 # from base_images.base_images_v3 import BaseImages
 
@@ -49,9 +46,9 @@ class LineEmbeddingStepFunction(ComponentResource):
     def __init__(
         self,
         name: str,
-        base_image_name: Output[str] = None,
-        base_image_resource: Resource = None,
-        opts: ResourceOptions = None,
+        base_image_name: Optional[Output[str]] = None,
+        base_image_resource: Optional[Resource] = None,
+        opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
             f"{__name__}-{name}",
@@ -83,22 +80,24 @@ class LineEmbeddingStepFunction(ComponentResource):
         # Add dependency on base image resource if provided
         lambda_opts = ResourceOptions(parent=self)
         if base_image_resource:
-            lambda_opts = ResourceOptions(
-                parent=self, depends_on=[base_image_resource]
-            )
+            lambda_opts = ResourceOptions(parent=self, depends_on=[base_image_resource])
 
-        self.chromadb_lambdas = ChromaDBLambdas(
-            f"{name}-chromadb",
-            chromadb_bucket_name=self.chromadb_buckets.bucket_name,
-            chromadb_queue_url=self.chromadb_queues.delta_queue_url,
-            chromadb_queue_arn=self.chromadb_queues.delta_queue_arn,
-            openai_api_key=openai_api_key,
-            s3_batch_bucket_name=self.batch_bucket.bucket,
-            stack=stack,
-            base_image_name=base_image_name,
-            base_image_resource=base_image_resource,
-            opts=lambda_opts,
-        )
+        # Only pass base_image_name if it's provided
+        lambda_args = {
+            "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
+            "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
+            "chromadb_queue_arn": self.chromadb_queues.delta_queue_arn,
+            "openai_api_key": openai_api_key,
+            "s3_batch_bucket_name": self.batch_bucket.bucket,
+            "stack": stack,
+            "opts": lambda_opts,
+        }
+
+        if base_image_name is not None:
+            lambda_args["base_image_name"] = base_image_name
+            lambda_args["base_image_resource"] = base_image_resource
+
+        self.chromadb_lambdas = ChromaDBLambdas(f"{name}-chromadb", **lambda_args)
 
         # Create IAM role for Step Function
         self.step_function_role = Role(
@@ -165,10 +164,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Comment": (
-                                    "Find all OpenAI batches with "
-                                    "status=PENDING"
-                                ),
+                                "Comment": ("Find all OpenAI batches with " "status=PENDING"),
                                 "Next": "PollLineEmbeddingBatch",
                             },
                             "PollLineEmbeddingBatch": {
@@ -201,7 +197,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     "delta_results.$": "$.poll_results",
                                     "chunk_index": 0,
                                     "total_chunks_processed": 0,
-                                    "operation": "process_chunk"
+                                    "operation": "process_chunk",
                                 },
                                 "Next": "CheckForDeltas",
                             },
@@ -211,11 +207,11 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Choices": [
                                     {
                                         "Variable": "$.delta_results[0]",
-                                        "IsPresent": true,
-                                        "Next": "ProcessChunk"
+                                        "IsPresent": True,
+                                        "Next": "ProcessChunk",
                                     }
                                 ],
-                                "Default": "FinalMerge"
+                                "Default": "FinalMerge",
                             },
                             "ProcessChunk": {
                                 "Type": "Task",
@@ -225,7 +221,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     "operation": "process_chunk",
                                     "batch_id.$": "$.batch_id",
                                     "chunk_index.$": "$.chunk_index",
-                                    "delta_results.$": "$.delta_results"
+                                    "delta_results.$": "$.delta_results",
                                 },
                                 "ResultPath": "$.chunk_result",
                                 "Next": "CheckContinuation",
@@ -233,20 +229,20 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     {
                                         "ErrorEquals": [
                                             "States.TaskFailed",
-                                            "States.ALL"
+                                            "States.ALL",
                                         ],
                                         "IntervalSeconds": 5,
                                         "MaxAttempts": 3,
-                                        "BackoffRate": 2.0
+                                        "BackoffRate": 2.0,
                                     }
                                 ],
                                 "Catch": [
                                     {
                                         "ErrorEquals": ["States.ALL"],
                                         "Next": "ChunkProcessingFailed",
-                                        "ResultPath": "$.error"
+                                        "ResultPath": "$.error",
                                     }
-                                ]
+                                ],
                             },
                             "CheckContinuation": {
                                 "Type": "Choice",
@@ -254,11 +250,11 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Choices": [
                                     {
                                         "Variable": "$.chunk_result.has_more_chunks",
-                                        "BooleanEquals": true,
-                                        "Next": "PrepareNextChunk"
+                                        "BooleanEquals": True,
+                                        "Next": "PrepareNextChunk",
                                     }
                                 ],
-                                "Default": "FinalMerge"
+                                "Default": "FinalMerge",
                             },
                             "PrepareNextChunk": {
                                 "Type": "Pass",
@@ -266,11 +262,13 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Parameters": {
                                     "batch_id.$": "$.batch_id",
                                     "operation": "process_chunk",
-                                    "chunk_index.$": "$.chunk_result.next_chunk_index", 
+                                    "chunk_index.$": "$.chunk_result.next_chunk_index",
                                     "delta_results.$": "$.chunk_result.remaining_deltas",
-                                    "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)"
+                                    "total_chunks_processed.$": (
+                                        "States.MathAdd($.total_chunks_processed, 1)"
+                                    ),
                                 },
-                                "Next": "ProcessChunk"
+                                "Next": "ProcessChunk",
                             },
                             "FinalMerge": {
                                 "Type": "Task",
@@ -279,38 +277,40 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Parameters": {
                                     "operation": "final_merge",
                                     "batch_id.$": "$.batch_id",
-                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)"
+                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
                                 },
                                 "End": True,
                                 "Retry": [
                                     {
                                         "ErrorEquals": [
                                             "States.TaskFailed",
-                                            "States.ALL"
+                                            "States.ALL",
                                         ],
                                         "IntervalSeconds": 10,
                                         "MaxAttempts": 3,
-                                        "BackoffRate": 2.0
+                                        "BackoffRate": 2.0,
                                     }
                                 ],
                                 "Catch": [
                                     {
                                         "ErrorEquals": ["States.ALL"],
                                         "Next": "FinalMergeFailed",
-                                        "ResultPath": "$.error"
+                                        "ResultPath": "$.error",
                                     }
-                                ]
+                                ],
                             },
                             "ChunkProcessingFailed": {
                                 "Type": "Fail",
                                 "Comment": "Chunk processing failed",
-                                "Cause": "Failed to process chunk during compaction"
+                                "Cause": "Failed to process chunk during compaction",
                             },
                             "FinalMergeFailed": {
                                 "Type": "Fail",
                                 "Comment": "Final merge failed",
-                                "Cause": "Failed to merge intermediate chunks during final compaction"
-                            }
+                                "Cause": (
+                                    "Failed to merge intermediate chunks during " "final compaction"
+                                ),
+                            },
                         },
                     }
                 )
@@ -338,8 +338,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Task",
                                 "Resource": arns[0],
                                 "Comment": (
-                                    "Query DynamoDB for lines with "
-                                    "embedding_status=NONE"
+                                    "Query DynamoDB for lines with " "embedding_status=NONE"
                                 ),
                                 "Next": "SubmitEmbedding",
                             },
@@ -371,18 +370,10 @@ class LineEmbeddingStepFunction(ComponentResource):
             {
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
                 "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
-                "chromadb_line_polling_lambda_arn": (
-                    self.chromadb_lambdas.line_polling_lambda.arn
-                ),
-                "chromadb_compaction_lambda_arn": (
-                    self.chromadb_lambdas.compaction_lambda.arn
-                ),
-                "poll_and_store_embeddings_sm_arn": (
-                    self.poll_and_store_embeddings_sm.arn
-                ),
-                "create_embedding_batches_sm_arn": (
-                    self.create_embedding_batches_sm.arn
-                ),
+                "chromadb_line_polling_lambda_arn": (self.chromadb_lambdas.line_polling_lambda.arn),
+                "chromadb_compaction_lambda_arn": (self.chromadb_lambdas.compaction_lambda.arn),
+                "poll_and_store_embeddings_sm_arn": (self.poll_and_store_embeddings_sm.arn),
+                "create_embedding_batches_sm_arn": (self.create_embedding_batches_sm.arn),
                 "list_pending_openai_batches_lambda_arn": (
                     self.chromadb_lambdas.list_pending_lambda.arn
                 ),
@@ -401,7 +392,7 @@ class LineEmbeddingStepFunction(ComponentResource):
 class LegacyLineEmbeddingStepFunction(ComponentResource):
     """Legacy Pinecone-based line embedding step functions (deprecated)."""
 
-    def __init__(self, name: str, opts: ResourceOptions = None):
+    def __init__(self, name: str, opts: Optional[ResourceOptions] = None):
         super().__init__(
             f"{__name__}-{name}-legacy",
             "aws:stepfunctions:LegacyLineEmbeddingStepFunction",
@@ -411,4 +402,3 @@ class LegacyLineEmbeddingStepFunction(ComponentResource):
 
         # NOTE: Move existing Pinecone-based logic here if needed for transition
         # For now, this is a placeholder to maintain backward compatibility
-        pass
